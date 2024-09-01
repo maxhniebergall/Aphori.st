@@ -1,6 +1,6 @@
 import { createLogger, format, transports } from 'winston';
 
-export function newLogger(name) {
+export default function newLogger(name) {
         return createLogger({
         level: "info",
         format: format.combine(

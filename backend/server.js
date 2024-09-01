@@ -1,13 +1,15 @@
-const express = require("express");
-import path from "path";
-const createClient = require('redis');
-import logger from './logger.js';
+import express, { json } from "express";
+import path from "path"; // Add this import
+import { createClient } from 'redis';
+import newLogger from './logger.js';
+
+const logger = newLogger()
 
 const app = express();
 app.use(json());
 
 // Serve static files from the React app
-app.use(express.static(path.join(__dirname, '../client/build')));
+app.use(express.static("../frontend/build"));
 
 const redisClient = createClient({
     socket: {
