@@ -2,14 +2,20 @@ import express, { json } from "express";
 import path from "path"; // Add this import
 import { createClient } from 'redis';
 import newLogger from './logger.js';
+import cors from 'cors';
 
 const logger = newLogger()
 
 const app = express();
 app.use(json());
+app.use(cors());
 
-// Serve static files from the React app
-app.use(express.static("../frontend/build"));
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 
 const redisClient = createClient({
     socket: {
@@ -27,7 +33,7 @@ await redisClient.connect().then(() => {
     process.exit(1);
 });
 
-app.post("/setvalue", async (req, res) => {
+app.post("/api/setvalue", async (req, res) => {
     if (req.body.key && req.body.value) {
         try {
             const setResult = await redisClient.set(req.body.key, req.body.value);
@@ -42,7 +48,7 @@ app.post("/setvalue", async (req, res) => {
     }
 });
 
-app.get('/getValue/:key', async (req, res) => {
+app.get('/api/getValue/:key', async (req, res) => {
     if (!req.params.key) {
         return res.status(400).json({ error: 'Wrong input.' });
     }
@@ -62,6 +68,6 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/build/index.html'));
 });
 
-app.listen(3000, () => {
+app.listen(3000, '0.0.0.0', () => {
     logger.info('Server is available on port 3000');
 });
