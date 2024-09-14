@@ -3,12 +3,18 @@ import path from "path"; // Add this import
 import { createClient } from 'redis';
 import newLogger from './logger.js';
 import cors from 'cors';
+const PORT = process.env.PORT || 5000;
 
 const logger = newLogger()
 
 const app = express();
 app.use(json());
-app.use(cors());
+
+const corsOptions = {
+    origin: 'http://localhost:3000', // Frontend URL
+    optionsSuccessStatus: 200
+  };
+app.use(cors(corsOptions));
 
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -98,6 +104,6 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/build/index.html'));
 });
 
-app.listen(5000, '0.0.0.0', () => {
-    logger.info('Server is available on port 5000');
+app.listen(PORT, () => {
+    logger.info('Server is available on port ${PORT}');
 });

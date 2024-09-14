@@ -9,18 +9,19 @@ function App() {
 
     const handleSetValue = async () => {
         try {
-            const response = await fetch('/api/setValue', {
+            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/setValue`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: "test",
+                body: JSON.stringify({"value": statementText, "key": username}),
             });
 
             if (response.ok) {
                 alert('Value set successfully!');
             } else {
-                alert('Failed to set value.');
+                alert("failed to set value")
+                console.log(response);
             }
         } catch (error) {
             console.error('Error setting value:', error);
@@ -29,7 +30,7 @@ function App() {
 
     const handleGetValue = async () => {
         try {
-            const response = await fetch(`/api/getValue/${retrievalKey}`);
+            const response = await fetch(`${process.env.REACT_APP_API_URL}/api/getValue/${retrievalKey}`);
 
             if (response.ok) {
                 const data = await response.json();
