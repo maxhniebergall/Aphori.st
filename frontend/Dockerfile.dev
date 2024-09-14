@@ -1,21 +1,24 @@
-# Use the official Node.js 18 Alpine image
+# Use the official Node.js 18 Alpine image for a lightweight environment
 FROM node:18-alpine
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy the package files and install dependencies
+# Copy package.json and yarn.lock to install dependencies
 COPY package.json yarn.lock ./
+
+# Install dependencies
 RUN yarn install
 
-# Copy the rest of your application code
+# Copy the rest of the application code
 COPY . ./
 
 # Expose the port the React app runs on
 EXPOSE 3000
 
-# Set an environment variable to enable polling for file changes
+# Set environment variables to enable hot reloading
 ENV CHOKIDAR_USEPOLLING=true
+ENV PORT=3000
 
 # Start the React development server
 CMD ["yarn", "start"]

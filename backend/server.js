@@ -33,6 +33,36 @@ await redisClient.connect().then(() => {
     process.exit(1);
 });
 
+app.post("/api/createStatement", async (req, res) => {
+    if (req.body.uuid && req.body.value) {
+        try {
+            const setResult = await redisClient.set(req.body.uuid, req.body.value);
+            logger.info('Set Result: %s', setResult);
+            res.send();
+        } catch (e) {
+            logger.error('Error setting value: %O', e);
+            res.status(500).json(e);
+        }
+    } else {
+        res.status(400).json({ error: 'Wrong input.' });
+    }
+});
+
+app.get('/api/getStatement/:key', async (req, res) => {
+    if (!req.params.key) {
+        return res.status(400).json({ error: 'Wrong input.' });
+    }
+
+    try {
+        const value = await redisClient.get(req.params.key);
+        logger.info('Fetched value for key "%s": %s', req.params.key, value);
+        res.json({ value: value });
+    } catch (e) {
+        logger.error('Error getting value: %O', e);
+        res.status(500).json(e);
+    }
+});
+
 app.post("/api/setvalue", async (req, res) => {
     if (req.body.key && req.body.value) {
         try {
@@ -68,6 +98,6 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/build/index.html'));
 });
 
-app.listen(3000, '0.0.0.0', () => {
-    logger.info('Server is available on port 3000');
+app.listen(5000, '0.0.0.0', () => {
+    logger.info('Server is available on port 5000');
 });

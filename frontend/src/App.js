@@ -14,13 +14,11 @@ function App() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ key, value }),
+                body: "test",
             });
 
             if (response.ok) {
                 alert('Value set successfully!');
-                setKey('');
-                setValue('');
             } else {
                 alert('Failed to set value.');
             }
@@ -62,13 +60,7 @@ function App() {
                     type="text"
                     placeholder="Life is a sequence of aphorisms..."
                     value={statementText}
-                    onChange={(e) => setKey(e.target.value)}
-                />
-                <input
-                    type="text"
-                    placeholder="Enter Value"
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
+                    onChange={(e) => setStatementText(e.target.value)}
                 />
                 <fieldset>
                 <legend>Select a tag:</legend>
