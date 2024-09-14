@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 
 function App() {
-    const [key, setKey] = useState('');
-    const [value, setValue] = useState('');
+    const username = "root"
+    const [statementText, setStatementText] = useState('');
+    const [tags, setTags] = useState('');
     const [retrievedValue, setRetrievedValue] = useState('');
     const [retrievalKey, setRetrievalKey] = useState('');
 
@@ -43,6 +44,15 @@ function App() {
         }
     };
 
+      // Handle checkbox change
+    const handleChange = (event) => {
+        const { name, checked } = event.target;
+        setTags((prevTags) => ({
+        ...prevTags,
+        [name]: checked,
+        }));
+    };
+
     return (
         <div className="App">
             <h1>Set and Get Value from Redis</h1>
@@ -50,8 +60,8 @@ function App() {
             <div>
                 <input
                     type="text"
-                    placeholder="Enter Key"
-                    value={key}
+                    placeholder="Life is a sequence of aphorisms..."
+                    value={statementText}
                     onChange={(e) => setKey(e.target.value)}
                 />
                 <input
@@ -60,9 +70,35 @@ function App() {
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
                 />
+                <fieldset>
+                <legend>Select a tag:</legend>
+                    <div>
+                        <input
+                            type="radio"
+                            name="type"
+                            value = "Aphorism"
+                            checked
+                            onChange={handleChange}
+                        />
+                        <label>
+                        Aphorism
+                        </label>
+                    </div>
+                    <div>
+                        <input
+                            type="radio"
+                            name="type"
+                            value = "Comment"
+                            onChange={handleChange}
+                        />
+                        <label>
+                        Comment
+                        </label>
+                    </div>
+                </fieldset>
                 <button onClick={handleSetValue}>Set Value</button>
             </div>
-
+            <b/>
             <div>
                 <input
                     type="text"
@@ -71,6 +107,7 @@ function App() {
                     onChange={(e) => setRetrievalKey(e.target.value)}
                 />
                 <button onClick={handleGetValue}>Get Value</button>
+                <b/>
                 {retrievedValue && <p>Retrieved Value: {retrievedValue}</p>}
             </div>
         </div>
