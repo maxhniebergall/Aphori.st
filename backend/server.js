@@ -99,6 +99,63 @@ app.get('/api/getValue/:key', async (req, res) => {
     }
 });
 
+// Get story data by UUID
+app.get('/api/storyTree', async (req, res) => {
+    const uuid = req.query.uuid;
+  
+    if (!uuid) {
+      return res.status(400).json({ error: 'UUID is required' });
+    }
+  
+    try {
+      // Fetch data from Redis
+      client.hget('storyTrees', uuid, (err, data) => {
+        if (err) {
+          return res.status(500).json({ error: 'Error fetching data from Redis' });
+        }
+        if (!data) {
+          return res.status(404).json({ error: 'StoryTree not found' });
+        }
+        res.json(JSON.parse(data));
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // Get feed data with pagination
+app.get('/api/feed', async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = 10; // Number of items per page
+  
+    try {
+      // Fetch all feed items from Redis
+      client.lrange('feedItems', 0, -1, (err, data) => {
+        if (err) {
+          return res.status(500).json({ error: 'Error fetching data from Redis' });
+        }
+  
+        const feedItems = data.map((item) => JSON.parse(item));
+  
+        // Implement pagination
+        const startIndex = (page - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
+  
+        const paginatedItems = feedItems.slice(startIndex, endIndex);
+  
+        res.json({
+          page,
+          totalPages: Math.ceil(feedItems.length / pageSize),
+          items: paginatedItems,
+        });
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+  
+  
+
 // The "catchall" handler: for any request that doesn't match one above, send back React's index.html file.
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/build/index.html'));

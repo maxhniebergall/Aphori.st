@@ -5,7 +5,6 @@ services:
       dockerfile: Dockerfile.dev
     volumes:
       - ./frontend:/app  # Syncs your local code with the container
-      - /app/node_modules  # Prevents overwriting node_modules in the container
     ports:
       - '3000:3000'  # Exposes the React development server port
     environment:
@@ -17,7 +16,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     ports:
       - '5000:5000'
     networks:
