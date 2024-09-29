@@ -100,28 +100,30 @@ app.get('/api/getValue/:key', async (req, res) => {
 });
 
 // Get story data by UUID
-app.get('/api/storyTree', async (req, res) => {
-    const uuid = req.query.uuid;
-  
-    if (!uuid) {
-      return res.status(400).json({ error: 'UUID is required' });
+app.get('/api/storyTree/:uuid', async (req, res) => {
+const uuid = req.params.uuid;
+
+if (!uuid) {
+    return res.status(400).json({ error: 'UUID is required' });
+}
+
+try {
+    console.log(`Fetching storyTree with UUID: ${uuid}`);
+    const data = await redisClient.hGet('storyTrees', uuid);
+    console.log('Raw data from Redis:', data);
+
+    if (!data) {
+    console.warn(`StoryTree with UUID ${uuid} not found`);
+    return res.status(404).json({ error: 'StoryTree not found' });
     }
-  
-    try {
-      // Fetch data from Redis
-      client.hget('storyTrees', uuid, (err, data) => {
-        if (err) {
-          return res.status(500).json({ error: 'Error fetching data from Redis' });
-        }
-        if (!data) {
-          return res.status(404).json({ error: 'StoryTree not found' });
-        }
-        res.json(JSON.parse(data));
-      });
-    } catch (error) {
-      res.status(500).json({ error: 'Server error' });
-    }
-  });
+
+    const parsedData = JSON.parse(data);
+    res.json(parsedData);
+} catch (err) {
+    console.error('Error fetching data from Redis:', err.stack);
+    res.status(500).json({ error: 'Server error' });
+}
+});
 
   // Get feed data with pagination
 app.get('/api/feed', async (req, res) => {
@@ -154,13 +156,7 @@ app.get('/api/feed', async (req, res) => {
     }
   });
   
-  
-
-// The "catchall" handler: for any request that doesn't match one above, send back React's index.html file.
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/build/index.html'));
-});
 
 app.listen(PORT, () => {
-    logger.info('Server is available on port ${PORT}');
+    logger.info(`Server is available on port ${PORT}`);
 });

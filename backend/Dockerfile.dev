@@ -8,7 +8,13 @@ RUN yarn install
 
 COPY . .
 
+# Copy the entrypoint_dev script
+COPY entrypoint_dev.sh /app/
+
+# Make the entrypoint_dev script executable
+RUN chmod +x /app/entrypoint_dev.sh
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "node seed.js && node server.js"]
+# Start the backend with the entrypoint_dev script
+ENTRYPOINT ["/app/entrypoint_dev.sh"]
