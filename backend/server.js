@@ -5,7 +5,7 @@ import newLogger from './logger.js';
 import cors from 'cors';
 const PORT = process.env.PORT || 5000;
 
-const logger = newLogger()
+const logger = newLogger("server.js")
 
 const app = express();
 app.use(json());
@@ -129,32 +129,28 @@ try {
 app.get('/api/feed', async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const pageSize = 10; // Number of items per page
-  
+    logger.info("Handling request for feed at page "+page)
     try {
-      // Fetch all feed items from Redis
-      client.lrange('feedItems', 0, -1, (err, data) => {
-        if (err) {
+      // Fetch all feed items from Redis with pagination
+      const startIndex = (page - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+
+      let results = await redisClient.lRange('feedItems', startIndex, endIndex); 
+        if (results.err) {
           return res.status(500).json({ error: 'Error fetching data from Redis' });
         }
   
-        const feedItems = data.map((item) => JSON.parse(item));
-  
-        // Implement pagination
-        const startIndex = (page - 1) * pageSize;
-        const endIndex = startIndex + pageSize;
-  
-        const paginatedItems = feedItems.slice(startIndex, endIndex);
-  
+        const feedItems = results.map((item) => JSON.parse(item));
+        logger.info("Returned " + feedItems.length + " feed items")
         res.json({
           page,
-          totalPages: Math.ceil(feedItems.length / pageSize),
-          items: paginatedItems,
+          items: feedItems,
         });
-      });
     } catch (error) {
       res.status(500).json({ error: 'Server error' });
     }
-  });
+});
+
   
 
 app.listen(PORT, () => {

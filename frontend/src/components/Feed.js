@@ -1,27 +1,26 @@
 // components/Feed.js
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import './Feed.css';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import './Feed.css'; // Create a CSS file for styling
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 function Feed() {
   const [feedItems, setFeedItems] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [currentIndex, setCurrentIndex] = useState(1);
   const navigate = useNavigate();
 
-  const page = parseInt(searchParams.get('page')) || 1;
-
+  // Fetch feed items
   useEffect(() => {
     const fetchFeedItems = async () => {
+      console.log("Fetching feed items for page " + currentIndex)
       try {
-        const response = await axios.get(`${process.env.REACT_APP_API_BASE_URL}/api/storyTree`, {
-          params: { uuid: initialUUID },
+          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/feed`, {
+          query: { "page":currentIndex },
         });
-        
 
         const data = response.data;
+        console.log("recieved feed items" + JSON.stringify(data))
         setFeedItems(data.items);
       } catch (error) {
         console.error('Error fetching feed items:', error);
@@ -29,20 +28,44 @@ function Feed() {
     };
 
     fetchFeedItems();
-  }, [page]);
+  }, [currentIndex]);
 
+  // Handle swiping up and down to navigate the feed
+  const handleSwipeVertical = (offsetY) => {
+    if (offsetY < -100 && currentIndex < feedItems.length - 1) {
+      // Swiped up, go to next item
+      setCurrentIndex(currentIndex + 1);
+    } else if (offsetY > 100 && currentIndex > 0) {
+      // Swiped down, go to previous item
+      setCurrentIndex(currentIndex - 1);
+    } 
+  };
+
+  const handleSwipeHorizontal = (offsetX) => {
+    if (offsetX < -100) {
+      // Swiped left, open as StoryTree
+      navigate(`/storyTree/${feedItems[currentIndex].id}`);
+    } else if (offsetX > 100) {
+      // Swiped right, open metadata tab
+    }
+  };
 
   return (
-    <div>
-      <h1>Feed Page</h1>
-      <p>Current Page: {page}</p>
-      {/* Display feed items based on the current page */}
-
-      {/* Pagination Controls */}
-      <button onClick={() => goToPage(page - 1)} disabled={page <= 1}>
-        Previous
-      </button>
-      <button onClick={() => goToPage(page + 1)}>Next</button>
+    <div className="feed-container">
+      {feedItems.length > 0 && (
+        <motion.div
+          key={feedItems[currentIndex].id}
+          className="feed-item"
+          drag
+          dragConstraints={{ top: 0, bottom: 0, left: 0, right: 0 }}
+          onDragEnd={(event, info) => {
+            handleSwipeVertical(info.offset.y);
+            handleSwipeHorizontal(info.offset.x);
+          }}
+        >
+          <p>{feedItems[currentIndex].text}</p>
+        </motion.div>
+      )}
     </div>
   );
 }

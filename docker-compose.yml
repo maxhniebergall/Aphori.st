@@ -1,17 +1,10 @@
 services:
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.dev
-    volumes:
-      - ./frontend:/app  # Syncs your local code with the container
+  redis:
+    image: redis:alpine
     ports:
-      - '3000:3000'  # Exposes the React development server port
-    environment:
-      - CHOKIDAR_USEPOLLING=true  # Ensures hot reloading works in Docker
+      - '6379:6379'
     networks:
       - main
-
 
   backend:
     build:
@@ -25,13 +18,21 @@ services:
       - REDIS_SERVER_IP=redis
     depends_on:
       - redis
-
-  redis:
-    image: redis:alpine
+      
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app  # Syncs your local code with the container
     ports:
-      - '6379:6379'
+      - '3000:3000'  # Exposes the React development server port
+    environment:
+      - CHOKIDAR_USEPOLLING=true  # Ensures hot reloading works in Docker
     networks:
       - main
+    depends_on:
+      - backend
 
 networks:
   main:

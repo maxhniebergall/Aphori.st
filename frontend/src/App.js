@@ -21,7 +21,7 @@ function App() {
             <Route path="/feed" element={<Feed />} />
     
             {/* New 'storyTree' route with UUID query parameter */}
-            <Route path="/storyTree" element={<StoryTree />} />
+            <Route path="/storyTree/:uuid" element={<StoryTree />} />
     
             {/* Optional: Add a 404 Not Found route */}
             <Route path="*" element={<h1>404 Not Found</h1>} />
@@ -31,3 +31,4 @@ function App() {
 }
 
 export default App;
+

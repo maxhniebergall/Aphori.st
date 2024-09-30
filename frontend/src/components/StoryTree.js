@@ -1,44 +1,42 @@
 // components/StoryTree.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import './StoryTree.css';
 import axios from 'axios';
 
 function StoryTree() {
-  const [searchParams, setSearchParams] = useSearchParams();
   const [storyData, setStoryData] = useState(null);
   const [currentNodeIndex, setCurrentNodeIndex] = useState(0);
   const [showMetadataPage, setShowMetadataPage] = useState(false);
   const [showMainContent, setShowMainContent] = useState(true);
 
-  const initialUUID = searchParams.get('uuid');
-  
+  const { uuid } = useParams(); // Get the UUID from the URL
+  const navigate = useNavigate();
+
   const updateURLWithNodeUUID = useCallback(
     (nodeUUID) => {
-      searchParams.set('uuid', nodeUUID);
-      setSearchParams(searchParams, { replace: true });
-    },
-    [searchParams, setSearchParams]
-  );
+    navigate(`/storyTree/${nodeUUID}`, { replace: true });
+  }, [navigate]);
 
   useEffect(() => {
-    if (!initialUUID) {
+    if (!uuid) {
       // Handle missing UUID
+      console.error('UUID is missing from URL');
       return;
     }
 
     const fetchStoryData = async () => {
         try {
-            const response = await axios.get(`${process.env.REACT_APP_API_BASE_URL}/api/storyTree`, {
-                params: { uuid: initialUUID },
-                });
+          console.log('Fetching story data for UUID:', uuid);
+          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/storyTree/${uuid}`);
             
   
           const data = response.data;
-  
+          console.log('Received data:', data);
+
           // Find index of node with initial UUID
-          const index = data.nodes.findIndex((node) => node.id === initialUUID);
+          const index = data.nodes.findIndex((node) => node.id === uuid);
           if (index !== -1) {
             setCurrentNodeIndex(index);
           } else {
@@ -51,12 +49,11 @@ function StoryTree() {
         } catch (error) {
           console.error('Error fetching story data:', error);
         }
-      };
+  };
   
-      fetchStoryData();
+  fetchStoryData();
 
-    fetchStoryData();
-  }, [initialUUID, updateURLWithNodeUUID,  searchParams, setSearchParams]);
+  }, [uuid, updateURLWithNodeUUID]);
   
   const handleScroll = (direction) => {
     let newIndex = currentNodeIndex;
@@ -118,7 +115,7 @@ function StoryTree() {
             }
           }}
         >
-          <AnimatePresence exitBeforeEnter>
+          <AnimatePresence mode="wait">
             <motion.div
               key={storyData.nodes[currentNodeIndex].id}
               initial={{ opacity: 0, y: 50 }}
