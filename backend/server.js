@@ -101,28 +101,28 @@ app.get('/api/getValue/:key', async (req, res) => {
 
 // Get story data by UUID
 app.get('/api/storyTree/:uuid', async (req, res) => {
-const uuid = req.params.uuid;
+    const uuid = req.params.uuid;
 
-if (!uuid) {
-    return res.status(400).json({ error: 'UUID is required' });
-}
-
-try {
-    console.log(`Fetching storyTree with UUID: ${uuid}`);
-    const data = await redisClient.hGet('storyTrees', uuid);
-    console.log('Raw data from Redis:', data);
-
-    if (!data) {
-    console.warn(`StoryTree with UUID ${uuid} not found`);
-    return res.status(404).json({ error: 'StoryTree not found' });
+    if (!uuid) {
+        return res.status(400).json({ error: 'UUID is required' });
     }
 
-    const parsedData = JSON.parse(data);
-    res.json(parsedData);
-} catch (err) {
-    console.error('Error fetching data from Redis:', err.stack);
-    res.status(500).json({ error: 'Server error' });
-}
+    try {
+        logger.info(`Fetching storyTree with UUID: [${uuid}]`);
+        const data = await redisClient.hGet(uuid, 'storyTree');
+        logger.info(`Raw data from Redis: [${data}]`);
+
+        if (!data) {
+            logger.warn(`StoryTree with UUID ${uuid} not found`);
+            return res.status(404).json({ error: 'StoryTree not found' });
+        }
+
+        const parsedData = JSON.parse(data);
+        res.json(parsedData);
+    } catch (err) {
+        logger.info('Error fetching data from Redis:', err.stack);
+        res.status(500).json({ error: 'Server error' });
+    }
 });
 
   // Get feed data with pagination
@@ -148,6 +148,7 @@ app.get('/api/feed', async (req, res) => {
         });
     } catch (error) {
       res.status(500).json({ error: 'Server error' });
+      logger.error('Error fetching feed items:', error);
     }
 });
 

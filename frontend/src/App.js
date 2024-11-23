@@ -2,7 +2,6 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Feed from './components/Feed';
 import StoryTree from './components/StoryTree';
-import RedisExample from './components/RedisExample';
 
 function App() {
     const username = "root"
@@ -14,13 +13,10 @@ function App() {
             {/* Redirect root '/' to '/feed' */}
             <Route path="/" element={<Navigate to="/feed" replace />} />
     
-            {/* Existing content moved to '/redisExample' */}
-            <Route path="/redisExample" element={<RedisExample username={username}/>} />
-    
             {/* New 'feed' route with pagination query parameter */}
             <Route path="/feed" element={<Feed />} />
     
-            {/* New 'storyTree' route with UUID query parameter */}
+            {/* New 'storyTree' route with UUID parameter */}
             <Route path="/storyTree/:uuid" element={<StoryTree />} />
     
             {/* Optional: Add a 404 Not Found route */}

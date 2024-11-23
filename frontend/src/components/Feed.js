@@ -1,17 +1,25 @@
 // components/Feed.js
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import './Feed.css'; // Create a CSS file for styling
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 function Feed() {
   const [feedItems, setFeedItems] = useState([]);
+  const [currentFocus, setCurrentFocus] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(1);
   const navigate = useNavigate();
 
+  const navigateToStoryTree = useCallback(
+    (nodeId) => {
+    navigate(`/storyTree/${nodeId}`, { replace: true });
+  }, [navigate]);
+
+
   // Fetch feed items
   useEffect(() => {
+  
     const fetchFeedItems = async () => {
       console.log("Fetching feed items for page " + currentIndex)
       try {
@@ -30,44 +38,34 @@ function Feed() {
     fetchFeedItems();
   }, [currentIndex]);
 
-  // Handle swiping up and down to navigate the feed
-  const handleSwipeVertical = (offsetY) => {
-    if (offsetY < -100 && currentIndex < feedItems.length - 1) {
-      // Swiped up, go to next item
-      setCurrentIndex(currentIndex + 1);
-    } else if (offsetY > 100 && currentIndex > 0) {
-      // Swiped down, go to previous item
-      setCurrentIndex(currentIndex - 1);
-    } 
-  };
-
-  const handleSwipeHorizontal = (offsetX) => {
-    if (offsetX < -100) {
-      // Swiped left, open as StoryTree
-      navigate(`/storyTree/${feedItems[currentIndex].id}`);
-    } else if (offsetX > 100) {
-      // Swiped right, open metadata tab
-    }
-  };
+  function idToIndex(id) {
+    return feedItems.findIndex(item => item.id === id);
+  }
 
   return (
-    <div className="feed-container">
-      {feedItems.length > 0 && (
-        <motion.div
-          key={feedItems[currentIndex].id}
-          className="feed-item"
-          drag
-          dragConstraints={{ top: 0, bottom: 0, left: 0, right: 0 }}
-          onDragEnd={(event, info) => {
-            handleSwipeVertical(info.offset.y);
-            handleSwipeHorizontal(info.offset.x);
-          }}
-        >
-          <p>{feedItems[currentIndex].text}</p>
-        </motion.div>
-      )}
+    <div>
+      {
+        feedItems.map(item => (
+          <motion.div
+            key={item.id}
+            layoutId={item.id}
+            onClick={() => navigateToStoryTree(item.id)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ cursor: 'pointer', margin: '10px', padding: '10px', border: '1px solid #ccc' }}
+          >
+            <motion.h5>{item.id}</motion.h5>
+            <motion.h2>{item.text}</motion.h2>
+          </motion.div>
+        ))
+      }
     </div>
   );
-}
+
+};
+
+
+
 
 export default Feed;

@@ -18,7 +18,7 @@ client.on('error', (err) => {
 });
 
 client.on('connect', () => {
-  logger.info('Connected to Redis');
+  logger.info('Connected to Redis');  
 });
 
 await client.connect();
@@ -47,47 +47,58 @@ const titles = [
  * @param {string} storyText - The full story text.
  */
 async function createStoryTree(uuid, storyText) {
-
-  // Pick a random author and title
   const author = authors[Math.floor(Math.random() * authors.length)];
   const title = titles[Math.floor(Math.random() * titles.length)] + " " +  uuid;
 
   // Split the story text into nodes delimited by new lines
   const lines = storyText.split('\n').filter((line) => line.trim() !== '');
-  const nodes = lines.map((text, index) => ({
-    id: `${uuid}-node-${index + 1}`,
-    text: text.trim(),
-  }));
-
-  const storyTree = {
-    metadata: {
-      author,
-      title,
-    },
-    nodes,
-  };
 
   try {
-    // Save the StoryTree under the provided UUID
-    await client.hSet('storyTrees', uuid, JSON.stringify(storyTree));
-    logger.info(`StoryTree with UUID ${uuid} saved.`);
-F
-    // Update the feed items
+    let rootStoryTree = {
+      metadata: {
+        author,
+        title,
+      },
+      id: `${uuid}`,
+      text: lines[0].trim(),
+      nodes: []
+    }
+
+    let node = rootStoryTree;
+    for (let i = 1; i < lines.length; i++) {
+      let storyTree = {
+        metadata: {
+          author,
+          title,
+        },
+        id: `${uuid}-node-${i}`,
+        text: lines[i].trim(),
+        nodes: [node]
+      }
+      await client.hSet(node.id, "storyTree", JSON.stringify(rootStoryTree));
+      node = storyTree;
+    }
+
+    // Update the feed items - make sure the feedItem is a proper object
     const feedItem = {
       id: uuid,
-      text: title,
+      text: title
     };
 
-    // Delete existing feedItems list (if necessary)
-    // await client.del('feedItems');
+    // Verify the JSON is valid before storing
+    const jsonString = JSON.stringify(feedItem);
+    console.log('Storing feed item:', jsonString); // Add this for debugging
 
     // Add the new feed item to the feed
-    const queueLength = await client.rPush('feedItems', uuid, JSON.stringify(feedItem.text));
+    const queueLength = await client.rPush('feedItems', jsonString);
     logger.info('Feed item added. Feed length: ' + queueLength);
   } catch (err) {
     logger.error('Error saving StoryTree:', err);
   }
 }
+
+// At the start of your seed script, clear existing feed items
+await client.del('feedItems');
 
 // Array of new stories to add
 const newStories = [
