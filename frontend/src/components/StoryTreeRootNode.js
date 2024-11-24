@@ -50,10 +50,10 @@ function StoryTreeRootNode() {
     }
   }, []);
 
-
   const appendNodesPath = async (nodeId) => {
     return nodeId;
   };
+
   const removeFromView = useCallback((id) => {
     setRemovedFromView(prev => [...prev, id]);
     setNodesPath(prev => prev.filter(node => node.id !== id));
@@ -173,34 +173,57 @@ function StoryTreeRootNode() {
     return (sizeMap.current[index] || 50) + 40;
   };
 
+  // New Header Handlers
+  const handleLogoClick = () => {
+    navigate('/feed');
+  };
+
+  const handleMenuClick = () => {
+    // TODO: Implement menu opening logic
+    console.log('Menu clicked');
+  };
+
   return (
     <div className="story-tree-container">
-      {rootNode && (
-        <div className="story-header" style={{
-          padding: '5px 20px',
-          marginBottom: '5px',
-          borderBottom: '1px solid #ccc',
-          position: 'sticky',
-          top: '60px',
-          backgroundColor: '#fff',
-          zIndex: 999,
-        }}>
-          <h1 style={{
-            fontSize: '1.2rem',
-            marginBottom: '2px',
-            color: '#333'
+      <div className="combined-header">
+        <header className="app-header">
+          <img 
+            src="/logo.jpg" // Make sure to add your logo file to the public folder
+            alt="Aphorist Logo" 
+            className="logo"
+            onClick={handleLogoClick}
+          />
+          <div className="menu-icon" onClick={handleMenuClick}>
+            ☰
+          </div>
+        </header>
+        {rootNode && (
+          <div className="story-header" style={{
+            padding: '5px 20px',
+            marginBottom: '5px',
+            borderBottom: '1px solid #ccc',
+            position: 'sticky',
+            top: '60px',
+            backgroundColor: '#fff',
+            zIndex: 999,
           }}>
-            {rootNode.metadata?.title || 'Untitled'}
-          </h1>
-          <h2 style={{
-            fontSize: '0.8rem',
-            marginBottom: '2px',
-            color: '#666'
-          }}>
-            by {rootNode.metadata?.author || 'Anonymous'}
-          </h2>
-        </div>
-      )}
+            <h1 style={{
+              fontSize: '1.2rem',
+              marginBottom: '2px',
+              color: '#333'
+            }}>
+              {rootNode.metadata?.title || 'Untitled'}
+            </h1>
+            <h2 style={{
+              fontSize: '0.8rem',
+              marginBottom: '2px',
+              color: '#666'
+            }}>
+              by {rootNode.metadata?.author || 'Anonymous'}
+            </h2>
+          </div>
+        )}
+      </div>
       <InfiniteLoader
         isItemLoaded={isItemLoaded}
         itemCount={itemCount}

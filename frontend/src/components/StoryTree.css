@@ -5,6 +5,44 @@
   height: calc(100vh - 60px);
   width: 100%;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.combined-header {
+  display: flex;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  background-color: #fff;
+  z-index: 1000;
+  border-bottom: 1px solid #ccc;
+  padding: 10px 20px;
+}
+
+.app-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  margin-right: 20px;
+}
+
+.logo {
+  height: 40px;
+  cursor: pointer;
+}
+
+.menu-icon {
+  font-size: 24px;
+  cursor: pointer;
+  padding: 8px;
+}
+
+.story-header {
+  flex: 1;
+  padding: 5px 20px;
+  margin-bottom: 5px;
 }
 
 .story-node {
@@ -29,7 +67,6 @@ button {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
   height: 60px;
   background-color: #fff;
   display: flex;
