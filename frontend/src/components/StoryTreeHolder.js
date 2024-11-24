@@ -39,6 +39,9 @@ function StoryTreeHolder() {
   const listRef = useRef();
   const sizeMap = useRef({});
   const [totalItems, setTotalItems] = useState(0);
+  const [isNextPageLoading, setIsNextPageLoading] = useState(false);
+  const [hasNextPage, setHasNextPage] = useState(true);
+  const [items, setItems] = useState([]);
 
   const rootUUID = pathParams.uuid;
 
@@ -56,6 +59,7 @@ function StoryTreeHolder() {
       );
       const data = response.data;
       await appendNodesPath(data.id);
+      console.log('Fetched node data:', response.data);  // Debug log
       return data;
     } catch (error) {
       console.error('Error fetching story data:', error);
@@ -65,34 +69,28 @@ function StoryTreeHolder() {
 
   const fillNodesPath = useCallback(
     async (index) => {
-      const NODES_PATH_SIZE = index + 10;
+      console.log('fillNodesPath called with index:', index);
+      
       if (!rootNode) return;
+      
+      // If we're just starting, initialize with root
+      if (nodesPath.length === 0) {
+        setNodesPath([rootNode]);
+        return;
+      }
 
-      let localNodesPath = [rootNode];
-      let currentNode = rootNode;
-      let count = 1;
-
-      while (count < NODES_PATH_SIZE && currentNode) {
-        if (currentNode.nodes?.length > 0) {
-          const nextNode = await fetchNode(currentNode.nodes[0].id);
-          if (nextNode) {
-            localNodesPath.push(nextNode);
-            currentNode = nextNode;
-            count++;
-          } else {
-            break;
-          }
-        } else {
-          break;
+      const currentNode = nodesPath[nodesPath.length - 1];
+      
+      // Check if current node has children to fetch
+      if (currentNode?.nodes?.[0]?.id) {
+        console.log('Attempting to fetch child node:', currentNode.nodes[0].id);
+        const nextNode = await fetchNode(currentNode.nodes[0].id);
+        if (nextNode) {
+          setNodesPath(prev => [...prev, nextNode]);
         }
       }
-      
-      setNodesPath(prev => {
-        if (prev.length !== localNodesPath.length) return localNodesPath;
-        return prev;
-      });
     },
-    [rootNode, fetchNode]
+    [rootNode, fetchNode, nodesPath]
   );
 
   const appendNodesPath = async (nodeId) => {
@@ -127,9 +125,10 @@ function StoryTreeHolder() {
 
   useEffect(() => {
     if (rootNode) {
-      fillNodesPath(0);
+      setItems([rootNode]);
+      setHasNextPage(!!rootNode.nodes?.length);
     }
-  }, [rootNode, fillNodesPath]);
+  }, [rootNode]);
 
   const setSize = useCallback((index, size) => {
     sizeMap.current = { ...sizeMap.current, [index]: size };
@@ -142,13 +141,42 @@ function StoryTreeHolder() {
 
   const WINDOW_HEIGHT = window.innerHeight;
   
-  const isItemLoaded = useCallback((index) => {
-    return index < nodesPath.length;
-  }, [nodesPath.length]);
+  useEffect(() => {
+    if (nodesPath.length > 0) {
+      const lastNode = nodesPath[nodesPath.length - 1];
+      setHasNextPage(!!lastNode?.nodes?.length);
+    }
+  }, [nodesPath]);
+
+  const itemCount = hasNextPage ? items.length + 1 : items.length;
+
+  const isItemLoaded = useCallback(index => {
+    return !hasNextPage || index < items.length;
+  }, [hasNextPage, items.length]);
 
   const loadMoreItems = useCallback(async (startIndex, stopIndex) => {
-    await fillNodesPath(stopIndex);
-  }, [fillNodesPath]);
+    if (isNextPageLoading) {
+      return;
+    }
+
+    setIsNextPageLoading(true);
+    try {
+      const lastNode = items[items.length - 1];
+      if (lastNode?.nodes?.[0]?.id && !removedFromView.includes(lastNode.nodes[0].id)) {
+        const nextNode = await fetchNode(lastNode.nodes[0].id);
+        if (nextNode) {
+          setItems(prev => [...prev, nextNode]);
+          setHasNextPage(!!nextNode.nodes?.length);
+        } else {
+          setHasNextPage(false);
+        }
+      } else {
+        setHasNextPage(false);
+      }
+    } finally {
+      setIsNextPageLoading(false);
+    }
+  }, [isNextPageLoading, items, fetchNode, removedFromView]);
 
   const rowRefs = useRef({});
 
@@ -156,8 +184,8 @@ function StoryTreeHolder() {
     if (!isItemLoaded(index)) {
       return <div style={style}>Loading...</div>;
     }
-    const node = nodesPath[index];
-    
+
+    const node = items[index];
     return (
       <Row
         index={index}
@@ -169,14 +197,42 @@ function StoryTreeHolder() {
         rowRefs={rowRefs}
       />
     );
-  }, [nodesPath, removeFromView, setIsFocused, setSize, isItemLoaded]);
+  }, [items, removeFromView, setIsFocused, setSize, isItemLoaded]);
 
   return (
     <div className="story-tree-container">
+      {rootNode && (
+        <div className="story-header" style={{
+          padding: '20px',
+          marginBottom: '20px',
+          borderBottom: '1px solid #ccc',
+          position: 'sticky',
+          top: 0,
+          backgroundColor: '#fff',
+          zIndex: 1000,
+        }}>
+          <h1 style={{
+            fontSize: '2rem',
+            marginBottom: '10px',
+            color: '#333'
+          }}>
+            {rootNode.title || 'Untitled'}
+          </h1>
+          <h2 style={{
+            fontSize: '1.2rem',
+            marginBottom: '10px',
+            color: '#666'
+          }}>
+            by {rootNode.author || 'Anonymous'}
+          </h2>
+        </div>
+      )}
       <InfiniteLoader
         isItemLoaded={isItemLoaded}
-        itemCount={Math.max(nodesPath.length + 1, totalItems)}
+        itemCount={itemCount}
         loadMoreItems={loadMoreItems}
+        threshold={2}
+        minimumBatchSize={1}
       >
         {({ onItemsRendered, ref }) => (
           <List
@@ -185,10 +241,11 @@ function StoryTreeHolder() {
               listRef.current = list;
             }}
             height={WINDOW_HEIGHT}
-            itemCount={Math.max(nodesPath.length + 1, totalItems)}
+            itemCount={itemCount}
             itemSize={getSize}
             onItemsRendered={onItemsRendered}
             width="100%"
+            style={{ padding: '0 20px' }}
           >
             {renderRow}
           </List>

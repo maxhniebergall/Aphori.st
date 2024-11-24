@@ -30,11 +30,27 @@ function StoryTreeNode({ node, onSwipeLeft, index, setCurrentFocus }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      style={{ cursor: 'pointer', margin: '10px', padding: '10px', border: '1px solid #ccc' }}
+      style={{ 
+        cursor: 'pointer',
+        marginBottom: '1.5rem'
+      }}
     >
-      <animated.div {...bind()} style={{ x }} className="story-node" id={node.id}>
-        <motion.h5>{node.id}</motion.h5>
-        <motion.h2>{node.text}</motion.h2>
+      <animated.div 
+        {...bind()} 
+        style={{ 
+          x,
+          touchAction: 'none'
+        }} 
+        id={node.id}
+      >
+        <motion.p style={{ 
+          fontSize: '1.1rem',
+          lineHeight: '1.6',
+          color: '#333',
+          whiteSpace: 'pre-wrap'
+        }}>
+          {node.text}
+        </motion.p>
       </animated.div>
     </motion.div>
   );
