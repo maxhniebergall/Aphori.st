@@ -7,27 +7,10 @@ import EditingOverlay from './EditingOverlay';
 import StoryTreeNode from './StoryTreeNode';
 import './StoryTree.css';
 
-const Row = React.memo(({ index, style, node, removeFromView, setIsFocused, setSize, rowRefs }) => {
-  useEffect(() => {
-    if (rowRefs.current[index]) {
-      setSize(index, rowRefs.current[index].getBoundingClientRect().height);
-    }
-  }, [index, setSize, rowRefs]);
-  
-  return (
-    <div ref={el => rowRefs.current[index] = el} style={style}>
-      <StoryTreeNode
-        key={node.id}
-        node={node}
-        index={index}
-        onSwipeLeft={() => removeFromView(node.id)}
-        setCurrentFocus={setIsFocused}
-      />
-    </div>
-  );
-});
 
-function StoryTreeHolder() {
+// This is the root node of the story tree. It is the first node that is fetched from the server.
+// It is used to display the story tree, and contains the code to fetch the rest of the tree.
+function StoryTreeRootNode() {
   const pathParams = useParams();
   const [rootNode, setRootNode] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -67,31 +50,6 @@ function StoryTreeHolder() {
     }
   }, []);
 
-  const fillNodesPath = useCallback(
-    async (index) => {
-      console.log('fillNodesPath called with index:', index);
-      
-      if (!rootNode) return;
-      
-      // If we're just starting, initialize with root
-      if (nodesPath.length === 0) {
-        setNodesPath([rootNode]);
-        return;
-      }
-
-      const currentNode = nodesPath[nodesPath.length - 1];
-      
-      // Check if current node has children to fetch
-      if (currentNode?.nodes?.[0]?.id) {
-        console.log('Attempting to fetch child node:', currentNode.nodes[0].id);
-        const nextNode = await fetchNode(currentNode.nodes[0].id);
-        if (nextNode) {
-          setNodesPath(prev => [...prev, nextNode]);
-        }
-      }
-    },
-    [rootNode, fetchNode, nodesPath]
-  );
 
   const appendNodesPath = async (nodeId) => {
     return nodeId;
@@ -131,12 +89,16 @@ function StoryTreeHolder() {
   }, [rootNode]);
 
   const setSize = useCallback((index, size) => {
-    sizeMap.current = { ...sizeMap.current, [index]: size };
-    listRef.current?.resetAfterIndex(index);
+    console.log(`Updating size map for index ${index}: ${size}`);
+    sizeMap.current[index] = size;
+    if (listRef.current) {
+      listRef.current.resetAfterIndex(index);
+    }
   }, []);
 
   const getSize = useCallback((index) => {
-    return sizeMap.current[index] || 200; // default height
+    console.log(`Getting size for index ${index}: ${sizeMap.current[index] || 200}`);
+    return sizeMap.current[index] || 200;
   }, []);
 
   const WINDOW_HEIGHT = window.innerHeight;
@@ -162,6 +124,11 @@ function StoryTreeHolder() {
     setIsNextPageLoading(true);
     try {
       const lastNode = items[items.length - 1];
+      if (!lastNode?.nodes?.length) {
+        setHasNextPage(false);
+        return;
+      }
+      
       if (lastNode?.nodes?.[0]?.id && !removedFromView.includes(lastNode.nodes[0].id)) {
         const nextNode = await fetchNode(lastNode.nodes[0].id);
         if (nextNode) {
@@ -173,6 +140,9 @@ function StoryTreeHolder() {
       } else {
         setHasNextPage(false);
       }
+    } catch (error) {
+      console.error('Error loading more items:', error);
+      setHasNextPage(false);
     } finally {
       setIsNextPageLoading(false);
     }
@@ -199,12 +169,16 @@ function StoryTreeHolder() {
     );
   }, [items, removeFromView, setIsFocused, setSize, isItemLoaded]);
 
+  const getItemSize = index => {
+    return (sizeMap.current[index] || 50) + 40;
+  };
+
   return (
     <div className="story-tree-container">
       {rootNode && (
         <div className="story-header" style={{
-          padding: '20px',
-          marginBottom: '20px',
+          padding: '5px 20px',
+          marginBottom: '5px',
           borderBottom: '1px solid #ccc',
           position: 'sticky',
           top: 0,
@@ -212,18 +186,18 @@ function StoryTreeHolder() {
           zIndex: 1000,
         }}>
           <h1 style={{
-            fontSize: '2rem',
-            marginBottom: '10px',
+            fontSize: '1.2rem',
+            marginBottom: '2px',
             color: '#333'
           }}>
-            {rootNode.title || 'Untitled'}
+            {rootNode.metadata?.title || 'Untitled'}
           </h1>
           <h2 style={{
-            fontSize: '1.2rem',
-            marginBottom: '10px',
+            fontSize: '0.8rem',
+            marginBottom: '2px',
             color: '#666'
           }}>
-            by {rootNode.author || 'Anonymous'}
+            by {rootNode.metadata?.author || 'Anonymous'}
           </h2>
         </div>
       )}
@@ -242,7 +216,7 @@ function StoryTreeHolder() {
             }}
             height={WINDOW_HEIGHT}
             itemCount={itemCount}
-            itemSize={getSize}
+            itemSize={getItemSize}
             onItemsRendered={onItemsRendered}
             width="100%"
             style={{ padding: '0 20px' }}
@@ -261,4 +235,41 @@ function StoryTreeHolder() {
   );
 }
 
-export default StoryTreeHolder; 
+const Row = React.memo(({ index, style, node, removeFromView, setIsFocused, setSize, rowRefs }) => {
+  useEffect(() => {
+    if (rowRefs.current[index]) {
+      const height = rowRefs.current[index].getBoundingClientRect().height;
+      setSize(index, height + 0); // Add padding between nodes here
+    }
+  }, [setSize, index, rowRefs]);
+  
+  return (
+    <div 
+      ref={el => rowRefs.current[index] = el} 
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: style.top,
+        height: 'auto',
+        width: '100%',
+        padding: '0 20px',
+        boxSizing: 'border-box',
+        overflowWrap: 'break-word',
+        wordWrap: 'break-word',
+        whiteSpace: 'normal',
+        overflow: 'visible'
+      }}
+    >
+      <StoryTreeNode
+        key={node.id}
+        node={node}
+        index={index}
+        onSwipeLeft={() => removeFromView(node.id)}
+        setCurrentFocus={setIsFocused}
+      />
+    </div>
+  );
+});
+
+export default StoryTreeRootNode; 

@@ -1,0 +1,60 @@
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./frontend/build:/usr/share/nginx/html
+    networks:
+      - main
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    # In production, we don't expose Redis port to the host
+    expose:
+      - '6379'
+    networks:
+      - main
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes  # Enable persistence
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod  # You'll need to create this
+    expose:
+      - '5000'  # Only expose to internal network
+    networks:
+      - main
+    environment:
+      - NODE_ENV=production
+      - REDIS_SERVER_IP=redis
+    depends_on:
+      - redis
+    restart: unless-stopped
+      
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod  # You'll need to create this
+    networks:
+      - main
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    # No ports needed as Nginx will serve the static files
+    # No volumes needed as we'll copy the built files during build
+
+networks:
+  main:
+    driver: bridge
+
+volumes:
+  redis_data:  # Persistent volume for Redis data

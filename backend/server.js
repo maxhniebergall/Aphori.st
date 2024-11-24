@@ -11,9 +11,18 @@ const app = express();
 app.use(json());
 
 const corsOptions = {
-    origin: 'http://localhost:3000', // Frontend URL
-    optionsSuccessStatus: 200
-  };
+    origin: [
+        'http://localhost:3000',
+        'http://aphori.st:3000',
+        'http://localhost:5000',
+        // If you're using HTTPS, add these too:
+        'https://localhost:3000',
+        'https://aphori.st:3000'
+    ],
+    credentials: false,
+    optionsSuccessStatus: 200,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] // explicitly specify allowed methods
+};
 app.use(cors(corsOptions));
 
 import { fileURLToPath } from 'url';
