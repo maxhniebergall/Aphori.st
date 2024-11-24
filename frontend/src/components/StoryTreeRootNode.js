@@ -181,9 +181,9 @@ function StoryTreeRootNode() {
           marginBottom: '5px',
           borderBottom: '1px solid #ccc',
           position: 'sticky',
-          top: 0,
+          top: '60px',
           backgroundColor: '#fff',
-          zIndex: 1000,
+          zIndex: 999,
         }}>
           <h1 style={{
             fontSize: '1.2rem',

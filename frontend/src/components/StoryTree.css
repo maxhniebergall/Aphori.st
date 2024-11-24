@@ -1,7 +1,8 @@
 /* File: /frontend/src/components/StoryTree.css */
 
 .story-tree-container {
-  height: 100vh;
+  padding-top: 60px;
+  height: calc(100vh - 60px);
   width: 100%;
   overflow: hidden;
 }
@@ -22,5 +23,31 @@
 
 button {
   margin-top: 16px;
+}
+
+.app-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background-color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 1001;
+}
+
+.logo {
+  height: 40px;
+  cursor: pointer;
+}
+
+.menu-icon {
+  font-size: 24px;
+  cursor: pointer;
+  padding: 8px;
 }
 
