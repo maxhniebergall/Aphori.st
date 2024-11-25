@@ -260,7 +260,55 @@ function StoryTreeRootNode() {
   );
 }
 
-const Row = React.memo(({ index, style, node, setIsFocused, setSize, rowRefs }) => {
+const Row = React.memo(({ 
+  index, 
+  style, 
+  node, 
+  setIsFocused, 
+  setSize, 
+  rowRefs,
+  setItems,
+  setHasNextPage,
+  fetchNode
+}) => {
+  const handleSiblingChange = useCallback(async (newNode) => {
+    // First, update the current node in the items array
+    setItems(prevItems => {
+      const newItems = [...prevItems.slice(0, index)];
+      newItems.push(newNode);  // Replace current node with new sibling
+      return newItems;
+    });
+
+    // Then start fetching the chain of first children
+    let currentNode = newNode;
+    let nextItems = [];
+
+    // Keep fetching first children until we hit a node with no children
+    while (currentNode?.nodes?.length > 0) {
+      try {
+        const nextNode = await fetchNode(currentNode.nodes[0].id);
+        if (!nextNode) break;
+        
+        // Preserve siblings information for the next node
+        nextNode.siblings = currentNode.nodes;
+        nextItems.push(nextNode);
+        currentNode = nextNode;
+      } catch (error) {
+        console.error('Error fetching child node:', error);
+        break;
+      }
+    }
+
+    // Update items with all the fetched nodes
+    if (nextItems.length > 0) {
+      setItems(prevItems => [...prevItems, ...nextItems]);
+      setHasNextPage(!!currentNode?.nodes?.length);
+    } else {
+      setHasNextPage(false);
+    }
+
+  }, [index, setItems, setHasNextPage, fetchNode]);
+
   useEffect(() => {
     const updateSize = () => {
       if (rowRefs.current[index]) {
@@ -269,7 +317,6 @@ const Row = React.memo(({ index, style, node, setIsFocused, setSize, rowRefs }) 
       }
     };
 
-    // Initial size calculation
     updateSize();
 
     // Add resize observer to handle content changes

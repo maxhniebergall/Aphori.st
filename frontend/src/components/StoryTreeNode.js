@@ -6,7 +6,7 @@ import axios from 'axios';
 
 // This is a single node in the story tree. It is used to display a single node in the story tree.
 // It controls the swipe gesture to remove the node from the view, and the animation when the node is focused.
-function StoryTreeNode({ node, index, setCurrentFocus, siblings }) {
+function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange }) {
   const [{ x }, api] = useSpring(() => ({ x: 0 }));
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node]);
@@ -33,17 +33,20 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings }) {
       nextNode.siblings = siblings; // Preserve siblings information
       setLoadedSiblings(prev => [...prev, nextNode]);
       setCurrentSiblingIndex(prev => prev + 1);
+      onSiblingChange?.(nextNode);
     } catch (error) {
       console.error('Error loading sibling:', error);
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [siblings, currentSiblingIndex, isLoadingSibling]);
+  }, [siblings, currentSiblingIndex, isLoadingSibling, onSiblingChange]);
 
   const loadPreviousSibling = useCallback(() => {
     if (currentSiblingIndex <= 0) return;
     setCurrentSiblingIndex(prev => prev - 1);
-  }, [currentSiblingIndex]);
+    const previousNode = loadedSiblings[currentSiblingIndex - 1];
+    onSiblingChange?.(previousNode);
+  }, [currentSiblingIndex, loadedSiblings, onSiblingChange]);
 
   const bind = useGesture({
     onDrag: ({ down, movement: [mx], cancel, velocity: [vx] }) => {
