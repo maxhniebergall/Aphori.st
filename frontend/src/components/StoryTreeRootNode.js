@@ -42,7 +42,7 @@ function StoryTreeRootNode() {
       );
       const data = response.data;
       await appendNodesPath(data.id);
-      console.log('Fetched node data:', response.data);  // Debug log
+      console.log('Fetched node data:', response.data);
       return data;
     } catch (error) {
       console.error('Error fetching story data:', error);
@@ -117,9 +117,7 @@ function StoryTreeRootNode() {
   }, [hasNextPage, items.length]);
 
   const loadMoreItems = useCallback(async (startIndex, stopIndex) => {
-    if (isNextPageLoading) {
-      return;
-    }
+    if (isNextPageLoading) return;
 
     setIsNextPageLoading(true);
     try {
@@ -132,6 +130,7 @@ function StoryTreeRootNode() {
       if (lastNode?.nodes?.[0]?.id && !removedFromView.includes(lastNode.nodes[0].id)) {
         const nextNode = await fetchNode(lastNode.nodes[0].id);
         if (nextNode) {
+          nextNode.siblings = lastNode.nodes;
           setItems(prev => [...prev, nextNode]);
           setHasNextPage(!!nextNode.nodes?.length);
         } else {
@@ -161,6 +160,7 @@ function StoryTreeRootNode() {
         index={index}
         style={style}
         node={node}
+        items={items}
         removeFromView={removeFromView}
         setIsFocused={setIsFocused}
         setSize={setSize}
@@ -260,7 +260,7 @@ function StoryTreeRootNode() {
   );
 }
 
-const Row = React.memo(({ index, style, node, removeFromView, setIsFocused, setSize, rowRefs }) => {
+const Row = React.memo(({ index, style, node, setIsFocused, setSize, rowRefs }) => {
   useEffect(() => {
     const updateSize = () => {
       if (rowRefs.current[index]) {
@@ -280,19 +280,17 @@ const Row = React.memo(({ index, style, node, removeFromView, setIsFocused, setS
     }
   }, [setSize, index, rowRefs]);
   
-  // Check if the current node has siblings
-  const hasSiblings = node?.parent?.nodes?.length > 1;
-  console.log("hasSiblings: " + hasSiblings);
-  console.log("node: " + JSON.stringify(node));
+  // Use the siblings array that was attached to the node in loadMoreItems
+  const siblings = node.siblings || [];
   
   return (
     <div 
       ref={el => rowRefs.current[index] = el} 
       style={{
+        ...style,
         position: 'absolute',
         left: 0,
         right: 0,
-        top: style.top,
         height: 'auto',
         width: '100%',
         padding: '0 20px',
@@ -301,15 +299,14 @@ const Row = React.memo(({ index, style, node, removeFromView, setIsFocused, setS
         wordWrap: 'break-word',
         whiteSpace: 'normal',
         overflow: 'visible',
-        backgroundColor: hasSiblings ? '#f5f5f5' : 'transparent' // Add grey background for nodes with siblings
       }}
     >
       <StoryTreeNode
         key={node.id}
         node={node}
         index={index}
-        onSwipeLeft={() => removeFromView(node.id)}
         setCurrentFocus={setIsFocused}
+        siblings={siblings}
       />
     </div>
   );

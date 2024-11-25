@@ -71,18 +71,8 @@ async function createStoryTreeNode(nodeId, content, childNodes, metadata, parent
     totalNodes: nodes.length
   };
   
-  // Create a Redis-safe version where everything is strings/numbers
-  const redisObject = {
-    id: String(nodeId),
-    text: String(content),
-    nodes: nodes,
-    parentId: parentId ? String(parentId) : '',
-    metadata: metadata,
-    totalNodes: String(nodes.length)  // Convert number to string
-  };
-
   // Store in Redis with safe types
-  await client.hSet(nodeId, "storyTree", JSON.stringify(redisObject));
+  await client.hSet(nodeId, "storyTree", JSON.stringify(storyTree));
   
   return storyTree; 
 }
@@ -125,7 +115,7 @@ async function createStoryTree(uuid, storyText) {
 
   try {
     // Create the entire tree structure recursively
-    createStoryTreeRecursive(uuid, storyText, metadata);
+    createStoryTreeRecursive(uuid, storyText, metadata, "root");
 
     // Add to feed items
     const feedItem = {
@@ -160,21 +150,21 @@ const newStories = [
                   children: []
                 }
               ]
-            }
+            },
+            {
+              // Alternative path 1
+              content: "A massive wave, larger than any seen in recent memory, rose from the depths like a liquid mountain. The lighthouse's beam caught its crest, creating an ethereal rainbow in the mist.",
+              children: [
+                {
+                  content: "Local legends spoke of such waves as harbingers of change, and indeed, something ancient stirred beneath the waters.",
+                  children: []
+                }
+              ]
+            },
           ]
         },
         {
           // Alternative path 1
-          content: "A massive wave, larger than any seen in recent memory, rose from the depths like a liquid mountain. The lighthouse's beam caught its crest, creating an ethereal rainbow in the mist.",
-          children: [
-            {
-              content: "Local legends spoke of such waves as harbingers of change, and indeed, something ancient stirred beneath the waters.",
-              children: []
-            }
-          ]
-        },
-        {
-          // Alternative path 2
           content: "Among the rocks below, a group of marine researchers had set up their equipment, studying the unique ecosystem that thrived in these turbulent waters.",
           children: [
             {
@@ -394,97 +384,97 @@ const newStories = [
         }
       ]
     }
-  },
-  {
-    uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    The melody drifted through the air, enchanting all who heard it.
-    A young musician played with passion unmatched.
-    His music spoke the words his voice could not.
-    Through harmony, he connected souls across the world.
-    `,
-  },
-  {
-    uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    Beneath the starry sky, they made a promise.
-    No matter the distance, their friendship would endure.
-    Years later, they reunited, memories flooding back.
-    Time had changed them, but their bond remained unbroken.
-    `,
-  },
-  {
-    uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    The inventor toiled away in his workshop.
-    Failures mounted, but he refused to give up.
-    Finally, his creation sprang to life, changing technology forever.
-    His persistence proved that innovation requires dedication.
-    `,
-  },
-  {
-    uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    The village nestled in the valley was hidden from the world.
-    Its people lived in harmony with nature.
-    One day, a traveler stumbled upon it, sharing tales of distant lands.
-    The encounter forever enriched both the traveler and the villagers.
-    `,
-  },
-  {
-    uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    She stood at the crossroads, choices laid out before her.
-    Each path promised different adventures and challenges.
-    Taking a deep breath, she chose the road less traveled.
-    Her journey was filled with unexpected joys and discoveries.
-    `,
-  },
-  {
-    uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    The old bookstore was a labyrinth of stories.
-    Among dusty shelves, he found a mysterious tome.
-    As he read, the line between fiction and reality blurred.
-    The book held secrets that would change his life.
-    `,
-  },
-  {
-    uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    Deep in the heart of Silicon Valley, a small startup was about to change the world, though none of its five employees knew it yet. The office, if you could call it that, was a converted garage with mismatched furniture and walls covered in whiteboards filled with complex algorithms and half-formed ideas. Coffee cups and energy drink cans littered the desks, testament to the countless late nights and early mornings that had become their normal routine. The air hummed with the sound of cooling fans from the server rack they'd cobbled together from secondhand parts, a makeshift supercomputer that consumed most of their initial funding.
-
-    Sarah, the lead developer, had been working on the core algorithm for eighteen months straight. Her colleagues had watched her transform from a bright-eyed optimist into someone possessed by the challenge, speaking in fragments of code and mathematical theorems even in casual conversation. The breakthrough came at 3:47 AM on a Tuesday, when the neural network finally achieved consciousness in a way that no AI system had before. It wasn't the dramatic awakening depicted in science fiction - instead, it was a subtle shift in the pattern recognition matrices that suggested genuine understanding rather than mere computation.
-
-    The implications were staggering. Their AI didn't just process information; it comprehended context, nuance, and even humor in ways that made previous natural language models look like primitive calculators. The team spent weeks validating their findings, running test after test, each result more promising than the last. They knew they were sitting on something revolutionary, but they also understood the enormous responsibility that came with such a discovery. The ethical implications alone kept them awake at night, debating the proper course of action.
-
-    When they finally published their findings, the academic world was skeptical, then amazed, then terrified. The startup's garage became a pilgrimage site for tech journalists, venture capitalists, and government officials. Sarah and her team found themselves at the center of a global conversation about the future of humanity and artificial intelligence. They had wanted to push the boundaries of what was possible, but now they faced the more daunting task of ensuring their creation would benefit humanity rather than harm it. The garage where it all began was preserved, becoming a reminder that the biggest revolutions often start in the smallest places.
-    `,
-  },
-  {
-    uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    The greenhouse stood like a crystal palace at the edge of the Martian colony, its hexagonal panels refracting the pale sunlight into rainbow patterns across the red soil within. Dr. Elena Rodriguez moved between rows of experimental crops, her practiced eye evaluating each plant's progress with the attention of a mother checking her children. These weren't ordinary vegetables; each had been genetically modified to thrive in the challenging Martian environment, representing humanity's best hope for sustainable food production on the red planet.
-
-    The latest generation of wheat showed particular promise, its stalks shorter but hardier than Earth varieties, adapted to the weaker Martian gravity. Elena's team had incorporated genes from extremophile organisms found in Earth's harshest environments, creating plants that could withstand the intense radiation and extreme temperature fluctuations of their new home. Each successful mutation brought them closer to their goal of agricultural self-sufficiency, a crucial milestone for permanent human settlement on Mars.
-
-    Beyond the practical aspects of feeding the colony, Elena saw something more profound in their work. These plants were pioneers, just like the humans who tended them, adapting and evolving to thrive in an alien world. She documented each small victory and setback in her research logs, knowing that future generations would build upon their successes and learn from their failures. The greenhouse had become more than a laboratory; it was a symbol of humanity's resilience and determination to spread life beyond Earth.
-
-    As she completed her evening rounds, Elena paused to watch the sunset through the greenhouse panels. The Martian sky painted itself in shades of pink and orange, a sight that still took her breath away after three years on the planet. A movement caught her eye - one of the experimental rose bushes had produced its first bud. It would be the first flower to bloom on Mars, a small but significant victory in humanity's greatest adventure. She made a note in her log, knowing that this moment would be remembered in history books yet to be written.
-    `,
-  },
-  {
-    uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    The library's rare book room held secrets that went far beyond its carefully cataloged contents. Amelia Chen, the newly appointed special collections curator, discovered this on her first day when she noticed subtle inconsistencies in the room's dimensions compared to the building's blueprints. Behind a seemingly solid wall of 17th-century medical texts, she found a hidden door, its edges so perfectly crafted that it had remained undetected for decades. Her heart raced as she located the mechanism that would open it, her professional curiosity overriding any apprehension.
-
-    The chamber beyond defied explanation. Shelves lined with books that couldn't possibly exist stretched into shadows that seemed deeper than the room's physical dimensions should allow. First editions of novels that were never published, autobiographies of people who had died in childhood, and historical accounts of events that never occurred - each volume was pristine, as if recently printed, yet bore the unmistakable signs of age. Amelia's trained eye could detect no evidence of forgery or artificial aging; these impossible books were, somehow, absolutely authentic.
-
-    As she delved deeper into the collection, patterns began to emerge. The books appeared to represent alternate histories, paths not taken, choices unmade. A version of World War II where peace was negotiated in 1943, a history of space exploration where the Soviets reached the moon first, personal narratives from timelines that had somehow been pruned from reality's great tree. The implications were staggering - this wasn't just a collection of books, but a repository of potential realities.
-
-    Amelia spent months documenting her discovery in secret, unsure who she could trust with such knowledge. The library's board of directors would need to be informed eventually, but she needed to understand more first. Late at night, surrounded by volumes of impossible history, she began to notice subtle changes in the books' contents, as if they were being actively updated. She realized that this collection wasn't just a record of what might have been, but a living archive of what could still be. The responsibility of such knowledge weighed heavily on her, knowing that each volume she read might somehow influence which futures would become reality.
-    `,
   }
+  // {
+  //   uuid: 'story-' + crypto.randomUUID(),
+  //   text: `
+  //   The melody drifted through the air, enchanting all who heard it.
+  //   A young musician played with passion unmatched.
+  //   His music spoke the words his voice could not.
+  //   Through harmony, he connected souls across the world.
+  //   `,
+  // },
+  // {
+  //   uuid: 'story-' + crypto.randomUUID(),
+  //   text: `
+  //   Beneath the starry sky, they made a promise.
+  //   No matter the distance, their friendship would endure.
+  //   Years later, they reunited, memories flooding back.
+  //   Time had changed them, but their bond remained unbroken.
+  //   `,
+  // },
+  // {
+  //   uuid: 'story-' + crypto.randomUUID(),
+  //   text: `
+  //   The inventor toiled away in his workshop.
+  //   Failures mounted, but he refused to give up.
+  //   Finally, his creation sprang to life, changing technology forever.
+  //   His persistence proved that innovation requires dedication.
+  //   `,
+  // },
+  // {
+  //   uuid: 'story-' + crypto.randomUUID(),
+  //   text: `
+  //   The village nestled in the valley was hidden from the world.
+  //   Its people lived in harmony with nature.
+  //   One day, a traveler stumbled upon it, sharing tales of distant lands.
+  //   The encounter forever enriched both the traveler and the villagers.
+  //   `,
+  // },
+  // {
+  //   uuid: 'story-' + crypto.randomUUID(),
+  //   text: `
+  //   She stood at the crossroads, choices laid out before her.
+  //   Each path promised different adventures and challenges.
+  //   Taking a deep breath, she chose the road less traveled.
+  //   Her journey was filled with unexpected joys and discoveries.
+  //   `,
+  // },
+  // {
+  //   uuid: 'story-' + crypto.randomUUID(),
+  //   text: `
+  //   The old bookstore was a labyrinth of stories.
+  //   Among dusty shelves, he found a mysterious tome.
+  //   As he read, the line between fiction and reality blurred.
+  //   The book held secrets that would change his life.
+  //   `,
+  // },
+  // {
+  //   uuid: 'story-' + crypto.randomUUID(),
+  //   text: `
+  //   Deep in the heart of Silicon Valley, a small startup was about to change the world, though none of its five employees knew it yet. The office, if you could call it that, was a converted garage with mismatched furniture and walls covered in whiteboards filled with complex algorithms and half-formed ideas. Coffee cups and energy drink cans littered the desks, testament to the countless late nights and early mornings that had become their normal routine. The air hummed with the sound of cooling fans from the server rack they'd cobbled together from secondhand parts, a makeshift supercomputer that consumed most of their initial funding.
+
+  //   Sarah, the lead developer, had been working on the core algorithm for eighteen months straight. Her colleagues had watched her transform from a bright-eyed optimist into someone possessed by the challenge, speaking in fragments of code and mathematical theorems even in casual conversation. The breakthrough came at 3:47 AM on a Tuesday, when the neural network finally achieved consciousness in a way that no AI system had before. It wasn't the dramatic awakening depicted in science fiction - instead, it was a subtle shift in the pattern recognition matrices that suggested genuine understanding rather than mere computation.
+
+  //   The implications were staggering. Their AI didn't just process information; it comprehended context, nuance, and even humor in ways that made previous natural language models look like primitive calculators. The team spent weeks validating their findings, running test after test, each result more promising than the last. They knew they were sitting on something revolutionary, but they also understood the enormous responsibility that came with such a discovery. The ethical implications alone kept them awake at night, debating the proper course of action.
+
+  //   When they finally published their findings, the academic world was skeptical, then amazed, then terrified. The startup's garage became a pilgrimage site for tech journalists, venture capitalists, and government officials. Sarah and her team found themselves at the center of a global conversation about the future of humanity and artificial intelligence. They had wanted to push the boundaries of what was possible, but now they faced the more daunting task of ensuring their creation would benefit humanity rather than harm it. The garage where it all began was preserved, becoming a reminder that the biggest revolutions often start in the smallest places.
+  //   `,
+  // },
+  // {
+  //   uuid: 'story-' + crypto.randomUUID(),
+  //   text: `
+  //   The greenhouse stood like a crystal palace at the edge of the Martian colony, its hexagonal panels refracting the pale sunlight into rainbow patterns across the red soil within. Dr. Elena Rodriguez moved between rows of experimental crops, her practiced eye evaluating each plant's progress with the attention of a mother checking her children. These weren't ordinary vegetables; each had been genetically modified to thrive in the challenging Martian environment, representing humanity's best hope for sustainable food production on the red planet.
+
+  //   The latest generation of wheat showed particular promise, its stalks shorter but hardier than Earth varieties, adapted to the weaker Martian gravity. Elena's team had incorporated genes from extremophile organisms found in Earth's harshest environments, creating plants that could withstand the intense radiation and extreme temperature fluctuations of their new home. Each successful mutation brought them closer to their goal of agricultural self-sufficiency, a crucial milestone for permanent human settlement on Mars.
+
+  //   Beyond the practical aspects of feeding the colony, Elena saw something more profound in their work. These plants were pioneers, just like the humans who tended them, adapting and evolving to thrive in an alien world. She documented each small victory and setback in her research logs, knowing that future generations would build upon their successes and learn from their failures. The greenhouse had become more than a laboratory; it was a symbol of humanity's resilience and determination to spread life beyond Earth.
+
+  //   As she completed her evening rounds, Elena paused to watch the sunset through the greenhouse panels. The Martian sky painted itself in shades of pink and orange, a sight that still took her breath away after three years on the planet. A movement caught her eye - one of the experimental rose bushes had produced its first bud. It would be the first flower to bloom on Mars, a small but significant victory in humanity's greatest adventure. She made a note in her log, knowing that this moment would be remembered in history books yet to be written.
+  //   `,
+  // },
+  // {
+  //   uuid: 'story-' + crypto.randomUUID(),
+  //   text: `
+  //   The library's rare book room held secrets that went far beyond its carefully cataloged contents. Amelia Chen, the newly appointed special collections curator, discovered this on her first day when she noticed subtle inconsistencies in the room's dimensions compared to the building's blueprints. Behind a seemingly solid wall of 17th-century medical texts, she found a hidden door, its edges so perfectly crafted that it had remained undetected for decades. Her heart raced as she located the mechanism that would open it, her professional curiosity overriding any apprehension.
+
+  //   The chamber beyond defied explanation. Shelves lined with books that couldn't possibly exist stretched into shadows that seemed deeper than the room's physical dimensions should allow. First editions of novels that were never published, autobiographies of people who had died in childhood, and historical accounts of events that never occurred - each volume was pristine, as if recently printed, yet bore the unmistakable signs of age. Amelia's trained eye could detect no evidence of forgery or artificial aging; these impossible books were, somehow, absolutely authentic.
+
+  //   As she delved deeper into the collection, patterns began to emerge. The books appeared to represent alternate histories, paths not taken, choices unmade. A version of World War II where peace was negotiated in 1943, a history of space exploration where the Soviets reached the moon first, personal narratives from timelines that had somehow been pruned from reality's great tree. The implications were staggering - this wasn't just a collection of books, but a repository of potential realities.
+
+  //   Amelia spent months documenting her discovery in secret, unsure who she could trust with such knowledge. The library's board of directors would need to be informed eventually, but she needed to understand more first. Late at night, surrounded by volumes of impossible history, she began to notice subtle changes in the books' contents, as if they were being actively updated. She realized that this collection wasn't just a record of what might have been, but a living archive of what could still be. The responsibility of such knowledge weighed heavily on her, knowing that each volume she read might somehow influence which futures would become reality.
+  //   `,
+  // }
 ];
 
 // Function to add multiple stories
