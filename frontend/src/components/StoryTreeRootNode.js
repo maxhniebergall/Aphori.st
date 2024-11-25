@@ -186,41 +186,23 @@ function StoryTreeRootNode() {
   return (
     <div className="story-tree-container">
       <div className="combined-header">
-        <header className="app-header">
-          <img 
-            src="/logo.jpg" // Make sure to add your logo file to the public folder
-            alt="Aphorist Logo" 
-            className="logo"
-            onClick={handleLogoClick}
-          />
+        <div className="app-header">
+          <div className="logo-container">
+            <img 
+              src="/logo.jpg"
+              alt="Aphori.st Logo" 
+              className="logo"
+              onClick={handleLogoClick}
+            />
+          </div>
           <div className="menu-icon" onClick={handleMenuClick}>
             ☰
           </div>
-        </header>
+        </div>
         {rootNode && (
-          <div className="story-header" style={{
-            padding: '5px 20px',
-            marginBottom: '5px',
-            borderBottom: '1px solid #ccc',
-            position: 'sticky',
-            top: '60px',
-            backgroundColor: '#fff',
-            zIndex: 999,
-          }}>
-            <h1 style={{
-              fontSize: '1.2rem',
-              marginBottom: '2px',
-              color: '#333'
-            }}>
-              {rootNode.metadata?.title || 'Untitled'}
-            </h1>
-            <h2 style={{
-              fontSize: '0.8rem',
-              marginBottom: '2px',
-              color: '#666'
-            }}>
-              by {rootNode.metadata?.author || 'Anonymous'}
-            </h2>
+          <div className="story-header">
+            <h1>{(rootNode.metadata?.title || 'Untitled').slice(0, 45)}</h1>
+            <h2>by {rootNode.metadata?.author || 'Anonymous'}</h2>
           </div>
         )}
       </div>
@@ -242,7 +224,7 @@ function StoryTreeRootNode() {
             itemSize={getItemSize}
             onItemsRendered={onItemsRendered}
             width="100%"
-            style={{ padding: '0 20px' }}
+            className="story-list"
           >
             {renderRow}
           </List>
