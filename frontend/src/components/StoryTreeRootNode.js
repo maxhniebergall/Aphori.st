@@ -170,7 +170,7 @@ function StoryTreeRootNode() {
   }, [items, removeFromView, setIsFocused, setSize, isItemLoaded]);
 
   const getItemSize = index => {
-    return (sizeMap.current[index] || 50) + 40;
+    return (sizeMap.current[index] || 50) + 8;
   };
 
   // New Header Handlers
@@ -182,6 +182,26 @@ function StoryTreeRootNode() {
     // TODO: Implement menu opening logic
     console.log('Menu clicked');
   };
+
+  // Add window resize listener
+  useEffect(() => {
+    const handleResize = () => {
+      // Force recalculation of all row heights
+      Object.keys(sizeMap.current).forEach(index => {
+        if (rowRefs.current[index]) {
+          const height = rowRefs.current[index].getBoundingClientRect().height;
+          sizeMap.current[index] = height;
+        }
+      });
+      // Reset the List component to re-render with new sizes
+      if (listRef.current) {
+        listRef.current.resetAfterIndex(0);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   return (
     <div className="story-tree-container">
@@ -242,11 +262,28 @@ function StoryTreeRootNode() {
 
 const Row = React.memo(({ index, style, node, removeFromView, setIsFocused, setSize, rowRefs }) => {
   useEffect(() => {
+    const updateSize = () => {
+      if (rowRefs.current[index]) {
+        const height = rowRefs.current[index].getBoundingClientRect().height;
+        setSize(index, height);
+      }
+    };
+
+    // Initial size calculation
+    updateSize();
+
+    // Add resize observer to handle content changes
     if (rowRefs.current[index]) {
-      const height = rowRefs.current[index].getBoundingClientRect().height;
-      setSize(index, height + 0); // Add padding between nodes here
+      const resizeObserver = new ResizeObserver(updateSize);
+      resizeObserver.observe(rowRefs.current[index]);
+      return () => resizeObserver.disconnect();
     }
   }, [setSize, index, rowRefs]);
+  
+  // Check if the current node has siblings
+  const hasSiblings = node?.parent?.nodes?.length > 1;
+  console.log("hasSiblings: " + hasSiblings);
+  console.log("node: " + JSON.stringify(node));
   
   return (
     <div 
@@ -263,7 +300,8 @@ const Row = React.memo(({ index, style, node, removeFromView, setIsFocused, setS
         overflowWrap: 'break-word',
         wordWrap: 'break-word',
         whiteSpace: 'normal',
-        overflow: 'visible'
+        overflow: 'visible',
+        backgroundColor: hasSiblings ? '#f5f5f5' : 'transparent' // Add grey background for nodes with siblings
       }}
     >
       <StoryTreeNode

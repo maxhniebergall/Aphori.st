@@ -10,6 +10,11 @@ function StoryTreeNode({ node, onSwipeLeft, index, setCurrentFocus }) {
 
   const bind = useGesture({
     onDrag: ({ down, movement: [mx], cancel }) => {
+      if (index === 0) {
+        cancel();
+        return;
+      }
+
       if (!down && mx < -100) {
         onSwipeLeft(node);
         cancel();
@@ -18,7 +23,10 @@ function StoryTreeNode({ node, onSwipeLeft, index, setCurrentFocus }) {
       }
     },
   }, {
-    drag: { axis: 'x' },
+    drag: {
+      axis: 'x',
+      enabled: index > 0
+    },
   });
 
   return (
@@ -29,30 +37,15 @@ function StoryTreeNode({ node, onSwipeLeft, index, setCurrentFocus }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      style={{ 
-        cursor: 'pointer',
-        width: '100%',
-        height: 'auto'
-      }}
+      className={`story-tree-node ${index === 0 ? 'root-node' : ''}`}
     >
       <animated.div 
         {...bind()} 
-        style={{ 
-          x,
-          touchAction: 'none',
-          width: '100%',
-          height: 'auto'
-        }} 
+        style={{ x }} 
+        className="story-tree-node-content"
         id={node.id}
       >
-        <div 
-          style={{
-            width: '100%',
-            maxWidth: '100%',
-            wordBreak: 'break-word',
-            whiteSpace: 'pre-wrap'
-          }}
-        >
+        <div className="story-tree-node-text">
           {node.text}
         </div>
       </animated.div>

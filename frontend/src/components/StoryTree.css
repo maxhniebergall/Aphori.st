@@ -79,12 +79,9 @@ button {
   margin-top: 16px;
 }
 
-.story-list {
-  padding: 0 20px;
-}
-
 .story-row {
   position: absolute;
+  justify-items: center;
   left: 0;
   right: 0;
   height: auto;
@@ -95,5 +92,23 @@ button {
   word-wrap: break-word;
   white-space: normal;
   overflow: visible;
+}
+
+.story-tree-node {
+  cursor: pointer;
+  height: auto;
+}
+
+.story-tree-node-content {
+  touch-action: none;
+  width: 100%;
+  height: auto;
+}
+
+.story-tree-node-text {
+  width: 100%;
+  max-width: 100%;
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 

@@ -23,6 +23,9 @@ client.on('connect', () => {
 
 await client.connect();
 
+// At the start of your seed script, clear existing feed items
+await client.del('feedItems');
+
 // List of sample authors and titles
 const authors = [
   'John Doe',
@@ -41,122 +44,356 @@ const titles = [
 ];
 
 /**
- * Creates a StoryTree and saves it to Redis.
+ * Creates a StoryTree node and saves it to Redis.
+ *
+ * @param {string} nodeId - The unique identifier for this node
+ * @param {string} content - The text content for this node
+ * @param {Array} childNodes - Array of child node IDs
+ * @param {Object} metadata - Story metadata (author, title)
+ */
+async function createStoryTreeNode(nodeId, content, childNodes, metadata, parentId = null) {
+  // Format nodes array to match frontend expectations
+  const nodes = childNodes.map(childId => ({
+    id: childId,
+    parentId: nodeId
+  }));
+
+  // Create the full object for returning to API
+  const storyTree = {
+    id: nodeId,
+    text: content,
+    nodes: nodes,
+    parentId,
+    metadata: {
+      title: metadata.title,
+      author: metadata.author
+    },
+    totalNodes: nodes.length
+  };
+  
+  // Create a Redis-safe version where everything is strings/numbers
+  const redisObject = {
+    id: String(nodeId),
+    text: String(content),
+    nodes: nodes,
+    parentId: parentId ? String(parentId) : '',
+    metadata: metadata,
+    totalNodes: String(nodes.length)  // Convert number to string
+  };
+
+  // Store in Redis with safe types
+  await client.hSet(nodeId, "storyTree", JSON.stringify(redisObject));
+  
+  return storyTree; 
+}
+
+/**
+ * Recursively creates a story tree from the new nested format
+ *
+ * @param {string} parentId - The UUID for the node
+ * @param {Object} storyNode - The story node object containing content and children
+ * @param {Object} metadata - Story metadata
+ * @returns {string} - Returns the ID of the created node
+ */
+async function createStoryTreeRecursive(nodeId, storyNode, metadata, parentId = null) {
+  const childIds = [];
+  
+  // First, create all child nodes recursively
+  if (storyNode.children && storyNode.children.length > 0) {
+    for (const child of storyNode.children) {
+      const childId = `${parentId}+${crypto.randomUUID()}`;
+      createStoryTreeRecursive(childId, child, metadata, nodeId);
+      childIds.push(childId);
+    }
+  }
+  
+
+  await createStoryTreeNode(nodeId, storyNode.content, childIds, metadata, parentId);
+  return nodeId;
+}
+
+/**
+ * Creates a complete StoryTree and saves it to Redis.
  *
  * @param {string} uuid - The unique identifier for the story.
- * @param {string} storyText - The full story text.
+ * @param {Object} storyText - The story text object with nested structure.
  */
 async function createStoryTree(uuid, storyText) {
   const author = authors[Math.floor(Math.random() * authors.length)];
   const title = titles[Math.floor(Math.random() * titles.length)] + " " + uuid;
-
-  // Split the story text into nodes delimited by new lines and clean up
-  const lines = storyText
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0);
+  const metadata = { author, title };
 
   try {
-    // Create nodes from bottom up
-    let previousNode = null;
-    let previousNodeId = null;
+    // Create the entire tree structure recursively
+    createStoryTreeRecursive(uuid, storyText, metadata);
 
-    // Create nodes in reverse order (except root)
-    for (let i = lines.length - 1; i > 0; i--) {
-      const nodeId = `${uuid}-node-${i}`;
-      const storyTree = {
-        metadata: {
-          author,
-          title,
-        },
-        id: nodeId,
-        text: lines[i],
-        nodes: previousNodeId ? [{ id: previousNodeId }] : [] // Link to next node if exists
-      };
-
-      // Store this node
-      await client.hSet(nodeId, "storyTree", JSON.stringify(storyTree));
-      
-      previousNode = storyTree;
-      previousNodeId = nodeId;
-    }
-
-    // Create root node with first paragraph and link to first child
-    let rootStoryTree = {
-      metadata: {
-        author,
-        title,
-      },
-      id: uuid,
-      text: lines[0],
-      nodes: previousNodeId ? [{ id: previousNodeId }] : []
-    };
-
-    // Store the root node
-    await client.hSet(uuid, "storyTree", JSON.stringify(rootStoryTree));
-
-    // Update the feed items
+    // Add to feed items
     const feedItem = {
       id: uuid,
       text: title
     };
-    await client.rPush('feedItems', JSON.stringify(feedItem));
+    await client.lPush('feedItems', JSON.stringify(feedItem));
+    logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`)
     
-    logger.info(`Created story tree with ${lines.length} nodes for UUID: ${uuid}`);
   } catch (err) {
     logger.error('Error saving StoryTree:', err);
   }
 }
 
-// At the start of your seed script, clear existing feed items
-await client.del('feedItems');
 
-// Array of new stories to add
+// New story format example - let's modify one story first as an example
 const newStories = [
   {
     uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    The waves crashed against the rocky shoreline with relentless fury, sending plumes of salty spray high into the air. The ancient cliffs, weathered by countless storms, stood as silent sentinels against nature's onslaught. Seabirds wheeled overhead, their mournful cries barely audible above the thunderous roar of the ocean. The air was thick with the scent of brine and seaweed, a primal reminder of the sea's eternal presence. Dark clouds roiled above, their ominous forms illuminated occasionally by distant lightning, creating an otherworldly atmosphere that seemed to bridge the gap between reality and legend.
-
-    A lone lighthouse stood tall against the turbulent backdrop, its weathered white paint peeling in strips from decades of exposure to the harsh maritime elements. The structure's foundation, built from massive granite blocks quarried from these very cliffs, had withstood over a century of storms. Its beacon, a powerful beam of hope in the darkness, cut through the growing gloom with unwavering determination. The light's steady rotation was a testament to human perseverance in the face of nature's raw power.
-
-    The keeper watched diligently from his perch high above the churning waters, his experienced eyes scanning the horizon for any signs of vessels in distress. His calloused hands gripped the railing of the observation deck, feeling the vibrations of the waves through the very structure of the lighthouse. Years of service had taught him to read the sea's moods like a book, and tonight's story was one of particular violence. In his logbook, he had already noted three ships seeking safer waters, their navigation lights barely visible through the spray and darkness.
-
-    As dawn broke, the sea calmed, transforming from a raging monster into a gentle giant. The first rays of sunlight pierced through the dissipating storm clouds, creating a spectacular display of colors that painted the sky in shades of pink, orange, and gold. The lighthouse keeper, having maintained his vigil through the night, allowed himself a small smile of satisfaction. Another storm weathered, another night of safe passage ensured for those who depended on his unwavering dedication to duty.
-    `,
+    text: {
+      content: "The waves crashed against the rocky shoreline with relentless fury, sending plumes of salty spray high into the air. The ancient cliffs, weathered by countless storms, stood as silent sentinels against nature's onslaught.",
+      children: [
+        {
+          // Original path
+          content: "The lighthouse stood tall against the turbulent backdrop, its weathered white paint peeling in strips from decades of exposure to the harsh maritime elements. The structure's foundation, built from massive granite blocks quarried from these very cliffs, had withstood over a century of storms.",
+          children: [
+            {
+              content: "The keeper watched diligently from his perch high above the churning waters, his experienced eyes scanning the horizon for any signs of vessels in distress.",
+              children: [
+                {
+                  content: "As dawn broke, the sea calmed, transforming from a raging monster into a gentle giant. The lighthouse keeper, having maintained his vigil through the night, allowed himself a small smile of satisfaction.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          // Alternative path 1
+          content: "A massive wave, larger than any seen in recent memory, rose from the depths like a liquid mountain. The lighthouse's beam caught its crest, creating an ethereal rainbow in the mist.",
+          children: [
+            {
+              content: "Local legends spoke of such waves as harbingers of change, and indeed, something ancient stirred beneath the waters.",
+              children: []
+            }
+          ]
+        },
+        {
+          // Alternative path 2
+          content: "Among the rocks below, a group of marine researchers had set up their equipment, studying the unique ecosystem that thrived in these turbulent waters.",
+          children: [
+            {
+              content: "Their instruments detected an unusual pattern in the waves, suggesting the presence of a previously unknown underwater current.",
+              children: [
+                {
+                  content: "This discovery would later revolutionize our understanding of coastal weather patterns.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
   },
   {
     uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    In a bustling city, amidst the noise and chaos of urban life, Maria found solace in her modest art studio. The space, barely larger than a storage closet, was transformed into a sanctuary of creativity through her careful curation. Paint-splattered tarps covered the worn wooden floor, while the walls were adorned with half-finished canvases and inspiration boards filled with magazine clippings, photographs, and sketches. The large window, though looking out onto a brick wall, provided enough natural light to illuminate her work in the soft glow she preferred.
-
-    Each stroke of the brush became a meditation, a moment of pure connection between her soul and the canvas. Maria had discovered early in life that while words often failed her, colors and shapes could express the deepest truths of her existence. Her paintings were conversations with the universe, silent dialogues that spoke volumes to those who took the time to listen. The act of creation became her language, more eloquent than any speech she could deliver.
-
-    Her paintings reflected the beauty she saw in everyday life, transforming mundane scenes into extraordinary visions. A homeless man sharing his sandwich with a stray dog became a study in compassion. The reflection of neon signs in rain-slicked streets turned into an exploration of urban poetry. The steam rising from a coffee cup in the early morning light evolved into a meditation on solitude and contemplation. Through her unique perspective, the ordinary became extraordinary, and the overlooked became impossible to ignore.
-
-    One day, the world noticed her talent, an event that arrived not with fanfare but with a quiet knock on her studio door. A gallery owner, intrigued by one of Maria's pieces displayed in a local coffee shop, had tracked her down. The subsequent exhibition changed her life forever, not because of the sales or recognition, though both were substantial, but because it validated what she had always known in her heart: that art had the power to bridge the gaps between people, to communicate universal truths that transcended language and culture.
-    `,
+    text: {
+      content: "In a bustling city, amidst the noise and chaos of urban life, Maria found solace in her modest art studio. The space, barely larger than a storage closet, was transformed into a sanctuary of creativity through her careful curation.",
+      children: [
+        {
+          // Original path
+          content: "Paint-splattered tarps covered the worn wooden floor, while the walls were adorned with half-finished canvases and inspiration boards. Each stroke of the brush became a meditation, a moment of pure connection between her soul and the canvas.",
+          children: [
+            {
+              content: "Maria had discovered early in life that while words often failed her, colors and shapes could express the deepest truths of her existence. Her paintings were conversations with the universe.",
+              children: [
+                {
+                  content: "One day, the world noticed her talent, an event that arrived not with fanfare but with a quiet knock on her studio door. The subsequent exhibition changed her life forever.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          // Alternative path 1 - Digital Art Journey
+          content: "One rainy afternoon, Maria's old laptop displayed colors in an unusual way due to water damage. The glitch created unexpected digital patterns that captivated her artistic sense.",
+          children: [
+            {
+              content: "Embracing this serendipity, she began exploring digital art, combining traditional techniques with technology in groundbreaking ways.",
+              children: [
+                {
+                  content: "Her hybrid artwork, merging physical paintings with digital elements, sparked a new movement in the contemporary art scene.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          // Alternative path 2 - Community Art Path
+          content: "During a community cleanup event, Maria noticed the blank walls of abandoned buildings in her neighborhood. She saw canvas where others saw decay.",
+          children: [
+            {
+              content: "She proposed a community mural project, teaching local youth about art while transforming the neighborhood.",
+              children: [
+                {
+                  content: "The project grew into a city-wide initiative, with Maria's murals becoming symbols of urban renewal and community spirit.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          // Alternative path 3 - Art Therapy Direction
+          content: "A chance encounter with a troubled teen who wandered into her studio led Maria to discover the healing power of her art.",
+          children: [
+            {
+              content: "She began offering informal art therapy sessions, helping others find their voice through creative expression.",
+              children: [
+                {
+                  content: "Her studio evolved into a renowned healing arts center, where art became a bridge between pain and recovery.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
   },
   {
     uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    The ancient ruins stood silent beneath the scorching desert sun, their weathered stones holding secrets that had remained untold for millennia. Massive columns, half-buried in the shifting sands, reached toward the cloudless sky like the fingers of a forgotten civilization grasping for immortality. Hieroglyphics and mysterious symbols covered the walls, their meanings obscured by the passage of time, yet their power to intrigue remained undiminished. The air was thick with the weight of history, and the silence was broken only by the occasional whisper of wind through the ancient corridors.
-
-    Explorers ventured deep within the labyrinthine structure, their modern equipment contrasting sharply with the timeless architecture surrounding them. Dr. Sarah Chen, the expedition leader, ran her fingers along the wall inscriptions, her trained eye detecting patterns that others might miss. Her team of archaeologists and historians moved with careful precision, documenting every detail, every artifact, every possibility that might shed light on the civilization that had created this magnificent structure.
-
-    Traps and puzzles tested their wits at every turn, mechanisms still functioning after thousands of years. A pressure plate here, a counterweight there – each challenge seemed designed not just to protect treasure, but to test the wisdom and patience of those who sought entry. The team encountered chambers filled with mathematical riddles, astronomical alignments, and philosophical tests that suggested the ancient builders were far more sophisticated than previously believed.
-
-    Ultimately, they discovered that wisdom was indeed the greatest treasure of all. The final chamber contained not gold or jewels, but a vast library of knowledge, preserved through ingenious engineering. The scrolls and tablets they found contained information about mathematics, medicine, and sciences that were centuries ahead of their time. This discovery would revolutionize our understanding of ancient civilizations and remind the world that true wealth lies not in material riches, but in the pursuit of knowledge and understanding.
-    `,
+    text: {
+      content: "The ancient ruins stood silent beneath the scorching desert sun, their weathered stones holding secrets that had remained untold for millennia. Massive columns, half-buried in the shifting sands, reached toward the cloudless sky like the fingers of a forgotten civilization grasping for immortality.",
+      children: [
+        {
+          // Original archaeological path
+          content: "Dr. Sarah Chen led her team of archaeologists deeper into the ruins, their modern equipment contrasting sharply with the timeless architecture. Her trained eye detected patterns in the hieroglyphics that others might miss.",
+          children: [
+            {
+              content: "The team discovered an intricate system of puzzles and mechanisms, still functioning after thousands of years. Each challenge seemed designed not just to protect treasure, but to test the wisdom of those who sought entry.",
+              children: [
+                {
+                  content: "In the final chamber, they found not gold or jewels, but an ancient library of knowledge. The scrolls contained advanced mathematical and scientific concepts that would revolutionize our understanding of ancient civilizations.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          // Alternative path 1 - Local Legends
+          content: "The local Bedouin tribes had passed down stories about these ruins for generations. They spoke of strange lights and mysterious sounds that emerged from the depths on certain nights of the year.",
+          children: [
+            {
+              content: "During the spring equinox, Dr. Chen's team witnessed an extraordinary astronomical alignment. The ruins revealed themselves to be an ancient observatory of incredible precision.",
+              children: [
+                {
+                  content: "The discovery suggested that this civilization had possessed advanced knowledge of celestial mechanics, predicting astronomical events with remarkable accuracy.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          // Alternative path 2 - Hidden Technology
+          content: "Deep within the ruins, they found a chamber that defied explanation. Metallic surfaces, untarnished by time, reflected their flashlight beams in impossible ways.",
+          children: [
+            {
+              content: "The walls contained detailed schematics for machines far too advanced for their supposed age. Some resembled modern computers, others depicted energy systems still beyond our current technology.",
+              children: [
+                {
+                  content: "The implications were staggering - either this civilization had been far more advanced than previously thought, or they had received knowledge from an unknown source.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          // Alternative path 3 - Environmental Mystery
+          content: "Analysis of the ruins revealed traces of an ancient catastrophe. The stones told a story of rapid climate change and environmental adaptation.",
+          children: [
+            {
+              content: "The team uncovered evidence of innovative water management systems and sustainable architecture that had allowed the civilization to thrive in increasingly harsh conditions.",
+              children: [
+                {
+                  content: "Their discoveries provided valuable insights into adapting to climate change, proving that ancient wisdom could help solve modern challenges.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
   },
   {
     uuid: 'story-' + crypto.randomUUID(),
-    text: `
-    A small seedling pushed through the soil, reaching for the sun.
-    Seasons passed, and it grew into a magnificent tree.
-    It provided shelter and nourishment to countless creatures.
-    Its existence showed the profound impact of growth and perseverance.
-    `,
+    text: {
+      content: "A small seedling pushed through the soil, reaching for the sun. Its first tender leaves unfurled like tiny flags of defiance against the harsh world above.",
+      children: [
+        {
+          // Original path - Natural Growth
+          content: "Seasons passed, and it grew into a magnificent oak tree, its branches stretching wide to embrace the sky. Each ring in its trunk told a story of survival and persistence.",
+          children: [
+            {
+              content: "It provided shelter and nourishment to countless creatures, from the smallest insects to families of squirrels that made their homes in its sturdy branches.",
+              children: [
+                {
+                  content: "Generations of humans rested in its shade, telling stories and making memories beneath its protective canopy. The tree became a living landmark, its existence showing the profound impact of growth and perseverance.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          // Alternative path 1 - Urban Development Challenge
+          content: "As the sapling grew, the city expanded around it. Construction crews marked it for removal, but a young environmental activist noticed the rare species.",
+          children: [
+            {
+              content: "The community rallied around the tree, forcing developers to modify their plans. The building was redesigned to incorporate the growing tree into its central courtyard.",
+              children: [
+                {
+                  content: "Years later, the tree became the heart of a thriving urban ecosystem, proving that nature and progress could coexist harmoniously.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          // Alternative path 2 - Scientific Discovery
+          content: "A botanist studying the seedling discovered it possessed unique properties. Its cells demonstrated extraordinary resilience to environmental toxins.",
+          children: [
+            {
+              content: "Research revealed that the tree's DNA contained sequences never before seen in any known plant species. It could potentially help clean polluted soil.",
+              children: [
+                {
+                  content: "The discovery led to a breakthrough in phytoremediation technology, spawning a new generation of plants engineered to heal damaged ecosystems.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          // Alternative path 3 - Historical Connection
+          content: "While studying the seedling's growth, archaeologists uncovered ancient pottery shards nearby. The tree had sprouted from seeds preserved in an indigenous burial ground.",
+          children: [
+            {
+              content: "DNA analysis revealed the seedling was a descendant of a sacred tree species thought extinct for centuries, once used in traditional healing ceremonies.",
+              children: [
+                {
+                  content: "The tree became a bridge between past and present, helping to revive lost cultural practices and traditional ecological knowledge.",
+                  children: []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
   },
   {
     uuid: 'story-' + crypto.randomUUID(),
@@ -248,7 +485,6 @@ const newStories = [
     Amelia spent months documenting her discovery in secret, unsure who she could trust with such knowledge. The library's board of directors would need to be informed eventually, but she needed to understand more first. Late at night, surrounded by volumes of impossible history, she began to notice subtle changes in the books' contents, as if they were being actively updated. She realized that this collection wasn't just a record of what might have been, but a living archive of what could still be. The responsibility of such knowledge weighed heavily on her, knowing that each volume she read might somehow influence which futures would become reality.
     `,
   }
-  // I can add more if you'd like!
 ];
 
 // Function to add multiple stories
