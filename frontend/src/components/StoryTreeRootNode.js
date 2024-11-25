@@ -6,6 +6,7 @@ import axios from 'axios';
 import EditingOverlay from './EditingOverlay';
 import StoryTreeNode from './StoryTreeNode';
 import './StoryTree.css';
+import StoryTreeHeader from './StoryTreeHeader';
 
 
 // This is the root node of the story tree. It is the first node that is fetched from the server.
@@ -176,7 +177,7 @@ function StoryTreeRootNode() {
     return (sizeMap.current[index] || 50) + 8;
   };
 
-  // New Header Handlers
+  // Header handlers can stay in this component
   const handleLogoClick = () => {
     navigate('/feed');
   };
@@ -208,27 +209,11 @@ function StoryTreeRootNode() {
 
   return (
     <div className="story-tree-container">
-      <div className="combined-header">
-        <div className="app-header">
-          <div className="logo-container">
-            <img 
-              src="/logo.jpg"
-              alt="Aphori.st Logo" 
-              className="logo"
-              onClick={handleLogoClick}
-            />
-          </div>
-          <div className="menu-icon" onClick={handleMenuClick}>
-            ☰
-          </div>
-        </div>
-        {rootNode && (
-          <div className="story-header">
-            <h1>{(rootNode.metadata?.title || 'Untitled').slice(0, 45)}</h1>
-            <h2>by {rootNode.metadata?.author || 'Anonymous'}</h2>
-          </div>
-        )}
-      </div>
+      <StoryTreeHeader 
+        rootNode={rootNode}
+        onLogoClick={handleLogoClick}
+        onMenuClick={handleMenuClick}
+      />
       <InfiniteLoader
         isItemLoaded={isItemLoaded}
         itemCount={itemCount}
@@ -325,7 +310,17 @@ const Row = React.memo(({
       className="row-container"
       style={{
         ...style,
-        height: 'auto'
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        height: 'auto',
+        width: '100%',
+        padding: '0 20px',
+        boxSizing: 'border-box',
+        overflowWrap: 'break-word',
+        wordWrap: 'break-word',
+        whiteSpace: 'normal',
+        overflow: 'visible',
       }}
     >
       <StoryTreeNode
