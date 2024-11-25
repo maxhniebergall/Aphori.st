@@ -161,13 +161,16 @@ function StoryTreeRootNode() {
         style={style}
         node={node}
         items={items}
+        setItems={setItems}
+        setHasNextPage={setHasNextPage}
         removeFromView={removeFromView}
         setIsFocused={setIsFocused}
         setSize={setSize}
         rowRefs={rowRefs}
+        fetchNode={fetchNode}
       />
     );
-  }, [items, removeFromView, setIsFocused, setSize, isItemLoaded]);
+  }, [items, removeFromView, setIsFocused, setSize, isItemLoaded, fetchNode]);
 
   const getItemSize = index => {
     return (sizeMap.current[index] || 50) + 8;
@@ -272,41 +275,27 @@ const Row = React.memo(({
   fetchNode
 }) => {
   const handleSiblingChange = useCallback(async (newNode) => {
-    // First, update the current node in the items array
     setItems(prevItems => {
-      const newItems = [...prevItems.slice(0, index)];
-      newItems.push(newNode);  // Replace current node with new sibling
-      return newItems;
+      // Keep items up to and including the current index
+      return [...prevItems.slice(0, index + 1)];
     });
 
-    // Then start fetching the chain of first children
-    let currentNode = newNode;
-    let nextItems = [];
-
-    // Keep fetching first children until we hit a node with no children
-    while (currentNode?.nodes?.length > 0) {
+    // If the new node has children, fetch the first child
+    if (newNode.nodes?.length > 0) {
       try {
-        const nextNode = await fetchNode(currentNode.nodes[0].id);
-        if (!nextNode) break;
-        
-        // Preserve siblings information for the next node
-        nextNode.siblings = currentNode.nodes;
-        nextItems.push(nextNode);
-        currentNode = nextNode;
+        const firstChild = await fetchNode(newNode.nodes[0].id);
+        if (firstChild) {
+          firstChild.siblings = newNode.nodes; // Preserve siblings information
+          setItems(prevItems => [...prevItems, firstChild]);
+          setHasNextPage(!!firstChild.nodes?.length);
+        }
       } catch (error) {
         console.error('Error fetching child node:', error);
-        break;
+        setHasNextPage(false);
       }
-    }
-
-    // Update items with all the fetched nodes
-    if (nextItems.length > 0) {
-      setItems(prevItems => [...prevItems, ...nextItems]);
-      setHasNextPage(!!currentNode?.nodes?.length);
     } else {
       setHasNextPage(false);
     }
-
   }, [index, setItems, setHasNextPage, fetchNode]);
 
   useEffect(() => {
@@ -333,19 +322,10 @@ const Row = React.memo(({
   return (
     <div 
       ref={el => rowRefs.current[index] = el} 
+      className="row-container"
       style={{
         ...style,
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        height: 'auto',
-        width: '100%',
-        padding: '0 20px',
-        boxSizing: 'border-box',
-        overflowWrap: 'break-word',
-        wordWrap: 'break-word',
-        whiteSpace: 'normal',
-        overflow: 'visible',
+        height: 'auto'
       }}
     >
       <StoryTreeNode

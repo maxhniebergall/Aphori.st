@@ -85,9 +85,6 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
       key={currentSibling.id}
       layoutId={currentSibling.id}
       onClick={() => setCurrentFocus(index)}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
       className="story-tree-node"
     >
       <animated.div 

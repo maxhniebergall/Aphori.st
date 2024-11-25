@@ -97,6 +97,9 @@ button {
 .story-tree-node {
   cursor: pointer;
   height: auto;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .story-tree-node-content {
@@ -104,36 +107,6 @@ button {
   width: 100%;
   height: auto;
   position: relative;
-  transition: transform 0.2s ease;
-}
-
-.story-tree-node-content.has-siblings {
-  background-color: #f5f5f5;
-  padding: 16px;
-  border-radius: 8px;
-  cursor: grab;
-}
-
-.story-tree-node-content.has-siblings:active {
-  cursor: grabbing;
-}
-
-.swipe-hint {
-  color: #666;
-  font-style: italic;
-}
-
-/* Add a subtle shadow to indicate swipeable content */
-.story-tree-node-content.has-siblings::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: -8px;
-  bottom: 0;
-  width: 8px;
-  background: linear-gradient(to right, rgba(0,0,0,0.05), transparent);
-  border-radius: 0 8px 8px 0;
-  pointer-events: none;
 }
 
 .story-tree-node-text {
@@ -141,6 +114,17 @@ button {
   max-width: 100%;
   word-break: break-word;
   white-space: pre-wrap;
+  overflow-wrap: break-word;
+  box-sizing: border-box;
+}
+
+.story-tree-node-content.has-siblings {
+  background-color: #f5f5f5;
+  padding: 16px;
+  border-radius: 8px;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .sibling-indicator {
@@ -148,5 +132,61 @@ button {
   color: #666;
   margin-top: 8px;
   text-align: right;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* Add styles for infinite loader and list */
+.story-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Row styles from StoryTreeRootNode.js */
+.row-container {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: 100%;
+  padding: 0 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Logo container styles */
+.logo-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Loading indicator */
+.loading-indicator {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+}
+
+/* Animation and gesture styles */
+.swipe-hint {
+  font-size: 0.8rem;
+  color: #888;
+  margin-left: 4px;
+  display: block;
+  white-space: normal;
+}
+
+/* Initial animation states */
+.story-tree-node {
+  opacity: 0;
+}
+
+.story-tree-node[data-animate="true"] {
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.story-tree-node[data-exit="true"] {
+  opacity: 0;
 }
 
