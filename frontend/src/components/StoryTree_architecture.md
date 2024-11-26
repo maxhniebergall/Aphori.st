@@ -5,22 +5,28 @@
 - Minimal responsibility
 
 ### StoryTreeRootNode.js
-**Theme**: Data Management & List Virtualization
+**Theme**: UI Container & List Virtualization
+- Handles list virtualization and infinite scrolling
+- Manages window sizing and resizing
+- Renders the virtualized list view
+- Connects to centralized state management
+- Delegates data management to StoryTreeContext
+
+### StoryTreeContext.js 
+**Theme**: Centralized State Management
 - Manages the main data flow and state
-- Handles infinite scrolling logic
-- Manages URL/routing
-- Controls window sizing and resizing
 - Handles node fetching and caching
-- Manages the virtualized list view
-- Handles sibling navigation state
+- Controls sibling navigation state
+- Manages error states and loading states
+- Provides action creators for state updates
+- Implements error boundaries
 
 ### StoryTreeNode.js
 **Theme**: Interactive Node Display & Gesture Handling
 - Displays individual story nodes
 - Manages swipe gestures for sibling navigation
 - Handles animations for interactions
-- Controls sibling loading and navigation
-- Manages local state for siblings
+- Consumes state from StoryTreeContext
 
 ### StoryTreeHeader.js
 **Theme**: Header UI Component
@@ -29,27 +35,19 @@
 - Handles header-specific click events
 - Contains isolated header-specific styles
 
-### StoryTreeHolder.js
-**Theme**: Empty/Unused
-- Currently empty file
-- Potentially meant for a container component
 
-### Key Observations:
-1. There's significant coupling between StoryTreeRootNode and StoryTreeNode
-2. StoryTreeRootNode is handling too many responsibilities
-3. The sibling management logic is split between StoryTreeNode and StoryTreeRootNode
-4. The header UI is mixed with data management code
-5. List virtualization logic is tightly coupled with node management
 
-### Recent Improvements:
-1. Separated header UI concerns into dedicated StoryTreeHeader component
-2. Isolated header-specific styles into StoryTreeHeader.css
-3. Improved component documentation with PropTypes
-4. Reduced responsibilities in StoryTreeRootNode
 
 ### Remaining Opportunities:
-- Separating data management from UI components
-- Creating dedicated components for navigation
-- Implementing a proper state management solution
-- Better separation of concerns for sibling management
-- Possibly utilizing StoryTreeHolder as a container component
+1. Further optimization of list virtualization
+2. Enhanced caching strategies
+3. Implementing proper data prefetching
+4. Adding TypeScript support
+5. Improving test coverage
+
+### State Management Flow:
+1. StoryTreeContext maintains global state
+2. Components dispatch actions through context
+3. Action creators handle complex state updates
+4. Error boundaries catch and handle errors
+5. Loading states provide user feedback

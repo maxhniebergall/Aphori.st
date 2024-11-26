@@ -7,25 +7,57 @@ import EditingOverlay from './EditingOverlay';
 import StoryTreeNode from './StoryTreeNode';
 import './StoryTree.css';
 import StoryTreeHeader from './StoryTreeHeader';
+import { 
+  StoryTreeProvider, 
+  useStoryTree, 
+  ACTIONS,
+  StoryTreeLoading 
+} from '../context/StoryTreeContext';
 
+// Constants
+const WINDOW_HEIGHT = window.innerHeight - 60; // Adjust based on your header height
 
-// This is the root node of the story tree. It is the first node that is fetched from the server.
-// It is used to display the story tree, and contains the code to fetch the rest of the tree.
+// Utility functions
+const fetchNode = async (id) => {
+  try {
+    const response = await axios.get(
+      `${process.env.REACT_APP_API_URL}/api/storyTree/${id}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching node:', error);
+    return null;
+  }
+};
+
+const getItemSize = index => 150; // Default height, adjust as needed
+
 function StoryTreeRootNode() {
+  return (
+    <StoryTreeProvider>
+      <StoryTreeContent />
+    </StoryTreeProvider>
+  );
+}
+
+function StoryTreeContent() {
+  const { state, dispatch } = useStoryTree();
   const pathParams = useParams();
-  const [rootNode, setRootNode] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [currentNode, setCurrentNode] = useState(null);
   const navigate = useNavigate();
-  const [isFocused, setIsFocused] = useState(false);
-  const [nodesPath, setNodesPath] = useState([]);
-  const [removedFromView, setRemovedFromView] = useState([]);
   const listRef = useRef();
   const sizeMap = useRef({});
-  const [totalItems, setTotalItems] = useState(0);
-  const [isNextPageLoading, setIsNextPageLoading] = useState(false);
-  const [hasNextPage, setHasNextPage] = useState(true);
-  const [items, setItems] = useState([]);
+  const rowRefs = useRef({});
+  const [isFocused, setIsFocused] = useState(false);
+
+  const {
+    rootNode,
+    items,
+    isNextPageLoading,
+    hasNextPage,
+    removedFromView,
+    isEditing,
+    currentNode
+  } = state;
 
   const rootUUID = pathParams.uuid;
 
@@ -36,29 +68,9 @@ function StoryTreeRootNode() {
     [navigate]
   );
 
-  const fetchNode = useCallback(async (id) => {
-    try {
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/storyTree/${id}`
-      );
-      const data = response.data;
-      await appendNodesPath(data.id);
-      console.log('Fetched node data:', response.data);
-      return data;
-    } catch (error) {
-      console.error('Error fetching story data:', error);
-      return null;
-    }
-  }, []);
-
-  const appendNodesPath = async (nodeId) => {
-    return nodeId;
-  };
-
   const removeFromView = useCallback((id) => {
-    setRemovedFromView(prev => [...prev, id]);
-    setNodesPath(prev => prev.filter(node => node.id !== id));
-  }, []);
+    dispatch({ type: ACTIONS.SET_REMOVED_FROM_VIEW, payload: id });
+  }, [dispatch]);
 
   useEffect(() => {
     const fetchRootNode = async () => {
@@ -67,9 +79,9 @@ function StoryTreeRootNode() {
           `${process.env.REACT_APP_API_URL}/api/storyTree/${rootUUID}`
         );
         const data = response.data;
-        setRootNode(data);
+        dispatch({ type: ACTIONS.SET_ROOT_NODE, payload: data });
         if (data.totalNodes) {
-          setTotalItems(data.totalNodes);
+          dispatch({ type: ACTIONS.SET_TOTAL_ITEMS, payload: data.totalNodes });
         }
       } catch (error) {
         console.error('Error fetching story data:', error);
@@ -84,8 +96,8 @@ function StoryTreeRootNode() {
 
   useEffect(() => {
     if (rootNode) {
-      setItems([rootNode]);
-      setHasNextPage(!!rootNode.nodes?.length);
+      dispatch({ type: ACTIONS.SET_ITEMS, payload: [rootNode] });
+      dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: !!rootNode.nodes?.length });
     }
   }, [rootNode]);
 
@@ -102,14 +114,12 @@ function StoryTreeRootNode() {
     return sizeMap.current[index] || 200;
   }, []);
 
-  const WINDOW_HEIGHT = window.innerHeight;
-  
   useEffect(() => {
-    if (nodesPath.length > 0) {
-      const lastNode = nodesPath[nodesPath.length - 1];
-      setHasNextPage(!!lastNode?.nodes?.length);
+    if (removedFromView.length > 0) {
+      const lastNode = removedFromView[removedFromView.length - 1];
+      dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: !!lastNode?.nodes?.length });
     }
-  }, [nodesPath]);
+  }, [removedFromView]);
 
   const itemCount = hasNextPage ? items.length + 1 : items.length;
 
@@ -120,11 +130,11 @@ function StoryTreeRootNode() {
   const loadMoreItems = useCallback(async (startIndex, stopIndex) => {
     if (isNextPageLoading) return;
 
-    setIsNextPageLoading(true);
+    dispatch({ type: ACTIONS.SET_LOADING, payload: true });
     try {
       const lastNode = items[items.length - 1];
       if (!lastNode?.nodes?.length) {
-        setHasNextPage(false);
+        dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
         return;
       }
       
@@ -132,91 +142,49 @@ function StoryTreeRootNode() {
         const nextNode = await fetchNode(lastNode.nodes[0].id);
         if (nextNode) {
           nextNode.siblings = lastNode.nodes;
-          setItems(prev => [...prev, nextNode]);
-          setHasNextPage(!!nextNode.nodes?.length);
+          dispatch({ type: ACTIONS.APPEND_ITEM, payload: nextNode });
+          dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: !!nextNode.nodes?.length });
         } else {
-          setHasNextPage(false);
+          dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
         }
       } else {
-        setHasNextPage(false);
+        dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
       }
     } catch (error) {
       console.error('Error loading more items:', error);
-      setHasNextPage(false);
+      dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
     } finally {
-      setIsNextPageLoading(false);
+      dispatch({ type: ACTIONS.SET_LOADING, payload: false });
     }
   }, [isNextPageLoading, items, fetchNode, removedFromView]);
 
-  const rowRefs = useRef({});
-
-  const renderRow = useCallback(({ index, style }) => {
-    if (!isItemLoaded(index)) {
-      return <div style={style}>Loading...</div>;
-    }
-
+  const renderRow = ({ index, style }) => {
     const node = items[index];
     return (
       <Row
         index={index}
         style={style}
         node={node}
-        items={items}
-        setItems={setItems}
-        setHasNextPage={setHasNextPage}
-        removeFromView={removeFromView}
         setIsFocused={setIsFocused}
-        setSize={setSize}
+        setSize={(index, size) => {
+          sizeMap.current[index] = size;
+          listRef.current?.resetAfterIndex(index);
+        }}
         rowRefs={rowRefs}
-        fetchNode={fetchNode}
       />
     );
-  }, [items, removeFromView, setIsFocused, setSize, isItemLoaded, fetchNode]);
-
-  const getItemSize = index => {
-    return (sizeMap.current[index] || 50) + 8;
   };
-
-  // Header handlers can stay in this component
-  const handleLogoClick = () => {
-    navigate('/feed');
-  };
-
-  const handleMenuClick = () => {
-    // TODO: Implement menu opening logic
-    console.log('Menu clicked');
-  };
-
-  // Add window resize listener
-  useEffect(() => {
-    const handleResize = () => {
-      // Force recalculation of all row heights
-      Object.keys(sizeMap.current).forEach(index => {
-        if (rowRefs.current[index]) {
-          const height = rowRefs.current[index].getBoundingClientRect().height;
-          sizeMap.current[index] = height;
-        }
-      });
-      // Reset the List component to re-render with new sizes
-      if (listRef.current) {
-        listRef.current.resetAfterIndex(0);
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   return (
     <div className="story-tree-container">
       <StoryTreeHeader 
         rootNode={rootNode}
-        onLogoClick={handleLogoClick}
-        onMenuClick={handleMenuClick}
+        onLogoClick={() => navigate('/feed')}
+        onMenuClick={() => console.log('Menu clicked')}
       />
       <InfiniteLoader
-        isItemLoaded={isItemLoaded}
-        itemCount={itemCount}
+        isItemLoaded={index => !hasNextPage || index < items.length}
+        itemCount={items.length + (hasNextPage ? 1 : 0)}
         loadMoreItems={loadMoreItems}
         threshold={2}
         minimumBatchSize={1}
@@ -228,7 +196,7 @@ function StoryTreeRootNode() {
               listRef.current = list;
             }}
             height={WINDOW_HEIGHT}
-            itemCount={itemCount}
+            itemCount={items.length}
             itemSize={getItemSize}
             onItemsRendered={onItemsRendered}
             width="100%"
@@ -241,7 +209,7 @@ function StoryTreeRootNode() {
       {isEditing && (
         <EditingOverlay
           node={currentNode}
-          onClose={() => setIsEditing(false)}
+          onClose={() => dispatch({ type: ACTIONS.SET_EDITING, payload: false })}
         />
       )}
     </div>
@@ -259,6 +227,8 @@ const Row = React.memo(({
   setHasNextPage,
   fetchNode
 }) => {
+  const { dispatch } = useStoryTree();
+
   const handleSiblingChange = useCallback(async (newNode) => {
     setItems(prevItems => {
       // Keep items up to and including the current index
