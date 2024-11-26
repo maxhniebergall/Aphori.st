@@ -7,7 +7,7 @@ Copyright Max Hniebergall 2024
 
 ## Main build command for development
 From the root directory (../Aphorist):
-`docker-compose up --build`
+docker-compose up --build
 
 
 ## Main build command for production

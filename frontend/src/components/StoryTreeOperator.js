@@ -21,8 +21,7 @@ function StoryTreeOperator() {
   const {
     items,
     hasNextPage,
-    isNextPageLoading,
-    currentNode
+    isNextPageLoading
   } = state;
   const { handleSiblingChange } = useSiblingNavigation();
 
