@@ -12,7 +12,6 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
-  const { removeFromView } = useSiblingNavigation();
 
   // Find the current index in siblings array
   useEffect(() => {
@@ -43,12 +42,42 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     }
   }, [siblings, currentSiblingIndex, isLoadingSibling, onSiblingChange]);
 
-  const loadPreviousSibling = useCallback(() => {
-    if (currentSiblingIndex <= 0) return;
-    setCurrentSiblingIndex(prev => prev - 1);
-    const previousNode = loadedSiblings[currentSiblingIndex - 1];
-    onSiblingChange?.(previousNode);
-  }, [currentSiblingIndex, loadedSiblings, onSiblingChange]);
+  const loadPreviousSibling = useCallback(async () => {
+    console.log('Loading previous sibling:', { 
+      currentSiblingIndex, 
+      loadedSiblingsLength: loadedSiblings.length,
+      loadedSiblings
+    });
+    
+    if (isLoadingSibling || !siblings || currentSiblingIndex <= 0) {
+      console.log('Cannot go back: at first sibling or loading');
+      return;
+    }
+
+    setIsLoadingSibling(true);
+    try {
+      const previousSibling = siblings[currentSiblingIndex - 1];
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/api/storyTree/${previousSibling.id}`
+      );
+      const previousNode = response.data;
+      previousNode.siblings = siblings;
+      
+      // Insert the previous node at the correct position
+      setLoadedSiblings(prev => {
+        const newLoadedSiblings = [...prev];
+        newLoadedSiblings[currentSiblingIndex - 1] = previousNode;
+        return newLoadedSiblings;
+      });
+      
+      setCurrentSiblingIndex(prev => prev - 1);
+      onSiblingChange?.(previousNode);
+    } catch (error) {
+      console.error('Error loading previous sibling:', error);
+    } finally {
+      setIsLoadingSibling(false);
+    }
+  }, [currentSiblingIndex, loadedSiblings, siblings, isLoadingSibling, onSiblingChange]);
 
   const bind = useGesture({
     onDrag: ({ down, movement: [mx], cancel, velocity: [vx] }) => {
@@ -81,10 +110,6 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   const hasSiblings = siblings && siblings.length > 1;
   const hasNextSibling = siblings && currentSiblingIndex < siblings.length - 1;
   const hasPreviousSibling = currentSiblingIndex > 0;
-
-  const handleNodeRemoval = () => {
-    removeFromView(node.id);
-  };
 
   return (
     <motion.div

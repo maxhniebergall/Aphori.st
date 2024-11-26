@@ -10,20 +10,23 @@ const logger = newLogger("server.js")
 const app = express();
 app.use(json());
 
-const corsOptions = {
-    origin: [
-        'http://localhost:3000',
-        'http://aphori.st:3000',
-        'http://localhost:5000',
-        // If you're using HTTPS, add these too:
-        'https://localhost:3000',
-        'https://aphori.st:3000'
-    ],
-    credentials: false,
-    optionsSuccessStatus: 200,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] // explicitly specify allowed methods
-};
-app.use(cors(corsOptions));
+// Parse the CORS_ORIGIN environment variable into an array
+const allowedOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000'];
+
+// Configure CORS
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if(!origin) return callback(null, true);
+    
+    if(allowedOrigins.indexOf(origin) === -1){
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true
+}));
 
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -166,3 +169,6 @@ app.get('/api/feed', async (req, res) => {
 app.listen(PORT, () => {
     logger.info(`Server is available on port ${PORT}`);
 });
+
+// For debugging, you can log the allowed origins
+console.log('Allowed CORS origins:', allowedOrigins);
