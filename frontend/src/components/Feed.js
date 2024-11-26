@@ -13,8 +13,9 @@ function Feed() {
 
   const navigateToStoryTree = useCallback(
     (nodeId) => {
-    navigate(`/storyTree/${nodeId}`, { replace: true });
-  }, [navigate]);
+      navigate(`/storyTree/${nodeId}`);
+    }, [navigate]
+  );
 
 
   // Fetch feed items
