@@ -25,6 +25,8 @@ function StoryTreeOperator() {
   } = state;
   const { handleSiblingChange } = useSiblingNavigation();
 
+  console.log('StoryTreeOperator items:', items);
+
   const isItemLoaded = React.useCallback(index => {
     return !hasNextPage || index < items.length;
   }, [hasNextPage, items.length]);

@@ -1,29 +1,34 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import Feed from './components/Feed';
+import { Routes, Route } from 'react-router-dom';
 import StoryTreePage from './components/StoryTreePage';
+import Feed from './components/Feed';
+import RequestMagicLink from './components/RequestMagicLink';
+import VerifyMagicLink from './components/VerifyMagicLink';
+import ProfilePage from './components/ProfilePage';
+import ProtectedRoute from './components/ProtectedRoute';
+import NotFound from './components/NotFound';
 
 function App() {
-    const username = "root"
+    return (
+            <Routes>
+                <Route path="/login" element={<RequestMagicLink />} />
+                <Route path="/verify" element={<VerifyMagicLink />} />
+                <Route path="/feed" element={<Feed />} />
+                <Route path="/storyTree/:uuid" element={<StoryTreePage />} />
 
+                <Route 
+                    path="/profile" 
+                    element={
+                        <ProtectedRoute>
+                            <ProfilePage />
+                        </ProtectedRoute>
+                    } 
+                />
 
-    return (    
-        <div className="App">
-          <Routes>
-            {/* Redirect root '/' to '/feed' */}
-            <Route path="/" element={<Navigate to="/feed" replace />} />
-    
-            {/* New 'feed' route with pagination query parameter */}
-            <Route path="/feed" element={<Feed />} />
-    
-            {/* New 'storyTree' route with UUID parameter */}
-            <Route path="/storyTree/:uuid" element={<StoryTreePage />} />
-    
-            {/* Optional: Add a 404 Not Found route */}
-            <Route path="*" element={<h1>404 Not Found</h1>} />
-          </Routes>
-        </div>
-      );    
+                {/* Fallback Route */}
+                <Route path="*" element={<NotFound />} />
+            </Routes>
+    );
 }
 
 export default App;
