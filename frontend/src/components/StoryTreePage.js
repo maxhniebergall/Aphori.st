@@ -1,11 +1,11 @@
 import React from 'react';
-import StoryTreeRootNode from './StoryTreeRootNode';
+import StoryTreeHolder from './StoryTreeHolder';
 import './StoryTree.css';
 
 function StoryTreePage() {
   return (
     <>
-      <StoryTreeRootNode />
+      <StoryTreeHolder />
     </>
   );
 }

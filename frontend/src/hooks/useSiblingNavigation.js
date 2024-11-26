@@ -5,10 +5,13 @@ export function useSiblingNavigation() {
   const { state, dispatch } = useStoryTree();
 
   const handleSiblingChange = useCallback(async (newNode, index, fetchNode) => {
-    // Keep items up to and including the current index
+    // Update the current item at the given index
+    const updatedItems = [...state.items];
+    updatedItems[index] = newNode;
+    
     dispatch({ 
       type: ACTIONS.SET_ITEMS, 
-      payload: state.items.slice(0, index + 1) 
+      payload: updatedItems.slice(0, index + 1) 
     });
 
     // If the new node has children, fetch the first child
@@ -16,7 +19,7 @@ export function useSiblingNavigation() {
       try {
         const firstChild = await fetchNode(newNode.nodes[0].id);
         if (firstChild) {
-          firstChild.siblings = newNode.nodes; // Preserve siblings information
+          firstChild.siblings = newNode.nodes;
           dispatch({ type: ACTIONS.APPEND_ITEM, payload: firstChild });
           dispatch({ 
             type: ACTIONS.SET_HAS_NEXT_PAGE, 

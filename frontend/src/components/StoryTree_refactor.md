@@ -20,12 +20,12 @@ Based on the architectural overview and suggested improvements in `StoryTree_arc
 3. **Create Container Component for Data Management**
    
    - **Description**: 
-     - Develop a `StoryTreeContainer.js` component responsible for data fetching, node management, and handling the virtualized list.
+     - Develop a `StoryTreeOperator.js` component responsible for data fetching, node management, and handling the virtualized list.
      - This component will interact with the state management system and pass necessary data and callbacks to presentational components like `StoryTreeNode`.
      - This separation improves maintainability and readability.
 
 4. **Isolate Sibling Navigation Logic into Custom Hook**
-   
+   s
    - **Description**: 
      - Extract the sibling management and navigation logic from both `StoryTreeRootNode` and `StoryTreeNode` into a custom React hook, such as `useSiblingNavigation.js`.
      - This hook will handle loading siblings, navigating between them, and managing related state.
@@ -41,6 +41,6 @@ Based on the architectural overview and suggested improvements in `StoryTree_arc
 6. **Utilize StoryTreeHolder as Main Container Component**
    
    - **Description**: 
-     - Refactor `StoryTreeHolder.js` to serve as the primary container component that integrates the newly created `StoryTreeContainer`, `StoryTreeHeader`, and `VirtualizedStoryList` components.
+     - Refactor `StoryTreeHolder.js` to serve as the primary container component that integrates the newly created `StoryTreeOperator`, `StoryTreeHeader`, and `VirtualizedStoryList` components.
      - This centralizes the layout and high-level data flow, adhering to the separation of concerns principle.
      - Prepares the codebase for future scalability and feature additions.
