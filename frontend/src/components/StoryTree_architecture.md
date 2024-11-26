@@ -5,12 +5,21 @@
 - Minimal responsibility
 
 ### StoryTreeRootNode.js
-**Theme**: UI Container & List Virtualization
-- Handles list virtualization and infinite scrolling
-- Manages window sizing and resizing
-- Renders the virtualized list view
+**Theme**: UI Container & State Management Bridge
 - Connects to centralized state management
-- Delegates data management to StoryTreeContext
+- Handles routing and URL management
+- Delegates list rendering to VirtualizedStoryList
+- Manages EditingOverlay and StoryTreeHeader
+- Coordinates between context and UI components
+
+### VirtualizedStoryList.js
+**Theme**: List Virtualization
+- Handles all virtualization logic
+- Manages infinite scrolling implementation
+- Controls dynamic sizing of nodes
+- Optimizes rendering performance
+- Uses react-window for efficient list rendering
+- Handles row measurement and caching
 
 ### StoryTreeContext.js 
 **Theme**: Centralized State Management
@@ -20,6 +29,14 @@
 - Manages error states and loading states
 - Provides action creators for state updates
 - Implements error boundaries
+
+### StoryTreeActions.js
+**Theme**: Action Creators & Data Operations
+- Contains all action creators
+- Handles API interactions
+- Manages complex state updates
+- Provides error handling for data operations
+- Controls loading states during operations
 
 ### StoryTreeNode.js
 **Theme**: Interactive Node Display & Gesture Handling
@@ -35,8 +52,20 @@
 - Handles header-specific click events
 - Contains isolated header-specific styles
 
+### State Management Flow:
+1. StoryTreeContext maintains global state
+2. Components dispatch actions through context
+3. StoryTreeActions handle complex state updates
+4. Error boundaries catch and handle errors
+5. Loading states provide user feedback
 
-
+### Component Hierarchy:
+StoryTreePage
+└── StoryTreeRootNode
+├── StoryTreeHeader
+├── VirtualizedStoryList
+│ └── StoryTreeNode (multiple instances)
+└── EditingOverlay (conditional)
 
 ### Remaining Opportunities:
 1. Further optimization of list virtualization
@@ -44,10 +73,6 @@
 3. Implementing proper data prefetching
 4. Adding TypeScript support
 5. Improving test coverage
-
-### State Management Flow:
-1. StoryTreeContext maintains global state
-2. Components dispatch actions through context
-3. Action creators handle complex state updates
-4. Error boundaries catch and handle errors
-5. Loading states provide user feedback
+6. Implementing proper error recovery strategies
+7. Adding comprehensive loading states
+8. Optimizing sibling navigation performance

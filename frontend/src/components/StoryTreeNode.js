@@ -3,6 +3,7 @@ import { useSpring, animated } from 'react-spring';
 import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
 import axios from 'axios';
+import { useSiblingNavigation } from '../hooks/useSiblingNavigation';
 
 // This is a single node in the story tree. It is used to display a single node in the story tree.
 // It controls the swipe gesture to remove the node from the view, and the animation when the node is focused.
@@ -11,6 +12,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
+  const { removeFromView } = useSiblingNavigation();
 
   // Find the current index in siblings array
   useEffect(() => {
@@ -79,6 +81,10 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   const hasSiblings = siblings && siblings.length > 1;
   const hasNextSibling = siblings && currentSiblingIndex < siblings.length - 1;
   const hasPreviousSibling = currentSiblingIndex > 0;
+
+  const handleNodeRemoval = () => {
+    removeFromView(node.id);
+  };
 
   return (
     <motion.div
