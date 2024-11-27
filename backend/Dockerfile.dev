@@ -8,7 +8,6 @@ RUN yarn install
 
 COPY . .
 
-# Copy the entrypoint_dev script
 COPY entrypoint_dev.sh /app/
 
 # Make the entrypoint_dev script executable

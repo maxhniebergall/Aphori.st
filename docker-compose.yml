@@ -19,6 +19,8 @@ services:
       - CORS_ORIGIN=http://192.168.2.55:3000,http://localhost:3000
     depends_on:
       - redis
+    env_file:
+      - backend/.env
       
   frontend:
     build:

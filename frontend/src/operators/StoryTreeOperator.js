@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStoryTree, ACTIONS } from '../context/StoryTreeContext';
-import VirtualizedStoryList from './VirtualizedStoryList';
+import VirtualizedStoryList from '../components/VirtualizedStoryList';
 import axios from 'axios';
 import { useSiblingNavigation } from '../hooks/useSiblingNavigation';
 

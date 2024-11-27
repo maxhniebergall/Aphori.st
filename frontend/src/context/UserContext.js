@@ -1,4 +1,5 @@
 import React, { createContext, useReducer, useContext, useEffect } from 'react';
+import { userOperator } from '../operators/UserOperator';
 
 // Define the shape of the context state
 const UserContext = createContext();
@@ -33,24 +34,29 @@ export function UserProvider({ children }) {
     // Action to handle sending magic link
     const sendMagicLink = async (email) => {
         dispatch({ type: 'AUTH_REQUEST' });
-        try {
-            await api.sendMagicLink({ email });
-            dispatch({ type: 'AUTH_SUCCESS', payload: { email } });
-            // Optionally, notify the user to check their email
-        } catch (error) {
-            dispatch({ type: 'AUTH_FAILURE', payload: error.message });
+        const result = await userOperator.sendMagicLink(email);
+        
+        if (result.success) {
+            dispatch({ type: 'AUTH_SUCCESS', payload: { email, pendingVerification: true } });
+            return { success: true };
+        } else {
+            dispatch({ type: 'AUTH_FAILURE', payload: result.error });
+            return { success: false, error: result.error };
         }
     };
 
     // Action to handle verifying magic link and authenticating user
     const verifyMagicLink = async (token) => {
         dispatch({ type: 'AUTH_REQUEST' });
-        try {
-            const response = await api.verifyMagicLink({ token });
-            dispatch({ type: 'AUTH_SUCCESS', payload: response.data });
-            localStorage.setItem('token', response.data.token);
-        } catch (error) {
-            dispatch({ type: 'AUTH_FAILURE', payload: error.message });
+        const result = await userOperator.verifyMagicLink(token);
+        
+        if (result.success) {
+            dispatch({ type: 'AUTH_SUCCESS', payload: result.data });
+            localStorage.setItem('token', result.data.token);
+            return { success: true };
+        } else {
+            dispatch({ type: 'AUTH_FAILURE', payload: result.error });
+            return { success: false, error: result.error };
         }
     };
 
@@ -63,10 +69,13 @@ export function UserProvider({ children }) {
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (token) {
-            // Optionally, verify the token with the backend
-            api.verifyToken(token)
-                .then(response => {
-                    dispatch({ type: 'AUTH_SUCCESS', payload: response.data });
+            userOperator.verifyToken(token)
+                .then(result => {
+                    if (result.success) {
+                        dispatch({ type: 'AUTH_SUCCESS', payload: result.data });
+                    } else {
+                        dispatch({ type: 'LOGOUT' });
+                    }
                 })
                 .catch(() => {
                     dispatch({ type: 'LOGOUT' });

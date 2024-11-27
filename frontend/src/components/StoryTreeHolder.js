@@ -9,7 +9,7 @@ import {
   useStoryTree, 
   ACTIONS,
 } from '../context/StoryTreeContext';
-import StoryTreeOperator from './StoryTreeOperator';
+import StoryTreeOperator from '../operators/StoryTreeOperator';
 
 function StoryTreeHolder() {
   return (

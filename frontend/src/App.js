@@ -7,9 +7,11 @@ import VerifyMagicLink from './components/VerifyMagicLink';
 import ProfilePage from './components/ProfilePage';
 import ProtectedRoute from './components/ProtectedRoute';
 import NotFound from './components/NotFound';
+import { UserProvider } from './context/UserContext';
 
 function App() {
     return (
+        <UserProvider>
             <Routes>
                 <Route path="/login" element={<RequestMagicLink />} />
                 <Route path="/verify" element={<VerifyMagicLink />} />
@@ -28,6 +30,7 @@ function App() {
                 {/* Fallback Route */}
                 <Route path="*" element={<NotFound />} />
             </Routes>
+        </UserProvider>
     );
 }
 
