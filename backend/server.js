@@ -248,7 +248,7 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
         res.json({ message: 'Magic link sent to your email.' });
     } catch (error) {
         logger.error('Failed to send magic link:', error);
-        res.status(500).json({ error: 'Failed to send magic link.' });
+        res.status(500).json({ error: 'Failed to send magic link. Unverified.' });
     }
 });
 

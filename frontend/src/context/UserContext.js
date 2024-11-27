@@ -69,17 +69,36 @@ export function UserProvider({ children }) {
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (token) {
-            userOperator.verifyToken(token)
-                .then(result => {
-                    if (result.success) {
-                        dispatch({ type: 'AUTH_SUCCESS', payload: result.data });
-                    } else {
-                        dispatch({ type: 'LOGOUT' });
-                    }
-                })
-                .catch(() => {
+            // Add a check for token expiration before verifying
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const expiry = payload.exp * 1000; // Convert to milliseconds
+                
+                if (expiry < Date.now()) {
+                    // Token is expired, just remove it and logout
                     dispatch({ type: 'LOGOUT' });
-                });
+                    localStorage.removeItem('token');
+                    return;
+                }
+                
+                userOperator.verifyToken(token)
+                    .then(result => {
+                        if (result.success) {
+                            dispatch({ type: 'AUTH_SUCCESS', payload: result.data });
+                        } else {
+                            dispatch({ type: 'LOGOUT' });
+                            localStorage.removeItem('token');
+                        }
+                    })
+                    .catch(() => {
+                        dispatch({ type: 'LOGOUT' });
+                        localStorage.removeItem('token');
+                    });
+            } catch (e) {
+                // If token parsing fails, remove it
+                dispatch({ type: 'LOGOUT' });
+                localStorage.removeItem('token');
+            }
         }
     }, []);
 
