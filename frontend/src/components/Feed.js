@@ -1,6 +1,6 @@
 // components/Feed.js
 import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import './Feed.css'; // Create a CSS file for styling
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -38,10 +38,6 @@ function Feed() {
 
     fetchFeedItems();
   }, [currentIndex]);
-
-  function idToIndex(id) {
-    return feedItems.findIndex(item => item.id === id);
-  }
 
   return (
     <div>

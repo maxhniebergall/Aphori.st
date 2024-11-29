@@ -33,7 +33,7 @@ services:
     environment:
       - CHOKIDAR_USEPOLLING=true
       - HOST=0.0.0.0
-      - REACT_APP_API_URL=http://192.168.2.55:5000
+      - REACT_APP_API_URL=http://localhost:5000
     networks:
       - main
     depends_on:

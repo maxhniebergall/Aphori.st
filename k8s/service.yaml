@@ -1,0 +1,38 @@
+name: Build and Deploy to GKE
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  PROJECT_ID: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).project_id }}
+  GKE_CLUSTER: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).cluster_name }}
+  GKE_ZONE: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).zone }}
+  DEPLOYMENT_NAME: your-app-name
+  IMAGE: your-app-image
+
+jobs:
+  setup-build-publish-deploy:
+    name: Setup, Build, Publish, and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).project_id }}
+        service_account_key: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).service_account_key }}
+        install_components: 'gke-gcloud-auth-plugin'
+
+    - name: Deploy to GKE
+      run: |
+        # Apply Kubernetes manifests
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
+        
+        # Update the image
+        kubectl set image deployment/$DEPLOYMENT_NAME $DEPLOYMENT_NAME=gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA
+        kubectl rollout status deployment/$DEPLOYMENT_NAME 
