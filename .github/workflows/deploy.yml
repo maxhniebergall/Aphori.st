@@ -54,19 +54,13 @@ jobs:
 
     - name: Create backend secrets
       run: |
-        cat <<EOF | kubectl apply -f -
-        apiVersion: v1
-        kind: Secret
-        metadata:
-          name: backend-secrets
-        type: Opaque
-        data:
-          EMAIL_HOST: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_host | b64enc }}
-          EMAIL_PORT: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_port | b64enc }}
-          EMAIL_USERNAME: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_username | b64enc }}
-          EMAIL_PASSWORD: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_password | b64enc }}
-          JWT_SECRET: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).jwt_secret | b64enc }}
-        EOF
+        # Create secret using base64 encoded values
+        kubectl create secret generic backend-secrets \
+          --from-literal=EMAIL_HOST=$(echo -n "${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_host }}" | base64) \
+          --from-literal=EMAIL_PORT=$(echo -n "${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_port }}" | base64) \
+          --from-literal=EMAIL_USERNAME=$(echo -n "${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_username }}" | base64) \
+          --from-literal=EMAIL_PASSWORD=$(echo -n "${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_password }}" | base64) \
+          --from-literal=JWT_SECRET=$(echo -n "${{ fromJson(secrets.CICD_PIPELINE_SECRETS).jwt_secret }}" | base64)
 
     - name: Apply Kubernetes configurations
       run: |
