@@ -5,9 +5,7 @@ on:
     branches: [ "main" ]
 
 env:
-  PROJECT_ID: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).project_id }}
-  GKE_CLUSTER: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).cluster_name }}
-  GKE_ZONE: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).zone }}
+  SECRETS: ${{ secrets.CICD_PIPELINE_SECRETS }}
   DEPLOYMENT_NAME: aphorist
   FRONTEND_IMAGE: aphorist-frontend
   BACKEND_IMAGE: aphorist-backend
@@ -19,6 +17,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Parse secrets
+      id: secrets
+      run: |
+        echo "PROJECT_ID=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .project_id)" >> $GITHUB_ENV
+        echo "GKE_CLUSTER=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .cluster_name)" >> $GITHUB_ENV
+        echo "GKE_ZONE=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .zone)" >> $GITHUB_ENV
+        echo "SERVICE_ACCOUNT_KEY=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .service_account_key)" >> $GITHUB_ENV
     - name: Checkout repository
       uses: actions/checkout@v3
 
@@ -69,7 +74,7 @@ jobs:
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
         
-        # Update images
+        # Update imagesS
         kubectl set image deployment/frontend \
           frontend=gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:$GITHUB_SHA
         kubectl set image deployment/backend \
