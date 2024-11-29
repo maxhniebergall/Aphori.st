@@ -17,13 +17,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Parse secrets
-      id: secrets
+    - name: Set environment variables
       run: |
-        echo "PROJECT_ID=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .project_id)" >> $GITHUB_ENV
-        echo "GKE_CLUSTER=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .cluster_name)" >> $GITHUB_ENV
-        echo "GKE_ZONE=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .zone)" >> $GITHUB_ENV
-        echo "SERVICE_ACCOUNT_KEY=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .service_account_key)" >> $GITHUB_ENV
+        echo "PROJECT_ID=${{ secrets.PROJECT_ID }}" >> $GITHUB_ENV
+        echo "GKE_CLUSTER=${{ secrets.CLUSTER_NAME }}" >> $GITHUB_ENV
+        echo "GKE_ZONE=${{ secrets.ZONE }}" >> $GITHUB_ENV
+        echo "SERVICE_ACCOUNT_KEY=${{ secrets.SERVICE_ACCOUNT_KEY }}" >> $GITHUB_ENV
 
     - name: Checkout repository
       uses: actions/checkout@v3
@@ -42,8 +41,9 @@ jobs:
     - name: Get GKE credentials
       uses: google-github-actions/get-gke-credentials@v1
       with:
-        cluster_name: ${{ secrets.CLUSTER_NAME }}
-        location: ${{ secrets.ZONE }}
+        cluster_name: ${{ env.GKE_CLUSTER }}
+        location: ${{ env.GKE_ZONE }}
+        project_id: ${{ env.PROJECT_ID }}
 
     - name: Build Frontend Docker image
       run: |
