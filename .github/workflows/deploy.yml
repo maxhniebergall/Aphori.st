@@ -18,11 +18,16 @@ jobs:
 
     steps:
     - name: Set environment variables
+      env:
+        PROJECT_ID: ${{ secrets.PROJECT_ID }}
+        GKE_CLUSTER: ${{ secrets.CLUSTER_NAME }}
+        GKE_ZONE: ${{ secrets.ZONE }}
+        SERVICE_ACCOUNT_KEY: ${{ secrets.SERVICE_ACCOUNT_KEY }}
       run: |
-        echo "PROJECT_ID=${{ secrets.PROJECT_ID }}" >> $GITHUB_ENV
-        echo "GKE_CLUSTER=${{ secrets.CLUSTER_NAME }}" >> $GITHUB_ENV
-        echo "GKE_ZONE=${{ secrets.ZONE }}" >> $GITHUB_ENV
-        echo "SERVICE_ACCOUNT_KEY=${{ secrets.SERVICE_ACCOUNT_KEY }}" >> $GITHUB_ENV
+        echo "PROJECT_ID=${PROJECT_ID}" >> $GITHUB_ENV
+        echo "GKE_CLUSTER=${GKE_CLUSTER}" >> $GITHUB_ENV
+        echo "GKE_ZONE=${GKE_ZONE}" >> $GITHUB_ENV
+        echo "SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}" >> $GITHUB_ENV
 
     - name: Checkout repository
       uses: actions/checkout@v3
