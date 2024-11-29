@@ -3,18 +3,16 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Create a transporter using Netim's SMTP settings
 const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST, // Netim SMTP server
-    port: process.env.EMAIL_PORT, // 465 for SSL/TLS
-    secure: process.env.EMAIL_SECURE === 'true', // true for port 465, false for other ports
+    host: process.env.EMAIL_HOST,   
+    port: process.env.EMAIL_PORT,     // 465 (SSL) or 587 (TLS)
+    secure: process.env.EMAIL_PORT === '465', // true for 465, false for 587
     auth: {
-        user: process.env.EMAIL_USERNAME, // Your Netim email address
-        pass: process.env.EMAIL_PASSWORD, // Your Netim email password or app-specific password
+        user: process.env.EMAIL_USERNAME,
+        pass: process.env.EMAIL_PASSWORD,
     },
     tls: {
-        // If you encounter certificate issues, you can allow self-signed certificates (not recommended for production)
-        rejectUnauthorized: false,
+        rejectUnauthorized: true      // Enable strict certificate checking for production
     },
 });
 

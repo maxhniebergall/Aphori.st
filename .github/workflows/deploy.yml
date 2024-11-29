@@ -24,14 +24,15 @@ jobs:
         echo "GKE_CLUSTER=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .cluster_name)" >> $GITHUB_ENV
         echo "GKE_ZONE=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .zone)" >> $GITHUB_ENV
         echo "SERVICE_ACCOUNT_KEY=$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .service_account_key)" >> $GITHUB_ENV
+
     - name: Checkout repository
       uses: actions/checkout@v3
 
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v1
       with:
-        project_id: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).project_id }}
-        service_account_key: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).service_account_key }}
+        project_id: ${{ env.PROJECT_ID }}
+        service_account_key: ${{ env.SERVICE_ACCOUNT_KEY }}
         install_components: 'gke-gcloud-auth-plugin'
 
     - name: Configure Docker
@@ -41,8 +42,8 @@ jobs:
     - name: Get GKE credentials
       uses: google-github-actions/get-gke-credentials@v1
       with:
-        cluster_name: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).cluster_name }}
-        location: ${{ fromJson(secrets.CICD_PIPELINE_SECRETS).zone }}
+        cluster_name: ${{ env.GKE_CLUSTER }}
+        location: ${{ env.GKE_ZONE }}
 
     - name: Build Frontend Docker image
       run: |
@@ -61,11 +62,12 @@ jobs:
       run: |
         # Create secret using base64 encoded values
         kubectl create secret generic backend-secrets \
-          --from-literal=EMAIL_HOST=$(echo -n "${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_host }}" | base64) \
-          --from-literal=EMAIL_PORT=$(echo -n "${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_port }}" | base64) \
-          --from-literal=EMAIL_USERNAME=$(echo -n "${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_username }}" | base64) \
-          --from-literal=EMAIL_PASSWORD=$(echo -n "${{ fromJson(secrets.CICD_PIPELINE_SECRETS).email_password }}" | base64) \
-          --from-literal=JWT_SECRET=$(echo -n "${{ fromJson(secrets.CICD_PIPELINE_SECRETS).jwt_secret }}" | base64)
+          --from-literal=EMAIL_HOST=$(echo -n "$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .email_host)" | base64) \
+          --from-literal=EMAIL_PORT=$(echo -n "$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .email_port)" | base64) \
+          --from-literal=EMAIL_USERNAME=$(echo -n "$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .email_username)" | base64) \
+          --from-literal=EMAIL_PASSWORD=$(echo -n "$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .email_password)" | base64) \
+          --from-literal=JWT_SECRET=$(echo -n "$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .jwt_secret)" | base64) \
+          --dry-run=client -o yaml | kubectl apply -f -
 
     - name: Apply Kubernetes configurations
       run: |
@@ -74,7 +76,7 @@ jobs:
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
         
-        # Update imagesS
+        # Update images
         kubectl set image deployment/frontend \
           frontend=gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:$GITHUB_SHA
         kubectl set image deployment/backend \
