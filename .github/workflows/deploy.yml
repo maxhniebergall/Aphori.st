@@ -42,8 +42,8 @@ jobs:
     - name: Get GKE credentials
       uses: google-github-actions/get-gke-credentials@v1
       with:
-        cluster_name: ${{ env.GKE_CLUSTER }}
-        location: ${{ env.GKE_ZONE }}
+        cluster_name: ${{ secrets.CLUSTER_NAME }}
+        location: ${{ secrets.ZONE }}
 
     - name: Build Frontend Docker image
       run: |
@@ -60,13 +60,12 @@ jobs:
 
     - name: Create backend secrets
       run: |
-        # Create secret using base64 encoded values
         kubectl create secret generic backend-secrets \
-          --from-literal=EMAIL_HOST=$(echo -n "$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .email_host)" | base64) \
-          --from-literal=EMAIL_PORT=$(echo -n "$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .email_port)" | base64) \
-          --from-literal=EMAIL_USERNAME=$(echo -n "$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .email_username)" | base64) \
-          --from-literal=EMAIL_PASSWORD=$(echo -n "$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .email_password)" | base64) \
-          --from-literal=JWT_SECRET=$(echo -n "$(echo '${{ secrets.CICD_PIPELINE_SECRETS }}' | jq -r .jwt_secret)" | base64) \
+          --from-literal=EMAIL_HOST=$(echo -n "${{ secrets.EMAIL_HOST }}" | base64) \
+          --from-literal=EMAIL_PORT=$(echo -n "${{ secrets.EMAIL_PORT }}" | base64) \
+          --from-literal=EMAIL_USERNAME=$(echo -n "${{ secrets.EMAIL_USERNAME }}" | base64) \
+          --from-literal=EMAIL_PASSWORD=$(echo -n "${{ secrets.EMAIL_PASSWORD }}" | base64) \
+          --from-literal=JWT_SECRET=$(echo -n "${{ secrets.JWT_SECRET }}" | base64) \
           --dry-run=client -o yaml | kubectl apply -f -
 
     - name: Apply Kubernetes configurations
