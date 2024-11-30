@@ -336,6 +336,10 @@ app.get('/api/profile', authenticateToken, (req, res) => {
     res.json({ id: user.id, email: user.email });
 });
 
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'healthy' });
+});
+
 app.listen(PORT, () => {
     logger.info(`Server is available on port ${PORT}`);
 });

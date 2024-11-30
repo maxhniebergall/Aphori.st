@@ -20,6 +20,19 @@ spec:
         env:
         - name: REACT_APP_API_URL
           value: "/api"  # Will be handled by nginx reverse proxy
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 30
 ---
 apiVersion: apps/v1
 kind: Deployment

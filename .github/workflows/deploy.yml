@@ -15,28 +15,24 @@ jobs:
   setup-build-publish-deploy:
     name: Setup, Build, Publish, and Deploy
     runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
 
     steps:
-    - name: Set environment variables
-      env:
-        PROJECT_ID: ${{ secrets.PROJECT_ID }}
-        GKE_CLUSTER: ${{ secrets.CLUSTER_NAME }}
-        GKE_ZONE: ${{ secrets.ZONE }}
-        SERVICE_ACCOUNT_KEY: ${{ secrets.SERVICE_ACCOUNT_KEY }}
-      run: |
-        echo "PROJECT_ID=${PROJECT_ID}" >> $GITHUB_ENV
-        echo "GKE_CLUSTER=${GKE_CLUSTER}" >> $GITHUB_ENV
-        echo "GKE_ZONE=${GKE_ZONE}" >> $GITHUB_ENV
-        echo "SERVICE_ACCOUNT_KEY=${SERVICE_ACCOUNT_KEY}" >> $GITHUB_ENV
-
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Set up Cloud SDK
-      uses: google-github-actions/setup-gcloud@v1
+    - id: 'auth'
+      name: 'Authenticate to Google Cloud'
+      uses: 'google-github-actions/auth@v1'
       with:
-        project_id: ${{ env.PROJECT_ID }}
-        service_account_key: ${{ env.SERVICE_ACCOUNT_KEY }}
+        credentials_json: '${{ secrets.SERVICE_ACCOUNT_KEY }}'
+
+    - name: Set up Cloud SDK
+      uses: 'google-github-actions/setup-gcloud@v1'
+      with:
+        project_id: ${{ secrets.PROJECT_ID }}
         install_components: 'gke-gcloud-auth-plugin'
 
     - name: Configure Docker
@@ -75,17 +71,18 @@ jobs:
     - name: Apply Kubernetes configurations
       run: |
         # Apply persistent volume and deployments
-        kubectl apply -f k8s/persistent-volume.yaml
-        kubectl apply -f k8s/deployment.yaml
-        kubectl apply -f k8s/service.yaml
+        kubectl apply -f k8s/persistent-volume.yaml || exit 1
+        kubectl apply -f k8s/deployment.yaml || exit 1
+        kubectl apply -f k8s/service.yaml || exit 1
         
         # Update images
         kubectl set image deployment/frontend \
-          frontend=gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:$GITHUB_SHA
+          frontend=gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:$GITHUB_SHA || exit 1
         kubectl set image deployment/backend \
-          backend=gcr.io/$PROJECT_ID/$BACKEND_IMAGE:$GITHUB_SHA
+          backend=gcr.io/$PROJECT_ID/$BACKEND_IMAGE:$GITHUB_SHA || exit 1
 
     - name: Verify deployments
+      timeout-minutes: 10
       run: |
-        kubectl rollout status deployment/frontend
-        kubectl rollout status deployment/backend
+        kubectl rollout status deployment/frontend || exit 1
+        kubectl rollout status deployment/backend || exit 1
