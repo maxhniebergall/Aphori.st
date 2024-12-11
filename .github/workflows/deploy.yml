@@ -45,6 +45,10 @@ jobs:
         cluster_name: ${{ secrets.CLUSTER_NAME }}
         location: ${{ secrets.ZONE }}
 
+    - name: Update kubeconfig
+      run: |
+        gcloud container clusters get-credentials ${{ secrets.CLUSTER_NAME }} --zone ${{ secrets.ZONE }}
+
     - name: Build Frontend Docker image
       run: |
         docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA -f frontend/Dockerfile.prod ./frontend
