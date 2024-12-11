@@ -80,12 +80,17 @@ jobs:
       run: |
         # Check if cert-manager namespace exists
         if kubectl get namespace cert-manager >/dev/null 2>&1; then
-          echo "cert-manager namespace exists, skipping installation"
+          echo "cert-manager namespace exists"
+          # Ensure cert-manager is installed even if namespace exists
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --version v1.10.0 \
+            --set installCRDs=true \
+            --wait
         else
-          # Create namespace if it doesn't exist
+          # Create namespace and install cert-manager
           kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
           
-          # Install cert-manager
           helm install cert-manager jetstack/cert-manager \
             --namespace cert-manager \
             --version v1.10.0 \
@@ -95,7 +100,10 @@ jobs:
 
     - name: Wait for cert-manager to be ready
       run: |
-        kubectl wait --for=condition=available deployment --all -n cert-manager --timeout=300s
+        echo "Waiting for cert-manager deployments to be ready..."
+        kubectl -n cert-manager wait --for=condition=available deployment/cert-manager --timeout=300s
+        kubectl -n cert-manager wait --for=condition=available deployment/cert-manager-webhook --timeout=300s
+        kubectl -n cert-manager wait --for=condition=available deployment/cert-manager-cainjector --timeout=300s
 
     - name: Create backend secrets
       run: |
