@@ -58,6 +58,10 @@ jobs:
         docker push gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA
         docker push gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA
 
+    - name: Set up cert-manager
+      run: |
+        kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+
     - name: Create backend secrets
       run: |
         kubectl create secret generic backend-secrets \
@@ -70,7 +74,11 @@ jobs:
 
     - name: Apply Kubernetes configurations
       run: |
-        # Apply persistent volume and deployments
+        # Apply Issuer and Ingress configurations
+        kubectl apply -f k8s/issuer-lets-encrypt-production.yaml
+        kubectl apply -f k8s/ingress.yaml
+
+        # Apply other configurations
         kubectl apply -f k8s/persistent-volume.yaml || exit 1
         kubectl apply -f k8s/deployment.yaml || exit 1
         kubectl apply -f k8s/service.yaml || exit 1
