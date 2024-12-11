@@ -31,7 +31,7 @@ jobs:
 
     - name: Configure Google Cloud Auth
       run: |
-        echo '${{ secrets.SERVICE_ACCOUNT_KEY }}' > /tmp/service-account-key.json
+        echo '${{ secrets.SERVICE_ACCOUNT_KEY }}' | base64 --decode > /tmp/service-account-key.json
         export GOOGLE_APPLICATION_CREDENTIALS=/tmp/service-account-key.json
         gcloud auth activate-service-account --key-file=/tmp/service-account-key.json
 
