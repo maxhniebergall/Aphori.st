@@ -60,11 +60,11 @@ jobs:
 
     - name: Install cert-manager CRDs
       run: |
-        kubectl apply -f cert-manager.crds.yaml
+        kubectl apply -f k8s/cert-manager.crds.yaml
 
     - name: Install cert-manager
       run: |
-        kubectl apply -f cert-manager.yaml
+        kubectl apply -f k8/scert-manager.yaml
 
     - name: Wait for cert-manager to be ready
       run: |
