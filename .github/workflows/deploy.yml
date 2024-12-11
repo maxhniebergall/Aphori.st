@@ -78,23 +78,20 @@ jobs:
 
     - name: Install cert-manager using Helm
       run: |
-        # Check if cert-manager already exists
-        if helm list -n cert-manager | grep -q "cert-manager"; then
-          echo "Removing existing cert-manager installation..."
-          helm uninstall cert-manager -n cert-manager
-          # Wait for resources to be cleaned up
-          kubectl delete namespace cert-manager --wait=true || true
+        # Check if cert-manager namespace exists
+        if kubectl get namespace cert-manager >/dev/null 2>&1; then
+          echo "cert-manager namespace exists, skipping installation"
+        else
+          # Create namespace if it doesn't exist
+          kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
+          
+          # Install cert-manager
+          helm install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --version v1.10.0 \
+            --set installCRDs=true \
+            --wait
         fi
-        
-        # Create namespace if it doesn't exist
-        kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
-        
-        # Install cert-manager
-        helm install cert-manager jetstack/cert-manager \
-          --namespace cert-manager \
-          --version v1.10.0 \
-          --set installCRDs=true \
-          --wait
 
     - name: Wait for cert-manager to be ready
       run: |
