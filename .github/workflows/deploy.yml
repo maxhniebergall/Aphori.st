@@ -58,9 +58,19 @@ jobs:
         docker push gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA
         docker push gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA
 
-    - name: Set up cert-manager
+    - name: Install cert-manager CRDs
       run: |
-        kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+        kubectl apply -f cert-manager.crds.yaml
+
+    - name: Install cert-manager
+      run: |
+        kubectl apply -f cert-manager.yaml
+
+    - name: Wait for cert-manager to be ready
+      run: |
+        kubectl rollout status deployment/cert-manager -n cert-manager
+        kubectl rollout status deployment/cert-manager-webhook -n cert-manager
+        kubectl rollout status deployment/cert-manager-cainjector -n cert-manager
 
     - name: Create backend secrets
       run: |
