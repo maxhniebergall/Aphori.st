@@ -95,9 +95,7 @@ jobs:
 
     - name: Wait for cert-manager to be ready
       run: |
-        kubectl rollout status deployment/cert-manager -n cert-manager
-        kubectl rollout status deployment/cert-manager-webhook -n cert-manager
-        kubectl rollout status deployment/cert-manager-cainjector -n cert-manager
+        kubectl wait --for=condition=available deployment --all -n cert-manager --timeout=300s
 
     - name: Create backend secrets
       run: |
