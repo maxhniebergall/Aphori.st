@@ -29,6 +29,12 @@ jobs:
       with:
         credentials_json: '${{ secrets.SERVICE_ACCOUNT_KEY }}'
 
+    - name: Configure Google Cloud Auth
+      run: |
+        echo '${{ secrets.SERVICE_ACCOUNT_KEY }}' > /tmp/service-account-key.json
+        export GOOGLE_APPLICATION_CREDENTIALS=/tmp/service-account-key.json
+        gcloud auth activate-service-account --key-file=/tmp/service-account-key.json
+
     - name: Set up Cloud SDK
       uses: 'google-github-actions/setup-gcloud@v1'
       with:
