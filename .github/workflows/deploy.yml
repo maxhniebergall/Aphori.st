@@ -73,30 +73,30 @@ jobs:
       with:
         version: v3.8.0
 
-    - name: Add Jetstack Helm repository
-      run: helm repo add jetstack https://charts.jetstack.io && helm repo update
-
     - name: Install cert-manager using Helm
       run: |
-        # Check if cert-manager namespace exists
+        # Check if cert-manager namespace exists and clean up if necessary
         if kubectl get namespace cert-manager >/dev/null 2>&1; then
-          echo "cert-manager namespace exists"
-          # Ensure cert-manager is installed even if namespace exists
-          helm upgrade --install cert-manager jetstack/cert-manager \
-            --namespace cert-manager \
-            --version v1.16.2 \
-            --set installCRDs=true \
-            --wait
+          echo "cert-manager namespace exists, cleaning up existing resources..."
+          kubectl delete -n cert-manager deployment cert-manager cert-manager-cainjector cert-manager-webhook --ignore-not-found
+          kubectl delete -n cert-manager service cert-manager cert-manager-webhook --ignore-not-found
+          kubectl delete -n cert-manager serviceaccount cert-manager cert-manager-cainjector cert-manager-webhook --ignore-not-found
         else
-          # Create namespace and install cert-manager
-          kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
-          
-          helm install cert-manager jetstack/cert-manager \
-            --namespace cert-manager \
-            --version v1.16.2 \
-            --set installCRDs=true \
-            --wait
+          # Create namespace
+          kubectl create namespace cert-manager
         fi
+        
+        # Add the Jetstack Helm repository
+        helm repo add jetstack https://charts.jetstack.io
+        helm repo update
+        
+        # Install cert-manager with Helm
+        helm upgrade --install cert-manager jetstack/cert-manager \
+          --namespace cert-manager \
+          --version v1.16.2 \
+          --set installCRDs=true \
+          --wait \
+          --force
 
     - name: Wait for cert-manager to be ready
       run: |
@@ -118,14 +118,6 @@ jobs:
     - name: Deploy to GKE
       run: |
         gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER }} --zone ${{ secrets.GKE_ZONE }}
-        
-        # Install cert-manager with correct namespace configuration
-        kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
-        kubectl label namespace cert-manager cert-manager.io/disable-validation=true --overwrite
-        curl -L https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml | sed 's/kube-system/cert-manager/g' | kubectl apply -f -
-        
-        # Wait for cert-manager to be ready
-        kubectl wait --for=condition=Ready pods --all -n cert-manager --timeout=120s
         
         # Apply Kubernetes configurations
         kubectl apply -f k8s/
