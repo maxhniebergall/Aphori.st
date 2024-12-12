@@ -73,30 +73,39 @@ jobs:
       with:
         version: v3.8.0
 
+    - name: Add Jetstack Helm repository
+      run: helm repo add jetstack https://charts.jetstack.io && helm repo update
+
     - name: Install cert-manager using Helm
       run: |
-        # Check if cert-manager namespace exists and clean up if necessary
-        if kubectl get namespace cert-manager >/dev/null 2>&1; then
-          echo "cert-manager namespace exists, cleaning up existing resources..."
-          kubectl delete -n cert-manager deployment cert-manager cert-manager-cainjector cert-manager-webhook --ignore-not-found
-          kubectl delete -n cert-manager service cert-manager cert-manager-webhook --ignore-not-found
-          kubectl delete -n cert-manager serviceaccount cert-manager cert-manager-cainjector cert-manager-webhook --ignore-not-found
-        else
-          # Create namespace
-          kubectl create namespace cert-manager
-        fi
+        # Clean up any existing cert-manager resources
+        kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml --ignore-not-found=true
         
         # Add the Jetstack Helm repository
         helm repo add jetstack https://charts.jetstack.io
         helm repo update
         
-        # Install cert-manager with Helm
-        helm upgrade --install cert-manager jetstack/cert-manager \
-          --namespace cert-manager \
-          --version v1.16.2 \
-          --set installCRDs=true \
-          --wait \
-          --force
+        # Check if cert-manager namespace exists
+        if kubectl get namespace cert-manager >/dev/null 2>&1; then
+          echo "cert-manager namespace exists"
+          # Clean up existing resources
+          kubectl delete -n cert-manager deployment,service,serviceaccount,clusterrole,clusterrolebinding,role,rolebinding --all --ignore-not-found=true
+          # Upgrade/install cert-manager
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --version v1.16.2 \
+            --set installCRDs=true \
+            --wait
+        else
+          # Create namespace and install cert-manager
+          kubectl create namespace cert-manager
+          
+          helm install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --version v1.16.2 \
+            --set installCRDs=true \
+            --wait
+        fi
 
     - name: Wait for cert-manager to be ready
       run: |
