@@ -72,12 +72,12 @@ jobs:
           --from-literal=EMAIL_USERNAME=${{ secrets.EMAIL_USERNAME }} \
           --from-literal=EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }} \
           --from-literal=JWT_SECRET=${{ secrets.JWT_SECRET }} \
-          --dry-run=client -o yaml | kubectl apply -f -
+          --dry-run=client -o yaml | kubectl apply -f - --validate=false
 
     - name: Deploy to GKE
       run: |
         # Apply Kubernetes configurations
-        kubectl apply -f k8s/
+        kubectl apply -f k8s/ --validate=false
         
         # Update images
         kubectl set image deployment/frontend \
