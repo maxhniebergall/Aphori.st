@@ -84,7 +84,7 @@ jobs:
           # Ensure cert-manager is installed even if namespace exists
           helm upgrade --install cert-manager jetstack/cert-manager \
             --namespace cert-manager \
-            --version v1.10.0 \
+            --version v1.16.2 \
             --set installCRDs=true \
             --wait
         else
@@ -93,7 +93,7 @@ jobs:
           
           helm install cert-manager jetstack/cert-manager \
             --namespace cert-manager \
-            --version v1.10.0 \
+            --version v1.16.2 \
             --set installCRDs=true \
             --wait
         fi
@@ -115,16 +115,20 @@ jobs:
           --from-literal=JWT_SECRET=${{ secrets.JWT_SECRET }} \
           --dry-run=client -o yaml | kubectl apply -f -
 
-    - name: Apply Kubernetes configurations
+    - name: Deploy to GKE
       run: |
-        # Apply Issuer and Ingress configurations
-        kubectl apply -f k8s/issuer-lets-encrypt-production.yaml
-        kubectl apply -f k8s/ingress.yaml
-
-        # Apply other configurations
-        kubectl apply -f k8s/persistent-volume.yaml || exit 1
-        kubectl apply -f k8s/deployment.yaml || exit 1
-        kubectl apply -f k8s/service.yaml || exit 1
+        gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER }} --zone ${{ secrets.GKE_ZONE }}
+        
+        # Install cert-manager with correct namespace configuration
+        kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
+        kubectl label namespace cert-manager cert-manager.io/disable-validation=true --overwrite
+        curl -L https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml | sed 's/kube-system/cert-manager/g' | kubectl apply -f -
+        
+        # Wait for cert-manager to be ready
+        kubectl wait --for=condition=Ready pods --all -n cert-manager --timeout=120s
+        
+        # Apply Kubernetes configurations
+        kubectl apply -f k8s/
         
         # Update images
         kubectl set image deployment/frontend \
