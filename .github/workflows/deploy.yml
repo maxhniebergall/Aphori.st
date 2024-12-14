@@ -65,14 +65,15 @@ jobs:
           --create-namespace \
           --version v1.10.0 \
           --set global.leaderElection.namespace=cert-manager \
+          --set startupapicheck.resources.requests.cpu=100m \
+          --set startupapicheck.resources.requests.memory=128Mi \
+          --set startupapicheck.resources.limits.memory=256Mi \
           --set resources.requests.cpu=100m \
           --set resources.requests.memory=128Mi \
           --set webhook.resources.requests.cpu=100m \
           --set webhook.resources.requests.memory=128Mi \
           --set cainjector.resources.requests.cpu=100m \
-          --set cainjector.resources.requests.memory=128Mi \
-          --set startupapicheck.resources.requests.cpu=100m \
-          --set startupapicheck.resources.requests.memory=128Mi
+          --set cainjector.resources.requests.memory=128Mi
 
     - name: Build Frontend Docker image
       run: |
