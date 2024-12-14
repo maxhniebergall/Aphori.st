@@ -90,36 +90,201 @@ jobs:
 
     - name: Deploy to GKE
       run: |
-        # Wait for cert-manager webhook to be ready
-        echo "Waiting for cert-manager webhook..."
-        if ! kubectl wait --for=condition=ready pod -l app=webhook -n cert-manager --timeout=60s; then
-          echo "Webhook pod not ready. Checking pod status..."
-          kubectl describe pod -n cert-manager -l app=webhook | grep -A 10 "Status:" | grep -v "Token"
-          exit 1
-        fi
+        set -e  # Exit on any error
+        trap 'echo "Error on line $LINENO"' ERR
+
+        # Cleanup any old resources
+        echo "Cleaning up old resources..."
+        kubectl delete deployment frontend backend redis --ignore-not-found=true
+        kubectl delete service frontend backend redis --ignore-not-found=true
         
-        # Try to apply the issuer first to isolate any webhook issues
+        # Create services first
+        echo "Creating services..."
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: frontend
+          namespace: default
+        spec:
+          type: ClusterIP
+          selector:
+            app: frontend
+          ports:
+            - port: 8080
+              targetPort: 8080
+              protocol: TCP
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: backend
+          namespace: default
+        spec:
+          type: ClusterIP
+          selector:
+            app: backend
+          ports:
+            - port: 8080
+              targetPort: 8080
+              protocol: TCP
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: redis
+          namespace: default
+        spec:
+          type: ClusterIP
+          selector:
+            app: redis
+          ports:
+            - port: 6379
+              targetPort: 6379
+              protocol: TCP
+        EOF
+        
+        # Create deployments
+        echo "Creating deployments..."
+        cat <<EOF | kubectl apply -f -
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: frontend
+          namespace: default
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: frontend
+          template:
+            metadata:
+              labels:
+                app: frontend
+            spec:
+              containers:
+              - name: frontend
+                image: gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA
+                ports:
+                - containerPort: 8080
+                  protocol: TCP
+                readinessProbe:
+                  httpGet:
+                    path: /
+                    port: 8080
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: backend
+          namespace: default
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: backend
+          template:
+            metadata:
+              labels:
+                app: backend
+            spec:
+              containers:
+              - name: backend
+                image: gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA
+                ports:
+                - containerPort: 8080
+                  protocol: TCP
+                readinessProbe:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                env:
+                - name: EMAIL_HOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-secrets
+                      key: EMAIL_HOST
+                - name: EMAIL_PORT
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-secrets
+                      key: EMAIL_PORT
+                - name: EMAIL_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-secrets
+                      key: EMAIL_USERNAME
+                - name: EMAIL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-secrets
+                      key: EMAIL_PASSWORD
+                - name: JWT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: backend-secrets
+                      key: JWT_SECRET
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: redis
+          namespace: default
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: redis
+          template:
+            metadata:
+              labels:
+                app: redis
+            spec:
+              containers:
+              - name: redis
+                image: $REDIS_IMAGE
+                ports:
+                - containerPort: 6379
+                  protocol: TCP
+        EOF
+        
+        # Wait for deployments to be ready
+        echo "Waiting for deployments to be ready..."
+        kubectl wait --for=condition=available deployment/frontend deployment/backend deployment/redis --timeout=300s
+        
+        # Apply SSL secret
+        echo "Applying SSL secret..."
+        kubectl apply -f k8s/secret.yaml
+        
+        # Apply ingress and wait for it to be configured
+        echo "Applying ingress configuration..."
+        kubectl apply -f k8s/ingress.yaml
+        
+        # Wait for ingress to be processed
+        echo "Waiting for ingress to be processed..."
+        sleep 30
+        
+        # Check ingress status
+        echo "Checking ingress status..."
+        kubectl get ingress web-ingress
+        kubectl describe ingress web-ingress
+        
+        # Apply the cert-manager issuer
         echo "Applying cert-manager issuer..."
-        if ! kubectl apply -f k8s/issuer-lets-encrypt-production.yaml; then
-          echo "Failed to apply issuer. Checking webhook status..."
-          kubectl get pods -n cert-manager -l app=webhook
-          echo "Checking webhook readiness..."
-          kubectl describe pod -n cert-manager -l app=webhook | grep -A 5 "Conditions:"
-          exit 1
-        fi
+        kubectl apply -f k8s/issuer-lets-encrypt-production.yaml
         
-        # Apply remaining configurations
-        echo "Applying remaining configurations..."
-        kubectl apply -f k8s/
-        
-        # Update images
-        kubectl set image deployment/frontend \
-          frontend=gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA || exit 1
-        kubectl set image deployment/backend \
-          backend=gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA || exit 1
+        # Check certificate status
+        echo "Checking certificate status..."
+        kubectl get certificate -A
+        kubectl get challenges -A
 
     - name: Verify deployments
       timeout-minutes: 10
       run: |
         kubectl rollout status deployment/frontend || exit 1
         kubectl rollout status deployment/backend || exit 1
+        kubectl rollout status deployment/redis || exit 1

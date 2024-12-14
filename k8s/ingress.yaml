@@ -5,17 +5,18 @@ metadata:
   name: web-ingress
   namespace: default
   annotations:
+    # This tells Google Cloud to create an External Load Balancer to realize this Ingress
+    kubernetes.io/ingress.class: gce
     # This enables HTTP connections from Internet clients
     kubernetes.io/ingress.allow-http: "true"
     # This tells Google Cloud to associate the External Load Balancer with the static IP which we created earlier
     kubernetes.io/ingress.global-static-ip-name: web-ip
     cert-manager.io/issuer: letsencrypt-production
 spec:
-  ingressClassName: gce
   tls:
-    - hosts:
+    - secretName: web-ssl
+      hosts:
         - aphori.st
-      secretName: web-ssl
   rules:
     - host: aphori.st
       http:
@@ -24,6 +25,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: web
+                name: frontend
                 port:
                   number: 8080
