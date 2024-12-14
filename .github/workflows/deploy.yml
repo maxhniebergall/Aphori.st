@@ -58,6 +58,12 @@ jobs:
       run: |
         kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.10.1/cert-manager.crds.yaml
 
+    - name: Uninstall existing cert-manager
+      run: |
+        helm uninstall cert-manager --namespace cert-manager || true
+        kubectl delete namespace cert-manager --ignore-not-found=true
+        sleep 10
+
     - name: Install cert-manager
       run: |
         helm install cert-manager jetstack/cert-manager \
