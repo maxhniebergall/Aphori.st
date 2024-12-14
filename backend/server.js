@@ -43,10 +43,7 @@ const __dirname = dirname(__filename);
 
 
 const redisClient = createClient({
-    socket: {
-        port: 6379,
-        host: process.env.REDIS_SERVER_IP
-    }
+    url: `redis://${process.env.REDIS_SERVER_IP}:${process.env.REDIS_PORT || 6379}`
 });
 
 redisClient.on('error', err => logger.error('Redis Client Error: %O', err));
