@@ -45,6 +45,27 @@ jobs:
       run: |
         gcloud auth configure-docker
 
+    - name: Install Helm
+      run: |
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+    - name: Add cert-manager Helm repo
+      run: |
+        helm repo add jetstack https://charts.jetstack.io
+        helm repo update
+
+    - name: Install cert-manager CRDs
+      run: |
+        kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.10.1/cert-manager.crds.yaml
+
+    - name: Install cert-manager
+      run: |
+        helm install cert-manager jetstack/cert-manager \
+          --namespace cert-manager \
+          --create-namespace \
+          --version v1.10.0 \
+          --set global.leaderElection.namespace=cert-manager
+
     - name: Build Frontend Docker image
       run: |
         docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA -f frontend/Dockerfile.prod ./frontend
@@ -291,7 +312,7 @@ jobs:
         
         # Apply the cert-manager issuer
         echo "Applying cert-manager issuer..."
-        kubectl apply -f k8s/issuer-lets-encrypt-production.yaml
+        kubectl apply -f k8s/issuer-lets-encrypt-staging.yaml
         
         # Check certificate status
         echo "Checking certificate status..."
