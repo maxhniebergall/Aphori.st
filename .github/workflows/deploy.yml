@@ -68,10 +68,49 @@ jobs:
           --from-literal=JWT_SECRET=${{ secrets.JWT_SECRET }} \
           --dry-run=client -o yaml | kubectl apply -f - --validate=false
 
+    - name: Check cert-manager status
+      run: |
+        echo "Checking cert-manager pods..."
+        kubectl get pods -n cert-manager
+        
+        echo "\nChecking cert-manager pod status..."
+        kubectl describe pods -n cert-manager -l app=cert-manager | grep -A 5 "Status:"
+        
+        echo "\nChecking webhook pod status..."
+        kubectl describe pods -n cert-manager -l app=webhook | grep -A 5 "Status:"
+        
+        echo "\nChecking webhook service status..."
+        kubectl get service cert-manager-webhook -n cert-manager
+        
+        echo "\nChecking webhook endpoints..."
+        kubectl get endpoints cert-manager-webhook -n cert-manager
+        
+        echo "\nChecking recent cert-manager events (last 5)..."
+        kubectl get events -n cert-manager --sort-by='.lastTimestamp' | tail -n 5
+
     - name: Deploy to GKE
       run: |
-        # Apply Kubernetes configurations
-        kubectl apply -f k8s/ --validate=false
+        # Wait for cert-manager webhook to be ready
+        echo "Waiting for cert-manager webhook..."
+        if ! kubectl wait --for=condition=ready pod -l app=webhook -n cert-manager --timeout=60s; then
+          echo "Webhook pod not ready. Checking pod status..."
+          kubectl describe pod -n cert-manager -l app=webhook | grep -A 10 "Status:" | grep -v "Token"
+          exit 1
+        fi
+        
+        # Try to apply the issuer first to isolate any webhook issues
+        echo "Applying cert-manager issuer..."
+        if ! kubectl apply -f k8s/issuer-lets-encrypt-production.yaml; then
+          echo "Failed to apply issuer. Checking webhook status..."
+          kubectl get pods -n cert-manager -l app=webhook
+          echo "Checking webhook readiness..."
+          kubectl describe pod -n cert-manager -l app=webhook | grep -A 5 "Conditions:"
+          exit 1
+        fi
+        
+        # Apply remaining configurations
+        echo "Applying remaining configurations..."
+        kubectl apply -f k8s/
         
         # Update images
         kubectl set image deployment/frontend \
