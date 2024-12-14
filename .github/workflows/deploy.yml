@@ -207,7 +207,7 @@ jobs:
                   initialDelaySeconds: 5
                   periodSeconds: 10
                 env:
-                - name: REDIS_HOST
+                - name: REDIS_SERVER_IP
                   value: redis
                 - name: REDIS_PORT
                   value: "6379"
