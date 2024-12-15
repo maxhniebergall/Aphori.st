@@ -37,35 +37,6 @@ jobs:
       run: |
         gcloud auth configure-docker
 
-    - name: Create Secrets in Secret Manager
-      run: |
-        # Function to create or update secret
-        create_secret() {
-          local secret_name=$1
-          local secret_value=$2
-          
-          # Check if secret exists
-          if ! gcloud secrets describe $secret_name 2>/dev/null; then
-            # Create secret if it doesn't exist
-            echo "Creating secret $secret_name"
-            echo -n "$secret_value" | gcloud secrets create $secret_name \
-              --replication-policy="automatic" \
-              --data-file=-
-          else
-            # Update existing secret
-            echo "Updating secret $secret_name"
-            echo -n "$secret_value" | gcloud secrets versions add $secret_name \
-              --data-file=-
-          fi
-        }
-
-        # Create/update each secret
-        create_secret "EMAIL_HOST" "${{ secrets.EMAIL_HOST }}"
-        create_secret "EMAIL_PORT" "${{ secrets.EMAIL_PORT }}"
-        create_secret "EMAIL_USERNAME" "${{ secrets.EMAIL_USERNAME }}"
-        create_secret "EMAIL_PASSWORD" "${{ secrets.EMAIL_PASSWORD }}"
-        create_secret "JWT_SECRET" "${{ secrets.JWT_SECRET }}"
-
     - name: Build Frontend Docker image
       run: |
         docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA -f frontend/Dockerfile.prod ./frontend
