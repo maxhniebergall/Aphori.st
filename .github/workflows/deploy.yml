@@ -89,7 +89,7 @@ jobs:
           --image gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA \
           --platform managed \
           --region $REGION \
-          --set-env-vars "PORT=8080,NGINX_PORT=8080,BACKEND_URL=${BACKEND_URL}" \
+          --set-env-vars "NGINX_PORT=8080,BACKEND_URL=${BACKEND_URL}" \
           --allow-unauthenticated
 
     - name: Get service URLs
