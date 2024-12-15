@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { useSpring, animated } from 'react-spring';
 import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
 import axios from 'axios';
@@ -7,7 +6,6 @@ import axios from 'axios';
 // This is a single node in the story tree. It is used to display a single node in the story tree.
 // It controls the swipe gesture to remove the node from the view, and the animation when the node is focused.
 function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange }) {
-  const [{ x }, api] = useSpring(() => ({ x: 0 }));
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
@@ -92,10 +90,6 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
           cancel();
         }
       }
-      
-      // Limit the drag distance
-      const boundedX = Math.max(-200, Math.min(200, mx));
-      api.start({ x: down ? boundedX : 0, immediate: down });
     },
   }, {
     drag: {
@@ -117,9 +111,8 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
       onClick={() => setCurrentFocus(index)}
       className="story-tree-node"
     >
-      <animated.div 
+      <div 
         {...bind()} 
-        style={{ x }} 
         className={`story-tree-node-content ${hasSiblings ? 'has-siblings' : ''}`}
         id={currentSibling.id}
       >
@@ -138,7 +131,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
             </div>
           )}
         </div>
-      </animated.div>
+      </div>
     </motion.div>
   );
 }

@@ -53,15 +53,9 @@ button {
   width: 100%;
   height: auto;
   position: relative;
-}
-
-.story-tree-node-text {
-  width: 100%;
-  max-width: 100%;
-  word-break: break-word;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  box-sizing: border-box;
+  transform: translateX(0);
+  transition: transform 0.3s ease;
+  will-change: transform;
 }
 
 .story-tree-node-content.has-siblings {

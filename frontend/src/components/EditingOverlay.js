@@ -1,9 +1,10 @@
 // File: /frontend/src/components/EditingOverlay.js
 
-import React, { useState } from 'react';
-import ReactQuill from 'react-quill';
+import React, { useState, lazy, Suspense } from 'react';
 import './EditingOverlay.css';
 import 'react-quill/dist/quill.snow.css';
+
+const ReactQuill = lazy(() => import('react-quill'));
 
 function EditingOverlay({ node, onClose }) {
   const [content, setContent] = useState(node.text);
@@ -18,7 +19,9 @@ function EditingOverlay({ node, onClose }) {
   return (
     <div className="editing-overlay">
       <div className="editing-modal">
-        <ReactQuill value={content} onChange={setContent} />
+        <Suspense fallback={<div>Loading editor...</div>}>
+          <ReactQuill value={content} onChange={setContent} />
+        </Suspense>
         <div className="editing-buttons">
           <button onClick={handleSave}>Save</button>
           <button onClick={onClose}>Cancel</button>
