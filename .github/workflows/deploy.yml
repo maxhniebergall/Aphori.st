@@ -95,7 +95,6 @@ jobs:
           --cpu=1 \
           --memory=512Mi \
           --min-instances=1 \
-          --health-checks=true \
           --allow-unauthenticated
 
     - name: Get service URLs
