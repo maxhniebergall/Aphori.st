@@ -1,7 +1,11 @@
 #!/bin/sh
+set -e
 
 # Replace environment variables in the nginx config template
-envsubst '${NGINX_PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
-# Start nginx
-nginx -g 'daemon off;' 
+# Verify nginx configuration
+nginx -t
+
+# Start nginx in the foreground
+exec nginx -g 'daemon off;' 
