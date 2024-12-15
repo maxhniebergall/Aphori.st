@@ -94,8 +94,8 @@ jobs:
           --timeout 300s \
           --cpu=1 \
           --memory=512Mi \
-          --http-health-check-path=/health \
-          --initial-delay=10 \
+          --min-instances=1 \
+          --health-checks=true \
           --allow-unauthenticated
 
     - name: Get service URLs
