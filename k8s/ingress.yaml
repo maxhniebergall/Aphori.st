@@ -11,10 +11,10 @@ metadata:
     # This tells Google Cloud to associate the External Load Balancer with the static IP which we created earlier
     kubernetes.io/ingress.global-static-ip-name: web-ip
     # Add cert-manager annotation
-    cert-manager.io/cluster-issuer: letsencrypt-staging
+    cert-manager.io/cluster-issuer: letsencrypt-production
 spec:
   tls:
-  - secretName: web-ssl-staging
+  - secretName: web-ssl
     hosts:
     - aphori.st
   rules:

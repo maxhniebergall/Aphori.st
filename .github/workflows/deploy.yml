@@ -1,15 +1,13 @@
-name: Build and Deploy to GKE
+name: Build and Deploy to Cloud Run
 
 on:
   push:
     branches: [ "main" ]
 
 env:
-  SECRETS: ${{ secrets.CICD_PIPELINE_SECRETS }}
-  DEPLOYMENT_NAME: aphorist
   FRONTEND_IMAGE: aphorist-frontend
   BACKEND_IMAGE: aphorist-backend
-  REDIS_IMAGE: redis:alpine
+  REGION: us-central1  # Default region for Cloud Run
   USE_GKE_GCLOUD_AUTH_PLUGIN: True
 
 jobs:
@@ -34,52 +32,10 @@ jobs:
       uses: 'google-github-actions/setup-gcloud@v1'
       with:
         project_id: ${{ secrets.PROJECT_ID }}
-        install_components: 'gke-gcloud-auth-plugin'
-
-    - name: Configure kubectl
-      run: |
-        gcloud components install gke-gcloud-auth-plugin
-        gcloud container clusters get-credentials ${{ secrets.CLUSTER_NAME }} --zone ${{ secrets.ZONE }}
 
     - name: Configure Docker
       run: |
         gcloud auth configure-docker
-
-    - name: Install Helm
-      run: |
-        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-    - name: Add cert-manager Helm repo
-      run: |
-        helm repo add jetstack https://charts.jetstack.io
-        helm repo update
-
-    - name: Install cert-manager CRDs
-      run: |
-        kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.10.1/cert-manager.crds.yaml
-
-    - name: Uninstall existing cert-manager
-      run: |
-        helm uninstall cert-manager --namespace cert-manager || true
-        kubectl delete namespace cert-manager --ignore-not-found=true
-        sleep 10
-
-    - name: Install cert-manager
-      run: |
-        helm install cert-manager jetstack/cert-manager \
-          --namespace cert-manager \
-          --create-namespace \
-          --version v1.10.0 \
-          --set global.leaderElection.namespace=cert-manager \
-          --set startupapicheck.resources.requests.cpu=100m \
-          --set startupapicheck.resources.requests.memory=128Mi \
-          --set startupapicheck.resources.limits.memory=256Mi \
-          --set resources.requests.cpu=100m \
-          --set resources.requests.memory=128Mi \
-          --set webhook.resources.requests.cpu=100m \
-          --set webhook.resources.requests.memory=128Mi \
-          --set cainjector.resources.requests.cpu=100m \
-          --set cainjector.resources.requests.memory=128Mi
 
     - name: Build Frontend Docker image
       run: |
@@ -94,249 +50,48 @@ jobs:
         docker push gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA
         docker push gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA
 
-    - name: Create backend secrets
+    - name: Create VPC connector
       run: |
-        kubectl create secret generic backend-secrets \
-          --from-literal=EMAIL_HOST=${{ secrets.EMAIL_HOST }} \
-          --from-literal=EMAIL_PORT=${{ secrets.EMAIL_PORT }} \
-          --from-literal=EMAIL_USERNAME=${{ secrets.EMAIL_USERNAME }} \
-          --from-literal=EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }} \
-          --from-literal=JWT_SECRET=${{ secrets.JWT_SECRET }} \
-          --dry-run=client -o yaml | kubectl apply -f - --validate=false
+        gcloud compute networks vpc-access connectors create redis-connector \
+          --network default \
+          --region $REGION \
+          --range 10.8.0.0/28 || true
 
-    - name: Check cert-manager status
+    - name: Create Redis instance
       run: |
-        echo "Checking cert-manager pods..."
-        kubectl get pods -n cert-manager
-        
-        echo "\nChecking cert-manager pod status..."
-        kubectl describe pods -n cert-manager -l app=cert-manager | grep -A 5 "Status:"
-        
-        echo "\nChecking webhook pod status..."
-        kubectl describe pods -n cert-manager -l app=webhook | grep -A 5 "Status:"
-        
-        echo "\nChecking webhook service status..."
-        kubectl get service cert-manager-webhook -n cert-manager
-        
-        echo "\nChecking webhook endpoints..."
-        kubectl get endpoints cert-manager-webhook -n cert-manager
-        
-        echo "\nChecking recent cert-manager events (last 5)..."
-        kubectl get events -n cert-manager --sort-by='.lastTimestamp' | tail -n 5
+        gcloud redis instances create redis-instance \
+          --size=1 \
+          --region=$REGION \
+          --redis-version=redis_6_x || true
 
-    - name: Deploy to GKE
+    - name: Deploy Backend to Cloud Run
       run: |
-        set -e  # Exit on any error
-        trap 'echo "Error on line $LINENO"' ERR
+        REDIS_HOST=$(gcloud redis instances describe redis-instance --region=$REGION --format='get(host)')
+        gcloud run deploy backend \
+          --image gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA \
+          --platform managed \
+          --region $REGION \
+          --vpc-connector redis-connector \
+          --set-env-vars "REDIS_SERVER_IP=${REDIS_HOST}" \
+          --set-env-vars "REDIS_PORT=6379" \
+          --set-secrets "EMAIL_HOST=EMAIL_HOST:latest" \
+          --set-secrets "EMAIL_PORT=EMAIL_PORT:latest" \
+          --set-secrets "EMAIL_USERNAME=EMAIL_USERNAME:latest" \
+          --set-secrets "EMAIL_PASSWORD=EMAIL_PASSWORD:latest" \
+          --set-secrets "JWT_SECRET=JWT_SECRET:latest" \
+          --allow-unauthenticated
 
-        # Cleanup any old resources
-        echo "Cleaning up old resources..."
-        kubectl delete deployment frontend backend redis --ignore-not-found=true
-        kubectl delete service frontend backend redis --ignore-not-found=true
-        
-        # Create services first
-        echo "Creating services..."
-        cat <<EOF | kubectl apply -f -
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: frontend
-          namespace: default
-        spec:
-          type: ClusterIP
-          selector:
-            app: frontend
-          ports:
-            - port: 80
-              targetPort: 80
-              protocol: TCP
-        ---
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: backend
-          namespace: default
-        spec:
-          type: ClusterIP
-          selector:
-            app: backend
-          ports:
-            - port: 5000
-              targetPort: 5000
-              protocol: TCP
-        ---
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: redis
-          namespace: default
-        spec:
-          type: ClusterIP
-          selector:
-            app: redis
-          ports:
-            - port: 6379
-              targetPort: 6379
-              protocol: TCP
-        EOF
-        
-        # Create deployments
-        echo "Creating deployments..."
-        cat <<EOF | kubectl apply -f -
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: frontend
-          namespace: default
-        spec:
-          replicas: 1
-          selector:
-            matchLabels:
-              app: frontend
-          template:
-            metadata:
-              labels:
-                app: frontend
-            spec:
-              containers:
-              - name: frontend
-                image: gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA
-                ports:
-                - containerPort: 80
-                  protocol: TCP
-                readinessProbe:
-                  httpGet:
-                    path: /
-                    port: 80
-                  initialDelaySeconds: 5
-                  periodSeconds: 10
-                resources:
-                  requests:
-                    cpu: 250m
-                    memory: 512Mi
-        ---
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: backend
-          namespace: default
-        spec:
-          replicas: 1
-          selector:
-            matchLabels:
-              app: backend
-          template:
-            metadata:
-              labels:
-                app: backend
-            spec:
-              containers:
-              - name: backend
-                image: gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA
-                ports:
-                - containerPort: 5000
-                  protocol: TCP
-                readinessProbe:
-                  httpGet:
-                    path: /health
-                    port: 5000
-                  initialDelaySeconds: 5
-                  periodSeconds: 10
-                env:
-                - name: REDIS_SERVER_IP
-                  value: redis
-                - name: REDIS_PORT
-                  value: "6379"
-                - name: EMAIL_HOST
-                  valueFrom:
-                    secretKeyRef:
-                      name: backend-secrets
-                      key: EMAIL_HOST
-                - name: EMAIL_PORT
-                  valueFrom:
-                    secretKeyRef:
-                      name: backend-secrets
-                      key: EMAIL_PORT
-                - name: EMAIL_USERNAME
-                  valueFrom:
-                    secretKeyRef:
-                      name: backend-secrets
-                      key: EMAIL_USERNAME
-                - name: EMAIL_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: backend-secrets
-                      key: EMAIL_PASSWORD
-                - name: JWT_SECRET
-                  valueFrom:
-                    secretKeyRef:
-                      name: backend-secrets
-                      key: JWT_SECRET
-                resources:
-                  requests:
-                    cpu: 250m
-                    memory: 512Mi
-        ---
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: redis
-          namespace: default
-        spec:
-          replicas: 1
-          selector:
-            matchLabels:
-              app: redis
-          template:
-            metadata:
-              labels:
-                app: redis
-            spec:
-              containers:
-              - name: redis
-                image: $REDIS_IMAGE
-                ports:
-                - containerPort: 6379
-                  protocol: TCP
-                resources:
-                  requests:
-                    cpu: 250m
-                    memory: 512Mi
-        EOF
-        
-        # Wait for deployments to be ready
-        echo "Waiting for deployments to be ready..."
-        kubectl wait --for=condition=available deployment/frontend deployment/backend deployment/redis --timeout=300s
-        
-        # Apply SSL secret
-        echo "Applying SSL secret..."
-        kubectl apply -f k8s/secret.yaml
-        
-        # Apply ingress and wait for it to be configured
-        echo "Applying ingress configuration..."
-        kubectl apply -f k8s/ingress.yaml
-        
-        # Wait for ingress to be processed
-        echo "Waiting for ingress to be processed..."
-        sleep 30
-        
-        # Check ingress status
-        echo "Checking ingress status..."
-        kubectl get ingress web-ingress
-        kubectl describe ingress web-ingress
-        
-        # Apply the cert-manager issuer
-        echo "Applying cert-manager issuer..."
-        kubectl apply -f k8s/issuer-lets-encrypt-staging.yaml
-        
-        # Check certificate status
-        echo "Checking certificate status..."
-        kubectl get certificate -A
-        kubectl get challenges -A
-
-    - name: Verify deployments
-      timeout-minutes: 10
+    - name: Deploy Frontend to Cloud Run
       run: |
-        kubectl rollout status deployment/frontend || exit 1
-        kubectl rollout status deployment/backend || exit 1
-        kubectl rollout status deployment/redis || exit 1
+        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
+        gcloud run deploy frontend \
+          --image gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA \
+          --platform managed \
+          --region $REGION \
+          --set-env-vars "BACKEND_URL=${BACKEND_URL}" \
+          --allow-unauthenticated
+
+    - name: Get service URLs
+      run: |
+        echo "Frontend URL: $(gcloud run services describe frontend --platform managed --region $REGION --format 'value(status.url)')"
+        echo "Backend URL: $(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')"
