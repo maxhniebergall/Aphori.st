@@ -1,13 +1,12 @@
 // components/Feed.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import './Feed.css'; // Create a CSS file for styling
+import './Feed.css';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 function Feed() {
-  const [feedItems, setFeedItems] = useState([]);
-  const [currentFocus, setCurrentFocus] = useState(null);
+  const [items, setItems] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(1);
   const navigate = useNavigate();
 
@@ -17,20 +16,18 @@ function Feed() {
     }, [navigate]
   );
 
-
   // Fetch feed items
   useEffect(() => {
-  
     const fetchFeedItems = async () => {
       console.log("Fetching feed items for page " + currentIndex)
       try {
-          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/feed`, {
-          query: { "page":currentIndex },
+        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/feed`, {
+          query: { "page": currentIndex },
         });
 
         const data = response.data;
-        console.log("recieved feed items" + JSON.stringify(data))
-        setFeedItems(data.items);
+        console.log("received feed items" + JSON.stringify(data))
+        setItems(data.items);
       } catch (error) {
         console.error('Error fetching feed items:', error);
       }
@@ -42,7 +39,7 @@ function Feed() {
   return (
     <div>
       {
-        feedItems.map(item => (
+        items.map(item => (
           <motion.div
             key={item.id}
             layoutId={item.id}
@@ -59,10 +56,6 @@ function Feed() {
       }
     </div>
   );
-
-};
-
-
-
+}
 
 export default Feed;
