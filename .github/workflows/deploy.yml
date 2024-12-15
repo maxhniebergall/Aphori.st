@@ -72,6 +72,7 @@ jobs:
           --platform managed \
           --region $REGION \
           --vpc-connector redis-connector \
+          --port 5000 \
           --set-env-vars "REDIS_SERVER_IP=${REDIS_HOST}" \
           --set-env-vars "REDIS_PORT=6379" \
           --set-secrets "EMAIL_HOST=EMAIL_HOST:latest" \
@@ -88,6 +89,7 @@ jobs:
           --image gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA \
           --platform managed \
           --region $REGION \
+          --port 80 \
           --set-env-vars "BACKEND_URL=${BACKEND_URL}" \
           --allow-unauthenticated
 
