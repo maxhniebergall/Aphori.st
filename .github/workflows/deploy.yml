@@ -7,7 +7,7 @@ on:
 env:
   FRONTEND_IMAGE: aphorist-frontend
   BACKEND_IMAGE: aphorist-backend
-  REGION: us-central1  # Default region for Cloud Run
+  REGION: northamerica-northeast1
   USE_GKE_GCLOUD_AUTH_PLUGIN: True
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
 
     - name: Configure Docker
       run: |
-        gcloud auth configure-docker
+        gcloud auth configure-dockerw
 
     - name: Build Frontend Docker image
       run: |
