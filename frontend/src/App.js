@@ -17,6 +17,7 @@ function App() {
                 <Route path="/verify" element={<VerifyMagicLink />} />
                 <Route path="/feed" element={<Feed />} />
                 <Route path="/storyTree/:uuid" element={<StoryTreePage />} />
+                <Route path="/" element={<Feed />} />
 
                 <Route 
                     path="/profile" 
