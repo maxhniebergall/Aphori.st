@@ -337,6 +337,61 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'healthy' });
 });
 
+app.post('/api/createStoryTree', async (req, res) => {
+    try {
+        const { storyTree } = req.body;
+        if (!storyTree) {
+            return res.status(400).json({ error: 'StoryTree data is required' });
+        }
+
+        // First check if this story tree already exists in Redis
+        const existingStoryTree = await redisClient.hGet(storyTree.id, 'storyTree');
+        if (existingStoryTree) {
+            logger.info(`Found existing StoryTree with ID: ${storyTree.id}`);
+            return res.json({ id: storyTree.id });
+        }
+
+        // Generate a new UUID for the story tree if one isn't provided
+        const uuid = storyTree.id || crypto.randomUUID();
+        
+        // Format nodes array to match frontend expectations
+        const nodes = storyTree.nodes || [];
+
+        // Create the full object for storing in Redis
+        const formattedStoryTree = {
+            id: uuid,
+            text: storyTree.text,
+            nodes: nodes,
+            parentId: storyTree.parentId || null,
+            metadata: {
+                title: storyTree.title,
+                author: storyTree.author
+            },
+            totalNodes: nodes.length
+        };
+
+        // Store in Redis
+        await redisClient.hSet(uuid, 'storyTree', JSON.stringify(formattedStoryTree));
+
+        // Add to feed items only if it's a root level story
+        if (!storyTree.parentId) {
+            const feedItem = {
+                id: uuid,
+                title: storyTree.title,
+                text: storyTree.text
+            };
+            await redisClient.lPush('feedItems', JSON.stringify(feedItem));
+            logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
+        }
+
+        logger.info(`Created new StoryTree with UUID: ${uuid}`);
+        res.json({ id: uuid });
+    } catch (err) {
+        logger.error('Error creating StoryTree:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 app.listen(PORT, () => {
     logger.info(`Server is available on port ${PORT}`);
 });
