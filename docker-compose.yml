@@ -11,7 +11,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     ports:
-      - '5000:5000'
+      - '5050:5050'
     networks:
       - main
     environment:
@@ -33,7 +33,7 @@ services:
     environment:
       - CHOKIDAR_USEPOLLING=true
       - HOST=0.0.0.0
-      - REACT_APP_API_URL=http://localhost:5000
+      - REACT_APP_API_URL=http://localhost:5050
     networks:
       - main
     depends_on:
