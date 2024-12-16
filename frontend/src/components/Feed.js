@@ -60,7 +60,7 @@ function Feed() {
       console.log("Fetching feed items for page " + currentIndex)
       try {
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/feed`, {
-          query: { "page": currentIndex },
+          params: { page: currentIndex },
         });
 
         const data = response.data;
