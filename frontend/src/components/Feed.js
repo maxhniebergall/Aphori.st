@@ -5,22 +5,25 @@ import './Feed.css';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-// Add default story trees
+// Add default story trees with proper structure
 const DEFAULT_STORY_TREES = [
   {
     id: 'default-1',
     text: 'The aphorist collects knowledge in short sayings',
-    title: 'The aphorist'
+    title: 'The aphorist',
+    nodes: [] // Empty nodes array for leaf nodes
   },
   {
     id: 'default-2',
     text: 'Where wisdom is discussed',
-    title: 'Aphori.st is a social medium for good'
+    title: 'Aphori.st is a social medium for good',
+    nodes: []
   },
   {
     id: 'default-3',
     text: '1: a concise statement of a principle\n2: a terse formulation of a truth or sentiment : adage\n\n- https://www.merriam-webster.com/dictionary/aphorism',
-    title: 'An aphorism'
+    title: 'An aphorism',
+    nodes: []
   }
 ];
 
@@ -30,8 +33,24 @@ function Feed() {
   const navigate = useNavigate();
 
   const navigateToStoryTree = useCallback(
-    (nodeId) => {
-      navigate(`/storyTree/${nodeId}`);
+    async (nodeId) => {
+      // For default items, create a StoryTree first
+      if (nodeId.startsWith('default-')) {
+        try {
+          const defaultItem = DEFAULT_STORY_TREES.find(item => item.id === nodeId);
+          if (defaultItem) {
+            const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/createStoryTree`, {
+              storyTree: defaultItem
+            });
+            // Navigate to the newly created StoryTree
+            navigate(`/storyTree/${response.data.id}`);
+          }
+        } catch (error) {
+          console.error('Error creating StoryTree:', error);
+        }
+      } else {
+        navigate(`/storyTree/${nodeId}`);
+      }
     }, [navigate]
   );
 

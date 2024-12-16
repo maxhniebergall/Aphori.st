@@ -1,10 +1,9 @@
 Optimize the frontend for production
-- Optimize dependencies
 - Improve automatic reconnections to the backend
-- Eliminate warnings
 - Use compression with the backend
 
 Backend changes:
+- Authenticate before write
 - Be fuly stateless
 - Support firebase db and redis
 - Optimize dependencies
