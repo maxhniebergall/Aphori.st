@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import { sendEmail } from './mailer.js';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
+import { seedDefaultStories } from './prodSeed.js';
 
 dotenv.config();
 
@@ -386,6 +387,16 @@ app.post('/api/createStoryTree', async (req, res) => {
         logger.error('Error creating StoryTree:', err);
         res.status(500).json({ error: 'Server error' });
     }
+});
+
+app.post('/api/seed-default-stories', async (req, res) => {
+  try {
+    await seedDefaultStories();
+    res.json({ message: 'Default stories seeded successfully' });
+  } catch (error) {
+    logger.error('Error seeding default stories:', error);
+    res.status(500).json({ error: 'Failed to seed default stories' });
+  }
 });
 
 app.listen(PORT, () => {

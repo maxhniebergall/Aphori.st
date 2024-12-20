@@ -62,6 +62,12 @@ jobs:
           --set-secrets "FIREBASE_CREDENTIAL=firebase-admin-key:latest,FIREBASE_DATABASE_URL=firebase-database-url:latest" \
           --allow-unauthenticated
 
+    - name: Seed Default Stories
+      run: |
+        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
+        curl -X POST "${BACKEND_URL}/api/seed-default-stories" \
+          -H "Content-Type: application/json"
+
     - name: Deploy Frontend to Cloud Run
       run: |
         BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
