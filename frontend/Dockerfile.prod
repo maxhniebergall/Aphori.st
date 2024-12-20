@@ -6,7 +6,7 @@ WORKDIR /app
 # Set production environment
 ENV NODE_ENV=production
 ENV GENERATE_SOURCEMAP=false
-ENV REACT_APP_API_URL=https://aphori.st/api
+ENV REACT_APP_API_URL=https://aphori.st
 
 # Copy package files
 COPY package.json yarn.lock ./
