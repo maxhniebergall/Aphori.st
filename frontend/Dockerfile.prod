@@ -7,14 +7,20 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV GENERATE_SOURCEMAP=false
 
+# Generate build hash from git commit or timestamp
+RUN echo "window.BUILD_HASH='$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d_%H%M%S)'" > build_hash.js
+
 # Copy package files
 COPY package.json yarn.lock ./
 
-# Install ALL dependencies (including dev dependencies needed for build)
+# Install ALL dependencies
 RUN yarn install --frozen-lockfile
 
 # Copy source code
 COPY . .
+
+# Copy build hash into public folder
+RUN cp build_hash.js public/
 
 # Build the application
 RUN yarn build
