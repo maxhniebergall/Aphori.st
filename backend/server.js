@@ -13,8 +13,17 @@ import fs from 'fs';
 dotenv.config();
 
 const PORT = process.env.PORT || 5000;
+const logger = newLogger("server.js");
 
-const logger = newLogger("server.js")
+// Load build hash
+let BUILD_HASH = 'development';
+try {
+    const buildEnv = fs.readFileSync('.env.build', 'utf8');
+    BUILD_HASH = buildEnv.split('=')[1].trim();
+    logger.info(`Loaded build hash: ${BUILD_HASH}`);
+} catch (err) {
+    logger.warn('No build hash found, using development');
+}
 
 const app = express();
 app.use(json());
@@ -27,7 +36,6 @@ const allowedOrigins = process.env.CORS_ORIGIN
 // Configure CORS
 app.use(cors({
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if(!origin) return callback(null, true);
     
     if(allowedOrigins.indexOf(origin) === -1){
@@ -38,6 +46,13 @@ app.use(cors({
   },
   credentials: true
 }));
+
+// Add build hash to all responses
+app.use((req, res, next) => {
+    res.setHeader('X-Build-Hash', BUILD_HASH);
+    next();
+});
+
 
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -393,31 +408,28 @@ app.post('/api/createStoryTree', async (req, res) => {
 });
 
 app.post('/api/seed-default-stories', async (req, res) => {
-  try {
-    await seedDefaultStories();
-    res.json({ message: 'Default stories seeded successfully' });
-  } catch (error) {
-    logger.error('Error seeding default stories:', error);
-    res.status(500).json({ error: 'Failed to seed default stories' });
-  }
+    try {
+        logger.info('Starting to seed default stories...');
+        const db = createDatabaseClient();
+        await db.connect();
+        logger.info('Database connected, proceeding with seeding...');
+        
+        await seedDefaultStories();
+        logger.info('Successfully seeded default stories');
+        
+        await db.disconnect();
+        res.status(200).json({ message: 'Successfully seeded default stories' });
+    } catch (error) {
+        logger.error('Error during seeding:', error);
+        res.status(500).json({ 
+            error: 'Failed to seed default stories',
+            details: error.message
+        });
+    }
 });
 
-// Load build hash
-let BUILD_HASH = 'development';
-try {
-    const buildEnv = fs.readFileSync('.env.build', 'utf8');
-    BUILD_HASH = buildEnv.split('=')[1].trim();
-} catch (err) {
-    logger.warn('No build hash found, using development');
-}
-
-// Add to all responses
-app.use((req, res, next) => {
-    res.setHeader('X-Build-Hash', BUILD_HASH);
-    next();
-});
-
+// Existing routes...
 app.listen(PORT, () => {
-    logger.info(`Server is available on port ${PORT}`);
+    logger.info(`Server is running on port ${PORT}`);
     logger.info(`Build hash: ${BUILD_HASH}`);
 });
