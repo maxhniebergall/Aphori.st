@@ -1,5 +1,6 @@
 import { createDatabaseClient } from './db/index.js';
 import newLogger from './logger.js';
+import { fileURLToPath } from 'url';
 
 const logger = newLogger("prodSeed.js");
 
@@ -75,8 +76,8 @@ async function seedDefaultStories() {
   }
 }
 
-// Run if this file is executed directly
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Only run seeding if this file is executed directly
+if (import.meta.url === fileURLToPath(import.meta.url)) {
   seedDefaultStories().catch(console.error);
 }
 
