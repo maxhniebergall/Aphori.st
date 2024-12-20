@@ -8,6 +8,7 @@ import { sendEmail } from './mailer.js';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { seedDefaultStories } from './prodSeed.js';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -401,6 +402,22 @@ app.post('/api/seed-default-stories', async (req, res) => {
   }
 });
 
+// Load build hash
+let BUILD_HASH = 'development';
+try {
+    const buildEnv = fs.readFileSync('.env.build', 'utf8');
+    BUILD_HASH = buildEnv.split('=')[1].trim();
+} catch (err) {
+    logger.warn('No build hash found, using development');
+}
+
+// Add to all responses
+app.use((req, res, next) => {
+    res.setHeader('X-Build-Hash', BUILD_HASH);
+    next();
+});
+
 app.listen(PORT, () => {
     logger.info(`Server is available on port ${PORT}`);
+    logger.info(`Build hash: ${BUILD_HASH}`);
 });
