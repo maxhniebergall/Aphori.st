@@ -23,7 +23,7 @@ function Feed() {
     const fetchFeedItems = async () => {
       setIsLoading(true);
       try {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/feed`, {
+        const response = await axios.get(`${process.env.REACT_APP_API_URL}/feed`, {
           params: { page: currentIndex },
         });
 
