@@ -5,8 +5,8 @@ WORKDIR /app
 # Copy package files
 COPY package.json yarn.lock ./
 
-# Install dependencies with production flag
-RUN yarn install --production
+# Install production dependencies
+RUN yarn install --production --frozen-lockfile
 
 # Copy application code
 COPY . .

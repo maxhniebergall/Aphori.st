@@ -15,6 +15,7 @@ services:
     networks:
       - main
     environment:
+      - DB_TYPE=redis
       - REDIS_SERVER_IP=redis
       - CORS_ORIGIN=http://192.168.2.55:3000,http://localhost:3000
     depends_on:

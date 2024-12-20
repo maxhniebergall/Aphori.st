@@ -12,18 +12,6 @@ services:
       - backend
     restart: unless-stopped
 
-  redis:
-    image: redis:alpine
-    # In production, we don't expose Redis port to the host
-    expose:
-      - '6379'
-    networks:
-      - main
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    command: redis-server --appendonly yes  # Enable persistence
-
   backend:
     build:
       context: ./backend
@@ -33,27 +21,23 @@ services:
     networks:
       - main
     environment:
+      - DB_TYPE=firebase
       - NODE_ENV=production
-      - FIREBASE_DATABASE_URL=your-firebase-url
+      - FIREBASE_DATABASE_URL=${FIREBASE_DATABASE_URL}
       - FIREBASE_CREDENTIAL=${FIREBASE_CREDENTIAL}
     restart: unless-stopped
       
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.prod  # You'll need to create this
+      dockerfile: Dockerfile.prod
     networks:
       - main
     environment:
       - NODE_ENV=production
     depends_on:
       - backend
-    # No ports needed as Nginx will serve the static files
-    # No volumes needed as we'll copy the built files during build
 
 networks:
   main:
     driver: bridge
-
-volumes:
-  redis_data:  # Persistent volume for Redis data
