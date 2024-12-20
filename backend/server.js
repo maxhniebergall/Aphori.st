@@ -19,7 +19,9 @@ const app = express();
 app.use(json());
 
 // Parse the CORS_ORIGIN environment variable into an array
-const allowedOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000'];
+const allowedOrigins = process.env.CORS_ORIGIN 
+  ? process.env.CORS_ORIGIN.split(',') 
+  : ['http://localhost:3000', 'https://aphorist.firebaseapp.com', 'https://aphorist.web.app', 'https://aphori.st'];
 
 // Configure CORS
 app.use(cors({
