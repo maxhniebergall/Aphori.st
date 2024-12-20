@@ -5,12 +5,11 @@ Optimize the frontend for production
 Backend changes:
 - Authenticate before write
 - Be fuly stateless
-- Support firebase db and redis
-- Optimize dependencies
 - Use compression with the frontend
 
 Database:
-- Set up firebase
-- Disable Redis
 - Always compress text
+
+Add manifest.json
+- switch to correct logos / favicon
 

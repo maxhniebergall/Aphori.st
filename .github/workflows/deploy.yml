@@ -75,7 +75,7 @@ jobs:
           --image gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA \
           --platform managed \
           --region $REGION \
-          --set-env-vars "BACKEND_URL=${BACKEND_URL}" \
+          --set-env-vars "REACT_APP_API_URL=${BACKEND_URL}" \
           --port 8080 \
           --timeout 300s \
           --cpu=1 \
