@@ -59,13 +59,6 @@ jobs:
           --region $REGION \
           --port 5000 \
           --set-env-vars "DB_TYPE=firebase,NODE_ENV=production" \
-          --set-secrets "/run/secrets/firebase-admin-key=firebase-admin-key:latest" \
-          --set-secrets "/run/secrets/firebase-database-url=firebase-database-url:latest" \
-          --set-secrets "/run/secrets/email-host=EMAIL_HOST:latest" \
-          --set-secrets "/run/secrets/email-port=EMAIL_PORT:latest" \
-          --set-secrets "/run/secrets/email-username=EMAIL_USERNAME:latest" \
-          --set-secrets "/run/secrets/email-password=EMAIL_PASSWORD:latest" \
-          --set-secrets "/run/secrets/jwt-secret=JWT_SECRET:latest" \
           --allow-unauthenticated
 
     - name: Deploy Frontend to Cloud Run
