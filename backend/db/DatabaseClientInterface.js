@@ -1,5 +1,5 @@
 // Abstract base class for database operations
-export class DatabaseClient {
+export class DatabaseClientInterface {
   async get(key) {
     throw new Error('Method not implemented');
   }

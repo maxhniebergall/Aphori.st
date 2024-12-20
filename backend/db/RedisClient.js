@@ -1,7 +1,7 @@
 import { createClient } from 'redis';
-import { DatabaseClient } from './DatabaseClient.js';
+import { DatabaseClientInterfaces } from './DatabaseClientInterface.js';
 
-export class RedisClient extends DatabaseClient {
+export class RedisClient extends DatabaseClientInterfaces {
   constructor(config) {
     super();
     this.client = createClient(config);
