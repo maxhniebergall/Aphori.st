@@ -1,5 +1,5 @@
 import express, { json } from "express";
-import { createClient } from 'redis';
+import { createDatabaseClient } from './db/index.js';
 import newLogger from './logger.js';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
@@ -42,23 +42,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 
-const redisClient = createClient({
-    url: `redis://${process.env.REDIS_SERVER_IP}:${process.env.REDIS_PORT || 6379}`
-});
+const db = createDatabaseClient();
 
-redisClient.on('error', err => logger.error('Redis Client Error: %O', err));
-
-await redisClient.connect().then(() => {
-    logger.info('Redis client connected');
+await db.connect().then(() => {
+    logger.info('Database client connected');
 }).catch(err => {
-    logger.error('Redis connection failed: %O', err);
+    logger.error('Database connection failed: %O', err);
     process.exit(1);
 });
 
 app.post("/api/createStatement", async (req, res) => {
     if (req.body.uuid && req.body.value) {
         try {
-            const setResult = await redisClient.set(req.body.uuid, req.body.value);
+            const setResult = await db.set(req.body.uuid, req.body.value);
             logger.info('Set Result: %s', setResult);
             res.send();
         } catch (e) {
@@ -76,7 +72,7 @@ app.get('/api/getStatement/:key', async (req, res) => {
     }
 
     try {
-        const value = await redisClient.get(req.params.key);
+        const value = await db.get(req.params.key);
         logger.info('Fetched value for key "%s": %s', req.params.key, value);
         res.json({ value: value });
     } catch (e) {
@@ -88,7 +84,7 @@ app.get('/api/getStatement/:key', async (req, res) => {
 app.post("/api/setvalue", async (req, res) => {
     if (req.body.key && req.body.value) {
         try {
-            const setResult = await redisClient.set(req.body.key, req.body.value);
+            const setResult = await db.set(req.body.key, req.body.value);
             logger.info('Set Result: %s', setResult);
             res.send();
         } catch (e) {
@@ -106,7 +102,7 @@ app.get('/api/getValue/:key', async (req, res) => {
     }
 
     try {
-        const value = await redisClient.get(req.params.key);
+        const value = await db.get(req.params.key);
         logger.info('Fetched value for key "%s": %s', req.params.key, value);
         res.json({ value: value });
     } catch (e) {
@@ -125,7 +121,7 @@ app.get('/api/storyTree/:uuid', async (req, res) => {
 
     try {
         logger.info(`Fetching storyTree with UUID: [${uuid}]`);
-        const data = await redisClient.hGet(uuid, 'storyTree');
+        const data = await db.hGet(uuid, 'storyTree');
         logger.info(`Raw data from Redis: [${data}]`);
 
         if (!data) {
@@ -151,7 +147,7 @@ app.get('/api/feed', async (req, res) => {
       const startIndex = (page - 1) * pageSize;
       const endIndex = startIndex + pageSize;
 
-      let results = await redisClient.lRange('feedItems', startIndex, endIndex); 
+      let results = await db.lRange('feedItems', startIndex, endIndex); 
         if (results.err) {
           return res.status(500).json({ error: 'Error fetching data from Redis' });
         }
@@ -345,7 +341,7 @@ app.post('/api/createStoryTree', async (req, res) => {
         }
 
         // First check if this story tree already exists in Redis
-        const existingStoryTree = await redisClient.hGet(storyTree.id, 'storyTree');
+        const existingStoryTree = await db.hGet(storyTree.id, 'storyTree');
         if (existingStoryTree) {
             logger.info(`Found existing StoryTree with ID: ${storyTree.id}`);
             return res.json({ id: storyTree.id });
@@ -371,7 +367,7 @@ app.post('/api/createStoryTree', async (req, res) => {
         };
 
         // Store in Redis
-        await redisClient.hSet(uuid, 'storyTree', JSON.stringify(formattedStoryTree));
+        await db.hSet(uuid, 'storyTree', JSON.stringify(formattedStoryTree));
 
         // Add to feed items only if it's a root level story
         if (!storyTree.parentId) {
@@ -380,7 +376,7 @@ app.post('/api/createStoryTree', async (req, res) => {
                 title: storyTree.title,
                 text: storyTree.text
             };
-            await redisClient.lPush('feedItems', JSON.stringify(feedItem));
+            await db.lPush('feedItems', JSON.stringify(feedItem));
             logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
         }
 
