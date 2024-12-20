@@ -27,16 +27,15 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile.prod  # You'll need to create this
+      dockerfile: Dockerfile.prod
     expose:
-      - '5000'  # Only expose to internal network
+      - '5000'
     networks:
       - main
     environment:
       - NODE_ENV=production
-      - REDIS_SERVER_IP=redis
-    depends_on:
-      - redis
+      - FIREBASE_DATABASE_URL=your-firebase-url
+      - FIREBASE_CREDENTIAL=${FIREBASE_CREDENTIAL}
     restart: unless-stopped
       
   frontend:
