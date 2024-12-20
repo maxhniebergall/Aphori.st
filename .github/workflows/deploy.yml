@@ -59,7 +59,7 @@ jobs:
           --region $REGION \
           --port 5000 \
           --set-env-vars "DB_TYPE=firebase,NODE_ENV=production" \
-          --set-secrets "FIREBASE_CREDENTIAL=firebase-admin-key:latest" \
+          --set-secrets "FIREBASE_CREDENTIAL=firebase-admin-key:latest,FIREBASE_DATABASE_URL=firebase-database-url:latest" \
           --allow-unauthenticated
 
     - name: Deploy Frontend to Cloud Run
