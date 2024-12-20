@@ -410,14 +410,8 @@ app.post('/api/createStoryTree', async (req, res) => {
 app.post('/api/seed-default-stories', async (req, res) => {
     try {
         logger.info('Starting to seed default stories...');
-        const db = createDatabaseClient();
-        await db.connect();
-        logger.info('Database connected, proceeding with seeding...');
-        
-        await seedDefaultStories();
+        await seedDefaultStories(db);
         logger.info('Successfully seeded default stories');
-        
-        await db.disconnect();
         res.status(200).json({ message: 'Successfully seeded default stories' });
     } catch (error) {
         logger.error('Error during seeding:', error);

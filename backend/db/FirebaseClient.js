@@ -1,28 +1,12 @@
-import { initializeApp, cert } from 'firebase-admin/app';
+import { initializeApp } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { DatabaseClient } from './DatabaseClient.js';
 
 export class FirebaseClient extends DatabaseClient {
   constructor(config) {
     super();
-    try {
-      // Parse the credential string if it's a JSON string
-      let credential;
-      if (typeof config.credential === 'string') {
-        credential = JSON.parse(config.credential);
-      } else {
-        credential = config.credential;
-      }
-      
-      const app = initializeApp({
-        credential: cert(credential),
-        databaseURL: config.databaseURL
-      });
-      this.db = getDatabase(app);
-    } catch (error) {
-      console.error('Error initializing Firebase:', error);
-      throw error;
-    }
+    const app = initializeApp(config);
+    this.db = getDatabase(app);
   }
 
   async connect() {
