@@ -1,6 +1,4 @@
-import { createDatabaseClient } from './db/index.js';
 import newLogger from './logger.js';
-import { fileURLToPath } from 'url';
 
 const logger = newLogger("prodSeed.js");
 
@@ -37,12 +35,9 @@ const DEFAULT_STORY_TREES = [
   }
 ];
 
-async function seedDefaultStories() {
-  const db = createDatabaseClient();
-  
+async function seedDefaultStories(db) {
   try {
-    await db.connect();
-    logger.info('Connected to database');
+    logger.info('Starting to seed default stories');
 
     for (const story of DEFAULT_STORY_TREES) {
       // Check if story exists
@@ -70,15 +65,7 @@ async function seedDefaultStories() {
   } catch (error) {
     logger.error('Error seeding default stories:', error);
     throw error;
-  } finally {
-    await db.disconnect();
-    logger.info('Disconnected from database');
   }
-}
-
-// Only run seeding if this file is executed directly
-if (import.meta.url === fileURLToPath(import.meta.url)) {
-  seedDefaultStories().catch(console.error);
 }
 
 export { seedDefaultStories }; 
