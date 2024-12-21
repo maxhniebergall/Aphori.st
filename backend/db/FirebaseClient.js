@@ -1,8 +1,8 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
-import { DatabaseClientInterfaces } from './DatabaseClientInterface.js';
+import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 
-export class FirebaseClient extends DatabaseClientInterfaces {
+export class FirebaseClient extends DatabaseClientInterface {
   constructor(config) {
     super();
     const app = initializeApp(config);
