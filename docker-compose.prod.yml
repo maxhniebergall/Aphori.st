@@ -35,6 +35,8 @@ services:
       - main
     environment:
       - NODE_ENV=production
+      - REACT_APP_API_URL=https://aphori.st:5000
+
     depends_on:
       - backend
 
