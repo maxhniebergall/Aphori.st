@@ -12,6 +12,9 @@ import axios from 'axios';
 
 function App() {
     useEffect(() => {
+        // Configure axios defaults
+        axios.defaults.withCredentials = true;
+        
         // Add build hash to all API requests
         axios.interceptors.request.use((config) => {
             config.headers['X-Frontend-Hash'] = window.BUILD_HASH || 'development';

@@ -31,20 +31,25 @@ app.use(json());
 // Parse the CORS_ORIGIN environment variable into an array
 const allowedOrigins = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',') 
-  : ['http://localhost:3000', 'https://aphorist.firebaseapp.com', 'https://aphorist.web.app', 'https://aphori.st'];
+  : [
+    'http://localhost:3000',
+    'https://aphorist.firebaseapp.com',
+    'https://aphorist.web.app',
+    'https://aphori.st',
+    'http://localhost:5000'
+  ];
 
-// Configure CORS
 app.use(cors({
-  origin: function(origin, callback) {
-    if(!origin) return callback(null, true);
-    
+  origin: function(origin, callback) {    
     if(allowedOrigins.indexOf(origin) === -1){
       const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
       return callback(new Error(msg), false);
     }
     return callback(null, true);
   },
-  credentials: true
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Frontend-Hash'],
+  credentials: true,
 }));
 
 // Add build hash to all responses
