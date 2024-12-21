@@ -28,16 +28,17 @@ try {
 const app = express();
 app.use(json());
 
-// Parse the CORS_ORIGIN environment variable into an array
-const allowedOrigins = process.env.CORS_ORIGIN 
-  ? process.env.CORS_ORIGIN.split(',') 
-  : [
-    'http://localhost:3000',
-    'https://aphorist.firebaseapp.com',
-    'https://aphorist.web.app',
-    'https://aphori.st',
-    'http://localhost:5000'
-  ];
+// Parse the CORS_ORIGIN environment variable into an array and merge with default origins
+const defaultOrigins = [
+  'http://localhost:3000',
+  'https://aphorist.firebaseapp.com',
+  'https://aphorist.web.app',
+  'https://aphori.st',
+  'http://localhost:5000'
+];
+
+const envOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : [];
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
 app.use(cors({
   origin: function(origin, callback) {    
