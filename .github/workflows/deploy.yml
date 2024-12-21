@@ -54,12 +54,13 @@ jobs:
     - name: Deploy Backend to Cloud Run
       run: |
         FRONTEND_URL=$(gcloud run services describe frontend --platform managed --region $REGION --format 'value(status.url)')
+        CORS_ORIGINS="${FRONTEND_URL},https://aphorist.firebaseapp.com,https://aphorist.web.app,https://aphori.st,https://www.aphori.st"
         gcloud run deploy backend \
           --image gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA \
           --platform managed \
           --region $REGION \
           --port 5000 \
-          --set-env-vars "DB_TYPE=firebase,NODE_ENV=production,CORS_ORIGIN=${FRONTEND_URL},https://aphorist.firebaseapp.com,https://aphorist.web.app,https://aphori.st,https://www.aphori.st" \
+          --set-env-vars ^:^DB_TYPE=firebase:NODE_ENV=production:CORS_ORIGIN="$CORS_ORIGINS" \
           --set-secrets "FIREBASE_CREDENTIAL=firebase-admin-key:latest,\
                         FIREBASE_DATABASE_URL=firebase-database-url:latest,\
                         EMAIL_HOST=EMAIL_HOST:latest,\
