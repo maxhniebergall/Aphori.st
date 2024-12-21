@@ -53,12 +53,13 @@ jobs:
 
     - name: Deploy Backend to Cloud Run
       run: |
+        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
         gcloud run deploy backend \
           --image gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA \
           --platform managed \
           --region $REGION \
           --port 5000 \
-          --set-env-vars "DB_TYPE=firebase,NODE_ENV=production" \
+          --set-env-vars "DB_TYPE=firebase,NODE_ENV=production,CORS_ORIGIN=${BACKEND_URL}" \
           --set-secrets "FIREBASE_CREDENTIAL=firebase-admin-key:latest,\
                         FIREBASE_DATABASE_URL=firebase-database-url:latest,\
                         EMAIL_HOST=EMAIL_HOST:latest,\
