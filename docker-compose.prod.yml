@@ -23,8 +23,6 @@ services:
     environment:
       - DB_TYPE=firebase
       - NODE_ENV=production
-      - FIREBASE_DATABASE_URL=${FIREBASE_DATABASE_URL}
-      - FIREBASE_CREDENTIAL=${FIREBASE_CREDENTIAL}
     restart: unless-stopped
       
   frontend:
@@ -36,7 +34,6 @@ services:
     environment:
       - NODE_ENV=production
       - REACT_APP_API_URL=https://aphori.st:5000
-
     depends_on:
       - backend
 
