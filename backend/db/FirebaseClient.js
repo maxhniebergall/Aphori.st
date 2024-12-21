@@ -1,11 +1,15 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
+import { cert } from 'firebase-admin/app';
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 
 export class FirebaseClient extends DatabaseClientInterface {
   constructor(config) {
     super();
-    const app = initializeApp(config);
+    const app = initializeApp({
+      credential: cert(config.credential),
+      databaseURL: config.databaseURL
+    });
     this.db = getDatabase(app);
   }
 
