@@ -59,7 +59,14 @@ jobs:
           --region $REGION \
           --port 5000 \
           --set-env-vars "DB_TYPE=firebase,NODE_ENV=production" \
-          --set-secrets "FIREBASE_CREDENTIAL=firebase-admin-key:latest,FIREBASE_DATABASE_URL=firebase-database-url:latest" \
+          --set-secrets "FIREBASE_CREDENTIAL=firebase-admin-key:latest,\
+                        FIREBASE_DATABASE_URL=firebase-database-url:latest,\
+                        EMAIL_HOST=EMAIL_HOST:latest,\
+                        EMAIL_PORT=EMAIL_PORT:latest,\
+                        EMAIL_USERNAME=EMAIL_USERNAME:latest,\
+                        EMAIL_PASSWORD=EMAIL_PASSWORD:latest,\
+                        MAGIC_LINK_SECRET=JWT_SECRET:latest,\
+                        AUTH_TOKEN_SECRET=JWT_SECRET:latest" \
           --allow-unauthenticated
 
     - name: Seed Default Stories

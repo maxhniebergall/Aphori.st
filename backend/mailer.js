@@ -3,27 +3,44 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Validate required environment variables
+const requiredEnvVars = ['EMAIL_HOST', 'EMAIL_PORT', 'EMAIL_USERNAME', 'EMAIL_PASSWORD'];
+for (const envVar of requiredEnvVars) {
+    if (!process.env[envVar]) {
+        throw new Error(`Missing required environment variable: ${envVar}`);
+    }
+}
+
 const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,   
-    port: process.env.EMAIL_PORT,     // 465 (SSL) or 587 (TLS)
-    secure: process.env.EMAIL_PORT === '465', // true for 465, false for 587
+    host: process.env.EMAIL_HOST,
+    port: parseInt(process.env.EMAIL_PORT, 10),
+    secure: process.env.EMAIL_PORT === '465',
     auth: {
         user: process.env.EMAIL_USERNAME,
         pass: process.env.EMAIL_PASSWORD,
     },
     tls: {
-        rejectUnauthorized: true      // Enable strict certificate checking for production
+        rejectUnauthorized: true,
+        minVersion: 'TLSv1.2'
     },
 });
 
-// Verify the transporter configuration
-transporter.verify((error, success) => {
-    if (error) {
-        console.error('Error configuring Nodemailer transporter:', error);
-    } else {
+// Verify the transporter configuration with better error handling
+const verifyTransporter = async () => {
+    try {
+        await transporter.verify();
         console.log('Nodemailer transporter is ready to send emails.');
+    } catch (error) {
+        console.error('Error configuring Nodemailer transporter:', {
+            message: error.message,
+            host: process.env.EMAIL_HOST,
+            port: process.env.EMAIL_PORT
+        });
+        throw error;
     }
-});
+};
+
+verifyTransporter();
 
 /**
  * Sends an email using the configured transporter.
