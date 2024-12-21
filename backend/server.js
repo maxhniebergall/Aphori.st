@@ -30,19 +30,27 @@ app.use(json());
 
 // Parse the CORS_ORIGIN environment variable into an array and merge with default origins
 const defaultOrigins = [
-  'http://localhost:3000',
   'https://aphorist.firebaseapp.com',
   'https://aphorist.web.app',
   'https://aphori.st',
-  'http://localhost:5000'
+  'https://www.aphori.st'
 ];
+
+// Add development origins only in non-production
+if (process.env.NODE_ENV !== 'production') {
+  defaultOrigins.push('http://localhost:3000');
+  defaultOrigins.push('http://localhost:5000');
+}
 
 const envOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : [];
 const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
 app.use(cors({
   origin: function(origin, callback) {    
-    if(allowedOrigins.indexOf(origin) === -1){
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
       const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
       return callback(new Error(msg), false);
     }
@@ -51,6 +59,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Frontend-Hash'],
   credentials: true,
+  maxAge: 86400 // Cache preflight requests for 24 hours
 }));
 
 // Add build hash to all responses
