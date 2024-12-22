@@ -7,6 +7,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV GENERATE_SOURCEMAP=false
 
+# Accept API URL as build argument
+ARG REACT_APP_API_URL
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+
 # Generate build hash from git commit or timestamp
 RUN echo "window.BUILD_HASH='$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d_%H%M%S)'" > build_hash.js
 
