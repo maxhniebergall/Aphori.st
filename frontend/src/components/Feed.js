@@ -21,23 +21,30 @@ function Feed() {
   );
 
   useEffect(() => {
+    console.log('Feed: Starting to fetch items');
     const fetchFeedItems = async () => {
+      console.log('Feed: Setting loading state to true');
       setIsLoading(true);
       try {
+        console.log('Feed: Making API request');
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/feed`, {
           params: { page: currentIndex },
         });
+        console.log('Feed: Received response:', response.data);
 
         if (response.data && response.data.items) {
+          console.log('Feed: Setting items:', response.data.items);
           setItems(response.data.items);
         } else {
+          console.log('Feed: No items in response, setting empty array');
           setItems([]);
         }
       } catch (error) {
-        console.error('Error fetching feed items:', error);
+        console.error('Feed: Error fetching feed items:', error);
         setError('Failed to load feed items');
         setItems([]);
       } finally {
+        console.log('Feed: Setting loading state to false');
         setIsLoading(false);
       }
     };
@@ -45,7 +52,10 @@ function Feed() {
     fetchFeedItems();
   }, [currentIndex]);
 
+  console.log('Feed: Current state:', { isLoading, error, itemsCount: items.length });
+
   if (isLoading) {
+    console.log('Feed: Rendering loading state');
     return (
       <>
         <Header 
@@ -58,6 +68,7 @@ function Feed() {
   }
 
   if (error) {
+    console.log('Feed: Rendering error state');
     return (
       <>
         <Header 
@@ -69,6 +80,7 @@ function Feed() {
     );
   }
 
+  console.log('Feed: Rendering items');
   return (
     <>
       <Header 
