@@ -99,22 +99,20 @@ jobs:
         BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
         echo "Backend URL: ${BACKEND_URL}"
         
-        # Create a temporary .env file for the frontend build
-        echo "REACT_APP_API_URL=${BACKEND_URL}" > frontend/.env.production
-        cat frontend/.env.production
-        
-        # Rebuild the frontend image with the new environment
+        # Build the frontend image with the backend URL
         docker build \
           --build-arg REACT_APP_API_URL=${BACKEND_URL} \
           -t gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA \
           -f frontend/Dockerfile.prod ./frontend
         
-        # Deploy to Cloud Run with the environment variable
+        # Push the new image
+        docker push gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA
+        
+        # Deploy to Cloud Run
         gcloud run deploy frontend \
           --image gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA \
           --platform managed \
           --region $REGION \
-          --set-env-vars "REACT_APP_API_URL=${BACKEND_URL}" \
           --port 8080 \
           --timeout 300s \
           --cpu=1 \
