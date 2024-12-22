@@ -53,12 +53,10 @@ jobs:
 
     - name: Deploy Backend to Cloud Run
       run: |
-        # Try to get Frontend URL, use a default value if it doesn't exist yet
-        FRONTEND_URL=$(gcloud run services describe frontend --platform managed --region $REGION --format 'value(status.url)' 2>/dev/null || echo "https://frontend-placeholder")
+        FRONTEND_URL=$(gcloud run services describe frontend --platform managed --region $REGION --format 'value(status.url)')
         
-        # Try to get Backend URL, handle first deployment case
-        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)' 2>/dev/null || echo "https://backend-placeholder")
-        BACKEND_URL=$(echo $BACKEND_URL | sed 's/\.us-central1\.run\.app/-uc.a.run.app/')
+        # Get backend URL in short format
+        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)' | sed 's/\.us-central1\.run\.app/-uc.a.run.app/')
         
         echo "Frontend URL: ${FRONTEND_URL}"
         echo "Backend URL: ${BACKEND_URL}"
