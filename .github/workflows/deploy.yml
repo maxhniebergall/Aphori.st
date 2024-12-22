@@ -130,3 +130,11 @@ jobs:
         # Test backend health
         BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
         curl -i "${BACKEND_URL}/health"
+
+    - name: Setup Firebase CLI
+      run: npm install -g firebase-tools
+
+    - name: Deploy Firebase Hosting
+      run: firebase deploy --only hosting --project ${{ secrets.PROJECT_ID }}
+      env:
+        FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
