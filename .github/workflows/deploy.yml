@@ -7,7 +7,7 @@ on:
 env:
   FRONTEND_IMAGE: aphorist-frontend
   BACKEND_IMAGE: aphorist-backend
-  REGION: northamerica-northeast1
+  REGION: us-central1
   USE_GKE_GCLOUD_AUTH_PLUGIN: True
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
 
@@ -56,7 +56,7 @@ jobs:
         FRONTEND_URL=$(gcloud run services describe frontend --platform managed --region $REGION --format 'value(status.url)')
         
         # Get backend URL in short format
-        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)' | sed 's/\.northamerica-northeast1\.run\.app/-nn.a.run.app/')
+        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)' | sed 's/\.us-central1\.run\.app/-uc.a.run.app/')
         
         echo "Frontend URL: ${FRONTEND_URL}"
         echo "Backend URL: ${BACKEND_URL}"
