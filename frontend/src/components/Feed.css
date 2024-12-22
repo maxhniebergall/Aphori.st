@@ -1,17 +1,35 @@
 /* components/Feed.css */
 
 .feed-container {
-    position: relative;
-    width: 100%;
-    height: 100vh;
-    overflow: hidden;
-  }
-  
-  .feed-item {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    padding: 16px;
-    background-color: #fff;
-  }
+  max-width: 800px;
+  margin: 20px auto;
+  padding: 0 20px;
+}
+
+.feed-item {
+  cursor: pointer;
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  background-color: white;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.feed-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.feed-item h3 {
+  margin: 0 0 10px 0;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.feed-item p {
+  margin: 0;
+  color: #666;
+  line-height: 1.5;
+}
   

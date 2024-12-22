@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import EditingOverlay from './EditingOverlay';
 import './StoryTree.css';
-import StoryTreeHeader from './StoryTreeHeader';
+import Header from './Header';
 import { 
   StoryTreeProvider, 
   useStoryTree, 
@@ -60,12 +60,15 @@ function StoryTreeContent() {
     }
   }, [rootUUID, dispatch]);
 
+  const title = rootNode?.metadata?.title || 'Untitled';
+  const subtitle = rootNode?.metadata?.author ? `by ${rootNode.metadata.author}` : 'by Anonymous';
+
   return (
     <div className="story-tree-container">
-      <StoryTreeHeader 
-        rootNode={rootNode}
+      <Header 
+        title={title}
+        subtitle={subtitle}
         onLogoClick={() => navigate('/feed')}
-        onMenuClick={() => console.log('Menu clicked')}
       />
       <StoryTreeOperator />
       {isEditing && (

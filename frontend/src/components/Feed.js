@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import './Feed.css';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import Header from './Header';
 
 function Feed() {
   const [items, setItems] = useState([]);
@@ -45,34 +46,56 @@ function Feed() {
   }, [currentIndex]);
 
   if (isLoading) {
-    return <div>Loading...</div>;
+    return (
+      <>
+        <Header 
+          title=""
+          onLogoClick={() => navigate('/feed')}
+        />
+        <div>Loading...</div>
+      </>
+    );
   }
 
   if (error) {
-    return <div>Error: {error}</div>;
+    return (
+      <>
+        <Header 
+          title=""
+          onLogoClick={() => navigate('/feed')}
+        />
+        <div>Error: {error}</div>
+      </>
+    );
   }
 
   return (
-    <div>
-      {items && items.length > 0 ? (
-        items.map(item => (
-          <motion.div
-            key={item.id}
-            layoutId={item.id}
-            onClick={() => navigateToStoryTree(item.id)}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{ cursor: 'pointer', margin: '10px', padding: '10px', border: '1px solid #ccc' }}
-          >
-            {item.title && <motion.h3>{item.title}</motion.h3>}
-            <motion.p>{item.text}</motion.p>
-          </motion.div>
-        ))
-      ) : (
-        <div>No items to display</div>
-      )}
-    </div>
+    <>
+      <Header 
+          title=""
+          onLogoClick={() => navigate('/feed')}
+      />
+      <div className="feed-container">
+        {items && items.length > 0 ? (
+          items.map(item => (
+            <motion.div
+              key={item.id}
+              layoutId={item.id}
+              onClick={() => navigateToStoryTree(item.id)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="feed-item"
+            >
+              {item.title && <motion.h3>{item.title}</motion.h3>}
+              <motion.p>{item.text}</motion.p>
+            </motion.div>
+          ))
+        ) : (
+          <div>No items to display</div>
+        )}
+      </div>
+    </>
   );
 }
 
