@@ -54,12 +54,22 @@ jobs:
     - name: Deploy Backend to Cloud Run
       run: |
         FRONTEND_URL=$(gcloud run services describe frontend --platform managed --region $REGION --format 'value(status.url)')
-        # Create env vars file
+        
+        # Get backend URL in short format
+        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)' | sed 's/\.northamerica-northeast1\.run\.app/-nn.a.run.app/')
+        
+        echo "Frontend URL: ${FRONTEND_URL}"
+        echo "Backend URL: ${BACKEND_URL}"
+        
+        # Create env vars file with all necessary origins
         cat > env.yaml << EOF
         DB_TYPE: firebase
         NODE_ENV: production
-        CORS_ORIGIN: "${FRONTEND_URL},https://aphorist.firebaseapp.com,https://aphorist.web.app,https://aphori.st,https://www.aphori.st"
+        CORS_ORIGIN: "${FRONTEND_URL},https://aphorist.firebaseapp.com,https://aphorist.web.app,https://aphori.st,https://www.aphori.st,${BACKEND_URL}"
         EOF
+        
+        echo "Environment configuration:"
+        cat env.yaml
         
         gcloud run deploy backend \
           --image gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA \
@@ -85,7 +95,21 @@ jobs:
 
     - name: Deploy Frontend to Cloud Run
       run: |
+        # Get backend URL
         BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
+        echo "Backend URL: ${BACKEND_URL}"
+        
+        # Create a temporary .env file for the frontend build
+        echo "REACT_APP_API_URL=${BACKEND_URL}" > frontend/.env.production
+        cat frontend/.env.production
+        
+        # Rebuild the frontend image with the new environment
+        docker build \
+          --build-arg REACT_APP_API_URL=${BACKEND_URL} \
+          -t gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA \
+          -f frontend/Dockerfile.prod ./frontend
+        
+        # Deploy to Cloud Run with the environment variable
         gcloud run deploy frontend \
           --image gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA \
           --platform managed \
@@ -98,7 +122,11 @@ jobs:
           --min-instances=1 \
           --allow-unauthenticated
 
-    - name: Get service URLs
+    - name: Verify Deployment
       run: |
         echo "Frontend URL: $(gcloud run services describe frontend --platform managed --region $REGION --format 'value(status.url)')"
         echo "Backend URL: $(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')"
+        
+        # Test backend health
+        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
+        curl -i "${BACKEND_URL}/health"

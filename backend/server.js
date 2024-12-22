@@ -42,18 +42,26 @@ if (process.env.NODE_ENV !== 'production') {
   defaultOrigins.push('http://localhost:5000');
 }
 
-const envOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : [];
+// Parse CORS origins from environment variable
+const envOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim()) : [];
 const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
+
+logger.info('Configured CORS origins: %O', allowedOrigins);
 
 app.use(cors({
   origin: function(origin, callback) {    
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      logger.debug('Request with no origin');
+      return callback(null, true);
+    }
     
     if (allowedOrigins.indexOf(origin) === -1) {
       const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      logger.warn(`CORS blocked origin: ${origin}`);
       return callback(new Error(msg), false);
     }
+    logger.debug(`CORS allowed origin: ${origin}`);
     return callback(null, true);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
