@@ -130,3 +130,22 @@ jobs:
         # Test backend health
         BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
         curl -i "${BACKEND_URL}/health"
+
+    - name: Map Custom Domains
+      run: |
+        # Map frontend domain
+        gcloud run domain-mappings create --service=frontend \
+          --domain=aphori.st \
+          --region=$REGION \
+          --platform=managed
+        
+        # Map backend domain (if needed)
+        gcloud run domain-mappings create --service=backend \
+          --domain=api.aphori.st \
+          --region=$REGION \
+          --platform=managed
+        
+        # Display the DNS records that need to be updated
+        echo "Please update your DNS records with the following mappings:"
+        gcloud run domain-mappings describe --domain=aphori.st --region=$REGION --platform=managed
+        gcloud run domain-mappings describe --domain=aphori.st/api --region=$REGION --platform=managed
