@@ -177,24 +177,51 @@ app.get('/api/feed', async (req, res) => {
     const pageSize = 10; // Number of items per page
     logger.info("Handling request for feed at page "+page)
     try {
-      // Fetch all feed items from Redis with pagination
+      logger.info('Current db connection state: %O', {
+          connected: db.isConnected?.() || 'unknown',
+          ready: db.isReady?.() || 'unknown'
+      });
+
+      // Fetch all feed items from db with pagination
       const startIndex = (page - 1) * pageSize;
       const endIndex = startIndex + pageSize;
 
+      logger.info('Attempting to fetch feed items from db with range: %O', {
+          startIndex,
+          endIndex,
+          key: 'feedItems'
+      });
+
       let results = await db.lRange('feedItems', startIndex, endIndex); 
+      logger.info('Raw db response for feed items: %O', results);
+
         if (results.err) {
+          logger.error('db error when fetching feed: %O', results.err);
           return res.status(500).json({ error: 'Error fetching data from Redis' });
         }
   
-        const feedItems = results.map((item) => JSON.parse(item));
-        logger.info("Returned " + feedItems.length + " feed items")
+        const feedItems = results.map((item) => {
+            try {
+                return JSON.parse(item);
+            } catch (e) {
+                logger.error('Failed to parse feed item: %O', { item, error: e });
+                return null;
+            }
+        }).filter(Boolean);
+
+        logger.info("Returned " + feedItems.length + " feed items");
+        logger.debug("Feed items content: %O", feedItems);
         res.json({
           page,
           items: feedItems,
         });
     } catch (error) {
+      logger.error('Error fetching feed items: %O', {
+          error,
+          stack: error.stack,
+          message: error.message
+      });
       res.status(500).json({ error: 'Server error' });
-      logger.error('Error fetching feed items:', error);
     }
 });
 
