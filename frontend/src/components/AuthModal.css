@@ -7,3 +7,10 @@
     color: #f44336;
     margin: 10px 0;
 } 
+
+.modal-overlay{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
