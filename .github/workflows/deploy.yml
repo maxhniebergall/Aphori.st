@@ -133,34 +133,43 @@ jobs:
 
     - name: Map Custom Domains
       run: |
+        # Install beta components non-interactively
+        gcloud components install beta --quiet
+
         # Map frontend domains
         gcloud beta run domain-mappings create \
           --service=frontend \
           --domain=aphori.st \
           --region=$REGION \
-          --platform=managed
-        
+          --platform=managed \
+          --quiet
+
         gcloud beta run domain-mappings create \
           --service=frontend \
           --domain=www.aphori.st \
           --region=$REGION \
-          --platform=managed
-        
+          --platform=managed \
+          --quiet
+
         # Map backend domain
         gcloud beta run domain-mappings create \
           --service=backend \
           --domain=api.aphori.st \
           --region=$REGION \
-          --platform=managed
-        
+          --platform=managed \
+          --quiet
+
         # Display the DNS records that need to be updated
         echo "Please update your DNS records with the following mappings:"
         gcloud beta run domain-mappings describe \
           --domain=aphori.st \
-          --region=$REGION
+          --region=$REGION \
+          --quiet
         gcloud beta run domain-mappings describe \
           --domain=www.aphori.st \
-          --region=$REGION
+          --region=$REGION \
+          --quiet
         gcloud beta run domain-mappings describe \
           --domain=api.aphori.st \
-          --region=$REGION
+          --region=$REGION \
+          --quiet
