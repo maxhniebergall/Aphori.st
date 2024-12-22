@@ -123,9 +123,9 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
               {currentSiblingIndex + 1} / {siblings.length}
               {(hasNextSibling || hasPreviousSibling) && (
                 <span className="swipe-hint">
-                  {hasPreviousSibling && ' (Swipe right for previous)'}
+                  {hasPreviousSibling && <span className="swipe-hint-previous" onClick={loadPreviousSibling}> (Swipe right for previous)</span>}
                   {hasPreviousSibling && hasNextSibling && ' |'}
-                  {hasNextSibling && ' (Swipe left for next)'}
+                  {hasNextSibling && <span className="swipe-hint-next" onClick={loadNextSibling}>   (Swipe left for next)</span>}
                 </span>
               )}
             </div>
