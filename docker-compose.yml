@@ -6,6 +6,14 @@ services:
     networks:
       - main
 
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+    networks:
+      - main
+
   backend:
     build:
       context: ./backend
@@ -18,8 +26,14 @@ services:
       - DB_TYPE=redis
       - REDIS_SERVER_IP=redis
       - CORS_ORIGIN=http://192.168.2.55:3000,http://localhost:3000
+      - EMAIL_HOST=mailhog
+      - EMAIL_PORT=1025
+      - EMAIL_USERNAME=test
+      - EMAIL_PASSWORD=test
+      - EMAIL_FROM=noreply@localhost
     depends_on:
       - redis
+      - mailhog
     env_file:
       - backend/.env
       

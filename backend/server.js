@@ -12,7 +12,7 @@ import fs from 'fs';
 
 dotenv.config();
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5050;
 const logger = newLogger("server.js");
 
 // Load build hash
@@ -39,7 +39,7 @@ const defaultOrigins = [
 // Add development origins only in non-production
 if (process.env.NODE_ENV !== 'production') {
   defaultOrigins.push('http://localhost:3000');
-  defaultOrigins.push('http://localhost:5000');
+  defaultOrigins.push('http://localhost:5050');
 }
 
 // Parse CORS origins from environment variable
@@ -371,7 +371,6 @@ app.post('/api/auth/verify-token', (req, res) => {
     }
 });
 
-// Example Protected Route
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -402,7 +401,8 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'healthy' });
 });
 
-app.post('/api/createStoryTree', async (req, res) => {
+// Protected route - only authenticated users can create story trees
+app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
     try {
         const { storyTree } = req.body;
         if (!storyTree) {
@@ -430,7 +430,10 @@ app.post('/api/createStoryTree', async (req, res) => {
             parentId: storyTree.parentId || null,
             metadata: {
                 title: storyTree.title,
-                author: storyTree.author
+                author: storyTree.author,
+                authorId: req.user.id,
+                authorEmail: req.user.email,
+                createdAt: new Date().toISOString()
             },
             totalNodes: nodes.length
         };
@@ -443,7 +446,12 @@ app.post('/api/createStoryTree', async (req, res) => {
             const feedItem = {
                 id: uuid,
                 title: storyTree.title,
-                text: storyTree.text
+                text: storyTree.text,
+                author: {
+                    id: req.user.id,
+                    email: req.user.email
+                },
+                createdAt: formattedStoryTree.metadata.createdAt
             };
             await db.lPush('feedItems', JSON.stringify(feedItem));
             logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
