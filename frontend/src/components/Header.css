@@ -75,3 +75,11 @@
   color: #666;
   font-weight: normal;
 } 
+
+.header-menu-modal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+    

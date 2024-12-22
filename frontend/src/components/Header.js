@@ -7,7 +7,7 @@ import AuthModal from './AuthModal';
 function Header({ title, subtitle, onLogoClick }) {
   const { state, logout, sendMagicLink } = useUser();
   const [isModalOpen, setModalOpen] = useState(false);
-
+  const [isAuthModalOpen, setAuthModalOpen] = useState(false);
   const handleSignIn = async (email) => {
     console.log('Attempting to sign in with email:', email);
     return await sendMagicLink(email);
@@ -46,7 +46,15 @@ function Header({ title, subtitle, onLogoClick }) {
           {subtitle && <h2>{subtitle}</h2>}
         </div>
       )}
-      <AuthModal isOpen={isModalOpen} onClose={toggleMenu} onSignIn={handleSignIn} />
+        {isModalOpen && isAuthModalOpen && (
+            <AuthModal isOpen={isModalOpen} onClose={() => setAuthModalOpen(false)} onSignIn={handleSignIn} />
+        )}
+        {isModalOpen && !isAuthModalOpen && (
+        <div className="header-menu-modal">
+          <button className="sign-in-button" onClick={() => setAuthModalOpen(true)}>Sign In</button>
+          <a className="report-bug-button" href="https://github.com/maxhniebergall/Aphori.st/issues">Report a Bug</a>
+        </div>
+        )}
     </div>
   );
 }
