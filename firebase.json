@@ -28,14 +28,14 @@
           "source": "/api/**",
           "run": {
             "serviceId": "backend",
-            "region": "northamerica-northeast1"
+            "region": "us-central1"
           }
         },
         {
           "source": "**",
           "run": {
             "serviceId": "frontend",
-            "region": "northamerica-northeast1"
+            "region": "us-central1"
           }
         }
       ]
