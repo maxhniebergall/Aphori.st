@@ -12,6 +12,11 @@ import fs from 'fs';
 
 dotenv.config();
 
+// Validate required environment variables
+if (!process.env.FRONTEND_URL) {
+    throw new Error('Missing required environment variable: FRONTEND_URL');
+}
+
 const PORT = process.env.PORT || 5050;
 const logger = newLogger("server.js");
 
@@ -295,6 +300,7 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
         // Generate magic token
         const token = generateMagicToken(user.email);
         const magicLink = `${process.env.FRONTEND_URL}/verify?token=${token}`;
+        logger.info(`Generated magic link with FRONTEND_URL: ${process.env.FRONTEND_URL}`);
 
         // Email content
         const subject = 'Your Magic Link to Sign In';
