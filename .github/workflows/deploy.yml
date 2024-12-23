@@ -53,7 +53,8 @@ jobs:
 
     - name: Deploy Backend to Cloud Run
       run: |
-        FRONTEND_URL=$(gcloud run services describe frontend --platform managed --region $REGION --format 'value(status.url)')
+        # Construct frontend URL based on project and region
+        FRONTEND_URL="https://frontend-uc.a.run.app"
         
         # Get backend URL in short format
         BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)' | sed 's/\.us-central1\.run\.app/-uc.a.run.app/')
@@ -65,6 +66,7 @@ jobs:
         cat > env.yaml << EOF
         DB_TYPE: firebase
         NODE_ENV: production
+        FRONTEND_URL: "https://frontend-132704325993.us-central1.run.app"
         CORS_ORIGIN: "${FRONTEND_URL},https://aphorist.firebaseapp.com,https://aphorist.web.app,https://aphori.st,https://www.aphori.st,${BACKEND_URL}"
         EOF
         
