@@ -233,8 +233,93 @@ app.get('/api/feed', async (req, res) => {
     }
 });
 
-// Dummy user database (replace with a real database in production)
-const users = []; // Example: [{ id, email }]
+// Constants for user-related keys
+const USER_PREFIX = 'user:';
+const USER_IDS_SET = 'user_ids';
+const EMAIL_TO_ID_PREFIX = 'email_to_id:';
+
+const getUserById = async (id) => {
+    const userData = await db.hGet(`${USER_PREFIX}${id}`, 'data');
+    if (!userData) {
+        return {
+            success: false,
+            error: 'User not found'
+        };
+    }
+    return {
+        success: true,
+        data: JSON.parse(userData)
+    };
+};
+
+const getUserByEmail = async (email) => {
+    // Get user ID from email mapping
+    const userId = await db.get(`${EMAIL_TO_ID_PREFIX}${email}`);
+    if (!userId) {
+        return {
+            success: false,
+            error: 'User not found'
+        };
+    }
+
+    const userResult = await getUserById(userId);
+    if (!userResult.success) {
+        return userResult;
+    }
+
+    return {
+        success: true,
+        data: {
+            ...userResult.data,
+            id: userId
+        }
+    };
+};
+
+const createUser = async (id, email) => {
+    // Check if ID is taken
+    const existingUser = await getUserById(id);
+    if (existingUser.success) {
+        return {
+            success: false,
+            error: 'User ID already exists'
+        };
+    }
+
+    // Check if email is already registered
+    const existingEmail = await db.get(`${EMAIL_TO_ID_PREFIX}${email}`);
+    if (existingEmail) {
+        return {
+            success: false,
+            error: 'Email already registered'
+        };
+    }
+
+    const userData = {
+        email,
+        createdAt: new Date().toISOString()
+    };
+
+    try {
+        // Store user data
+        await db.hSet(`${USER_PREFIX}${id}`, 'data', JSON.stringify(userData));
+        // Add ID to set of user IDs
+        await db.sAdd(USER_IDS_SET, id);
+        // Create email to ID mapping
+        await db.set(`${EMAIL_TO_ID_PREFIX}${email}`, id);
+
+        return {
+            success: true,
+            data: { id, ...userData }
+        };
+    } catch (error) {
+        logger.error('Database error creating user:', error);
+        return {
+            success: false,
+            error: 'Server error creating user'
+        };
+    }
+};
 
 // Helper Functions
 const generateMagicToken = (email) => {
@@ -273,27 +358,28 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
     // Validate email
     if (!email) {
         logger.error('Missing email in request body');
-        return res.status(400).json({ error: 'Email is required.' });
+        return res.status(400).json({ 
+            success: false,
+            error: 'Email is required'
+        });
     }
 
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
         logger.error(`Invalid email format: ${email}`);
-        return res.status(400).json({ error: 'Invalid email format.' });
+        return res.status(400).json({ 
+            success: false,
+            error: 'Invalid email format'
+        });
     }
 
     try {
-        // Check if user exists, else create
-        let user = users.find(u => u.email === email);
-        if (!user) {
-            user = { id: crypto.randomUUID(), email };
-            users.push(user);
-            logger.info(`Created new user with email: ${email}`);
-        }
-
+        // Check if user exists
+        const userResult = await getUserByEmail(email);
+        
         // Generate magic token
-        const token = generateMagicToken(user.email);
+        const token = generateMagicToken(email);
         const magicLink = `https://aphori.st/verify?token=${token}`;
 
         // Email content
@@ -305,12 +391,18 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
             <p>Thanks,<br/>Aphori.st Team</p>
         `;
 
-        await sendEmail(user.email, subject, html);
+        await sendEmail(email, subject, html);
         logger.info(`Magic link sent successfully to: ${email}`);
-        res.json({ message: 'Magic link sent to your email.' });
+        res.json({ 
+            success: true,
+            message: 'Magic link sent to your email'
+        });
     } catch (error) {
         logger.error('Failed to send magic link:', error);
-        res.status(500).json({ error: 'Failed to send magic link. Unverified.' });
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to send magic link'
+        });
     }
 });
 
@@ -319,28 +411,46 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
  * @desc    Verifies the magic link token and authenticates the user
  * @access  Public
  */
-app.post('/api/auth/verify-magic-link', (req, res) => {
+app.post('/api/auth/verify-magic-link', async (req, res) => {
     const { token } = req.body;
 
     if (!token) {
-        return res.status(400).json({ error: 'Token is required.' });
+        return res.status(400).json({ 
+            success: false,
+            error: 'Token is required'
+        });
     }
 
     try {
         const decoded = jwt.verify(token, process.env.MAGIC_LINK_SECRET);
-        const user = users.find(u => u.email === decoded.email);
+        const userResult = await getUserByEmail(decoded.email);
 
-        if (!user) {
-            return res.status(400).json({ error: 'User does not exist.' });
+        if (!userResult.success) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'User not found'
+            });
         }
 
         // Generate auth token
-        const authToken = generateAuthToken(user);
+        const authToken = generateAuthToken(userResult.data);
 
-        res.json({ token: authToken, user: { id: user.id, email: user.email } });
+        res.json({ 
+            success: true,
+            data: {
+                token: authToken,
+                user: {
+                    id: userResult.data.id,
+                    email: userResult.data.email
+                }
+            }
+        });
     } catch (error) {
-        console.error('Invalid or expired token:', error);
-        res.status(400).json({ error: 'Invalid or expired token.' });
+        logger.error('Invalid or expired token:', error);
+        res.status(400).json({ 
+            success: false,
+            error: 'Invalid or expired token'
+        });
     }
 });
 
@@ -349,25 +459,40 @@ app.post('/api/auth/verify-magic-link', (req, res) => {
  * @desc    Verifies the authentication token
  * @access  Public
  */
-app.post('/api/auth/verify-token', (req, res) => {
+app.post('/api/auth/verify-token', async (req, res) => {
     const { token } = req.body;
 
     if (!token) {
-        return res.status(400).json({ error: 'Token is required.' });
+        return res.status(400).json({ 
+            success: false,
+            error: 'Token is required'
+        });
     }
 
     try {
         const decoded = jwt.verify(token, process.env.AUTH_TOKEN_SECRET);
-        const user = users.find(u => u.id === decoded.id && u.email === decoded.email);
+        const userResult = await getUserById(decoded.id);
 
-        if (!user) {
-            return res.status(400).json({ error: 'Invalid token.' });
+        if (!userResult.success) {
+            return res.status(400).json({ 
+                success: false,
+                error: 'Invalid token'
+            });
         }
 
-        res.json({ id: user.id, email: user.email });
+        res.json({ 
+            success: true,
+            data: {
+                id: decoded.id,
+                email: userResult.data.email
+            }
+        });
     } catch (error) {
-        console.error('Token verification failed:', error);
-        res.status(400).json({ error: 'Invalid or expired token.' });
+        logger.error('Token verification failed:', error);
+        res.status(400).json({ 
+            success: false,
+            error: 'Invalid or expired token'
+        });
     }
 });
 
@@ -478,6 +603,62 @@ app.post('/api/seed-default-stories', async (req, res) => {
             details: error.message
         });
     }
+});
+
+/**
+ * @route   GET /api/check-user-id/:id
+ * @desc    Check if a user ID is available
+ * @access  Public
+ */
+app.get('/api/check-user-id/:id', async (req, res) => {
+    const { id } = req.params;
+
+    // Basic validation
+    if (!id || id.length < 3) {
+        return res.status(400).json({ 
+            success: false,
+            error: 'ID must be at least 3 characters long',
+            available: false
+        });
+    }
+
+    try {
+        const userResult = await getUserById(id);
+        res.json({ 
+            success: true,
+            available: !userResult.success
+        });
+    } catch (error) {
+        logger.error('Error checking user ID availability:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Server error checking ID availability',
+            available: false
+        });
+    }
+});
+
+// Add new endpoint to create user
+app.post('/api/signup', async (req, res) => {
+    const { id, email } = req.body;
+
+    if (!id || !email) {
+        return res.status(400).json({ 
+            success: false,
+            error: 'ID and email are required'
+        });
+    }
+
+    const result = await createUser(id, email);
+    if (!result.success) {
+        return res.status(400).json(result);
+    }
+
+    logger.info(`Created new user: ${JSON.stringify(result.data)}`);
+    res.json({ 
+        success: true,
+        message: 'User created successfully'
+    });
 });
 
 // Existing routes...

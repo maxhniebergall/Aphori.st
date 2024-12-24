@@ -24,6 +24,14 @@ export class DatabaseClientInterface {
     throw new Error('Method not implemented');
   }
 
+  async sAdd(key, value) {
+    throw new Error('Method not implemented');
+  }
+
+  async sMembers(key) {
+    throw new Error('Method not implemented');
+  }
+
   async connect() {
     throw new Error('Method not implemented');
   }
