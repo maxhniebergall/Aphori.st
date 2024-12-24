@@ -29,8 +29,8 @@ function Header({ title, subtitle, onLogoClick }) {
           />
         </div>
         <div className="header-controls">
-          {state.user ? (
-            <button className="profile-button" onClick={logout}>
+          {state.user && state.verified ? (
+            <button className="profile-button" onClick={toggleMenu}>
               👤 {state.user.email}
             </button>
           ) : (
@@ -46,10 +46,15 @@ function Header({ title, subtitle, onLogoClick }) {
           {subtitle && <h2>{subtitle}</h2>}
         </div>
       )}
-        {isModalOpen && isAuthModalOpen && (
+        {isModalOpen && (state.verified || state.user) && (
+            <div className="header-menu-modal">
+                <button className="sign-in-button" onClick={logout}>Sign Out</button>
+            </div>
+            )}
+        {isModalOpen && isAuthModalOpen && (!state.verified || !state.user) && (
             <AuthModal isOpen={isModalOpen} onClose={() => setAuthModalOpen(false)} onSignIn={handleSignIn} />
         )}
-        {isModalOpen && !isAuthModalOpen && (
+        {isModalOpen && !isAuthModalOpen && (!state.verified || !state.user) && (
         <div className="header-menu-modal">
           <button className="sign-in-button" onClick={() => setAuthModalOpen(true)}>Sign In</button>
           <a className="report-bug-button" href="https://github.com/maxhniebergall/Aphori.st/issues">Report a Bug</a>
