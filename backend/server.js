@@ -12,11 +12,6 @@ import fs from 'fs';
 
 dotenv.config();
 
-// Validate required environment variables
-if (!process.env.FRONTEND_URL) {
-    throw new Error('Missing required environment variable: FRONTEND_URL');
-}
-
 const PORT = process.env.PORT || 5050;
 const logger = newLogger("server.js");
 
