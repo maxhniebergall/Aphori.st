@@ -56,9 +56,6 @@ jobs:
         FRONTEND_URL="https://frontend-132704325993.us-central1.run.app"
         BACKEND_URL="https://backend-132704325993.us-central1.run.app"
         
-        echo "Frontend URL: ${FRONTEND_URL}"
-        echo "Backend URL: ${BACKEND_URL}"
-        
         # Create env vars file with all necessary origins
         cat > env.yaml << EOF
         DB_TYPE: firebase
@@ -75,6 +72,8 @@ jobs:
           --region $REGION \
           --port 5000 \
           --env-vars-file env.yaml \
+          --build-arg BACKEND_URL=${BACKEND_URL} \
+          --build-arg FRONTEND_URL=${FRONTEND_URL} \
           --set-secrets "FIREBASE_CREDENTIAL=firebase-admin-key:latest,\
                         FIREBASE_DATABASE_URL=firebase-database-url:latest,\
                         EMAIL_HOST=EMAIL_HOST:latest,\
