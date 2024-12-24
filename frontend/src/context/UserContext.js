@@ -49,7 +49,6 @@ export function UserProvider({ children }) {
 
     // Action to handle verifying magic link and authenticating user
     const verifyMagicLink = async (token) => {
-        dispatch({ type: 'AUTH_REQUEST' });
         const result = await userOperator.verifyMagicLink(token);
         
         if (result.success) {
