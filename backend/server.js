@@ -299,8 +299,7 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
 
         // Generate magic token
         const token = generateMagicToken(user.email);
-        const magicLink = `${process.env.FRONTEND_URL}/verify?token=${token}`;
-        logger.info(`Generated magic link with FRONTEND_URL: ${process.env.FRONTEND_URL}`);
+        const magicLink = `https://aphori.st/verify?token=${token}`;
 
         // Email content
         const subject = 'Your Magic Link to Sign In';
