@@ -9,6 +9,7 @@ const initialState = {
     user: null,
     loading: false,
     error: null,
+    verified: null,
 };
 
 // Reducer to handle state changes based on actions
@@ -17,11 +18,11 @@ function userReducer(state, action) {
         case 'AUTH_REQUEST':
             return { ...state, loading: true, error: null };
         case 'AUTH_SUCCESS':
-            return { ...state, loading: false, user: action.payload };
+            return { ...state, loading: false, user: action.payload, verified: true };
         case 'AUTH_FAILURE':
-            return { ...state, loading: false, error: action.payload };
+            return { ...state, loading: false, error: action.payload, verified: false };
         case 'LOGOUT':
-            return { ...state, user: null };
+            return { ...state, user: null, verified: null };
         default:
             return state;
     }

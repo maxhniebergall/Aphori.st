@@ -44,9 +44,6 @@ jobs:
 
     - name: Build Backend Docker image
       run: |
-        FRONTEND_URL="https://frontend-132704325993.us-central1.run.app"
-        BACKEND_URL="https://backend-132704325993.us-central1.run.app"
-        
         docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA -f backend/Dockerfile.prod ./backend --build-arg BACKEND_URL=${BACKEND_URL} --build-arg FRONTEND_URL=${FRONTEND_URL}
 
     - name: Push Docker images

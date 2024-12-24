@@ -13,13 +13,18 @@ function VerifyMagicLink() {
     const token = query.get('token');
 
     useEffect(() => {
-        if (token && state.verified === null) {
+        if (!token) {
+            navigate('/login');
+            return;
+        }
+
+        if (state.verified === null) {
             verifyMagicLink(token)
                 .catch(error => {
                     console.error('Magic link verification error:', error);
                 });
         }
-    }, [token, state.verified, verifyMagicLink]);
+    }, [token, state.verified, verifyMagicLink, navigate]);
 
     useEffect(() => {
         if (state.user) {
@@ -28,15 +33,33 @@ function VerifyMagicLink() {
     }, [state.user, navigate]);
 
     return (
-        <div className="verify-magic-link">
-            {state.loading && <p>Verifying your magic link...</p>}
-            {state.error && <p className="error">{state.error}</p>}
-            {state.verified === false && (
-                <div>
-                    <p className="error">This magic link is invalid or has expired. Please request a new one.</p>
-                    <button onClick={() => navigate('/login')}>Go to Login</button>
-                </div>
-            )}
+        <div className="verify-magic-link" style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            minHeight: '100vh',
+            padding: '20px'
+        }}>
+            <div style={{ textAlign: 'center' }}>
+                {!token && <p>No verification token provided.</p>}
+                {state.loading && <p>Verifying your magic link...</p>}
+                {state.error && <p style={{ color: 'red' }}>{state.error}</p>}
+                {state.verified === false && (
+                    <div>
+                        <p style={{ color: 'red' }}>This magic link is invalid or has expired. Please request a new one.</p>
+                        <button 
+                            onClick={() => navigate('/login')}
+                            style={{
+                                padding: '10px 20px',
+                                marginTop: '10px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Go to Login
+                        </button>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
