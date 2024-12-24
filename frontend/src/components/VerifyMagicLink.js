@@ -11,6 +11,7 @@ function VerifyMagicLink() {
     const navigate = useNavigate();
     const { verifyMagicLink, state } = useUser();
     const token = query.get('token');
+    const [verifyFailed, setVerifyFailed] = useState(false);
 
     useEffect(() => {
         if (!token) {
@@ -18,13 +19,19 @@ function VerifyMagicLink() {
             return;
         }
 
-        if (state.verified === null) {
+        if (state.verified === null && !verifyFailed) {
             verifyMagicLink(token)
+                .then(result => {
+                    if (!result.success) {
+                        setVerifyFailed(true);
+                    }
+                })
                 .catch(error => {
                     console.error('Magic link verification error:', error);
+                    setVerifyFailed(true);
                 });
         }
-    }, [token, state.verified, verifyMagicLink, navigate]);
+    }, [token, state.verified, verifyMagicLink, navigate, verifyFailed]);
 
     useEffect(() => {
         if (state.user) {

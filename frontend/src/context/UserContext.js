@@ -17,6 +17,8 @@ function userReducer(state, action) {
     switch(action.type) {
         case 'AUTH_REQUEST':
             return { ...state, loading: true, error: null };
+        case 'AUTH_SENT':
+            return { ...state, loading: false, user: action.payload, verified: false };
         case 'AUTH_SUCCESS':
             return { ...state, loading: false, user: action.payload, verified: true };
         case 'AUTH_FAILURE':
@@ -36,9 +38,8 @@ export function UserProvider({ children }) {
     const sendMagicLink = async (email) => {
         dispatch({ type: 'AUTH_REQUEST' });
         const result = await userOperator.sendMagicLink(email);
-        
         if (result.success) {
-            dispatch({ type: 'AUTH_SUCCESS', payload: { email, pendingVerification: true } });
+            dispatch({ type: 'AUTH_SENT', payload: { email } });
             return { success: true };
         } else {
             dispatch({ type: 'AUTH_FAILURE', payload: result.error });
@@ -54,6 +55,7 @@ export function UserProvider({ children }) {
         if (result.success) {
             dispatch({ type: 'AUTH_SUCCESS', payload: result.data });
             localStorage.setItem('token', result.data.token);
+
             return { success: true };
         } else {
             dispatch({ type: 'AUTH_FAILURE', payload: result.error });
