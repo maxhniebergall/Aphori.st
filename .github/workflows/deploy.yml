@@ -44,7 +44,7 @@ jobs:
 
     - name: Build Backend Docker image
       run: |
-        docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA -f backend/Dockerfile.prod ./backend
+        docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA -f backend/Dockerfile.prod ./backend --build-arg BACKEND_URL=${BACKEND_URL} --build-arg FRONTEND_URL=${FRONTEND_URL}
 
     - name: Push Docker images
       run: |
@@ -72,8 +72,6 @@ jobs:
           --region $REGION \
           --port 5000 \
           --env-vars-file env.yaml \
-          --build-arg BACKEND_URL=${BACKEND_URL} \
-          --build-arg FRONTEND_URL=${FRONTEND_URL} \
           --set-secrets "FIREBASE_CREDENTIAL=firebase-admin-key:latest,\
                         FIREBASE_DATABASE_URL=firebase-database-url:latest,\
                         EMAIL_HOST=EMAIL_HOST:latest,\
