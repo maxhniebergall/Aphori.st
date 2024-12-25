@@ -416,8 +416,10 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
  */
 app.post('/api/auth/verify-magic-link', async (req, res) => {
     const { token } = req.body;
+    logger.info('Received verify-magic-link request with token:', token);
 
     if (!token) {
+        logger.warn('No token provided in request');
         return res.status(400).json({ 
             success: false,
             error: 'Token is required'
@@ -425,10 +427,16 @@ app.post('/api/auth/verify-magic-link', async (req, res) => {
     }
 
     try {
+        logger.info('Attempting to verify JWT token');
         const decoded = jwt.verify(token, process.env.MAGIC_LINK_SECRET);
+        logger.info('Successfully decoded token:', decoded);
+
+        logger.info('Looking up user by email:', decoded.email);
         const userResult = await getUserByEmail(decoded.email);
+        logger.info('User lookup result:', userResult);
 
         if (!userResult.success) {
+            logger.warn('User not found for email:', decoded.email);
             return res.status(400).json({ 
                 success: false,
                 error: 'User not found'
@@ -436,8 +444,10 @@ app.post('/api/auth/verify-magic-link', async (req, res) => {
         }
 
         // Generate auth token
+        logger.info('Generating auth token for user:', userResult.data);
         const authToken = generateAuthToken(userResult.data);
 
+        logger.info('Successfully verified magic link for user:', userResult.data.id);
         res.json({ 
             success: true,
             data: {
@@ -449,7 +459,12 @@ app.post('/api/auth/verify-magic-link', async (req, res) => {
             }
         });
     } catch (error) {
-        logger.error('Invalid or expired token:', error);
+        logger.error('Error verifying magic link:', {
+            error: error.message,
+            name: error.name,
+            stack: error.stack,
+            token
+        });
         res.status(400).json({ 
             success: false,
             error: 'Invalid or expired token'
