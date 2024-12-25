@@ -56,6 +56,14 @@ class UserOperator {
       return { success: true, data: response.data };
     } catch (error) {
       console.error('Magic link verification error:', error);
+      // If it's a 300 status and includes the email, this is for signup flow
+      if (error.response?.status === 300) {
+        return {
+          success: false,
+          status: 300,
+          data: error.response.data
+        };
+      }
       return { 
         success: false, 
         error: error.response?.data?.error || 'Magic link verification failed' 
