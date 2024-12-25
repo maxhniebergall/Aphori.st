@@ -38,6 +38,25 @@ function userReducer(state, action) {
 export function UserProvider({ children }) {
     const [state, dispatch] = useReducer(userReducer, initialState);
 
+    // Add storage event listener
+    useEffect(() => {
+        const handleStorageChange = (e) => {
+            if (e.key === 'token' || e.key === 'userData') {
+                if (!e.newValue) {
+                    // Item was removed
+                    dispatch({ type: 'LOGOUT' });
+                } else if (e.key === 'userData') {
+                    // userData was updated
+                    const userData = JSON.parse(e.newValue);
+                    dispatch({ type: 'AUTH_SUCCESS', payload: userData });
+                }
+            }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+        return () => window.removeEventListener('storage', handleStorageChange);
+    }, []);
+
     // Action to handle sending magic link
     const sendMagicLink = async (email) => {
         dispatch({ type: 'AUTH_REQUEST' });
