@@ -8,6 +8,9 @@ function Header({ title, subtitle, onLogoClick }) {
   const { state, logout, sendMagicLink } = useUser();
   const [isModalOpen, setModalOpen] = useState(false);
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
+
+  console.log('Header state:', state);  // Debug log
+
   const handleSignIn = async (email) => {
     console.log('Attempting to sign in with email:', email);
     return await sendMagicLink(email);
@@ -29,7 +32,7 @@ function Header({ title, subtitle, onLogoClick }) {
           />
         </div>
         <div className="header-controls">
-          {state.user && state.verified ? (
+          {state?.user?.id && state.verified ? (
             <button className="profile-button" onClick={toggleMenu}>
               👤 {state.user.id}
             </button>
@@ -47,13 +50,13 @@ function Header({ title, subtitle, onLogoClick }) {
         </div>
       )}
       
-         {isModalOpen && state.verified && (
+         {isModalOpen && state?.verified && state?.user?.id && (
           <div className="user-name-message">
             <p>Hello, {state.user.id}!</p>
-            <p>(Your comments and posts will appear here after a future update.)</p>
+            <p>({state.user.email})</p>
           </div>
          )}
-        {isModalOpen && (state.verified) && (
+        {isModalOpen && state?.verified && state?.user?.id && (
             <div className="header-menu-modal">
                 <button className="sign-in-button" onClick={logout}>Sign Out</button>
             </div>
@@ -64,10 +67,10 @@ function Header({ title, subtitle, onLogoClick }) {
           not logged in (below)     
         */}
 
-        {isModalOpen && isAuthModalOpen && (!state.verified) && (
+        {isModalOpen && isAuthModalOpen && (!state?.verified) && (
             <AuthModal isOpen={isModalOpen} onClose={() => setAuthModalOpen(false)} onSignIn={handleSignIn} />
         )}
-        {isModalOpen && !isAuthModalOpen && (!state.verified) && (
+        {isModalOpen && !isAuthModalOpen && (!state?.verified) && (
         <div className="header-menu-modal">
           <button className="sign-in-button" onClick={() => setAuthModalOpen(true)}>Sign In</button>
           <a className="report-bug-button" href="https://github.com/maxhniebergall/Aphori.st/issues">Report a Bug</a>
