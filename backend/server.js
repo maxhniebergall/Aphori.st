@@ -28,6 +28,9 @@ try {
 const app = express();
 app.use(json());
 
+// Trust proxy - required for rate limiting behind Cloud Run
+app.set('trust proxy', 1);
+
 // Parse the CORS_ORIGIN environment variable into an array and merge with default origins
 const defaultOrigins = [
   'https://aphorist.firebaseapp.com',
