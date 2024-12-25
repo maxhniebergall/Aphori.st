@@ -437,9 +437,9 @@ app.post('/api/auth/verify-magic-link', async (req, res) => {
 
         if (!userResult.success) {
             logger.warn('User not found for email:', decoded.email);
-            return res.status(400).json({ 
+            return res.status(300).json({ 
                 success: false,
-                error: 'User not found'
+                error: 'User not found',
             });
         }
 
