@@ -60,8 +60,8 @@ function StoryTreeContent() {
     }
   }, [rootUUID, dispatch]);
 
-  const title = rootNode?.metadata?.title || 'Untitled';
-  const subtitle = rootNode?.metadata?.author ? `by ${rootNode.metadata.author}` : 'by Anonymous';
+  const title = rootNode?.metadata?.title || '';
+  const subtitle = rootNode?.metadata?.author ? `by ${rootNode.metadata.author}` : '';
 
   return (
     <div className="story-tree-container">

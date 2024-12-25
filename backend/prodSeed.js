@@ -9,7 +9,7 @@ const DEFAULT_STORY_TREES = [
     title: 'The aphorist',
     nodes: [],
     metadata: {
-      author: 'System',
+      author: 'MaxHniebergall',
       title: 'The aphorist'
     }
   },
@@ -19,7 +19,7 @@ const DEFAULT_STORY_TREES = [
     title: 'Aphori.st is a social medium for good',
     nodes: [],
     metadata: {
-      author: 'System',
+      author: 'MaxHniebergall',
       title: 'Aphori.st is a social medium for good'
     }
   },
@@ -29,7 +29,7 @@ const DEFAULT_STORY_TREES = [
     title: 'An aphorism',
     nodes: [],
     metadata: {
-      author: 'System',
+      author: 'MaxHniebergall',
       title: 'An aphorism'
     }
   }
