@@ -14,8 +14,6 @@ function VerifyMagicLink() {
     const [verifyFailed, setVerifyFailed] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
-    const [isNewUser, setIsNewUser] = useState(false);
-    const [email, setEmail] = useState('');
 
     useEffect(() => {
         if (!token) {
@@ -28,42 +26,33 @@ function VerifyMagicLink() {
             verifyMagicLink(token)
                 .then(result => {
                     console.log("verifyMagicLink result:", result);
+                    
                     if (result.success) {
-                        console.log("verifyMagicLink result success");
+                        // Successful verification
                         navigate('/feed');
-                        setVerifyFailed(false);
                         return;
-                    } else {
-                        setErrorMessage(result.error || 'Verification failed. Please try again.');
                     }
+                    
+                    if (result.status === 300 && result.email) {
+                        // User not found - redirect to signup
+                        navigate(`/signup?email=${encodeURIComponent(result.email)}&token=${token}`);
+                        return;
+                    }
+
+                    // Handle other failures
+                    setVerifyFailed(true);
+                    setErrorMessage(result.error || 'Verification failed. Please try again.');
                 })
                 .catch(error => {
+                    console.error('Unexpected error during verification:', error);
                     setVerifyFailed(true);
-                    if (error?.response?.status === 300 && error?.response?.data?.error === 'User not found') {
-                        console.log("verifyMagicLink result user not found");
-                        setIsNewUser(true);
-                        const email = error?.response?.data?.data?.email;
-                        setEmail(email);
-                        if (email) {
-                            navigate(`/signup?email=${encodeURIComponent(email)}&token=${token}`);
-                            return;
-                        }
-                    } else {
-                        console.error('Magic link verification error:', error);
-                        setErrorMessage('An unexpected error occurred. Please try again.');
-                    }
+                    setErrorMessage('An unexpected error occurred. Please try again.');
                 })
                 .finally(() => {
                     setIsLoading(false);
                 });
         }
     }, [token, state.verified, verifyMagicLink, navigate, verifyFailed]);
-
-    useEffect(() => {
-        if (state.user) {
-            navigate('/feed');
-        }
-    }, [state.user, navigate]);
 
     return (
         <div className="verify-magic-link" style={{ 
