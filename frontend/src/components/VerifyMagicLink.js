@@ -15,6 +15,7 @@ function VerifyMagicLink() {
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
     const [isNewUser, setIsNewUser] = useState(false);
+    const [email, setEmail] = useState('');
 
     useEffect(() => {
         if (!token) {
@@ -38,11 +39,11 @@ function VerifyMagicLink() {
                 })
                 .catch(error => {
                     setVerifyFailed(true);
-                    if (error.response && error.response.status === 300 && error.response.data.error === 'User not found') {
+                    if (error?.response?.status === 300 && error?.response?.data?.error === 'User not found') {
                         console.log("verifyMagicLink result user not found");
                         setIsNewUser(true);
-                        const email = error.response.data.data?.email;
-                    
+                        const email = error?.response?.data?.data?.email;
+                        setEmail(email);
                         if (email) {
                             navigate(`/signup?email=${encodeURIComponent(email)}&token=${token}`);
                             return;
