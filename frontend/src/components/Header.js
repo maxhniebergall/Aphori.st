@@ -50,6 +50,7 @@ function Header({ title, subtitle, onLogoClick }) {
          {isModalOpen && state.verified && (
           <div className="user-name-message">
             <p>Hello, {state.user.email}!</p>
+            <p>(Your comments and posts will appear here after a future update.)</p>
           </div>
          )}
         {isModalOpen && (state.verified) && (
