@@ -53,38 +53,25 @@ class UserOperator {
   async verifyMagicLink(token) {
     try {
       const response = await axios.post(`${this.baseURL}/api/auth/verify-magic-link`, { token });
-      console.log('Verify magic link response:', response);
+      console.log('Verify magic link success response (operator):', response);
       return { success: true, data: response.data };
     } catch (error) {
-      console.error('Magic link verification error:', {
-        error,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data
-      });
-
-      // If it's a 300 status and includes the email, this is for signup flow
-      if (error.response?.status === 300) {
+      console.log('Verify magic link error response (operator):', error.response?.data);
+      
+      // Handle 300 status (user not found) as a special case
+      if (error.response?.status === 300 && error.response?.data?.email) {
         return {
           success: false,
           status: 300,
-          data: error.response.data
+          error: 'User not found',
+          email: error.response.data.email
         };
       }
 
-      // If there's a response with error data
-      if (error.response?.data) {
-        return { 
-          success: false, 
-          error: error.response.data.error || 'Magic link verification failed',
-          status: error.response.status
-        };
-      }
-
-      // For network errors or other unexpected errors
+      // Handle other errors
       return { 
-        success: false, 
-        error: error.message || 'Network error during verification',
+        success: false,
+        error: error.response?.data?.error || error.message || 'Verification failed',
         status: error.response?.status
       };
     }
