@@ -46,11 +46,21 @@ function Header({ title, subtitle, onLogoClick }) {
           {subtitle && <h2>{subtitle}</h2>}
         </div>
       )}
+      
+         {isModalOpen && state.verified && (
+          <div className="user-name-message">
+            <p>Hello, {state.user.email}!</p>
+          </div>
+         )}
         {isModalOpen && (state.verified) && (
             <div className="header-menu-modal">
                 <button className="sign-in-button" onClick={logout}>Sign Out</button>
             </div>
             )}
+
+        //logged in (above)    
+        // not logged in (below)    
+
         {isModalOpen && isAuthModalOpen && (!state.verified) && (
             <AuthModal isOpen={isModalOpen} onClose={() => setAuthModalOpen(false)} onSignIn={handleSignIn} />
         )}
