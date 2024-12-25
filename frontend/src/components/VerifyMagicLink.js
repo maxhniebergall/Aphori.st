@@ -13,6 +13,7 @@ function VerifyMagicLink() {
     const token = query.get('token');
     const [verifyFailed, setVerifyFailed] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
 
     useEffect(() => {
         if (!token) {
@@ -27,16 +28,20 @@ function VerifyMagicLink() {
                     console.log("verifyMagicLink result:", result);
                     if (result.status === 300) {
                         const email = result.data.email || result.data.data?.email;
-                        navigate(`/signup?email=${encodeURIComponent(email)}&token=${token}`);
-                        return;
+                        if (email) {
+                            navigate(`/signup?email=${encodeURIComponent(email)}&token=${token}`);
+                            return;
+                        }
                     }
                     if (!result.success) {
                         setVerifyFailed(true);
+                        setErrorMessage(result.error || 'Verification failed. Please try again.');
                     }
                 })
                 .catch(error => {
                     console.error('Magic link verification error:', error);
                     setVerifyFailed(true);
+                    setErrorMessage('An unexpected error occurred. Please try again.');
                 })
                 .finally(() => {
                     setIsLoading(false);
@@ -63,7 +68,18 @@ function VerifyMagicLink() {
                 {isLoading && <p>Verifying your magic link...</p>}
                 {verifyFailed && (
                     <div>
-                        <p style={{ color: 'red' }}>This magic link is invalid or has expired. Please request a new one.</p>
+                        <p style={{ color: 'red' }}>{errorMessage}</p>
+                        <button 
+                            onClick={() => navigate('/login')}
+                            style={{
+                                padding: '10px 20px',
+                                marginTop: '10px',
+                                marginRight: '10px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Back to Login
+                        </button>
                         <button 
                             onClick={() => navigate('/signup')}
                             style={{
