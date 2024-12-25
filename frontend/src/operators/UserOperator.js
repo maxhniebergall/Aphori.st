@@ -65,7 +65,7 @@ class UserOperator {
           success: false,
           ...error.response.data,  // This spreads all fields from the response
           error: error.response.data.error,
-          email: "test-email",
+          email: error.response.data.email,
           status: error.response.status
         };
       }
