@@ -26,19 +26,24 @@ function VerifyMagicLink() {
             verifyMagicLink(token)
                 .then(result => {
                     console.log("verifyMagicLink result:", result);
-                    if (result.status === 300) {
-                        const email = result.data.email || result.data.data?.email;
+                    if (result.success) {
+                        console.log("verifyMagicLink result success");
+                        navigate('/feed');
+                        return;
+                    }
+
+                    setVerifyFailed(true);
+                    setErrorMessage(result.error || 'Verification failed. Please try again.');
+                })
+                .catch(error => {
+                    if (error.response && error.response.status === 300 && error.response.data.error === 'User not found') {
+                        const email = error.response.data.data?.email;
                         if (email) {
                             navigate(`/signup?email=${encodeURIComponent(email)}&token=${token}`);
                             return;
                         }
                     }
-                    if (!result.success) {
-                        setVerifyFailed(true);
-                        setErrorMessage(result.error || 'Verification failed. Please try again.');
-                    }
-                })
-                .catch(error => {
+
                     console.error('Magic link verification error:', error);
                     setVerifyFailed(true);
                     setErrorMessage('An unexpected error occurred. Please try again.');
