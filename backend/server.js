@@ -356,7 +356,7 @@ const magicLinkLimiter = rateLimit({
  * @access  Public
  */
 app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
-    const { email } = req.body;
+    const { email, isSignup } = req.body;
 
     // Validate email
     if (!email) {
@@ -383,13 +383,17 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
         
         // Generate magic token
         const token = generateMagicToken(email);
-        const magicLink = `https://aphori.st/verify?token=${token}`;
+        
+        // If isSignup is true, redirect to signup page instead of verify
+        const baseUrl = isSignup ? 'https://aphori.st/signup' : 'https://aphori.st/verify';
+        const magicLink = `${baseUrl}?token=${token}&email=${encodeURIComponent(email)}`;
 
         // Email content
-        const subject = 'Your Magic Link to Sign In';
+        const subject = isSignup ? 'Complete Your Sign Up' : 'Your Magic Link to Sign In';
+        const actionText = isSignup ? 'complete your sign up' : 'sign in';
         const html = `
             <p>Hi,</p>
-            <p>Click <a href="${magicLink}">here</a> to sign in. This link will expire in 15 minutes.</p>
+            <p>Click <a href="${magicLink}">here</a> to ${actionText}. This link will expire in 15 minutes.</p>
             <p>If you did not request this email, you can safely ignore it.</p>
             <p>Thanks,<br/>Aphori.st Team</p>
         `;
@@ -658,7 +662,7 @@ app.get('/api/check-user-id/:id', async (req, res) => {
 
 // Add new endpoint to create user
 app.post('/api/signup', async (req, res) => {
-    const { id, email } = req.body;
+    const { id, email, verificationToken } = req.body;
 
     if (!id || !email) {
         return res.status(400).json({ 
@@ -667,15 +671,40 @@ app.post('/api/signup', async (req, res) => {
         });
     }
 
+    // If verificationToken is provided, verify it matches the email
+    if (verificationToken) {
+        try {
+            const decoded = jwt.verify(verificationToken, process.env.MAGIC_LINK_SECRET);
+            if (decoded.email !== email) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Email does not match verification token'
+                });
+            }
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid or expired verification token'
+            });
+        }
+    }
+
     const result = await createUser(id, email);
     if (!result.success) {
         return res.status(400).json(result);
     }
 
+    // If user was created with a valid verification token, generate auth token
+    let authToken = null;
+    if (verificationToken) {
+        authToken = generateAuthToken(result.data);
+    }
+
     logger.info(`Created new user: ${JSON.stringify(result.data)}`);
     res.json({ 
         success: true,
-        message: 'User created successfully'
+        message: 'User created successfully',
+        data: authToken ? { token: authToken, user: result.data } : undefined
     });
 });
 

@@ -63,9 +63,9 @@ class UserOperator {
     }
   }
 
-  async sendMagicLink(email) {
+  async sendMagicLink(email, isSignup = false) {
     try {
-      await axios.post(`${this.baseURL}/api/auth/send-magic-link`, { email });
+      await axios.post(`${this.baseURL}/api/auth/send-magic-link`, { email, isSignup });
       return { success: true };
     } catch (error) {
       console.error('Send magic link error:', error);
