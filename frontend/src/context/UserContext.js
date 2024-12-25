@@ -54,9 +54,9 @@ export function UserProvider({ children }) {
         const result = await userOperator.verifyMagicLink(token);
         
         if (result.success) {
-            dispatch({ type: 'AUTH_SUCCESS', payload: result.data });
+            dispatch({ type: 'AUTH_SUCCESS', payload: result.data.user });
             localStorage.setItem('token', result.data.token);
-            localStorage.setItem('userData', JSON.stringify(result.data));
+            localStorage.setItem('userData', JSON.stringify(result.data.user));
 
             return { success: true };
         } if (result.error === 'User not found') {

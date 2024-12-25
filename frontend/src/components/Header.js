@@ -31,7 +31,7 @@ function Header({ title, subtitle, onLogoClick }) {
         <div className="header-controls">
           {state.user && state.verified ? (
             <button className="profile-button" onClick={toggleMenu}>
-              👤 {state.user.email}
+              👤 {state.user.id}
             </button>
           ) : (
             <div className="menu-icon" onClick={toggleMenu}>
