@@ -27,6 +27,9 @@ function VerifyMagicLink() {
                     if (!result.success) {
                         setVerifyFailed(true);
                     }
+                    if (result.status === 300 && result.data.error === 'User not found') {
+                        navigate(`/signup?email=${encodeURIComponent(result.data.email)}&token=${token}`);
+                    }
                 })
                 .catch(error => {
                     console.error('Magic link verification error:', error);
