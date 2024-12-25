@@ -44,6 +44,7 @@ function VerifyMagicLink() {
                         return;
                     }
 
+                    console.log("Verification failed with result:", result);
                     // Handle other failures
                     setVerifyFailed(true);
                     setErrorMessage(result.error || 'Verification failed. Please try again.');
