@@ -188,61 +188,54 @@ app.get('/api/feed', async (req, res) => {
     const pageSize = 10; // Number of items per page
     logger.info("Handling request for feed at page "+page)
     try {
-      logger.info('Current db connection state: %O', {
-          connected: db.isConnected?.() || 'unknown',
-          ready: db.isReady?.() || 'unknown'
-      });
+        logger.info('Current db connection state: %O', {
+            connected: db.isConnected?.() || 'unknown',
+            ready: db.isReady?.() || 'unknown'
+        });
 
-      // Fetch all feed items from db with pagination
-      const startIndex = (page - 1) * pageSize;
-      const endIndex = startIndex + pageSize;
+        // Fetch all feed items from db with pagination
+        const startIndex = (page - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
 
-      logger.info('Attempting to fetch feed items from db with range: %O', {
-          startIndex,
-          endIndex,
-          key: 'feedItems'
-      });
+        logger.info('Attempting to fetch feed items from db with range: %O', {
+            startIndex,
+            endIndex,
+            key: 'feedItems'
+        });
 
-      let results = await db.lRange('feedItems', startIndex, endIndex); 
-      logger.info('Raw db response for feed items: %O', results);
+        let results = await db.lRange('feedItems', startIndex, endIndex); 
+        logger.info('Raw db response for feed items: %O', results);
 
-        if (results.err) {
-          logger.error('db error when fetching feed: %O', results.err);
-          return res.status(500).json({ error: 'Error fetching data from Redis' });
+        if (!results) {
+            results = [];
         }
-  
-        const feedItems = results.map((item) => {
-            try {
-                return JSON.parse(item);
-            } catch (e) {
-                logger.error('Failed to parse feed item: %O', { item, error: e });
-                return null;
-            }
-        }).filter(Boolean);
+
+        // No need to parse JSON as items are already decompressed
+        const feedItems = results.filter(Boolean);
 
         logger.info("Returned " + feedItems.length + " feed items");
         logger.debug("Feed items content: %O", feedItems);
         res.json({
-          page,
-          items: feedItems,
+            page,
+            items: feedItems,
         });
     } catch (error) {
-      logger.error('Error fetching feed items: %O', {
-          error,
-          stack: error.stack,
-          message: error.message
-      });
-      res.status(500).json({ error: 'Server error' });
+        logger.error('Error fetching feed items: %O', {
+            error,
+            stack: error.stack,
+            message: error.message
+        });
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
 // Constants for user-related keys
-const USER_PREFIX = 'user:';
+const USER_PREFIX = 'user';
 const USER_IDS_SET = 'user_ids';
-const EMAIL_TO_ID_PREFIX = 'email_to_id:';
+const EMAIL_TO_ID_PREFIX = 'email_to_id';
 
 const getUserById = async (id) => {
-    const userData = await db.hGet(`${USER_PREFIX}${id}`, 'data');
+    const userData = await db.hGet(db.encodeKey(id, USER_PREFIX), 'data');
     if (!userData) {
         return {
             success: false,
@@ -251,13 +244,13 @@ const getUserById = async (id) => {
     }
     return {
         success: true,
-        data: JSON.parse(userData)
+        data: userData // Already decompressed by the client
     };
 };
 
 const getUserByEmail = async (email) => {
     // Get user ID from email mapping
-    const userId = await db.get(`${EMAIL_TO_ID_PREFIX}${email}`);
+    const userId = await db.get(db.encodeKey(email, EMAIL_TO_ID_PREFIX));
     if (!userId) {
         return {
             success: false,
@@ -290,7 +283,7 @@ const createUser = async (id, email) => {
     }
 
     // Check if email is already registered
-    const existingEmail = await db.get(`${EMAIL_TO_ID_PREFIX}${email}`);
+    const existingEmail = await db.get(db.encodeKey(email, EMAIL_TO_ID_PREFIX));
     if (existingEmail) {
         return {
             success: false,
@@ -305,11 +298,11 @@ const createUser = async (id, email) => {
 
     try {
         // Store user data
-        await db.hSet(`${USER_PREFIX}${id}`, 'data', JSON.stringify(userData));
+        await db.hSet(db.encodeKey(id, USER_PREFIX), 'data', userData);
         // Add ID to set of user IDs
         await db.sAdd(USER_IDS_SET, id);
         // Create email to ID mapping
-        await db.set(`${EMAIL_TO_ID_PREFIX}${email}`, id);
+        await db.set(db.encodeKey(email, EMAIL_TO_ID_PREFIX), id);
 
         return {
             success: true,
