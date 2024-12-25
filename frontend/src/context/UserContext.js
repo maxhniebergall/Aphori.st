@@ -23,6 +23,8 @@ function userReducer(state, action) {
             return { ...state, loading: false, user: action.payload, verified: true };
         case 'AUTH_FAILURE':
             return { ...state, loading: false, error: action.payload, verified: false };
+        case 'USER_NOT_FOUND':
+            return { ...state, loading: false, error: action.payload, verified: false };
         case 'LOGOUT':
             return { ...state, user: null, verified: null };
         default:
@@ -56,9 +58,12 @@ export function UserProvider({ children }) {
             localStorage.setItem('token', result.data.token);
 
             return { success: true };
+        } if (result.error === 'User not found') {
+            dispatch({ type: 'USER_NOT_FOUND', payload: result.error });
+            return { success: false, error: result.error, result: result };
         } else {
             dispatch({ type: 'AUTH_FAILURE', payload: result.error });
-            return { success: false, error: result.error, data: result.error?.response?.data };
+            return { success: false, error: result.error};
         }
     };
 
