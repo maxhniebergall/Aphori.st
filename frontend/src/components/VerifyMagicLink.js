@@ -12,6 +12,7 @@ function VerifyMagicLink() {
     const { verifyMagicLink, state } = useUser();
     const token = query.get('token');
     const [verifyFailed, setVerifyFailed] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         if (!token) {
@@ -20,6 +21,7 @@ function VerifyMagicLink() {
         }
 
         if (state.verified === null && !verifyFailed) {
+            setIsLoading(true);
             verifyMagicLink(token)
                 .then(result => {
                     if (!result.success) {
@@ -29,6 +31,9 @@ function VerifyMagicLink() {
                 .catch(error => {
                     console.error('Magic link verification error:', error);
                     setVerifyFailed(true);
+                })
+                .finally(() => {
+                    setIsLoading(false);
                 });
         }
     }, [token, state.verified, verifyMagicLink, navigate, verifyFailed]);
@@ -49,20 +54,19 @@ function VerifyMagicLink() {
         }}>
             <div style={{ textAlign: 'center' }}>
                 {!token && <p>No verification token provided.</p>}
-                {state.loading && <p>Verifying your magic link...</p>}
-                {state.error && <p style={{ color: 'red' }}>{state.error}</p>}
-                {state.verified === false && (
+                {isLoading && <p>Verifying your magic link...</p>}
+                {verifyFailed && (
                     <div>
                         <p style={{ color: 'red' }}>This magic link is invalid or has expired. Please request a new one.</p>
                         <button 
-                            onClick={() => navigate('/login')}
+                            onClick={() => navigate('/signup')}
                             style={{
                                 padding: '10px 20px',
                                 marginTop: '10px',
                                 cursor: 'pointer'
                             }}
                         >
-                            Go to Login
+                            Go to Signup
                         </button>
                     </div>
                 )}
