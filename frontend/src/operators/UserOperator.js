@@ -63,8 +63,9 @@ class UserOperator {
         console.log('Verify magic link error response (operator) is User not found:', error.response.data);
         return {
           success: false,
+          ...error.response.data,  // This spreads all fields from the response
           error: error.response.data.error,
-          email: error.response.data.email,
+          email: "test-email",
           status: error.response.status
         };
       }
