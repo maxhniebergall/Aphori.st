@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useUser } from '../contexts/UserContext';
+import { useUser } from '../context/UserContext';
 
 function useQuery() {
     return new URLSearchParams(useLocation().search);
