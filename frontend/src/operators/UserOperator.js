@@ -15,46 +15,24 @@ class UserOperator {
   }
 
   async verifyToken(token) {
-    // Check cache first
-    if (this.tokenCache.has(token)) {
-      const cacheExpiry = this.tokenCacheExpiry.get(token);
-      if (cacheExpiry > Date.now()) {
-        return this.tokenCache.get(token);
-      } else {
-        // Clear expired cache entry
-        this.clearTokenCache(token);
-      }
-    }
-
     try {
       const response = await axios.post(`${this.baseURL}/api/auth/verify-token`, { token });
-      const result = { success: true, data: response.data };
-      
-      // Cache the successful result
-      this.tokenCache.set(token, result);
-      this.tokenCacheExpiry.set(token, Date.now() + this.CACHE_DURATION);
-      
-      return result;
+      console.log('Verify token success response (operator):', response.data);
+      return response.data;
     } catch (error) {
       console.error('Token verification error:', error);
-      const result = { 
+      return { 
         success: false, 
         error: error.response?.data?.error || 'Token verification failed' 
       };
-      
-      // Cache the failure result for a shorter duration
-      this.tokenCache.set(token, result);
-      this.tokenCacheExpiry.set(token, Date.now() + (this.CACHE_DURATION / 5)); // Cache failures for 1 minute
-      
-      return result;
     }
   }
 
   async verifyMagicLink(token) {
     try {
       const response = await axios.post(`${this.baseURL}/api/auth/verify-magic-link`, { token });
-      console.log('Verify magic link success response (operator):', response);
-      return { success: true, data: response.data };
+      console.log('Verify magic link success response (operator):', response.data);
+      return response.data;
     } catch (error) {
       console.log('Verify magic link error response (operator):', error.response?.data);
       

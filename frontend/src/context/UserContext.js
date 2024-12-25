@@ -14,6 +14,8 @@ const initialState = {
 
 // Reducer to handle state changes based on actions
 function userReducer(state, action) {
+    console.log('UserContext reducer:', { type: action.type, payload: action.payload, currentState: state });
+    
     switch(action.type) {
         case 'AUTH_REQUEST':
             return { ...state, loading: true, error: null };
@@ -52,11 +54,15 @@ export function UserProvider({ children }) {
     // Action to handle verifying magic link and authenticating user
     const verifyMagicLink = async (token) => {
         const result = await userOperator.verifyMagicLink(token);
+        console.log('verifyMagicLink result:', result);  // Debug log
         
         if (result.success) {
-            dispatch({ type: 'AUTH_SUCCESS', payload: result.data.user });
+            const userData = result.data.user;
+            console.log('Setting user data:', userData);  // Debug log
+            
+            dispatch({ type: 'AUTH_SUCCESS', payload: userData });
             localStorage.setItem('token', result.data.token);
-            localStorage.setItem('userData', JSON.stringify(result.data.user));
+            localStorage.setItem('userData', JSON.stringify(userData));
 
             return { success: true };
         } if (result.error === 'User not found') {
@@ -95,8 +101,9 @@ export function UserProvider({ children }) {
                 userOperator.verifyToken(token)
                     .then(result => {
                         if (result.success) {
-                            // Use the stored user data if verification succeeds
-                            dispatch({ type: 'AUTH_SUCCESS', payload: JSON.parse(userData) });
+                            const parsedUserData = JSON.parse(userData);
+                            console.log('Restoring user data:', parsedUserData);  // Debug log
+                            dispatch({ type: 'AUTH_SUCCESS', payload: parsedUserData });
                         } else {
                             dispatch({ type: 'LOGOUT' });
                             localStorage.removeItem('token');
