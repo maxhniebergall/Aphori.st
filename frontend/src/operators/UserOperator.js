@@ -59,7 +59,7 @@ class UserOperator {
       console.log('Verify magic link error response (operator):', error.response?.data);
       
       // For 300 status (user not found), pass through the response data
-      if (error.response?.status === 300) {
+      if (error.response?.data?.error === 'User not found') {
         return {
           ...error.response.data,  // This includes success: false, error, and email
           status: error.response.status
