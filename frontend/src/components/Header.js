@@ -49,7 +49,7 @@ function Header({ title, subtitle, onLogoClick }) {
       
          {isModalOpen && state.verified && (
           <div className="user-name-message">
-            <p>Hello, {state.user.email}!</p>
+            <p>Hello, {state.user.id}!</p>
             <p>(Your comments and posts will appear here after a future update.)</p>
           </div>
          )}
@@ -59,8 +59,10 @@ function Header({ title, subtitle, onLogoClick }) {
             </div>
             )}
 
-        //logged in (above)    
-        // not logged in (below)    
+        {/* 
+          logged in (above)    
+          not logged in (below)     
+        */}
 
         {isModalOpen && isAuthModalOpen && (!state.verified) && (
             <AuthModal isOpen={isModalOpen} onClose={() => setAuthModalOpen(false)} onSignIn={handleSignIn} />

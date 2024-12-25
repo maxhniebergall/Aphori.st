@@ -56,6 +56,7 @@ export function UserProvider({ children }) {
         if (result.success) {
             dispatch({ type: 'AUTH_SUCCESS', payload: result.data });
             localStorage.setItem('token', result.data.token);
+            localStorage.setItem('userData', JSON.stringify(result.data));
 
             return { success: true };
         } if (result.error === 'User not found') {
@@ -71,12 +72,14 @@ export function UserProvider({ children }) {
     const logout = () => {
         dispatch({ type: 'LOGOUT' });
         localStorage.removeItem('token');
+        localStorage.removeItem('userData');
     };
 
     useEffect(() => {
         const token = localStorage.getItem('token');
-        if (token) {
-            // Add a check for token expiration before verifying
+        const userData = localStorage.getItem('userData');
+        
+        if (token && userData) {
             try {
                 const payload = JSON.parse(atob(token.split('.')[1]));
                 const expiry = payload.exp * 1000; // Convert to milliseconds
@@ -85,26 +88,31 @@ export function UserProvider({ children }) {
                     // Token is expired, just remove it and logout
                     dispatch({ type: 'LOGOUT' });
                     localStorage.removeItem('token');
+                    localStorage.removeItem('userData');
                     return;
                 }
                 
                 userOperator.verifyToken(token)
                     .then(result => {
                         if (result.success) {
-                            dispatch({ type: 'AUTH_SUCCESS', payload: result.data });
+                            // Use the stored user data if verification succeeds
+                            dispatch({ type: 'AUTH_SUCCESS', payload: JSON.parse(userData) });
                         } else {
                             dispatch({ type: 'LOGOUT' });
                             localStorage.removeItem('token');
+                            localStorage.removeItem('userData');
                         }
                     })
                     .catch(() => {
                         dispatch({ type: 'LOGOUT' });
                         localStorage.removeItem('token');
+                        localStorage.removeItem('userData');
                     });
             } catch (e) {
                 // If token parsing fails, remove it
                 dispatch({ type: 'LOGOUT' });
                 localStorage.removeItem('token');
+                localStorage.removeItem('userData');
             }
         }
     }, []);
