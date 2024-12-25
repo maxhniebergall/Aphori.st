@@ -14,6 +14,7 @@ function VerifyMagicLink() {
     const [verifyFailed, setVerifyFailed] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [isNewUser, setIsNewUser] = useState(false);
 
     useEffect(() => {
         if (!token) {
@@ -29,24 +30,27 @@ function VerifyMagicLink() {
                     if (result.success) {
                         console.log("verifyMagicLink result success");
                         navigate('/feed');
+                        setVerifyFailed(false);
                         return;
+                    } else {
+                        setErrorMessage(result.error || 'Verification failed. Please try again.');
                     }
-
-                    setVerifyFailed(true);
-                    setErrorMessage(result.error || 'Verification failed. Please try again.');
                 })
                 .catch(error => {
+                    setVerifyFailed(true);
                     if (error.response && error.response.status === 300 && error.response.data.error === 'User not found') {
+                        console.log("verifyMagicLink result user not found");
+                        setIsNewUser(true);
                         const email = error.response.data.data?.email;
+                    
                         if (email) {
                             navigate(`/signup?email=${encodeURIComponent(email)}&token=${token}`);
                             return;
                         }
+                    } else {
+                        console.error('Magic link verification error:', error);
+                        setErrorMessage('An unexpected error occurred. Please try again.');
                     }
-
-                    console.error('Magic link verification error:', error);
-                    setVerifyFailed(true);
-                    setErrorMessage('An unexpected error occurred. Please try again.');
                 })
                 .finally(() => {
                     setIsLoading(false);
@@ -87,6 +91,20 @@ function VerifyMagicLink() {
                         </button>
                         <button 
                             onClick={() => navigate('/signup')}
+                            style={{
+                                padding: '10px 20px',
+                                marginTop: '10px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Go to Signup
+                        </button>
+                    </div>
+                )}
+                {verifyFailed && isNewUser && (
+                    <div>
+                        <button 
+                            onClick={() => navigate(`/signup?email=${encodeURIComponent(email)}&token=${token}`)}
                             style={{
                                 padding: '10px 20px',
                                 marginTop: '10px',
