@@ -58,7 +58,7 @@ export function UserProvider({ children }) {
             return { success: true };
         } else {
             dispatch({ type: 'AUTH_FAILURE', payload: result.error });
-            return { success: false, error: result.error };
+            return { success: false, error: result.error, data: result.error?.response?.data };
         }
     };
 
