@@ -35,8 +35,9 @@ function VerifyMagicLink() {
                         return;
                     }
                     
+                    // Check for user not found case (300 status)
                     if (result.status === 300 && result.email) {
-                        // User not found - redirect to signup
+                        console.log("Redirecting to signup with email:", result.email);
                         setIsNewUser(true);
                         setEmail(result.email);
                         navigate(`/signup?email=${encodeURIComponent(result.email)}&token=${token}`);
@@ -69,7 +70,7 @@ function VerifyMagicLink() {
             <div style={{ textAlign: 'center' }}>
                 {!token && <p>No verification token provided.</p>}
                 {isLoading && <p>Verifying your magic link...</p>}
-                {verifyFailed && (
+                {verifyFailed && !isNewUser && (
                     <div>
                         <p style={{ color: 'red' }}>{errorMessage}</p>
                         <button 
