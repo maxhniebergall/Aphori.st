@@ -450,7 +450,10 @@ app.post('/api/auth/verify-magic-link', async (req, res) => {
 
         // Generate auth token
         logger.info('Generating auth token for user:', userResult.data);
-        const authToken = generateAuthToken(userResult.data);
+        const authToken = generateAuthToken({
+            id: userResult.data.id,
+            email: userResult.data.email
+        });
 
         logger.info('Successfully verified magic link for user:', userResult.data.id);
         res.json({ 
@@ -507,7 +510,7 @@ app.post('/api/auth/verify-token', async (req, res) => {
             success: true,
             data: {
                 id: decoded.id,
-                email: userResult.data.email
+                email: decoded.email
             }
         });
     } catch (error) {

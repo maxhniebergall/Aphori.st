@@ -51,10 +51,13 @@ token: string;
 Response Interface:
 """typescript
 interface VerifyMagicLinkResponse {
-token: string;
-user: {
-id: string;
-email: string;
+success: boolean;
+data: {
+  token: string;
+  user: {
+    id: string;
+    email: string;
+  };
 };
 }
 """
@@ -70,8 +73,11 @@ token: string;
 Response Interface:
 """typescript
 interface VerifyTokenResponse {
-id: string;
-email: string;
+success: boolean;
+data: {
+  id: string;
+  email: string;
+};
 }
 """
 GET /api/profile

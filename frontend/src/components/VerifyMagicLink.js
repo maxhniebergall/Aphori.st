@@ -36,7 +36,7 @@ function VerifyMagicLink() {
                     }
                     
                     // Check for user not found case (300 status)
-                    if (result?.result?.email) {    
+                    if (result?.result?.email) {
                         console.log("Redirecting to signup with email:", result.result.email);
                         setIsNewUser(true);
                         setEmail(result.result.email);
