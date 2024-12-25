@@ -1,13 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
+
+function useQuery() {
+    return new URLSearchParams(useLocation().search);
+}
 
 const SignupPage = () => {
     const [userId, setUserId] = useState('');
+    const [email, setEmail] = useState('');
     const [isChecking, setIsChecking] = useState(false);
     const [error, setError] = useState('');
     const [agreedToTerms, setAgreedToTerms] = useState(false);
     const navigate = useNavigate();
+    const query = useQuery();
+    const verificationToken = query.get('token');
+    const { state } = useUser();
+    
+    useEffect(() => {
+        const emailFromUrl = query.get('email');
+        if (emailFromUrl) {
+            setEmail(decodeURIComponent(emailFromUrl));
+        }
+    }, []);
 
     const checkIdAvailability = async (id) => {
         try {
@@ -53,24 +69,34 @@ const SignupPage = () => {
         }
 
         try {
-            setIsChecking(true);
-            const response = await axios.post('/api/signup', {
-                id: userId,
-                email: 'placeholder@temp.com' // This will be replaced in the magic link flow
-            });
+            if (state.verified != true){
 
-            if (!response.data.success) {
-                setError(response.data.error);
-                return;
+                setIsChecking(true);
+                const payload = {
+                    id: userId,
+                    email: email || 'placeholder@temp.com'
+                };
+                
+                // If we have a verification token, include it in the request
+                if (verificationToken) {
+                    payload.verificationToken = verificationToken;
+                }
+
+                const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/signup`, payload);
+
+                if (!response.data.success) {
+                    setError(response.data.error);
+                    return;
+                }
+
+                // Redirect to login page for magic link authentication
+                navigate(`/login?token=${verificationToken}`, { 
+                    state: { 
+                        message: 'Account created successfully! You will be automatically logged in.',
+                        userId 
+                    } 
+                });
             }
-            
-            // Redirect to login page for magic link authentication
-            navigate('/login', { 
-                state: { 
-                    message: 'Account created successfully! Please log in with your email.',
-                    userId 
-                } 
-            });
         } catch (error) {
             setError(error.response?.data?.error || 'Error creating account');
         } finally {
@@ -100,6 +126,21 @@ const SignupPage = () => {
                     {isChecking && <p className="text-gray-500 text-sm mt-1">Checking availability...</p>}
                     {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
                 </div>
+
+                {email && (
+                    <div className="mb-4">
+                        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
+                            Email
+                        </label>
+                        <input
+                            type="email"
+                            id="email"
+                            className="w-full px-3 py-2 border rounded-lg bg-gray-100"
+                            value={email}
+                            readOnly
+                        />
+                    </div>
+                )}
 
                 <div className="mb-6">
                     <label className="flex items-center">
