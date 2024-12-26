@@ -40,15 +40,26 @@ export function UserProvider({ children }) {
 
     // Add storage event listener
     useEffect(() => {
-        const handleStorageChange = (e) => {
+        const handleStorageChange = async (e) => {
             if (e.key === 'token' || e.key === 'userData') {
                 if (!e.newValue) {
                     // Item was removed
                     dispatch({ type: 'LOGOUT' });
                 } else if (e.key === 'userData') {
-                    // userData was updated
-                    const userData = JSON.parse(e.newValue);
-                    dispatch({ type: 'AUTH_SUCCESS', payload: userData });
+                    // userData was updated - verify token with backend
+                    const token = localStorage.getItem('token');
+                    if (token) {
+                        const result = await userOperator.verifyToken(token);
+                        if (result.success) {
+                            const userData = JSON.parse(e.newValue);
+                            dispatch({ type: 'AUTH_SUCCESS', payload: userData });
+                        } else {
+                            // Token verification failed
+                            dispatch({ type: 'LOGOUT' });
+                            localStorage.removeItem('token');
+                            localStorage.removeItem('userData');
+                        }
+                    }
                 }
             }
         };
