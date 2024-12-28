@@ -160,13 +160,13 @@ const SignupPage = () => {
                                 By signing up, you agree to the following (Canadian) plain-english Terms and Conditions:
                                 <span className="text-sm text-gray-600">
                                     <ul>
-                                        <li>Anything you submit may be publicly visible and you are responsible for the content, legally and otherwise.</li>
+                                        <li>Anything you submit may be publicly visible and you are responsible for the content you submit, legally and otherwise. Do not submit anything you wish to keep private.</li>
                                         <li>Once content is submitted, you may not be able to edit or delete it.</li>
-                                        <li>By posting content, you grant us a non-exclusive, worldwide, royalty-free license to use, reproduce, modify, distribute, and display your content.</li>
+                                        <li>By posting content, you grant us a worldwide, royalty-free license to use, reproduce, modify, distribute, and display your content.</li>
                                         <li>By posting content you assert that you have the right to grant this license, or you assert that this content is made publically available under Fair Dealing in Canadian copyright law.</li>
                                         <li>We reserve the right to delete or modify any content that violates these terms.</li>
                                         <li>By signing up, you agree to handle any disputes with (or involving) us, in Canada and subject to Canadian law.</li>
-                                        <li>We reserve the right to change these terms at any time without prior notice. Any changes will be posted (or linked to) here.</li>
+                                        <li>We reserve the right to change these terms at any time without prior notice. Any changes will be posted (or linked to from) here.</li>
                                         <li>Any elements of these terms and conditions which are not consistent with Canadian law will be void, but the rest of the terms and conditions will still apply.</li>
                                     </ul>
                                 </span>
