@@ -166,7 +166,7 @@ const SignupPage = () => {
                                         <li>By posting content you assert that you have the right to grant this license, or you assert that this content is made publically available under Fair Dealing in Canadian copyright law.</li>
                                         <li>We reserve the right to delete or modify any content that violates these terms.</li>
                                         <li>By signing up, you agree to handle any disputes with (or involving) us, in Canada and subject to Canadian law.</li>
-                                        <li>We reserve the right to change these terms at any time without prior notice. Any changes will be posted (or linked to from) here. Your continued use of the site after any changes constitutes your acceptance of the new terms.</li>
+                                        <li>We reserve the right to change these terms at any time without prior notice. Any changes will be posted (or linked to from) here. We will make a good faith effort to notify you of any changes to these terms via your registered email and/or on this site. Your continued use of the site after any changes constitutes your acceptance of the new terms.</li>
                                         <li>Any elements of these terms and conditions which are not consistent with Canadian law will be void, but the rest of the terms and conditions will still apply.</li>
                                     </ul>
                                 </span>
