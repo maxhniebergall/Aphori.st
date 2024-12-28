@@ -89,7 +89,7 @@ const SignupPage = () => {
                     return;
                 }
 
-                // Redirect to login page for magic link authentication
+                // Redirect to login page for magic link authentication 
                 navigate(`/verify?token=${verificationToken}`, { 
                     state: { 
                         message: 'Account created successfully! You will be automatically logged in.',

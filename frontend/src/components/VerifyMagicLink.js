@@ -21,6 +21,7 @@ function VerifyMagicLink() {
     
     const attemptVerification = async (retryCount = 0) => {
         try {
+            setIsLoading(true);
             const result = await verifyMagicLink(token);
             console.log("verifyMagicLink result:", result);
             
@@ -32,7 +33,7 @@ function VerifyMagicLink() {
             // Check for user not found case with email in query params
             if (result.error === 'User not found' && query.get('email') && retryCount < 2) {
                 console.log(`Retry attempt ${retryCount + 1} - waiting ${(retryCount + 2)}s`);
-                await sleep((retryCount + 2) * 1000);
+                await sleep((retryCount + 1) * 1000);
                 return attemptVerification(retryCount + 1);
             }
             
@@ -52,6 +53,8 @@ function VerifyMagicLink() {
             console.error('Unexpected error during verification:', error);
             setVerifyFailed(true);
             setErrorMessage('An unexpected error occurred. Please try again.');
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -61,14 +64,10 @@ function VerifyMagicLink() {
             return;
         }
 
-        if (state.verified === null && !verifyFailed) {
-            setIsLoading(true);
-            attemptVerification()
-                .finally(() => {
-                    setIsLoading(false);
-                });
+        if (!verifyFailed) {
+            attemptVerification();
         }
-    }, [token, state.verified, verifyMagicLink, navigate, verifyFailed]);
+    }, [token, verifyFailed]);
 
     return (
         <div className="verify-magic-link" style={{ 
