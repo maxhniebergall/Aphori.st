@@ -3,6 +3,25 @@ import { useStoryTree, ACTIONS } from '../context/StoryTreeContext';
 import VirtualizedStoryList from '../components/VirtualizedStoryList';
 import axios from 'axios';
 import { useSiblingNavigation } from '../hooks/useSiblingNavigation';
+import compression from '../utils/compression';
+
+const handleCompressedResponse = async (response) => {
+  const isCompressed = response.headers['x-data-compressed'] === 'true';
+  const data = isCompressed ? await compression.decompress(response.data) : response.data;
+  return data;
+};
+
+export const fetchRootNode = async (uuid) => {
+  try {
+    const response = await axios.get(
+      `${process.env.REACT_APP_API_URL}/api/storyTree/${uuid}`
+    );
+    return handleCompressedResponse(response);
+  } catch (error) {
+    console.error('Error fetching root node:', error);
+    return null;
+  }
+};
 
 const fetchNode = async (id, retries = 3, delay = 1000) => {
   for (let i = 0; i < retries; i++) {
@@ -10,7 +29,7 @@ const fetchNode = async (id, retries = 3, delay = 1000) => {
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/storyTree/${id}`
       );
-      return response.data;
+      return handleCompressedResponse(response);
     } catch (error) {
       if (error.response?.status === 503 && i < retries - 1) {
         console.log(`Retrying fetch for node ${id} after 503 error (attempt ${i + 1}/${retries})`);
@@ -92,6 +111,5 @@ function StoryTreeOperator() {
     />
   );
 }
-
 
 export default StoryTreeOperator; 

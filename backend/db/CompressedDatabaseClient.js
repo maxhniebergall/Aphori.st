@@ -12,10 +12,10 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         return this.db.connect();
     }
 
-    async get(key) {
+    async get(key, options = { returnCompressed: false }) {
         const compressedData = await this.db.get(key);
         if (!compressedData) return null;
-        return this.compression.decompress(compressedData);
+        return options.returnCompressed ? compressedData : this.compression.decompress(compressedData);
     }
 
     async set(key, value) {
@@ -23,10 +23,10 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         return this.db.set(key, compressed);
     }
 
-    async hGet(key, field) {
+    async hGet(key, field, options = { returnCompressed: false }) {
         const compressedData = await this.db.hGet(key, field);
         if (!compressedData) return null;
-        return this.compression.decompress(compressedData);
+        return options.returnCompressed ? compressedData : this.compression.decompress(compressedData);
     }
 
     async hSet(key, field, value) {
@@ -39,9 +39,13 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         return this.db.lPush(key, compressed);
     }
 
-    async lRange(key, start, end) {
+    async lRange(key, start, end, options = { returnCompressed: false }) {
         const compressedItems = await this.db.lRange(key, start, end);
         if (!compressedItems) return [];
+        
+        if (options.returnCompressed) {
+            return compressedItems;
+        }
         
         // Decompress all items in parallel
         const decompressedItems = await Promise.all(
@@ -63,5 +67,10 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
     // Helper method to encode keys consistently
     encodeKey(key, prefix) {
         return this.compression.encodeKey(key, prefix);
+    }
+
+    // Helper method to expose compression methods
+    getCompression() {
+        return this.compression;
     }
 } 
