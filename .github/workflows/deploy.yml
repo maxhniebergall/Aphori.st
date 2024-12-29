@@ -10,8 +10,8 @@ env:
   REGION: us-central1
   USE_GKE_GCLOUD_AUTH_PLUGIN: True
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
-  BACKEND_URL: "https://aphori.st:5000"
-  FRONTEND_URL: "https://aphori.st:8080"
+  BACKEND_URL: "https://backend-132704325993.us-central1.run.app"
+  FRONTEND_URL: "https://frontend-132704325993.us-central1.run.app"
 
 jobs:
   setup-build-publish-deploy:
