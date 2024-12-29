@@ -7,8 +7,19 @@ export class BaseOperator {
 
     async handleCompressedResponse(response) {
         const isCompressed = response.headers['x-data-compressed'] === 'true';
-        const data = isCompressed ? await compression.decompress(response.data) : response.data;
-        return data;
+        if (!isCompressed) {
+            return response.data;
+        }
+
+        // Handle compressed data
+        if (response.data?.v === 1 && response.data?.c === true && response.data?.d) {
+            // This is our compressed data format
+            const decompressedData = await compression.decompress(response.data);
+            return decompressedData;
+        }
+
+        // If the entire response is compressed (legacy format)
+        return await compression.decompress(response.data);
     }
 
     // Helper method for retrying API calls
@@ -16,7 +27,33 @@ export class BaseOperator {
         for (let i = 0; i < retries; i++) {
             try {
                 const response = await apiCall();
-                return await this.handleCompressedResponse(response);
+                const data = await this.handleCompressedResponse(response);
+                
+                // Parse any stringified JSON in the response
+                if (Array.isArray(data)) {
+                    return data.map(item => {
+                        try {
+                            return typeof item === 'string' ? JSON.parse(item) : item;
+                        } catch (e) {
+                            console.error('Error parsing item:', e);
+                            return item; // Return original if parsing fails
+                        }
+                    });
+                } else if (data?.items && Array.isArray(data.items)) {
+                    return {
+                        ...data,
+                        items: data.items.map(item => {
+                            try {
+                                return typeof item === 'string' ? JSON.parse(item) : item;
+                            } catch (e) {
+                                console.error('Error parsing item:', e);
+                                return item; // Return original if parsing fails
+                            }
+                        })
+                    };
+                }
+                
+                return data;
             } catch (error) {
                 if (error.response?.status === 503 && i < retries - 1) {
                     console.log(`Retrying API call after 503 error (attempt ${i + 1}/${retries})`);
