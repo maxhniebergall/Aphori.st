@@ -95,7 +95,7 @@ function Feed() {
       <div className="feed-container">
         {items && items.length > 0 ? (
           items.map((item, index) => {
-            const itemKey = item.id || `feed-item-${index}`;
+            const itemKey = item.id;
             return (
               <motion.div
                 key={itemKey}

@@ -22,6 +22,20 @@ export class BaseOperator {
         return await compression.decompress(response.data);
     }
 
+    // Helper method to decompress a single item if needed
+    async decompressItem(item) {
+        if (item?.v === 1 && item?.c === true && item?.d) {
+            const decompressedItem = await compression.decompress(item);
+            try {
+                return typeof decompressedItem === 'string' ? JSON.parse(decompressedItem) : decompressedItem;
+            } catch (e) {
+                console.error('Error parsing decompressed item:', e);
+                return decompressedItem;
+            }
+        }
+        return item;
+    }
+
     // Helper method for retrying API calls
     async retryApiCall(apiCall, retries = 3, delay = 1000) {
         for (let i = 0; i < retries; i++) {
@@ -29,27 +43,16 @@ export class BaseOperator {
                 const response = await apiCall();
                 const data = await this.handleCompressedResponse(response);
                 
-                // Parse any stringified JSON in the response
+                // Handle different response types
                 if (Array.isArray(data)) {
-                    return data.map(item => {
-                        try {
-                            return typeof item === 'string' ? JSON.parse(item) : item;
-                        } catch (e) {
-                            console.error('Error parsing item:', e);
-                            return item; // Return original if parsing fails
-                        }
-                    });
+                    // Decompress each item in the array if needed
+                    return await Promise.all(data.map(item => this.decompressItem(item)));
                 } else if (data?.items && Array.isArray(data.items)) {
+                    // Handle paginated responses with items array
+                    const decompressedItems = await Promise.all(data.items.map(item => this.decompressItem(item)));
                     return {
                         ...data,
-                        items: data.items.map(item => {
-                            try {
-                                return typeof item === 'string' ? JSON.parse(item) : item;
-                            } catch (e) {
-                                console.error('Error parsing item:', e);
-                                return item; // Return original if parsing fails
-                            }
-                        })
+                        items: decompressedItems
                     };
                 }
                 
