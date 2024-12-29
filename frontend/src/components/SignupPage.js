@@ -76,12 +76,15 @@ const SignupPage = () => {
                 setIsChecking(true);
                 const payload = {
                     id: userId,
-                    email: email || 'placeholder@temp.com'
+                    email: email
                 };
                 
                 // If we have a verification token, include it in the request
                 if (verificationToken) {
                     payload.verificationToken = verificationToken;
+                } else {
+                    setError('Please check your email for a magic link to sign up.');
+                    sendMagicLink(email);
                 }
 
                 const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/signup`, payload);
@@ -89,15 +92,15 @@ const SignupPage = () => {
                 if (!response.data.success) {
                     setError(response.data.error);
                     return;
+                } else {
+                    // Redirect to login page for magic link authentication 
+                    navigate(`/verify?token=${verificationToken}`, { 
+                        state: { 
+                            message: 'Account created successfully! You will be automatically logged in.',
+                            userId 
+                        } 
+                    });
                 }
-
-                // Redirect to login page for magic link authentication 
-                navigate(`/verify?token=${verificationToken}`, { 
-                    state: { 
-                        message: 'Account created successfully! You will be automatically logged in.',
-                        userId 
-                    } 
-                });
             }
         } catch (error) {
             setError(error.response?.data?.error || 'Error creating account');
