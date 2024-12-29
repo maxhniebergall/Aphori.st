@@ -4,16 +4,24 @@ import VirtualizedStoryList from '../components/VirtualizedStoryList';
 import axios from 'axios';
 import { useSiblingNavigation } from '../hooks/useSiblingNavigation';
 
-const fetchNode = async (id) => {
-  try {
-    const response = await axios.get(
-      `${process.env.REACT_APP_API_URL}/api/storyTree/${id}`
-    );
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching node:', error);
-    return null;
+const fetchNode = async (id, retries = 3, delay = 1000) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/api/storyTree/${id}`
+      );
+      return response.data;
+    } catch (error) {
+      if (error.response?.status === 503 && i < retries - 1) {
+        console.log(`Retrying fetch for node ${id} after 503 error (attempt ${i + 1}/${retries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      console.error('Error fetching node:', error);
+      return null;
+    }
   }
+  return null;
 };
 
 function StoryTreeOperator() {

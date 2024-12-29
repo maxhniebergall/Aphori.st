@@ -89,11 +89,24 @@ const __dirname = dirname(__filename);
 
 const db = createDatabaseClient();
 
+let isDbReady = false;
+
 await db.connect().then(() => {
     logger.info('Database client connected');
+    isDbReady = true;
 }).catch(err => {
     logger.error('Database connection failed: %O', err);
     process.exit(1);
+});
+
+// Add middleware to check DB readiness
+app.use((req, res, next) => {
+    if (!isDbReady) {
+        return res.status(503).json({ 
+            error: 'Service initializing, please try again in a moment'
+        });
+    }
+    next();
 });
 
 app.post("/api/createStatement", async (req, res) => {
