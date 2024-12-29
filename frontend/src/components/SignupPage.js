@@ -18,14 +18,14 @@ const SignupPage = () => {
     const navigate = useNavigate();
     const query = useQuery();
     const verificationToken = query.get('token');
-    const { state } = useUser();
+    const { state, sendMagicLink } = useUser();
     
     useEffect(() => {
         const emailFromUrl = query.get('email');
         if (emailFromUrl) {
             setEmail(decodeURIComponent(emailFromUrl));
         }
-    }, []);
+    }, [query]);
 
     const checkIdAvailability = async (id) => {
         try {
@@ -71,7 +71,7 @@ const SignupPage = () => {
         }
 
         try {
-            if (state.verified != true){
+            if (state.verified !== true){
 
                 setIsChecking(true);
                 const payload = {

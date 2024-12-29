@@ -1,0 +1,63 @@
+.magic-link-container {
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 0 20px;
+}
+
+.magic-link-form-container {
+    margin: 20px 0;
+    padding: 20px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    background-color: white;
+    transition: box-shadow 0.2s;
+}
+
+.magic-link-form-container:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.magic-link-title {
+    margin: 0 0 20px 0;
+    color: #333;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.magic-link-form-container input[type="email"] {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+}
+
+.magic-link-form-container button[type="submit"] {
+    width: 100%;
+    padding: 10px;
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.magic-link-form-container button[type="submit"]:hover:not(:disabled) {
+    background-color: #2563eb;
+}
+
+.magic-link-form-container button[type="submit"]:disabled {
+    background-color: #9ca3af;
+    cursor: not-allowed;
+}
+
+.success {
+    color: #059669;
+    margin-top: 1rem;
+}
+
+.error {
+    color: #dc2626;
+    margin-top: 1rem;
+} 
