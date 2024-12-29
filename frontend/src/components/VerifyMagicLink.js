@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
 
@@ -9,7 +9,7 @@ function useQuery() {
 function VerifyMagicLink() {
     const query = useQuery();
     const navigate = useNavigate();
-    const { verifyMagicLink, state } = useUser();
+    const { verifyMagicLink } = useUser();
     const token = query.get('token');
     const [verifyFailed, setVerifyFailed] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -19,7 +19,7 @@ function VerifyMagicLink() {
 
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     
-    const attemptVerification = async (retryCount = 0) => {
+    const attemptVerification = useCallback(async (retryCount = 0) => {
         try {
             setIsLoading(true);
             const result = await verifyMagicLink(token);
@@ -56,7 +56,7 @@ function VerifyMagicLink() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [token, verifyMagicLink, query, navigate]);
 
     useEffect(() => {
         if (!token) {
@@ -67,7 +67,7 @@ function VerifyMagicLink() {
         if (!verifyFailed) {
             attemptVerification();
         }
-    }, [token, verifyFailed]);
+    }, [token, verifyFailed, attemptVerification, navigate]);
 
     return (
         <div className="verify-magic-link" style={{ 
