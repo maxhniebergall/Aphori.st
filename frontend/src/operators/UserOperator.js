@@ -9,6 +9,22 @@ class UserOperator {
     axios.defaults.timeout = 5000; // Add 5 second timeout
   }
 
+  // Helper method for retrying API calls
+  async retryApiCall(apiCall, retries = 3, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await apiCall();
+      } catch (error) {
+        if (error.response?.status === 503 && i < retries - 1) {
+          console.log(`Retrying API call after 503 error (attempt ${i + 1}/${retries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        throw error;
+      }
+    }
+  }
+
   clearTokenCache(token) {
     this.tokenCache.delete(token);
     this.tokenCacheExpiry.delete(token);
@@ -16,7 +32,9 @@ class UserOperator {
 
   async verifyToken(token) {
     try {
-      const response = await axios.post(`${this.baseURL}/api/auth/verify-token`, { token });
+      const response = await this.retryApiCall(
+        () => axios.post(`${this.baseURL}/api/auth/verify-token`, { token })
+      );
       console.log('Verify token success response (operator):', response.data);
       return response.data;
     } catch (error) {
@@ -30,7 +48,9 @@ class UserOperator {
 
   async verifyMagicLink(token) {
     try {
-      const response = await axios.post(`${this.baseURL}/api/auth/verify-magic-link`, { token });
+      const response = await this.retryApiCall(
+        () => axios.post(`${this.baseURL}/api/auth/verify-magic-link`, { token })
+      );
       console.log('Verify magic link success response (operator):', response.data);
       return response.data;
     } catch (error) {
@@ -59,7 +79,9 @@ class UserOperator {
 
   async sendMagicLink(email, isSignup = false) {
     try {
-      await axios.post(`${this.baseURL}/api/auth/send-magic-link`, { email, isSignup });
+      await this.retryApiCall(
+        () => axios.post(`${this.baseURL}/api/auth/send-magic-link`, { email, isSignup })
+      );
       return { success: true };
     } catch (error) {
       console.error('Send magic link error:', error);
@@ -82,11 +104,13 @@ class UserOperator {
 
   async getProfile(token) {
     try {
-      const response = await axios.get(`${this.baseURL}/profile`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      const response = await this.retryApiCall(
+        () => axios.get(`${this.baseURL}/profile`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+      );
       return { success: true, data: response.data };
     } catch (error) {
       console.error('Error fetching profile:', error);
