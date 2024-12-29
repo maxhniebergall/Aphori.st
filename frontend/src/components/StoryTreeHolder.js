@@ -34,7 +34,7 @@ function StoryTreeContent() {
       try {
         console.log('Fetching root node for UUID:', rootUUID);
         const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/storyTree/${rootUUID}`
+          `${process.env.REACT_APP_API_URL}/api/storyTree/${rootUUID}`,
         );
         const data = response.data;
         console.log('API Response:', data);

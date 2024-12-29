@@ -5,8 +5,8 @@ class UserOperator {
     this.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
     this.tokenCache = new Map(); // Cache for token verification results
     this.tokenCacheExpiry = new Map(); // Cache for token expiration times
-    this.CACHE_DURATION = 5 * 60 * 1000; // Cache results for 5 minutes
     axios.defaults.headers.post['Content-Type'] = 'application/json';
+    axios.defaults.timeout = 5000; // Add 5 second timeout
   }
 
   clearTokenCache(token) {
