@@ -10,6 +10,8 @@ env:
   REGION: us-central1
   USE_GKE_GCLOUD_AUTH_PLUGIN: True
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
+  BACKEND_URL: "https://backend-132704325993.us-central1.run.app"
+  FRONTEND_URL: "https://frontend-132704325993.us-central1.run.app"
 
 jobs:
   setup-build-publish-deploy:
@@ -44,7 +46,7 @@ jobs:
 
     - name: Build Backend Docker image
       run: |
-        docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA -f backend/Dockerfile.prod ./backend --build-arg BACKEND_URL=${BACKEND_URL} --build-arg FRONTEND_URL=${FRONTEND_URL}
+        docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA -f backend/Dockerfile.prod ./backend --build-arg BACKEND_URL=$BACKEND_URL --build-arg FRONTEND_URL=$FRONTEND_URL
 
     - name: Push Docker images
       run: |
@@ -57,7 +59,7 @@ jobs:
         cat > env.yaml << EOF
         DB_TYPE: firebase
         NODE_ENV: production
-        CORS_ORIGIN: "${FRONTEND_URL},https://aphorist.firebaseapp.com,https://aphorist.web.app,https://aphori.st,https://www.aphori.st,${BACKEND_URL}"
+        CORS_ORIGIN: "$FRONTEND_URL,https://aphorist.firebaseapp.com,https://aphorist.web.app,https://aphori.st,https://www.aphori.st,$BACKEND_URL"
         EOF
         
         echo "Environment configuration:"
@@ -81,17 +83,14 @@ jobs:
 
     - name: Seed Default Stories
       run: |
-        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
-        curl -X POST "${BACKEND_URL}/api/seed-default-stories" \
+        curl -X POST "$BACKEND_URL/api/seed-default-stories" \
           -H "Content-Type: application/json"
 
     - name: Deploy Frontend to Cloud Run
       run: |
-        BACKEND_URL="https://backend-132704325993.us-central1.run.app"
-        
         # Build the frontend image with the backend URL
         docker build \
-          --build-arg REACT_APP_API_URL=${BACKEND_URL} \
+          --build-arg REACT_APP_API_URL=$BACKEND_URL \
           -t gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA \
           -f frontend/Dockerfile.prod ./frontend
         
@@ -116,8 +115,7 @@ jobs:
         echo "Backend URL: $(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')"
         
         # Test backend health
-        BACKEND_URL=$(gcloud run services describe backend --platform managed --region $REGION --format 'value(status.url)')
-        curl -i "${BACKEND_URL}/health"
+        curl -i "$BACKEND_URL/health"
 
     - name: Setup Firebase CLI
       run: npm install -g firebase-tools
