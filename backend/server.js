@@ -196,7 +196,7 @@ app.get('/api/storyTree/:uuid', async (req, res) => {
 
     try {
         logger.info(`Fetching storyTree with UUID: [${uuid}]`);
-        const data = await db.hGet(uuid, 'storyTree');
+        const data = await db.hGet(uuid, 'storyTree', { returnCompressed: true });
         logger.info(`Raw data from Redis: [${data}]`);
 
         if (!data) {
@@ -204,8 +204,9 @@ app.get('/api/storyTree/:uuid', async (req, res) => {
             return res.status(404).json({ error: 'StoryTree not found' });
         }
 
-        const parsedData = JSON.parse(data);
-        res.json(parsedData);
+        // Add compression header to indicate data is compressed
+        res.setHeader('X-Data-Compressed', 'true');
+        res.send(data);
     } catch (err) {
         logger.info('Error fetching data from Redis:', err.stack);
         res.status(500).json({ error: 'Server error' });
@@ -233,28 +234,19 @@ app.get('/api/feed', async (req, res) => {
           key: 'feedItems'
       });
 
-      let results = await db.lRange('feedItems', startIndex, endIndex); 
+      let results = await db.lRange('feedItems', startIndex, endIndex, { returnCompressed: true }); 
       logger.info('Raw db response for feed items: %O', results);
 
         if (results.err) {
           logger.error('db error when fetching feed: %O', results.err);
           return res.status(500).json({ error: 'Error fetching data from Redis' });
         }
-  
-        const feedItems = results.map((item) => {
-            try {
-                return JSON.parse(item);
-            } catch (e) {
-                logger.error('Failed to parse feed item: %O', { item, error: e });
-                return null;
-            }
-        }).filter(Boolean);
 
-        logger.info("Returned " + feedItems.length + " feed items");
-        logger.debug("Feed items content: %O", feedItems);
+        // Add compression header to indicate data is compressed
+        res.setHeader('X-Data-Compressed', 'true');
         res.json({
           page,
-          items: feedItems,
+          items: results,
         });
     } catch (error) {
       logger.error('Error fetching feed items: %O', {

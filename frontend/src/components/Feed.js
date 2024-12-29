@@ -3,8 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import './Feed.css';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import Header from './Header';
+import feedOperator from '../operators/FeedOperator';
 
 function Feed() {
   const [items, setItems] = useState([]);
@@ -27,17 +27,22 @@ function Feed() {
       setIsLoading(true);
       try {
         console.log('Feed: Making API request');
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/feed`, {
-          params: { page: currentIndex },
-        });
-        console.log('Feed: Received response:', response.data);
+        const result = await feedOperator.getFeedItems(currentIndex);
+        console.log('Feed: Received response:', result);
 
-        if (response.data && response.data.items) {
-          console.log('Feed: Setting items:', response.data.items);
-          setItems(response.data.items);
+        if (result.success && result.data?.items) {
+          console.log('Feed: Setting items:', result.data.items);
+          const processedItems = result.data.items.map((item, index) => ({
+            ...item,
+            id: item.id || `feed-item-${index}`
+          }));
+          setItems(processedItems);
         } else {
-          console.log('Feed: No items in response, setting empty array');
+          console.log('Feed: No items in response or error, setting empty array');
           setItems([]);
+          if (!result.success) {
+            setError(result.error);
+          }
         }
       } catch (error) {
         console.error('Feed: Error fetching feed items:', error);
@@ -89,20 +94,23 @@ function Feed() {
       />
       <div className="feed-container">
         {items && items.length > 0 ? (
-          items.map(item => (
-            <motion.div
-              key={item.id}
-              layoutId={item.id}
-              onClick={() => navigateToStoryTree(item.id)}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="feed-item"
-            >
-              {item.title && <motion.h3>{item.title}</motion.h3>}
-              <motion.p>{item.text}</motion.p>
-            </motion.div>
-          ))
+          items.map((item, index) => {
+            const itemKey = item.id || `feed-item-${index}`;
+            return (
+              <motion.div
+                key={itemKey}
+                layoutId={itemKey}
+                onClick={() => navigateToStoryTree(item.id)}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="feed-item"
+              >
+                {item.title && <motion.h3>{item.title}</motion.h3>}
+                <motion.p>{item.text || 'No content available'}</motion.p>
+              </motion.div>
+            );
+          })
         ) : (
           <div>No items to display</div>
         )}

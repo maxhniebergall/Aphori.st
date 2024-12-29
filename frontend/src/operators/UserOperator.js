@@ -1,27 +1,12 @@
 import axios from 'axios';
+import { BaseOperator } from './BaseOperator';
 
-class UserOperator {
+class UserOperator extends BaseOperator {
   constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+    super();
     this.tokenCache = new Map(); // Cache for token verification results
     this.tokenCacheExpiry = new Map(); // Cache for token expiration times
     axios.defaults.headers.post['Content-Type'] = 'application/json';
-  }
-
-  // Helper method for retrying API calls
-  async retryApiCall(apiCall, retries = 3, delay = 1000) {
-    for (let i = 0; i < retries; i++) {
-      try {
-        return await apiCall();
-      } catch (error) {
-        if (error.response?.status === 503 && i < retries - 1) {
-          console.log(`Retrying API call after 503 error (attempt ${i + 1}/${retries})`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-        throw error;
-      }
-    }
   }
 
   clearTokenCache(token) {
@@ -31,11 +16,11 @@ class UserOperator {
 
   async verifyToken(token) {
     try {
-      const response = await this.retryApiCall(
+      const data = await this.retryApiCall(
         () => axios.post(`${this.baseURL}/api/auth/verify-token`, { token })
       );
-      console.log('Verify token success response (operator):', response.data);
-      return response.data;
+      console.log('Verify token success response (operator):', data);
+      return data;
     } catch (error) {
       console.error('Token verification error:', error);
       return { 
@@ -47,11 +32,11 @@ class UserOperator {
 
   async verifyMagicLink(token) {
     try {
-      const response = await this.retryApiCall(
+      const data = await this.retryApiCall(
         () => axios.post(`${this.baseURL}/api/auth/verify-magic-link`, { token })
       );
-      console.log('Verify magic link success response (operator):', response.data);
-      return response.data;
+      console.log('Verify magic link success response (operator):', data);
+      return data;
     } catch (error) {
       console.log('Verify magic link error response (operator):', error.response?.data);
       
@@ -103,14 +88,14 @@ class UserOperator {
 
   async getProfile(token) {
     try {
-      const response = await this.retryApiCall(
+      const data = await this.retryApiCall(
         () => axios.get(`${this.baseURL}/profile`, {
           headers: {
             Authorization: `Bearer ${token}`
           }
         })
       );
-      return { success: true, data: response.data };
+      return { success: true, data };
     } catch (error) {
       console.error('Error fetching profile:', error);
       return { 

@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import EditingOverlay from './EditingOverlay';
 import './StoryTree.css';
 import Header from './Header';
@@ -9,7 +8,7 @@ import {
   useStoryTree, 
   ACTIONS,
 } from '../context/StoryTreeContext';
-import StoryTreeOperator from '../operators/StoryTreeOperator';
+import StoryTreeOperator, { fetchRootNode } from '../operators/StoryTreeOperator';
 
 function StoryTreeHolder() {
   return (
@@ -30,14 +29,10 @@ function StoryTreeContent() {
   console.log('Root UUID:', rootUUID);
 
   useEffect(() => {
-    const fetchRootNode = async () => {
+    const initializeRootNode = async () => {
       try {
         console.log('Fetching root node for UUID:', rootUUID);
-        const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/storyTree/${rootUUID}`,
-        );
-        const data = response.data;
-        console.log('API Response:', data);
+        const data = await fetchRootNode(rootUUID);
         
         // Ensure data has the required structure
         if (!data || !data.id) {
@@ -54,7 +49,7 @@ function StoryTreeContent() {
     };
 
     if (rootUUID) {
-      fetchRootNode();
+      initializeRootNode();
     } else {
       console.warn('No rootUUID provided');
     }
