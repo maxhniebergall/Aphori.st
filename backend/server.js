@@ -51,47 +51,50 @@ const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
 logger.info('Configured CORS origins: %O', allowedOrigins);
 
-// Single CORS middleware to handle all cases
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  
-  logger.debug('CORS middleware: Processing request from origin: %s', origin);
-  logger.debug('Allowed origins: %O', allowedOrigins);
+// Configure CORS using the official middleware
+const corsOptions = {
+  origin: function (origin, callback) {
+    logger.debug('CORS origin check for: %s', origin);
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      logger.debug('Allowing request with no origin');
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      logger.debug('Origin allowed: %s', origin);
+      callback(null, true);
+    } else {
+      logger.warn('Origin not allowed: %s', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Frontend-Hash'],
+  maxAge: 86400, // 24 hours
+  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+};
 
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Set build hash after CORS headers
+app.use((req, res, next) => {
+  res.setHeader('X-Build-Hash', BUILD_HASH);
+  next();
+});
+
+// Database readiness check
+app.use((req, res, next) => {
     if (!isDbReady) {
         logger.warn('Database not ready, returning 503');
         return res.status(503).json({ 
             error: 'Service initializing, please try again in a moment'
         });
     }
-  
-  // If origin is in our allowed list, set it as allowed
-  if (origin && allowedOrigins.includes(origin)) {
-    logger.debug('Setting CORS for allowed origin: %s', origin);
-    res.header('Access-Control-Allow-Origin', origin);
-  } else {
-    // For development or when origin isn't present
-    logger.debug('Using wildcard CORS as origin not in allowed list');
-    res.header('Access-Control-Allow-Origin', '*');
-  }
-  
-  // Set other CORS headers before any async operations
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Frontend-Hash');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Max-Age', '86400');
-
-  res.setHeader('X-Build-Hash', BUILD_HASH);
-
-  // Handle preflight immediately
-  if (req.method === 'OPTIONS') {
-    logger.debug('Handling OPTIONS preflight request');
-    return res.status(204).end();
-  }
-
-  
-
-  next();
+    next();
 });
 
 import { fileURLToPath } from 'url';
