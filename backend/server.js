@@ -51,6 +51,32 @@ const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
 logger.info('Configured CORS origins: %O', allowedOrigins);
 
+// Add CORS headers middleware before any other middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Always send back CORS headers for OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    if (!origin || allowedOrigins.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin || '*');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Frontend-Hash');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Max-Age', '86400');
+      return res.status(200).end();
+    }
+  }
+
+  // For non-OPTIONS requests, still set CORS headers
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+
+  next();
+});
+
+// Then use the regular cors middleware for additional handling
 app.use(cors({
   origin: function(origin, callback) {    
     // Allow requests with no origin (like mobile apps or curl requests)
