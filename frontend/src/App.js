@@ -23,11 +23,28 @@ function App() {
             return config;
         });
 
-        // Log build hashes from responses
-        axios.interceptors.response.use((response) => {
-            console.log(`Backend build: ${response.headers['x-build-hash']}`);
-            return response;
-        });
+        // Add retry logic for CORS errors
+        axios.interceptors.response.use(
+            (response) => {
+                console.log(`Backend build: ${response.headers['x-build-hash']}`);
+                return response;
+            },
+            async (error) => {
+                const config = error.config;
+                
+                // If error is CORS-related and we haven't retried yet
+                if (!config._retry && error.message.includes('CORS')) {
+                    config._retry = true;
+                    console.warn('CORS error detected, retrying request once');
+                    
+                    // Wait a short moment before retrying
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    return axios(config);
+                }
+                
+                return Promise.reject(error);
+            }
+        );
     }, []);
 
     return (

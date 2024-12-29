@@ -55,47 +55,44 @@ logger.info('Configured CORS origins: %O', allowedOrigins);
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
-  // Helper to check if origin is allowed
-  const isAllowedOrigin = !origin || allowedOrigins.includes(origin);
+  logger.debug('CORS middleware: Processing request from origin: %s', origin);
+  logger.debug('Allowed origins: %O', allowedOrigins);
+
+    if (!isDbReady) {
+        logger.warn('Database not ready, returning 503');
+        return res.status(503).json({ 
+            error: 'Service initializing, please try again in a moment'
+        });
+    }
   
-  // Set CORS headers for all responses, including errors
-  res.header('Access-Control-Allow-Origin', isAllowedOrigin ? (origin || '*') : 'null');
-  res.header('Access-Control-Allow-Credentials', 'true');
+  // If origin is in our allowed list, set it as allowed
+  if (origin && allowedOrigins.includes(origin)) {
+    logger.debug('Setting CORS for allowed origin: %s', origin);
+    res.header('Access-Control-Allow-Origin', origin);
+  } else {
+    // For development or when origin isn't present
+    logger.debug('Using wildcard CORS as origin not in allowed list');
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  
+  // Set other CORS headers before any async operations
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Frontend-Hash');
+  res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Max-Age', '86400');
 
-  // Handle preflight
+  res.setHeader('X-Build-Hash', BUILD_HASH);
+
+  // Handle preflight immediately
   if (req.method === 'OPTIONS') {
+    logger.debug('Handling OPTIONS preflight request');
     return res.status(204).end();
   }
 
-  // Handle disallowed origins
-  if (!isAllowedOrigin) {
-    logger.warn(`CORS blocked origin: ${origin}`);
-    return res.status(403).json({
-      error: 'The CORS policy for this site does not allow access from the specified Origin.'
-    });
-  }
-
-  // Ensure CORS headers are sent even when errors occur
-  const oldSend = res.send;
-  res.send = function (data) {
-    // Ensure CORS headers are set before sending response
-    res.header('Access-Control-Allow-Origin', origin || '*');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    return oldSend.apply(res, arguments);
-  };
+  
 
   next();
 });
-
-// Add build hash to all responses
-app.use((req, res, next) => {
-    res.setHeader('X-Build-Hash', BUILD_HASH);
-    next();
-});
-
 
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -114,16 +111,6 @@ await db.connect().then(() => {
 }).catch(err => {
     logger.error('Database connection failed: %O', err);
     process.exit(1);
-});
-
-// Add middleware to check DB readiness
-app.use((req, res, next) => {
-    if (!isDbReady) {
-        return res.status(503).json({ 
-            error: 'Service initializing, please try again in a moment'
-        });
-    }
-    next();
 });
 
 app.post("/api/createStatement", async (req, res) => {
