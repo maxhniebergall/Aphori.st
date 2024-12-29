@@ -53,23 +53,7 @@ logger.info('Configured CORS origins: %O', allowedOrigins);
 
 // Configure CORS using the official middleware
 const corsOptions = {
-  origin: function (origin, callback) {
-    logger.debug('CORS origin check for: %s', origin);
-    
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      logger.debug('Allowing request with no origin');
-      return callback(null, true);
-    }
-    
-    if (allowedOrigins.includes(origin)) {
-      logger.debug('Origin allowed: %s', origin);
-      callback(null, true);
-    } else {
-      logger.warn('Origin not allowed: %s', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Frontend-Hash'],
