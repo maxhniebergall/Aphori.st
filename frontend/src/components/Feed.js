@@ -30,9 +30,9 @@ function Feed() {
         const result = await feedOperator.getFeedItems(currentIndex);
         console.log('Feed: Received response:', result);
 
-        if (result.success && result.data?.items) {
-          console.log('Feed: Setting items:', result.data.items);
-          const processedItems = result.data.items.map((item, index) => ({
+        if (result.success && result?.items) {
+          console.log('Feed: Setting items:', result.items);
+          const processedItems = result.items.map((item, index) => ({
             ...item,
             id: item.id || `feed-item-${index}`
           }));
@@ -95,12 +95,19 @@ function Feed() {
       <div className="feed-container">
         {items && items.length > 0 ? (
           items.map((item, index) => {
-            const itemKey = item.id;
+            const itemKey = item.id || "placeholder-"+index;
             return (
               <motion.div
                 key={itemKey}
                 layoutId={itemKey}
-                onClick={() => navigateToStoryTree(item.id)}
+                onClick={() => {
+                  if(item.id.startsWith("placeholder")) {
+                    console.log("placeholder item, skipping");
+                    // placeholders are just for loading state, so we don't want to navigate to them
+                  } else {
+                    navigateToStoryTree(item.id);
+                  }
+                }}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}

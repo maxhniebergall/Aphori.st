@@ -9,7 +9,15 @@ class FeedOperator extends BaseOperator {
                     params: { page }
                 })
             );
-            return { success: true, data };
+            console.log("data", data);
+            try {
+                if (data.items) {
+                    return { success: true, items: data.items.map((item) => JSON.parse(item)) };
+                }
+            } catch (e) {
+                console.error("Error parsing data", e);
+                return { success: false, error: "Error parsing data" };
+            }
         } catch (error) {
             console.error('Error fetching feed items:', error);
             return {
