@@ -51,53 +51,44 @@ const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
 logger.info('Configured CORS origins: %O', allowedOrigins);
 
-// Add CORS headers middleware before any other middleware
+// Single CORS middleware to handle all cases
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
-  // Always send back CORS headers for OPTIONS requests
+  // Helper to check if origin is allowed
+  const isAllowedOrigin = !origin || allowedOrigins.includes(origin);
+  
+  // Set CORS headers for all responses, including errors
+  res.header('Access-Control-Allow-Origin', isAllowedOrigin ? (origin || '*') : 'null');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Frontend-Hash');
+  res.header('Access-Control-Max-Age', '86400');
+
+  // Handle preflight
   if (req.method === 'OPTIONS') {
-    if (!origin || allowedOrigins.includes(origin)) {
-      res.header('Access-Control-Allow-Origin', origin || '*');
-      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Frontend-Hash');
-      res.header('Access-Control-Allow-Credentials', 'true');
-      res.header('Access-Control-Max-Age', '86400');
-      return res.status(200).end();
-    }
+    return res.status(204).end();
   }
 
-  // For non-OPTIONS requests, still set CORS headers
-  if (!origin || allowedOrigins.includes(origin)) {
+  // Handle disallowed origins
+  if (!isAllowedOrigin) {
+    logger.warn(`CORS blocked origin: ${origin}`);
+    return res.status(403).json({
+      error: 'The CORS policy for this site does not allow access from the specified Origin.'
+    });
+  }
+
+  // Ensure CORS headers are sent even when errors occur
+  const oldSend = res.send;
+  res.send = function (data) {
+    // Ensure CORS headers are set before sending response
     res.header('Access-Control-Allow-Origin', origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
-  }
+    return oldSend.apply(res, arguments);
+  };
 
   next();
 });
-
-// Then use the regular cors middleware for additional handling
-app.use(cors({
-  origin: function(origin, callback) {    
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      logger.debug('Request with no origin');
-      return callback(null, true);
-    }
-    
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      logger.warn(`CORS blocked origin: ${origin}`);
-      return callback(new Error(msg), false);
-    }
-    logger.debug(`CORS allowed origin: ${origin}`);
-    return callback(null, true);
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Frontend-Hash'],
-  credentials: true,
-  maxAge: 86400 // Cache preflight requests for 24 hours
-}));
 
 // Add build hash to all responses
 app.use((req, res, next) => {
