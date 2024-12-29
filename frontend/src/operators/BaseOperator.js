@@ -16,6 +16,8 @@ export class BaseOperator {
             // This is our compressed data format
             const decompressedData = await compression.decompress(response.data);
             return decompressedData;
+        } else if (response.data?.items && Array.isArray(response.data.items)) {
+            return response.data.items.map((item) => this.decompressItem(item));
         }
 
         // If the entire response is compressed (legacy format)
