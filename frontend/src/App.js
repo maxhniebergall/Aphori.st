@@ -15,6 +15,7 @@ function App() {
     useEffect(() => {
         // Configure axios defaults
         axios.defaults.withCredentials = true;
+        axios.defaults.timeout = 5000;
         
         // Add build hash to all API requests
         axios.interceptors.request.use((config) => {
