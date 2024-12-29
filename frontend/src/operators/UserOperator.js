@@ -6,7 +6,6 @@ class UserOperator {
     this.tokenCache = new Map(); // Cache for token verification results
     this.tokenCacheExpiry = new Map(); // Cache for token expiration times
     axios.defaults.headers.post['Content-Type'] = 'application/json';
-    axios.defaults.timeout = 5000; // Add 5 second timeout
   }
 
   // Helper method for retrying API calls
