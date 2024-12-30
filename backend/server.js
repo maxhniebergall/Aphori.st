@@ -8,6 +8,7 @@ import { sendEmail } from './mailer.js';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { seedDefaultStories } from './prodSeed.js';
+import { seedDevStories } from './seed.js';
 import fs from 'fs';
 
 dotenv.config();
@@ -95,6 +96,9 @@ let isDbReady = false;
 await db.connect().then(() => {
     logger.info('Database client connected');
     isDbReady = true;
+    if (process.env.NODE_ENV !== 'production') {
+        seedDevStories(db);
+    }
 }).catch(err => {
     logger.error('Database connection failed: %O', err);
     process.exit(1);
@@ -615,7 +619,11 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
 app.post('/api/seed-default-stories', async (req, res) => {
     try {
         logger.info('Starting to seed default stories...');
-        await seedDefaultStories(db);
+        if (process.env.NODE_ENV === 'production') {
+            await seedDefaultStories(db);
+        } else {
+            await seedDevStories(db);
+        }
         logger.info('Successfully seeded default stories');
         res.status(200).json({ message: 'Successfully seeded default stories' });
     } catch (error) {

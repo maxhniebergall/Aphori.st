@@ -48,11 +48,11 @@ const Row = React.memo(({
       }}
     >
       <StoryTreeNode
-        key={node.id}
+        key={node?.id}
         node={node}
         index={index}
         setCurrentFocus={setIsFocused}
-        siblings={node.siblings || []}
+        siblings={node?.siblings || []}q  
         onSiblingChange={(newNode) => handleSiblingChange(newNode, index, fetchNode)}
       />
     </div>
@@ -100,7 +100,7 @@ function VirtualizedStoryList({
   return (
     <InfiniteLoader
       isItemLoaded={isItemLoaded}
-      itemCount={items.length + (hasNextPage ? 1 : 0)}
+      itemCount={items?.length ? items.length + (hasNextPage ? 1 : 0) : 1}
       loadMoreItems={loadMoreItems}
       threshold={2}
       minimumBatchSize={1}
@@ -112,7 +112,7 @@ function VirtualizedStoryList({
             listRef.current = list;
           }}
           height={WINDOW_HEIGHT}
-          itemCount={items.length}
+          itemCount={items?.length ? items.length + (hasNextPage ? 1 : 0) : 0}
           itemSize={getSize}
           onItemsRendered={onItemsRendered}
           width="100%"

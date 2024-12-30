@@ -8,8 +8,9 @@ import {
   useStoryTree, 
   ACTIONS,
 } from '../context/StoryTreeContext';
-import StoryTreeOperator, { fetchRootNode } from '../operators/StoryTreeOperator';
-
+import VirtualizedStoryList from './VirtualizedStoryList';
+import StoryTreeOperator from '../operators/StoryTreeOperator';
+import { useSiblingNavigation } from '../hooks/useSiblingNavigation';
 function StoryTreeHolder() {
   return (
     <StoryTreeProvider>
@@ -20,10 +21,12 @@ function StoryTreeHolder() {
 
 function StoryTreeContent() {
   const { state, dispatch } = useStoryTree();
+  const storyTreeOperator = new StoryTreeOperator(state, dispatch);
   const { rootNode, isEditing, currentNode } = state;
   const navigate = useNavigate();
   const pathParams = useParams();
   const rootUUID = pathParams.uuid;
+  const { handleSiblingChange } = useSiblingNavigation();
 
   console.log('Path Parameters:', pathParams);
   console.log('Root UUID:', rootUUID);
@@ -32,13 +35,14 @@ function StoryTreeContent() {
     const initializeRootNode = async () => {
       try {
         console.log('Fetching root node for UUID:', rootUUID);
-        const data = await fetchRootNode(rootUUID);
+        const data = await storyTreeOperator.fetchRootNode(rootUUID);
         
         // Ensure data has the required structure
         if (!data || !data.id) {
           console.error('Invalid data structure received:', data);
           return;
         }
+        console.log('Root node data:', data);
         
         dispatch({ type: ACTIONS.SET_ROOT_NODE, payload: data });
         // Also initialize items with the root node
@@ -49,6 +53,7 @@ function StoryTreeContent() {
     };
 
     if (rootUUID) {
+      console.log('Initializing root node for UUID');
       initializeRootNode();
     } else {
       console.warn('No rootUUID provided');
@@ -65,7 +70,15 @@ function StoryTreeContent() {
         subtitle={subtitle}
         onLogoClick={() => navigate('/feed')}
       />
-      <StoryTreeOperator />
+      <VirtualizedStoryList
+        items={state?.items || []}
+        hasNextPage={state?.hasNextPage || false}
+        isItemLoaded={storyTreeOperator.isItemLoaded}
+        loadMoreItems={storyTreeOperator.loadMoreItems}
+        fetchNode={storyTreeOperator.fetchNode}
+        setIsFocused={storyTreeOperator.setCurrentFocus}
+        handleSiblingChange={handleSiblingChange}
+      />      
       {isEditing && (
         <EditingOverlay
           node={currentNode}

@@ -30,11 +30,11 @@ function Feed() {
         const result = await feedOperator.getFeedItems(currentIndex);
         console.log('Feed: Received response:', result);
 
-        if (result.success && result?.items) {
+        if (result?.success && result?.items) {
           console.log('Feed: Setting items:', result.items);
           const processedItems = result.items.map((item, index) => ({
             ...item,
-            id: item.id || `feed-item-${index}`
+            id: item.id
           }));
           setItems(processedItems);
         } else {
@@ -60,7 +60,6 @@ function Feed() {
   console.log('Feed: Current state:', { isLoading, error, itemsCount: items.length });
 
   if (isLoading) {
-    console.log('Feed: Rendering loading state');
     return (
       <>
         <Header 
@@ -73,7 +72,6 @@ function Feed() {
   }
 
   if (error) {
-    console.log('Feed: Rendering error state');
     return (
       <>
         <Header 
@@ -85,7 +83,6 @@ function Feed() {
     );
   }
 
-  console.log('Feed: Rendering items');
   return (
     <>
       <Header 
@@ -101,7 +98,7 @@ function Feed() {
                 key={itemKey}
                 layoutId={itemKey}
                 onClick={() => {
-                  if(item.id.startsWith("placeholder")) {
+                  if(!item?.id) {
                     console.log("placeholder item, skipping");
                     // placeholders are just for loading state, so we don't want to navigate to them
                   } else {
@@ -114,7 +111,7 @@ function Feed() {
                 className="feed-item"
               >
                 {item.title && <motion.h3>{item.title}</motion.h3>}
-                <motion.p>{item.text || 'No content available'}</motion.p>
+                <motion.p>{item.text || 'Loading... '}</motion.p>
               </motion.div>
             );
           })
