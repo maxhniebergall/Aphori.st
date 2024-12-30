@@ -96,8 +96,12 @@ let isDbReady = false;
 await db.connect().then(() => {
     logger.info('Database client connected');
     isDbReady = true;
+    // Only seed development stories in non-production environments
     if (process.env.NODE_ENV !== 'production') {
+        logger.info('Development environment detected, seeding dev stories...');
         seedDevStories(db);
+    } else {
+        logger.info('Production environment detected, skipping dev seed');
     }
 }).catch(err => {
     logger.error('Database connection failed: %O', err);
@@ -619,9 +623,12 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
 app.post('/api/seed-default-stories', async (req, res) => {
     try {
         logger.info('Starting to seed default stories...');
+        // Only allow seeding dev stories in non-production environments
         if (process.env.NODE_ENV === 'production') {
+            logger.info('Production environment detected, seeding production stories...');
             await seedDefaultStories(db);
         } else {
+            logger.info('Development environment detected, seeding dev stories...');
             await seedDevStories(db);
         }
         logger.info('Successfully seeded default stories');
