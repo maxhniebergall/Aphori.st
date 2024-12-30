@@ -24,4 +24,3 @@ docker-compose -f docker-compose.prod.yml logs -f
 
 ### Stop services
 docker-compose -f docker-compose.prod.yml down
-

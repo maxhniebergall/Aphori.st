@@ -7,29 +7,41 @@ export class BaseOperator {
 
     async handleCompressedResponse(response) {
         const isCompressed = response.headers['x-data-compressed'] === 'true';
-        if (!isCompressed) {
+        if (isCompressed || (response.data?.v === 1 && response.data?.c === true && response.data?.d) || response.data?.items) {
+            // Handle compressed data
+            if (response.data?.v === 1 && response.data?.c === true && response.data?.d) {
+                console.log("BaseOperator: data is compressed as single item");
+                // This is our compressed data format
+                const decompressedData = await this.decompressItem(response.data);
+                return decompressedData;
+            } else if (response.data?.items && Array.isArray(response.data.items)) {
+                console.log("BaseOperator: data is compressed as array of items");
+                return response.data.items.map((item) => this.decompressItem(item));
+            }
+        
+            // If the entire response is compressed (legacy format)
+            console.log("BaseOperator: data is compressed as entire response");
+            return await compression.decompress(response.data);
+        } else {
+            console.log("BaseOperator: data is not compressed");
             return response.data;
         }
-
-        // Handle compressed data
-        if (response.data?.v === 1 && response.data?.c === true && response.data?.d) {
-            // This is our compressed data format
-            const decompressedData = await compression.decompress(response.data);
-            return decompressedData;
-        } else if (response.data?.items && Array.isArray(response.data.items)) {
-            return response.data.items.map((item) => this.decompressItem(item));
-        }
-
-        // If the entire response is compressed (legacy format)
-        return await compression.decompress(response.data);
     }
 
     // Helper method to decompress a single item if needed
     async decompressItem(item) {
-        if (item?.v === 1 && item?.c === true && item?.d) {
-            const decompressedItem = await compression.decompress(item);
+        const itemObject = typeof item === 'string' ? JSON.parse(item) : item;  
+        console.log("BaseOperator: decompressing item", itemObject);
+        if (itemObject?.v === 1 && itemObject?.c === true && itemObject?.d) {
+            const decompressedItem = await compression.decompress(itemObject.d);
+            console.log("BaseOperator: decompressed item", decompressedItem);
+
             try {
-                return typeof decompressedItem === 'string' ? JSON.parse(decompressedItem) : decompressedItem;
+                if (typeof decompressedItem === 'string') {
+                    return JSON.parse(decompressedItem)
+                } else {
+                    return decompressedItem;
+                }
             } catch (e) {
                 console.error('Error parsing decompressed item:', e);
                 return decompressedItem;

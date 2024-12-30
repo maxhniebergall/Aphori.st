@@ -1,22 +1,32 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
-import axios from 'axios';
+import { StoryTreeOperator } from '../operators/StoryTreeOperator';
 
-// This is a single node in the story tree. It is used to display a single node in the story tree.
-// It controls the swipe gesture to remove the node from the view, and the animation when the node is focused.
+/*
+ * Requirements:
+ * - Proper null checking for node and node.id
+ * - Safe handling of undefined siblings
+ * - Proper state management for sibling navigation
+ * - Gesture handling for sibling navigation
+ * - Hooks must be called in the same order every render
+ * - Use StoryTreeOperator for node fetching
+ */
+
 function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange }) {
+  // All hooks must be called before any conditional returns
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
-  const [loadedSiblings, setLoadedSiblings] = useState([node]);
+  const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
+  const operator = new StoryTreeOperator();
 
   // Find the current index in siblings array
   useEffect(() => {
-    if (siblings) {
-      const index = siblings.findIndex(sibling => sibling.id === node.id);
+    if (Array.isArray(siblings) && node?.id) {
+      const index = siblings.findIndex(sibling => sibling?.id === node.id);
       setCurrentSiblingIndex(index !== -1 ? index : 0);
     }
-  }, [node.id, siblings]);
+  }, [node?.id, siblings]);
 
   const loadNextSibling = useCallback(async () => {
     if (isLoadingSibling || !siblings || currentSiblingIndex >= siblings.length - 1) return;
@@ -24,28 +34,26 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     setIsLoadingSibling(true);
     try {
       const nextSibling = siblings[currentSiblingIndex + 1];
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/storyTree/${nextSibling.id}`
-      );
-      const nextNode = response.data;
-      nextNode.siblings = siblings; // Preserve siblings information
-      setLoadedSiblings(prev => [...prev, nextNode]);
-      setCurrentSiblingIndex(prev => prev + 1);
-      onSiblingChange?.(nextNode);
+      if (!nextSibling?.id) {
+        console.warn('Invalid next sibling:', nextSibling);
+        return;
+      }
+      
+      const nextNode = await operator.fetchNode(nextSibling.id);
+      if (nextNode) {
+        nextNode.siblings = siblings; // Preserve siblings information
+        setLoadedSiblings(prev => [...prev, nextNode]);
+        setCurrentSiblingIndex(prev => prev + 1);
+        onSiblingChange?.(nextNode);
+      }
     } catch (error) {
       console.error('Error loading sibling:', error);
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [siblings, currentSiblingIndex, isLoadingSibling, onSiblingChange]);
+  }, [siblings, currentSiblingIndex, isLoadingSibling, onSiblingChange, operator]);
 
   const loadPreviousSibling = useCallback(async () => {
-    console.log('Loading previous sibling:', { 
-      currentSiblingIndex, 
-      loadedSiblingsLength: loadedSiblings.length,
-      loadedSiblings
-    });
-    
     if (isLoadingSibling || !siblings || currentSiblingIndex <= 0) {
       console.log('Cannot go back: at first sibling or loading');
       return;
@@ -54,27 +62,30 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     setIsLoadingSibling(true);
     try {
       const previousSibling = siblings[currentSiblingIndex - 1];
-      const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/storyTree/${previousSibling.id}`
-      );
-      const previousNode = response.data;
-      previousNode.siblings = siblings;
-      
-      // Insert the previous node at the correct position
-      setLoadedSiblings(prev => {
-        const newLoadedSiblings = [...prev];
-        newLoadedSiblings[currentSiblingIndex - 1] = previousNode;
-        return newLoadedSiblings;
-      });
-      
-      setCurrentSiblingIndex(prev => prev - 1);
-      onSiblingChange?.(previousNode);
+      if (!previousSibling?.id) {
+        console.warn('Invalid previous sibling:', previousSibling);
+        return;
+      }
+
+      const previousNode = await operator.fetchNode(previousSibling.id);
+      if (previousNode) {
+        previousNode.siblings = siblings;
+        
+        setLoadedSiblings(prev => {
+          const newLoadedSiblings = [...prev];
+          newLoadedSiblings[currentSiblingIndex - 1] = previousNode;
+          return newLoadedSiblings;
+        });
+        
+        setCurrentSiblingIndex(prev => prev - 1);
+        onSiblingChange?.(previousNode);
+      }
     } catch (error) {
       console.error('Error loading previous sibling:', error);
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [currentSiblingIndex, loadedSiblings, siblings, isLoadingSibling, onSiblingChange]);
+  }, [currentSiblingIndex, siblings, isLoadingSibling, onSiblingChange, operator]);
 
   const bind = useGesture({
     onDrag: ({ down, movement: [mx], cancel, velocity: [vx] }) => {
@@ -94,10 +105,21 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   }, {
     drag: {
       axis: 'x',
-      // Enable dragging if there are siblings to navigate through
       enabled: siblings && (currentSiblingIndex > 0 || currentSiblingIndex < siblings.length - 1)
     },
   });
+
+  // Early return if node is not properly defined
+  if (!node?.id) {
+    console.warn('StoryTreeNode received invalid node:', node);
+    return null;
+  }
+
+  // Early return if operator is not provided
+  if (!operator?.fetchNode) {
+    console.error('StoryTreeNode requires a valid operator with fetchNode method');
+    return null;
+  }
 
   const currentSibling = loadedSiblings[currentSiblingIndex] || node;
   const hasSiblings = siblings && siblings.length > 1;

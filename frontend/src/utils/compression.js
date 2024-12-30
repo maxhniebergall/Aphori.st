@@ -1,4 +1,5 @@
 import pako from 'pako';
+import { Buffer } from 'buffer';
 
 export class DatabaseCompression {
     async compress(value) {

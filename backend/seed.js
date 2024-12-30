@@ -1,16 +1,29 @@
+/*
+Requirements:
+- Seed script must clear existing feed items before adding new ones
+- Story titles should be descriptive and engaging
+- Each story must have a unique UUID
+- Stories must be stored in Redis with proper metadata
+- Must use backend server's database client for compression support
+- Must be exportable as a function for programmatic seeding
+- Must maintain idempotency when run multiple times
+*/
+
 // backend/seed.js
 import { createClient } from 'redis';
 import crypto from "crypto"
 import newLogger from './logger.js';
+import { createDatabaseClient } from './db/index.js';
+
 const logger = newLogger("seed.js")
 
-logger.info("Attempting to seed data")
+const db = createDatabaseClient();
 
 const client = createClient({
-    socket: {
-        port: 6379,
-        host: process.env.REDIS_SERVER_IP
-    }
+  socket: {
+      port: 6379,
+      host: process.env.REDIS_SERVER_IP
+  }
 });
 
 client.on('error', (err) => {
@@ -22,6 +35,7 @@ client.on('connect', () => {
 });
 
 await client.connect();
+await db.connect();
 
 // At the start of your seed script, clear existing feed items
 await client.del('feedItems');
@@ -36,102 +50,13 @@ const authors = [
 ];
 
 const titles = [
-  'An Epic Tale',
-  'The Mysterious Journey',
-  'Adventures in Wonderland',
-  'The Lost Treasure',
-  'Chronicles of Time',
+  'An Epic Tale of Courage and Discovery in the Ancient World The Mysterious Journey Through Time and Space: A Traveler\'s Chronicle',
+  'Adventures in Wonderland: Where Dreams and Reality Intertwine The Mysterious Journey Through Time and Space: A Traveler\'s Chronicle',
+  'The Lost Treasure of the Forgotten Kingdom: A Legacy Uncovered The Mysterious Journey Through Time and Space: A Traveler\'s Chronicle',
+  'Chronicles of Time: Echoes of the Past and Whispers of the Future The Mysterious Journey Through Time and Space: A Traveler\'s Chronicle',
 ];
 
-/**
- * Creates a StoryTree node and saves it to Redis.
- *
- * @param {string} nodeId - The unique identifier for this node
- * @param {string} content - The text content for this node
- * @param {Array} childNodes - Array of child node IDs
- * @param {Object} metadata - Story metadata (author, title)
- */
-async function createStoryTreeNode(nodeId, content, childNodes, metadata, parentId = null) {
-  // Format nodes array to match frontend expectations
-  const nodes = childNodes.map(childId => ({
-    id: childId,
-    parentId: nodeId
-  }));
-
-  // Create the full object for returning to API
-  const storyTree = {
-    id: nodeId,
-    text: content,
-    nodes: nodes,
-    parentId,
-    metadata: {
-      title: metadata.title,
-      author: metadata.author
-    },
-    totalNodes: nodes.length
-  };
-  
-  // Store in Redis with safe types
-  await client.hSet(nodeId, "storyTree", JSON.stringify(storyTree));
-  
-  return storyTree; 
-}
-
-/**
- * Recursively creates a story tree from the new nested format
- *
- * @param {string} parentId - The UUID for the node
- * @param {Object} storyNode - The story node object containing content and children
- * @param {Object} metadata - Story metadata
- * @returns {string} - Returns the ID of the created node
- */
-async function createStoryTreeRecursive(nodeId, storyNode, metadata, parentId = null) {
-  const childIds = [];
-  
-  // First, create all child nodes recursively
-  if (storyNode.children && storyNode.children.length > 0) {
-    for (const child of storyNode.children) {
-      const childId = `${parentId}+${crypto.randomUUID()}`;
-      createStoryTreeRecursive(childId, child, metadata, nodeId);
-      childIds.push(childId);
-    }
-  }
-  
-
-  await createStoryTreeNode(nodeId, storyNode.content, childIds, metadata, parentId);
-  return nodeId;
-}
-
-/**
- * Creates a complete StoryTree and saves it to Redis.
- *
- * @param {string} uuid - The unique identifier for the story.
- * @param {Object} storyText - The story text object with nested structure.
- */
-async function createStoryTree(uuid, storyText) {
-  const author = authors[Math.floor(Math.random() * authors.length)];
-  const title = titles[Math.floor(Math.random() * titles.length)] + " " + uuid;
-  const metadata = { author, title };
-
-  try {
-    // Create the entire tree structure recursively
-    createStoryTreeRecursive(uuid, storyText, metadata, "root");
-
-    // Add to feed items
-    const feedItem = {
-      id: uuid,
-      text: title
-    };
-    await client.lPush('feedItems', JSON.stringify(feedItem));
-    logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`)
-    
-  } catch (err) {
-    logger.error('Error saving StoryTree:', err);
-  }
-}
-
-
-// New story format example - let's modify one story first as an example
+// Move stories array outside function to avoid recreating it on each call
 const newStories = [
   {
     uuid: 'story-' + crypto.randomUUID(),
@@ -477,16 +402,96 @@ const newStories = [
   // }
 ];
 
-// Function to add multiple stories
+async function seedDevStories(db) {
+  const logger = newLogger("seed.js");
+  
+  try {
+    logger.info("Attempting to seed data");
+
+    // Clear existing feed items
+    await client.del('feedItems');
+    logger.info("Existing feed items cleared");
+
+    // Add the new stories
+    await addMultipleStories(newStories);
+    
+    logger.info('Successfully seeded stories');
+  } catch (error) {
+    logger.error('Error seeding stories:', error);
+    throw error;
+  }
+}
+
+// Move helper functions inside main function to maintain scope
 async function addMultipleStories(stories) {
   for (const story of stories) {
     await createStoryTree(story.uuid, story.text);
   }
 }
 
+async function createStoryTree(uuid, storyText) {
+  const author = authors[Math.floor(Math.random() * authors.length)];
+  const title = titles[Math.floor(Math.random() * titles.length)] + " " + uuid;
+  const metadata = { author, title };
 
-// Add the new stories
-await addMultipleStories(newStories);
+  try {
+    // Create the entire tree structure recursively
+    createStoryTreeRecursive(uuid, storyText, metadata, "root");
 
-await client.disconnect();
-logger.info('Disconnected from Redis.');
+    // Add to feed items
+    const feedItem = {
+      id: uuid,
+      text: title
+    };
+    await db.lPush('feedItems', JSON.stringify(feedItem));
+    logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`)
+    
+  } catch (err) {
+    logger.error('Error saving StoryTree:', err);
+  }
+}
+
+async function createStoryTreeRecursive(nodeId, storyNode, metadata, parentId = null) {
+  const childIds = [];
+  
+  // First, create all child nodes recursively
+  if (storyNode.children && storyNode.children.length > 0) {
+    for (const child of storyNode.children) {
+      const childId = `${parentId}+${crypto.randomUUID()}`;
+      createStoryTreeRecursive(childId, child, metadata, nodeId);
+      childIds.push(childId);
+    }
+  }
+  
+
+  await createStoryTreeNode(nodeId, storyNode.content, childIds, metadata, parentId);
+  return nodeId;
+}
+
+async function createStoryTreeNode(nodeId, content, childNodes, metadata, parentId = null) {
+  // Format nodes array to match frontend expectations
+  const nodes = childNodes.map(childId => ({
+    id: childId,
+    parentId: nodeId
+  }));
+
+  // Create the full object for returning to API
+  const storyTree = {
+    id: nodeId,
+    text: content,
+    nodes: nodes,
+    parentId,
+    metadata: {
+      title: metadata.title,
+      author: metadata.author
+    },
+    totalNodes: nodes.length
+  };
+  
+  // Store in Redis using the database client's compression
+  await db.hSet(nodeId, "storyTree", storyTree);
+  
+  return storyTree; 
+}
+
+export { seedDevStories };
