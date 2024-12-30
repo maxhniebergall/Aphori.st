@@ -17,16 +17,19 @@ import { createDatabaseClient } from './db/index.js';
 
 const logger = newLogger("seed.js")
 
-const db = createDatabaseClient();
-
-const client = createClient({
-  socket: {
-    port: 6379,
-    host: process.env.REDIS_SERVER_IP
-  }
-});
+let db;
+let client;
 
 if (process.env.NODE_ENV !== 'production') {
+
+  client = createClient({
+    socket: {
+      port: 6379,
+      host: process.env.REDIS_SERVER_IP
+    }
+  });
+
+  db = createDatabaseClient();
 
     client.on('error', (err) => {
       logger.error('Redis Client Error', err);
