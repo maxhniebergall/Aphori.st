@@ -18,10 +18,14 @@ export class BaseOperator {
                 console.log("BaseOperator: data is compressed as array of items");
                 return response.data.items.map((item) => this.decompressItem(item));
             }
+
         
             // If the entire response is compressed (legacy format)
             console.log("BaseOperator: data is compressed as entire response");
             return await compression.decompress(response.data);
+        } else if (response.data?.v ===1 && response.data?.c === false && response.data?.d) {
+            console.log("BaseOperator: data is encoded as entire response");
+            return compression.unencode(response.data.d);  
         } else {
             console.log("BaseOperator: data is not compressed");
             return response.data;
@@ -46,8 +50,17 @@ export class BaseOperator {
                 console.error('Error parsing decompressed item:', e);
                 return decompressedItem;
             }
+        } else if (itemObject?.v === 1 && itemObject?.c === false && itemObject?.d) {
+            console.log("BaseOperator: data is encoded as item");
+            const unencodedItem = await compression.unencode(itemObject.d);
+            if (typeof unencodedItem === 'string') {
+                return JSON.parse(unencodedItem);
+            } else {
+                return unencodedItem;
+            }
         }
-        return item;
+
+        return item;    
     }
 
     // Helper method for retrying API calls

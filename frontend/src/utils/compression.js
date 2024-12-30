@@ -22,6 +22,15 @@ export class DatabaseCompression {
             return text;
         }
     }
+
+    async unencode(value) {
+        if (typeof value !== 'string') {
+            return value;
+        }
+        const encoded = Buffer.from(value, 'base64');
+        const text = new TextDecoder().decode(encoded);
+        return JSON.parse(text);
+    }
 }
 
 // Create a singleton instance

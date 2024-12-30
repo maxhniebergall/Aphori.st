@@ -1,3 +1,7 @@
+/* requirements
+- getUserById checks id with tolowercase
+*/
+
 import express, { json } from "express";
 import { createDatabaseClient } from './db/index.js';
 import newLogger from './logger.js';
@@ -98,8 +102,9 @@ await db.connect().then(() => {
     isDbReady = true;
     // Only seed development stories in non-production environments
     if (process.env.NODE_ENV !== 'production') {
-        logger.info('Development environment detected, seeding dev stories...');
-        seedDevStories(db);
+        // logger.info('Development environment detected, seeding dev stories...');
+        logger.info('Development environment detected, seeding default stories...');
+        seedDefaultStories(db);
     } else {
         logger.info('Production environment detected, skipping dev seed');
     }
@@ -246,13 +251,8 @@ const USER_IDS_SET = 'user_ids';
 const EMAIL_TO_ID_PREFIX = 'email_to_id';
 
 const getUserById = async (id) => {
-    const userData = await db.hGet(db.encodeKey(id, USER_PREFIX), 'data');
-    if (!userData) {
-        return {
-            success: false,
-            error: 'User not found'
-        };
-    }
+    const lowercaseId = id.toLowerCase(); 
+    const userData = await db.hGet(db.encodeKey(lowercaseId, USER_PREFIX), 'data');
     return {
         success: true,
         data: userData // Already decompressed by the client
