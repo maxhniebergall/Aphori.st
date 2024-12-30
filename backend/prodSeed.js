@@ -1,3 +1,13 @@
+/*
+Requirements:
+- Must create proper story tree nodes for each text entry
+- Must maintain unique IDs for each node
+- Must properly link parent and child nodes
+- Must preserve metadata across all nodes
+- Must use Redis database client for storage
+- Must handle error cases gracefully
+*/
+
 import newLogger from './logger.js';
 
 const logger = newLogger("prodSeed.js");
@@ -25,15 +35,43 @@ const DEFAULT_STORY_TREES = [
   },
   {
     id: 'default-3',
-    text: '1: a concise statement of a principle\n2: a terse formulation of a truth or sentiment : adage\n\n- https://www.merriam-webster.com/dictionary/aphorism',
-    title: 'An aphorism',
+    text: 'What is an aphorism?',
+    title: 'Aphorism',
+    childTexts: [
+      'An Aphorism a heurisitic which helps us to make good choices and communicate wisdom (Aphori.st)',
+      'An "aphorism" is a concise statement of a principle (https://www.merriam-webster.com/dictionary/aphorism)', 
+      'An "aphorism" is terse formulation of a truth or sentiment (https://www.merriam-webster.com/dictionary/aphorism)', 
+    ],
     nodes: [],
     metadata: {
       author: 'MaxHniebergall',
-      title: 'An aphorism'
+      title: 'Aphorism'
     }
   }
 ];
+
+async function createStoryTreeNode(nodeId, content, childNodes, metadata, parentId = null) {
+  // Format nodes array to match frontend expectations
+  const nodes = childNodes.map(childId => ({
+    id: childId,
+    parentId: nodeId
+  }));
+
+  // Create the full object for returning to API
+  const storyTree = {
+    id: nodeId,
+    text: content,
+    nodes: nodes,
+    parentId,
+    metadata: {
+      title: metadata.title,
+      author: metadata.author
+    },
+    totalNodes: nodes.length
+  };
+
+  return storyTree;
+}
 
 async function seedDefaultStories(db) {
   try {
@@ -46,8 +84,35 @@ async function seedDefaultStories(db) {
       if (!existing) {
         logger.info(`Seeding default story: ${story.id}`);
         
-        // Store in database
-        await db.hSet(story.id, 'storyTree', JSON.stringify(story));
+        // Create child nodes if they exist
+        const childNodes = [];
+        if (story.childTexts && story.childTexts.length > 0) {
+          let counter = 0;
+          for (const childText of story.childTexts) {
+            const childId = `${story.id}-${counter}`;
+            const childNode = await createStoryTreeNode(
+              childId,
+              childText,
+              [], // No grandchildren for now
+              story.metadata,
+              story.id
+            );
+            childNodes.push(childId);
+            counter +=1
+            
+            // Store child node
+            await db.hSet(childId, 'storyTree', JSON.stringify(childNode));
+          }
+        }
+        
+        // Create and store parent node
+        const parentNode = await createStoryTreeNode(
+          story.id,
+          story.text,
+          childNodes,
+          story.metadata
+        );
+        await db.hSet(story.id, 'storyTree', JSON.stringify(parentNode));
         
         // Add to feed items
         const feedItem = {

@@ -24,3 +24,8 @@ docker-compose -f docker-compose.prod.yml logs -f
 
 ### Stop services
 docker-compose -f docker-compose.prod.yml down
+
+
+# Seed database
+## In Development:
+curl -X POST http://localhost:3000/api/seed-default-stories -H "Content-Type: application/json" -d '{}'
