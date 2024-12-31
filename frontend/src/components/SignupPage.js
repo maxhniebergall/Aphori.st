@@ -87,7 +87,7 @@ const SignupPage = () => {
                     payload.verificationToken = verificationToken;
                 } else {
                     setError('Please check your email for a magic link to sign up.');
-                    sendMagicLink(email);
+                    sendMagicLink(email, true);
                 }
 
                 const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/signup`, payload);
