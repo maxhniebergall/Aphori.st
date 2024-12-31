@@ -101,6 +101,10 @@ jobs:
     - name: Setup Firebase CLI
       run: npm install -g firebase-tools
 
+    - name: Initialize Firebase Project
+      run: |
+        echo 'y' | firebase use ${{ secrets.PROJECT_ID }} --token ${{ secrets.FIREBASE_TOKEN }}
+
     - name: Create Firebase Preview Channel
       id: preview_channel
       run: |
