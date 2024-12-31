@@ -98,40 +98,10 @@ jobs:
           --min-instances=1 \
           --allow-unauthenticated
 
-    - name: Setup Firebase CLI
-      run: npm install -g firebase-tools
-
-    - name: Setup Firebase credentials
-      run: |
-        echo '${{ secrets.SERVICE_ACCOUNT_KEY }}' > /tmp/service-account.json
-        export GOOGLE_APPLICATION_CREDENTIALS=/tmp/service-account.json
-
-    - name: Initialize Firebase Project
-      run: |
-        echo 'y' | firebase use ${{ secrets.PROJECT_ID }}
-
-    - name: Create Firebase Preview Channel
-      id: preview_channel
-      env:
-        GOOGLE_APPLICATION_CREDENTIALS: /tmp/service-account.json
-      run: |
-        CHANNEL_ID="pr-${{ github.event.pull_request.number }}"
-        firebase hosting:channel:create $CHANNEL_ID
-        firebase hosting:channel:deploy $CHANNEL_ID
-        PREVIEW_URL=$(firebase hosting:channel:list | grep $CHANNEL_ID | awk '{print $4}')
-        echo "::set-output name=preview_url::$PREVIEW_URL"
-
-    - name: Comment Preview URL
-      uses: actions/github-script@v6
+    # Deploy to Firebase Hosting preview channel
+    - uses: FirebaseExtended/action-hosting-deploy@v0
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          const previewUrl = '${{ steps.preview_channel.outputs.preview_url }}';
-          const comment = `🚀 Preview deployment is ready!\n\nYou can view your changes at: ${previewUrl}`;
-          
-          github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.name,
-            issue_number: context.issue.number,
-            body: comment
-          }); 
+        repoToken: '${{ secrets.GITHUB_TOKEN }}'
+        firebaseServiceAccount: '${{ secrets.SERVICE_ACCOUNT_KEY }}'
+        projectId: ${{ secrets.PROJECT_ID }}
+        channelId: pr-${{ github.event.pull_request.number }} 
