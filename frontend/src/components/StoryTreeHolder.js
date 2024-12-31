@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import EditingOverlay from './EditingOverlay';
 import './StoryTree.css';
@@ -21,7 +21,7 @@ function StoryTreeHolder() {
 
 function StoryTreeContent() {
   const { state, dispatch } = useStoryTree();
-  const storyTreeOperator = new StoryTreeOperator(state, dispatch);
+  const storyTreeOperator = useMemo(() => new StoryTreeOperator(state, dispatch), [state, dispatch]);
   const { rootNode, isEditing, currentNode } = state;
   const navigate = useNavigate();
   const pathParams = useParams();
@@ -58,7 +58,7 @@ function StoryTreeContent() {
     } else {
       console.warn('No rootUUID provided');
     }
-  }, [rootUUID, dispatch]);
+  }, [rootUUID, dispatch, storyTreeOperator]);
 
   const title = rootNode?.metadata?.title || '';
   const subtitle = rootNode?.metadata?.author ? `by ${rootNode.metadata.author}` : '';
