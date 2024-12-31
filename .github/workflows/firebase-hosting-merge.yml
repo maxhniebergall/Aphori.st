@@ -6,12 +6,109 @@ on:
   push:
     branches:
       - main
+
+env:
+  FRONTEND_IMAGE: aphorist-frontend
+  BACKEND_IMAGE: aphorist-backend
+  REGION: us-central1
+  USE_GKE_GCLOUD_AUTH_PLUGIN: True
+  PROJECT_ID: aphorist
+  BACKEND_URL: "https://backend-132704325993.us-central1.run.app"
+  FRONTEND_URL: "https://frontend-132704325993.us-central1.run.app"
+
+permissions:
+  checks: write
+  contents: read
+  id-token: write
+
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: cd frontend && yarn install --frozen-lockfile && yarn build
+
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_APHORIST }}'
+
+      - name: Set up Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v1'
+        with:
+          project_id: $PROJECT_ID
+
+      - name: Configure Docker
+        run: |
+          gcloud auth configure-docker
+
+      - name: Build Frontend Docker image
+        run: |
+          docker build -t gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:${{ github.sha }} -f frontend/Dockerfile.prod ./frontend
+
+      - name: Build Backend Docker image
+        run: |
+          docker build -t gcr.io/$PROJECT_ID/$BACKEND_IMAGE:${{ github.sha }} -f backend/Dockerfile.prod ./backend --build-arg BACKEND_URL=$BACKEND_URL --build-arg FRONTEND_URL=$FRONTEND_URL
+
+      - name: Push Docker images
+        run: |
+          docker push gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:${{ github.sha }}
+          docker push gcr.io/$PROJECT_ID/$BACKEND_IMAGE:${{ github.sha }}
+
+      - name: Deploy Backend
+        run: |
+          cat > env.yaml << EOF
+          DB_TYPE: firebase
+          NODE_ENV: production
+          CORS_ORIGIN: "$FRONTEND_URL,https://aphorist.firebaseapp.com,https://aphorist.web.app,https://aphori.st,https://www.aphori.st,$BACKEND_URL"
+          EOF
+          
+          gcloud run deploy backend \
+            --image gcr.io/$PROJECT_ID/$BACKEND_IMAGE:${{ github.sha }} \
+            --platform managed \
+            --region $REGION \
+            --port 5000 \
+            --env-vars-file env.yaml \
+            --set-secrets "FIREBASE_CREDENTIAL=firebase-admin-key:latest,\
+                          FIREBASE_DATABASE_URL=firebase-database-url:latest,\
+                          EMAIL_HOST=EMAIL_HOST:latest,\
+                          EMAIL_PORT=EMAIL_PORT:latest,\
+                          EMAIL_USERNAME=EMAIL_USERNAME:latest,\
+                          EMAIL_PASSWORD=EMAIL_PASSWORD:latest,\
+                          MAGIC_LINK_SECRET=JWT_SECRET:latest,\
+                          AUTH_TOKEN_SECRET=JWT_SECRET:latest" \
+            --allow-unauthenticated
+
+      - name: Deploy Frontend
+        run: |
+          docker build \
+            --build-arg REACT_APP_API_URL=$BACKEND_URL \
+            -t gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:${{ github.sha }} \
+            -f frontend/Dockerfile.prod ./frontend
+          
+          docker push gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:${{ github.sha }}
+          
+          gcloud run deploy frontend \
+            --image gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:${{ github.sha }} \
+            --platform managed \
+            --region $REGION \
+            --port 8080 \
+            --timeout 300s \
+            --cpu=1 \
+            --memory=512Mi \
+            --min-instances=1 \
+            --allow-unauthenticated
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          yarn install --frozen-lockfile
+
+      - name: Build Frontend
+        run: |
+          cd frontend
+          yarn build
+
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
