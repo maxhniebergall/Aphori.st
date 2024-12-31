@@ -44,7 +44,6 @@
       ],
       "target": "production",
       "public": "frontend/build",
-      "source": ".",
       "ignore": [
         "firebase.json",
         "**/.*",
