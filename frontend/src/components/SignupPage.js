@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useUser } from '../context/UserContext';
 import Header from './Header';
 import './SignupPage.css';
+import RequestMagicLink from './RequestMagicLink';
 
 function useQuery() {
     return new URLSearchParams(useLocation().search);
@@ -107,17 +108,17 @@ const SignupPage = () => {
         } catch (error) {
             setError(error.response?.data?.error || 'Error creating account');
         } finally {
-            setIsChecking(false);
         }
     };
 
     return (
-        <>
+        <> 
+            {verificationToken ? (
+            <div className="signup-container">
             <Header 
                 title=""
                 onLogoClick={() => navigate('/feed')}
             />
-            <div className="signup-container">
                 <div className="signup-form-container">
                     <h1 className="signup-title">Sign Up</h1>
                     <form onSubmit={handleSubmit}>
@@ -188,7 +189,9 @@ const SignupPage = () => {
                         </button>
                     </form>
                 </div>
-            </div>
+            </div>) : (
+                <RequestMagicLink />
+            )}
         </>
     );
 };
