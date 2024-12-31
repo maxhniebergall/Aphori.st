@@ -99,16 +99,6 @@ jobs:
             --min-instances=1 \
             --allow-unauthenticated
 
-      - name: Install Frontend Dependencies
-        run: |
-          cd frontend
-          yarn install --frozen-lockfile
-
-      - name: Build Frontend
-        run: |
-          cd frontend
-          yarn build
-
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
