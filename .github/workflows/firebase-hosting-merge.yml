@@ -36,7 +36,7 @@ jobs:
       - name: Set up Cloud SDK
         uses: 'google-github-actions/setup-gcloud@v1'
         with:
-          project_id: $PROJECT_ID
+          project_id: '${{ env.PROJECT_ID }}'
 
       - name: Configure Docker
         run: |
@@ -44,16 +44,16 @@ jobs:
 
       - name: Build Frontend Docker image
         run: |
-          docker build -t gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:${{ github.sha }} -f frontend/Dockerfile.prod ./frontend
+          docker build -t gcr.io/${{ env.PROJECT_ID }}/$FRONTEND_IMAGE:${{ github.sha }} -f frontend/Dockerfile.prod ./frontend
 
       - name: Build Backend Docker image
         run: |
-          docker build -t gcr.io/$PROJECT_ID/$BACKEND_IMAGE:${{ github.sha }} -f backend/Dockerfile.prod ./backend --build-arg BACKEND_URL=$BACKEND_URL --build-arg FRONTEND_URL=$FRONTEND_URL
+          docker build -t gcr.io/${{ env.PROJECT_ID }}/$BACKEND_IMAGE:${{ github.sha }} -f backend/Dockerfile.prod ./backend --build-arg BACKEND_URL=$BACKEND_URL --build-arg FRONTEND_URL=$FRONTEND_URL
 
       - name: Push Docker images
         run: |
-          docker push gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:${{ github.sha }}
-          docker push gcr.io/$PROJECT_ID/$BACKEND_IMAGE:${{ github.sha }}
+          docker push gcr.io/${{ env.PROJECT_ID }}/$FRONTEND_IMAGE:${{ github.sha }}
+          docker push gcr.io/${{ env.PROJECT_ID }}/$BACKEND_IMAGE:${{ github.sha }}
 
       - name: Deploy Backend
         run: |
@@ -64,7 +64,7 @@ jobs:
           EOF
           
           gcloud run deploy backend \
-            --image gcr.io/$PROJECT_ID/$BACKEND_IMAGE:${{ github.sha }} \
+            --image gcr.io/${{ env.PROJECT_ID }}/$BACKEND_IMAGE:${{ github.sha }} \
             --platform managed \
             --region $REGION \
             --port 5000 \
@@ -83,13 +83,13 @@ jobs:
         run: |
           docker build \
             --build-arg REACT_APP_API_URL=$BACKEND_URL \
-            -t gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:${{ github.sha }} \
+            -t gcr.io/${{ env.PROJECT_ID }}/$FRONTEND_IMAGE:${{ github.sha }} \
             -f frontend/Dockerfile.prod ./frontend
           
-          docker push gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:${{ github.sha }}
+          docker push gcr.io/${{ env.PROJECT_ID }}/$FRONTEND_IMAGE:${{ github.sha }}
           
           gcloud run deploy frontend \
-            --image gcr.io/$PROJECT_ID/$FRONTEND_IMAGE:${{ github.sha }} \
+            --image gcr.io/${{ env.PROJECT_ID }}/$FRONTEND_IMAGE:${{ github.sha }} \
             --platform managed \
             --region $REGION \
             --port 8080 \
