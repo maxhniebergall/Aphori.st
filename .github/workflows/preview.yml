@@ -101,17 +101,24 @@ jobs:
     - name: Setup Firebase CLI
       run: npm install -g firebase-tools
 
+    - name: Setup Firebase credentials
+      run: |
+        echo '${{ secrets.SERVICE_ACCOUNT_KEY }}' > /tmp/service-account.json
+        export GOOGLE_APPLICATION_CREDENTIALS=/tmp/service-account.json
+
     - name: Initialize Firebase Project
       run: |
-        echo 'y' | firebase use ${{ secrets.PROJECT_ID }} --token ${{ secrets.FIREBASE_TOKEN }}
+        echo 'y' | firebase use ${{ secrets.PROJECT_ID }}
 
     - name: Create Firebase Preview Channel
       id: preview_channel
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: /tmp/service-account.json
       run: |
         CHANNEL_ID="pr-${{ github.event.pull_request.number }}"
-        firebase hosting:channel:create $CHANNEL_ID --token ${{ secrets.FIREBASE_TOKEN }}
-        firebase hosting:channel:deploy $CHANNEL_ID --token ${{ secrets.FIREBASE_TOKEN }}
-        PREVIEW_URL=$(firebase hosting:channel:list --token ${{ secrets.FIREBASE_TOKEN }} | grep $CHANNEL_ID | awk '{print $4}')
+        firebase hosting:channel:create $CHANNEL_ID
+        firebase hosting:channel:deploy $CHANNEL_ID
+        PREVIEW_URL=$(firebase hosting:channel:list | grep $CHANNEL_ID | awk '{print $4}')
         echo "::set-output name=preview_url::$PREVIEW_URL"
 
     - name: Comment Preview URL
