@@ -251,8 +251,7 @@ const USER_IDS_SET = 'user_ids';
 const EMAIL_TO_ID_PREFIX = 'email_to_id';
 
 const getUserById = async (id) => {
-    const lowercaseId = id.toLowerCase(); 
-    const userData = await db.hGet(db.encodeKey(lowercaseId, USER_PREFIX), 'data');
+    const userData = await db.hGet(db.encodeKey(id, USER_PREFIX), 'data');
     return {
         success: true,
         data: userData // Already decompressed by the client
@@ -661,9 +660,10 @@ app.get('/api/check-user-id/:id', async (req, res) => {
 
     try {
         const userResult = await getUserById(id);
+        console.log("Server: check-user-id response", userResult);
         res.json({ 
             success: true,
-            available: !userResult.success
+            available: !userResult.data
         });
     } catch (error) {
         logger.error('Error checking user ID availability:', error);
