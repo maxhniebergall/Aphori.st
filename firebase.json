@@ -1,43 +1,43 @@
 {
-    "hosting": {
-      "headers": [
-        {
-          "source": "/api/**",
-          "headers": [
-            {
-              "key": "Access-Control-Allow-Origin",
-              "value": "https://aphorist.firebaseapp.com, https://aphorist.web.app, https://aphori.st, https://www.aphori.st"
-            },
-            {
-              "key": "Access-Control-Allow-Methods",
-              "value": "GET, POST, PUT, DELETE, OPTIONS"
-            },
-            {
-              "key": "Access-Control-Allow-Headers",
-              "value": "Content-Type, Authorization, X-Frontend-Hash"
-            },
-            {
-              "key": "Access-Control-Allow-Credentials",
-              "value": "true"
-            }
-          ]
-        }
-      ],
-      "rewrites": [
-        {
-          "source": "/api/**",
-          "run": {
-            "serviceId": "backend",
-            "region": "us-central1"
+  "hosting": {
+    "headers": [
+      {
+        "source": "/api/**",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "https://aphorist.firebaseapp.com, https://aphorist.web.app, https://aphori.st, https://www.aphori.st"
+          },
+          {
+            "key": "Access-Control-Allow-Methods",
+            "value": "GET, POST, PUT, DELETE, OPTIONS"
+          },
+          {
+            "key": "Access-Control-Allow-Headers",
+            "value": "Content-Type, Authorization, X-Frontend-Hash"
+          },
+          {
+            "key": "Access-Control-Allow-Credentials",
+            "value": "true"
           }
-        },
-        {
-          "source": "**",
-          "run": {
-            "serviceId": "frontend",
-            "region": "us-central1"
-          }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "backend",
+          "region": "us-central1"
         }
-      ]
-    }
+      },
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "frontend",
+          "region": "us-central1"
+        }
+      }
+    ]
   }
+}

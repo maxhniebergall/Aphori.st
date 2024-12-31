@@ -10,7 +10,7 @@ function Feed() {
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [currentIndex, setCurrentIndex] = useState(1);
+  const [currentIndex] = useState(1);
   const navigate = useNavigate();
 
   const navigateToStoryTree = useCallback(
