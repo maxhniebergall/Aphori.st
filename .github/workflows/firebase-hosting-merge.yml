@@ -40,7 +40,7 @@ jobs:
 
       - name: Configure Docker
         run: |
-          gcloud auth configure-docker
+          gcloud auth configure-docker gcr.io
 
       - name: Build Frontend Docker image
         run: |
