@@ -64,7 +64,7 @@ class UserOperator extends BaseOperator {
   async sendMagicLink(email, isSignup = false) {
     try {
       await this.retryApiCall(
-        () => axios.post(`${this.baseURL}/api/auth/send-magic-link`, { email, isSignup })
+        () => axios.post(`${this.baseURL}/api/auth/send-magic-link`, { email, isSignupInRequest:isSignup })
       );
       return { success: true };
     } catch (error) {
