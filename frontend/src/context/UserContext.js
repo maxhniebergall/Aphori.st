@@ -69,9 +69,9 @@ export function UserProvider({ children }) {
     }, []);
 
     // Action to handle sending magic link
-    const sendMagicLink = async (email) => {
+    const sendMagicLink = async (email, isSignup = false) => {
         dispatch({ type: 'AUTH_REQUEST' });
-        const result = await userOperator.sendMagicLink(email);
+        const result = await userOperator.sendMagicLink(email, isSignup);
         if (result.success) {
             dispatch({ type: 'AUTH_SENT', payload: { email } });
             return { success: true };
