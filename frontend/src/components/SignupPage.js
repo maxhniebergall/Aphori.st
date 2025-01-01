@@ -168,7 +168,7 @@ const SignupPage = () => {
                                     <ul>
                                         <li>Anything you submit may be publicly visible and you are responsible for the content you submit, legally and otherwise. Do not submit anything you wish to keep private.</li>
                                         <li>Once content is submitted, you may not be able to edit or delete it.</li>
-                                        <li>By signing up, you agree to receive emails from us regarding your account and the site. You can opt out of these emails at any time be replying "unsubscribe" to any email, or contacting us at </li>
+                                        <li>By signing up, you agree to receive emails from us regarding your account and the site. You can opt out of these emails at any time by replying "unsubscribe" to any email, or contacting us at login@aphori.st</li>
                                         <li>By posting content, you grant us a non-revocable, worldwide, royalty-free license to use, reproduce, modify, distribute, and display your content.</li>
                                         <li>By posting content you assert that you have the right to grant this license, or you assert that this content is made publically available under Fair Dealing in Canadian copyright law.</li>
                                         <li>We reserve the right to delete or modify any content that violates these terms.</li>
