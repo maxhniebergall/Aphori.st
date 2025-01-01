@@ -111,7 +111,13 @@ function Feed() {
                 className="feed-item"
               >
                 {item.title && <motion.h3>{item.title}</motion.h3>}
-                <motion.p>{item.text || 'Loading... '}</motion.p>
+                <motion.p>
+                  {item.text 
+                    ? (item.text.length > 80 
+                        ? item.text.substring(0, 75) + ". . ."
+                        : item.text)
+                    : 'Loading... '}
+                </motion.p>
               </motion.div>
             );
           })
