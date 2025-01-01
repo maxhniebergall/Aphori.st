@@ -389,7 +389,7 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
     try {
         // Check if user exists
         const userResult = await getUserByEmail(email);
-        const isSignup = isSignupInRequest === true || (userResult.success && userResult.success === false && userResult.error && userResult.error === 'User not found'); // If user doesn't exist, we're doing a signup
+        const isSignup = isSignupInRequest === true || userResult?.error === 'User not found'; // If user doesn't exist, we're doing a signup
         logger.info("Server: send-magic-link request", req.body, "isSignup: ", isSignup, "userResult: ", userResult);
         // Generate magic token
         const token = generateMagicToken(email);
