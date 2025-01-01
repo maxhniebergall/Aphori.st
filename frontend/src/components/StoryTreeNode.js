@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
 import { StoryTreeOperator } from '../operators/StoryTreeOperator';
@@ -11,7 +11,6 @@ import { StoryTreeOperator } from '../operators/StoryTreeOperator';
  * - Gesture handling for sibling navigation
  * - Hooks must be called in the same order every render
  * - Use StoryTreeOperator for node fetching
- * - Wrap operator initialization in useMemo to avoid changing dependencies
  */
 
 function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange }) {
@@ -19,7 +18,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
-  const operator = useMemo(() => new StoryTreeOperator(), []);
+  const operator = new StoryTreeOperator();
 
   // Find the current index in siblings array
   useEffect(() => {
