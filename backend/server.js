@@ -266,7 +266,7 @@ const getUserById = async (id) => {
 
 const getUserByEmail = async (email) => {
     // Get user ID from email mapping
-    const userId = await db.get(db.encodeKey(email, EMAIL_TO_ID_PREFIX));
+    const userId = await db.get(db.encodeKey(email.toLowerCase(), EMAIL_TO_ID_PREFIX));
     if (!userId) {
         return {
             success: false,
