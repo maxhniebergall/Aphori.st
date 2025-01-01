@@ -104,7 +104,7 @@ await db.connect().then(() => {
     if (process.env.NODE_ENV !== 'production') {
         // logger.info('Development environment detected, seeding dev stories...');
         logger.info('Development environment detected, seeding default stories...');
-        seedDefaultStories(db);
+        seedDevStories(db);
     } else {
         logger.info('Production environment detected, skipping dev seed');
     }

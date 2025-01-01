@@ -415,7 +415,7 @@ if (process.env.NODE_ENV !== 'production') {
       logger.info("Attempting to seed data");
 
       // Clear existing feed items
-      await client.del('feedItems');
+      // await client.del('feedItems');
       logger.info("Existing feed items cleared");
 
       // Add the new stories
@@ -447,7 +447,8 @@ if (process.env.NODE_ENV !== 'production') {
       // Add to feed items
       const feedItem = {
         id: uuid,
-        text: title
+        text: title,
+        title: title,
       };
       await db.lPush('feedItems', JSON.stringify(feedItem));
       logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`)
