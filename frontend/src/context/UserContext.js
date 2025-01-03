@@ -12,6 +12,12 @@ const initialState = {
     verified: null,
 };
 
+// Development user data
+const DEV_USER = {
+    id: 'dev_user',
+    email: 'dev@aphori.st'
+};
+
 // Reducer to handle state changes based on actions
 function userReducer(state, action) {
     console.log('UserContext reducer:', { type: action.type, payload: action.payload, currentState: state });
@@ -115,8 +121,25 @@ export function UserProvider({ children }) {
         const token = localStorage.getItem('token');
         const userData = localStorage.getItem('userData');
         
+        // In development, automatically provide a token if none exists
+        if (process.env.NODE_ENV === 'development' && (!token || token === 'dev_token')) {
+            console.log('Development environment detected, setting development token');
+            const devToken = 'dev_token';
+            localStorage.setItem('token', devToken);
+            localStorage.setItem('userData', JSON.stringify(DEV_USER));
+            dispatch({ type: 'AUTH_SUCCESS', payload: DEV_USER });
+            return;
+        }
+        
         if (token && userData) {
             try {
+                // Skip token validation for development token
+                if (process.env.NODE_ENV === 'development' && token === 'dev_token') {
+                    const parsedUserData = JSON.parse(userData);
+                    dispatch({ type: 'AUTH_SUCCESS', payload: parsedUserData });
+                    return;
+                }
+
                 const payload = JSON.parse(atob(token.split('.')[1]));
                 const expiry = payload.exp * 1000; // Convert to milliseconds
                 
@@ -146,10 +169,13 @@ export function UserProvider({ children }) {
                         localStorage.removeItem('userData');
                     });
             } catch (e) {
-                // If token parsing fails, remove it
-                dispatch({ type: 'LOGOUT' });
-                localStorage.removeItem('token');
-                localStorage.removeItem('userData');
+                console.error('Error processing token:', e);
+                // If token parsing fails and it's not the dev token, remove it
+                if (!(process.env.NODE_ENV === 'development' && token === 'dev_token')) {
+                    dispatch({ type: 'LOGOUT' });
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('userData');
+                }
             }
         }
     }, []);

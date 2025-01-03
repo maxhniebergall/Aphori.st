@@ -1,0 +1,92 @@
+.post-page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+/* Add specific styling for the content form group */
+.form-group:has(.quill) {
+  position: relative;
+  margin-bottom: 60px;
+  min-height: 360px; /* Height of Quill + some extra space */
+  width: 100%;
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: bold;
+}
+
+input[type="text"] {
+  width: 100%;
+  padding: 8px;
+  font-size: 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.error-message {
+  color: #ff0000;
+  margin-bottom: 20px;
+  padding: 10px;
+  background-color: #ffebee;
+  border-radius: 4px;
+}
+
+.submit-button {
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 20px;
+}
+
+.submit-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+/* Ensure the Quill editor has a proper height */
+.quill {
+  height: 300px;
+  width: 100%;
+  position: relative;
+}
+
+/* Handle mobile viewport */
+@media screen and (max-width: 768px) {
+  .post-page {
+    padding: 10px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .form-group:has(.quill) {
+    margin-bottom: 80px; /* Extra space on mobile */
+  }
+
+  .quill {
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  /* Ensure the editor toolbar stays within bounds */
+  .ql-toolbar {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Ensure the editor content area stays within bounds */
+  .ql-container {
+    width: 100%;
+    box-sizing: border-box;
+  }
+} 
