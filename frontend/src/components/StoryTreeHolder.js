@@ -88,9 +88,23 @@ function StoryTreeContent() {
     }
   };
 
-  const handleReplyClick = (nodeId) => {
-    setReplyToNodeId(nodeId);
-  };
+  const handleReplyClick = useCallback((nodeId) => {
+    setReplyToNodeId(current => {
+      const newValue = nodeId === current ? null : nodeId;
+      if (newValue !== null) {
+        setTimeout(() => {
+          const storyTreeContent = document.querySelector('.story-tree-content');
+          if (storyTreeContent) {
+            storyTreeContent.scrollTo({
+              top: storyTreeContent.scrollHeight,
+              behavior: 'smooth'
+            });
+          }
+        }, 100);
+      }
+      return newValue;
+    });
+  }, []);
 
   if (!isOperatorInitialized) {
     return <div>Loading...</div>;

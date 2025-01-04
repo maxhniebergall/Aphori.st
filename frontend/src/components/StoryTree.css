@@ -1,16 +1,79 @@
-/* File: /frontend/src/components/StoryTree.css */
+/*
+ * Requirements:
+ * - Full page scrolling instead of individual element scrolling
+ * - Header should remain fixed at the top
+ * - Content should flow naturally in the document
+ * - Proper handling of viewport heights
+ * - Support for mobile browsers
+ */
 
-.story-tree-container {
-  height: 100vh;
-  width: 100%;
+/* Reset base layout */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
   overflow: hidden;
+}
+
+/* StoryTreePage container */
+.story-tree-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Main container */
+.story-tree-container {
+  flex: 1;
   display: flex;
   flex-direction: column;
   background-color: #f8f9fa;
+  min-height: 0; /* Important for Firefox */
 }
 
+/* Fixed header */
+.story-tree-header {
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background-color: #fff;
+}
+
+/* Scrollable content area */
 .story-tree-content {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Title section */
+.story-title-section {
+  flex: 0 0 auto;
+  padding: 24px 20px;
+}
+
+/* Virtualized list container */
+.virtualized-list-container {
+  flex: 1;
+  position: relative;
+  overflow-y: visible;
+  min-height: 0; /* Important for Firefox */
+}
+
+.story-list {
+  overflow: visible !important;
+  position: relative;
+  height: 100% !important;
+  width: 100%;
+ flex: 1;
+ min-height: 0;
+}
+
+.story-list > div {
+  overflow: visible !important;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -28,7 +91,8 @@
   right: 0;
   width: 100%;
   box-sizing: border-box;
-  overflow: visible;
+  overflow-y: visible;
+  padding: 8px 20px;
 }
 
 .story-tree-node {
@@ -130,6 +194,8 @@ button {
   background: none;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow: visible;
+  max-height: none;
 }
 
 /* Footer styling */
@@ -140,6 +206,7 @@ button {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid #edf2f7;
+  overflow: visible;
 }
 
 /* Sibling navigation styling */
@@ -246,5 +313,56 @@ h2 {
   width: 100%;
   height: auto;
   min-height: 0;
+.reply-editor-container {
+  position: relative;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #edf2f7;
+}
+
+.reply-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
+.submit-reply-button,
+.cancel-reply-button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.submit-reply-button {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+}
+
+.submit-reply-button:disabled {
+  background-color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.cancel-reply-button {
+  background-color: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+.submit-reply-button:hover:not(:disabled) {
+  background-color: #2563eb;
+}
+
+.cancel-reply-button:hover {
+  background-color: #e2e8f0;
+}
+
+/* Ensure the text container doesn't scroll */
+.story-tree-node-text {
   overflow: visible;
 }
