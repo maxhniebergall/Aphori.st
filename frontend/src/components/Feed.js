@@ -5,6 +5,7 @@ import './Feed.css';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
 import feedOperator from '../operators/FeedOperator';
+import Markdown from 'react-markdown'
 
 function Feed() {
   const [items, setItems] = useState([]);
@@ -112,11 +113,17 @@ function Feed() {
               >
                 {item.title && <motion.h3>{item.title}</motion.h3>}
                 <motion.p>
+                  <Markdown components={{
+                    a: ({ node, ...props }) => (
+                      <a target="_blank" rel="noopener noreferrer" {...props} />
+                    ),
+                  }}>
                   {item.text 
                     ? (item.text.length > 80 
                         ? item.text.substring(0, 75) + ". . ."
                         : item.text)
                     : 'Loading... '}
+                  </Markdown>
                 </motion.p>
               </motion.div>
             );
