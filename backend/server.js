@@ -114,7 +114,7 @@ await db.connect().then(() => {
     process.exit(1);
 });
 
-app.post("/api/createStatement", async (req, res) => {
+app.post("/api/createStatement", authenticateToken, async (req, res) => {
     if (req.body.uuid && req.body.value) {
         try {
             const setResult = await db.set(req.body.uuid, req.body.value);
@@ -144,7 +144,7 @@ app.get('/api/getStatement/:key', async (req, res) => {
     }
 });
 
-app.post("/api/setvalue", async (req, res) => {
+app.post("/api/setvalue", authenticateToken, async (req, res) => {
     if (req.body.key && req.body.value) {
         try {
             const setResult = await db.set(req.body.key, req.body.value);
