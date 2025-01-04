@@ -168,7 +168,16 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
           </Markdown>
 
         <div className="story-tree-node-footer">
-          <div className="footer-left">
+        <div className="footer-left">
+            <button 
+              className="reply-button"
+              onClick={handleReplyClick}
+            aria-label="Reply to this message"
+          >
+              {isReplyTarget ? 'Cancel Reply' : 'Reply'}
+            </button>
+          </div>
+          <div className="footer-right">
             {hasSiblings && (
               <div className="sibling-indicator">
                 {currentSiblingIndex + 1} / {siblings.length}
@@ -182,13 +191,6 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
               </div>
             )}
           </div>
-          <button 
-            className="reply-button"
-            onClick={handleReplyClick}
-            aria-label="Reply to this message"
-          >
-            {isReplyTarget ? 'Cancel Reply' : 'Reply'}
-          </button>
         </div>
 
         {isReplyTarget && (

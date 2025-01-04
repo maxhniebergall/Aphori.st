@@ -49,11 +49,6 @@ html, body, #root {
   overflow: hidden;
 }
 
-/* Title section */
-.story-title-section {
-  flex: 0 0 auto;
-  padding: 24px 20px;
-}
 
 /* Virtualized list container */
 .virtualized-list-container {
@@ -209,6 +204,16 @@ button {
   overflow: visible;
 }
 
+.footer-left {  
+  flex: 1;
+  text-align: left;
+}
+
+.footer-right {
+  flex: 1;
+  text-align: right;
+}
+
 /* Sibling navigation styling */
 .sibling-indicator {
   font-size: 0.8rem;
@@ -278,7 +283,7 @@ button {
 /* Title section styling */
 .story-title-section {
   padding: 24px 20px;
-  text-align: left;
+  text-align: center;
   background-color: #f8f9fa;
 }
 
