@@ -148,7 +148,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
         <div className="story-tree-node-text">
         <Markdown
           components={{
-            a: ({ node, children, ...props }) => (  // Add children parameter
+            a: ({ node, children, ...props }) => (
               <a target="_blank" rel="noopener noreferrer" {...props}>
                 {children}
               </a>
