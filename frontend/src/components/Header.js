@@ -22,7 +22,7 @@ function Header({ title, subtitle, onLogoClick }) {
 
   return (
     <div className="combined-header">
-      <div className="app-header">
+      <div className="app-header" style={isModalOpen ? {} : {borderBottom: '1px solid #e0e0e0'}}>
         <div className="logo-container">
           <img 
             src="/logo.jpg"
@@ -43,12 +43,6 @@ function Header({ title, subtitle, onLogoClick }) {
           )}
         </div>
       </div>
-      {(title || subtitle) && (
-        <div className="page-header">
-          {title && <h1>{title}</h1>}
-          {subtitle && <h2>{subtitle}</h2>}
-        </div>
-      )}
       
       {isModalOpen && (
             <div className="header-menu-modal">
@@ -75,7 +69,15 @@ function Header({ title, subtitle, onLogoClick }) {
 
                 {/* Report bug button always visible when modal is open */}
                 <a className="report-bug-button" href="https://github.com/maxhniebergall/Aphori.st/issues">Report a Bug</a>
+                <hr/>
             </div>
+        )}
+
+        {(title || subtitle) && (
+          <div className="page-header" style={isModalOpen ? {borderTop: '1px solid #e0e0e0'} : {}}>
+            {title && <h1>{title}</h1>}
+            {subtitle && <h2>{subtitle}</h2>}
+          </div>
         )}
     </div>
   );
