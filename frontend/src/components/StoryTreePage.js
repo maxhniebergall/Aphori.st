@@ -8,9 +8,9 @@ function StoryTreePage() {
   console.log("user is logged in:", state?.user?.email);
 
   return (
-    <>
+    <div className="story-tree-page">
       <StoryTreeHolder />
-    </>
+    </div>
   );
 }
 

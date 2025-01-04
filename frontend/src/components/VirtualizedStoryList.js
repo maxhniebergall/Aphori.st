@@ -61,6 +61,7 @@ const Row = React.memo(({
   if (isLoading) {
     return (
       <div 
+        className="loading-row"
         ref={el => rowRefs.current[index] = el}
         style={{
           ...style,
@@ -192,17 +193,20 @@ function VirtualizedStoryList({
     const isLoading = !isItemLoaded(index);
     
     return (
-      <Row
-        index={index}
-        style={style}
-        node={node}
-        setIsFocused={setIsFocused}
-        setSize={setSize}
-        rowRefs={rowRefs}
-        handleSiblingChange={handleSiblingChange}
-        fetchNode={fetchNode}
-        isLoading={isLoading}
-      />
+        <Row
+          className="row"
+          index={index}
+          style={style}
+          node={node}
+          setIsFocused={setIsFocused}
+          setSize={setSize}
+          rowRefs={rowRefs}
+          handleSiblingChange={handleSiblingChange}
+          fetchNode={fetchNode}
+          isLoading={isLoading}
+          replyToNodeId={replyToNodeId}
+          onReplyClick={onReplyClick}
+        />
     );
   };
 
