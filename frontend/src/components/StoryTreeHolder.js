@@ -40,6 +40,7 @@ function StoryTreeContent() {
   const { handleSiblingChange } = useSiblingNavigation();
   const { state, dispatch } = useStoryTree();
   const [isOperatorInitialized, setIsOperatorInitialized] = useState(false);
+  const [replyToNodeId, setReplyToNodeId] = useState(null);
   
   useEffect(() => {
     if (state && dispatch) {
@@ -78,6 +79,19 @@ function StoryTreeContent() {
   const title = rootNode?.metadata?.title || '';
   const subtitle = rootNode?.metadata?.author ? `by ${rootNode.metadata.author}` : '';
 
+  const handleReplySubmit = async (content) => {
+    try {
+      await storyTreeOperator.submitReply(replyToNodeId, content);
+      setReplyToNodeId(null);
+    } catch (error) {
+      console.error('Error submitting reply:', error);
+    }
+  };
+
+  const handleReplyClick = (nodeId) => {
+    setReplyToNodeId(nodeId);
+  };
+
   if (!isOperatorInitialized) {
     return <div>Loading...</div>;
   }
@@ -102,6 +116,9 @@ function StoryTreeContent() {
           fetchNode={storyTreeOperator.fetchNode}
           setIsFocused={storyTreeOperator.setCurrentFocus}
           handleSiblingChange={handleSiblingChange}
+          replyToNodeId={replyToNodeId}
+          onReplySubmit={handleReplySubmit}
+          onReplyClick={handleReplyClick}
         />
       </div>
     </div>

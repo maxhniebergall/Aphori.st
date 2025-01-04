@@ -117,6 +117,16 @@ button {
   max-width: 100%;
 }
 
+/* Remove the has-siblings specific styling since all nodes will have the same base style */
+.story-tree-node-content.has-siblings {
+  /* Keep only swipe-related styles if needed */
+  cursor: grab;
+}
+
+.story-tree-node-content.has-siblings:active {
+  cursor: grabbing;
+}
+
 .sibling-indicator {
   font-size: 0.8rem;
   color: #666;
@@ -158,11 +168,21 @@ button {
 
 /* Animation and gesture styles */
 .swipe-hint {
-  font-size: 0.8rem;
-  color: #888;
-  margin-left: 4px;
-  display: block;
-  white-space: normal;
+  font-size: 0.75rem;
+  color: #999;
+  margin-left: 8px;
+  font-style: italic;
+}
+
+.swipe-hint-previous,
+.swipe-hint-next {
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.swipe-hint-previous:hover,
+.swipe-hint-next:hover {
+  color: #666;
 }
 
 /* Initial animation states */
