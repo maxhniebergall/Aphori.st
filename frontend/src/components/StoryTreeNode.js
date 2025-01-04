@@ -3,7 +3,6 @@ import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useStoryTree } from '../context/StoryTreeContext';
-import Markdown from 'react-markdown'
 import MDEditor from '@uiw/react-md-editor';
 /*
  * Requirements:
@@ -124,7 +123,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     if (onReplyClick) {
       onReplyClick(node.id);
     }
-  }, [onReplyClick, node.id, isReplyTarget]);
+  }, [onReplyClick, node.id]);
 
   // Early return if node is not properly defined
   if (!node?.id) {
