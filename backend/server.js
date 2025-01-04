@@ -114,6 +114,32 @@ await db.connect().then(() => {
     process.exit(1);
 });
 
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ error: 'Token required.' });
+    }
+
+    // In development, accept the dev token
+    if (process.env.NODE_ENV !== 'production' && token === 'dev_token') {
+        req.user = {
+            id: 'dev_user',
+            email: 'dev@aphori.st'
+        };
+        return next();
+    }
+
+    jwt.verify(token, process.env.AUTH_TOKEN_SECRET, (err, user) => {
+        if (err) {
+            return res.status(403).json({ error: 'Invalid token.' });
+        }
+        req.user = user;
+        next();
+    });
+};
+
 app.post("/api/createStatement", authenticateToken, async (req, res) => {
     if (req.body.uuid && req.body.value) {
         try {
@@ -551,32 +577,6 @@ app.post('/api/auth/verify-token', async (req, res) => {
     }
 });
 
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-        return res.status(401).json({ error: 'Token required.' });
-    }
-
-    // In development, accept the dev token
-    if (process.env.NODE_ENV !== 'production' && token === 'dev_token') {
-        req.user = {
-            id: 'dev_user',
-            email: 'dev@aphori.st'
-        };
-        return next();
-    }
-
-    jwt.verify(token, process.env.AUTH_TOKEN_SECRET, (err, user) => {
-        if (err) {
-            return res.status(403).json({ error: 'Invalid token.' });
-        }
-        req.user = user;
-        next();
-    });
-};
-
 app.get('/api/profile', authenticateToken, (req, res) => {
     const user = users.find(u => u.id === req.user.id);
     if (!user) {
@@ -647,7 +647,7 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/seed-default-stories', async (req, res) => {
+app.post('/api/seed-default-stories', async (req, res) => { 
     try {
         logger.info('Starting to seed default stories...');
         // Only allow seeding dev stories in non-production environments
