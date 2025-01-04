@@ -73,6 +73,10 @@ function Header({ title, subtitle, onLogoClick }) {
         {isModalOpen && !isAuthModalOpen && (!state?.verified) && (
         <div className="header-menu-modal">
           <button className="sign-in-button" onClick={() => setAuthModalOpen(true)}>Sign In</button>
+        </div>
+        )}
+        {isModalOpen && (
+        <div className="header-menu-modal">
           <a className="report-bug-button" href="https://github.com/maxhniebergall/Aphori.st/issues">Report a Bug</a>
         </div>
         )}
