@@ -122,7 +122,7 @@ function Feed() {
             );
           })
         ) : (
-          <div>Something went wrong. No items to display</div>
+          <div>No items to display</div>
         )}
       </div>
     </>

@@ -3,7 +3,7 @@ import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useStoryTree } from '../context/StoryTreeContext';
-import ReactMarkdown from 'react-markdown';
+import Markdown from 'react-markdown'
 /*
  * Requirements:
  * - Proper null checking for node and node.id
@@ -12,7 +12,7 @@ import ReactMarkdown from 'react-markdown';
  * - Gesture handling for sibling navigation
  * - Hooks must be called in the same order every render
  * - Use StoryTreeOperator for node fetching
- * - Markdown rendering support
+ * - Markdown rendering support with GitHub-flavored markdown
  */
 
 function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange }) {
@@ -146,7 +146,16 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
         id={currentSibling.id}
       >
         <div className="story-tree-node-text">
-          <ReactMarkdown>{currentSibling.text}</ReactMarkdown>
+          <Markdown
+            components={{
+              // Override default link behavior to open in new tab
+              a: ({ node, ...props }) => (
+                <a target="_blank" rel="noopener noreferrer" {...props} />
+              ),
+            }}
+          >
+            {currentSibling.text}
+          </Markdown>
           {hasSiblings && (
             <div className="sibling-indicator">
               {currentSiblingIndex + 1} / {siblings.length}

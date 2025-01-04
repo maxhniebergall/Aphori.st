@@ -11,7 +11,6 @@ import NotFound from './components/NotFound';
 import PostPage from './components/PostPage';
 import { UserProvider } from './context/UserContext';
 import axios from 'axios';
-import 'react-quill/dist/quill.snow.css';
 
 function App() {
     useEffect(() => {
