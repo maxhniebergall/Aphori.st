@@ -11,6 +11,14 @@ import VirtualizedStoryList from './VirtualizedStoryList';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useSiblingNavigation } from '../hooks/useSiblingNavigation';
 
+/**
+ * Requirements:
+ * - Display story tree with virtualized list
+ * - Handle root node initialization and data fetching
+ * - Properly size content accounting for header height
+ * - Support sibling navigation
+ */
+
 function StoryTreeHolder() {
   return (
     <StoryTreeProvider>
@@ -74,20 +82,26 @@ function StoryTreeContent() {
 
   return (
     <div className="story-tree-container">
-      <Header 
-        title={title}
-        subtitle={subtitle}
-        onLogoClick={() => navigate('/feed')}
-      />
-      <VirtualizedStoryList
-        items={state?.items ?? []}
-        hasNextPage={state?.hasNextPage ?? false}
-        isItemLoaded={storyTreeOperator.isItemLoaded}
-        loadMoreItems={storyTreeOperator.loadMoreItems}
-        fetchNode={storyTreeOperator.fetchNode}
-        setIsFocused={storyTreeOperator.setCurrentFocus}
-        handleSiblingChange={handleSiblingChange}
-      />      
+      <div className="story-tree-header">
+        <Header 
+          onLogoClick={() => navigate('/feed')}
+        />
+      </div>
+      <div className="story-tree-content">
+        <div className="story-title-section">
+          <h1>{title}</h1>
+          {subtitle && <h2 className="story-subtitle">{subtitle}</h2>}
+        </div>
+        <VirtualizedStoryList
+          items={state?.items ?? []}
+          hasNextPage={state?.hasNextPage ?? false}
+          isItemLoaded={storyTreeOperator.isItemLoaded}
+          loadMoreItems={storyTreeOperator.loadMoreItems}
+          fetchNode={storyTreeOperator.fetchNode}
+          setIsFocused={storyTreeOperator.setCurrentFocus}
+          handleSiblingChange={handleSiblingChange}
+        />
+      </div>
     </div>
   );
 }
