@@ -1,35 +1,89 @@
 /* components/Feed.css */
 
 .feed-container {
+  padding: 20px;
   max-width: 800px;
-  margin: 20px auto;
-  padding: 0 20px;
+  margin: 0 auto;
 }
 
 .feed-item {
-  cursor: pointer;
-  margin: 20px 0;
-  padding: 20px;
-  border: 1px solid #eee;
+  background: white;
   border-radius: 8px;
-  background-color: white;
-  transition: transform 0.2s, box-shadow 0.2s;
+  padding: 16px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.3s ease;
 }
 
 .feed-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
 .feed-item h3 {
-  margin: 0 0 10px 0;
+  margin: 0 0 8px 0;
+  font-size: 1.2em;
   color: #333;
-  font-size: 1.2rem;
 }
 
-.feed-item p {
-  margin: 0;
-  color: #666;
+.feed-item-content {
+  font-size: 1em;
   line-height: 1.5;
+  color: #666;
+  overflow: hidden;
+  max-height: 4.5em; /* Show 3 lines of text */
+  position: relative;
+}
+
+.feed-text {
+  margin: 0;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+/* Feed markdown styles */
+.feed-markdown-paragraph {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Reset margins for all headers in markdown content */
+.feed-item-content h1,
+.feed-item-content h2,
+.feed-item-content h3,
+.feed-item-content h4,
+.feed-item-content h5,
+.feed-item-content h6 {
+  margin: 0;
+  line-height: 1.2;
+  font-size: 1em;
+  color: #333;
+}
+
+.feed-markdown-bold {
+  font-weight: 600;
+  color: #333;
+}
+
+.feed-markdown-italic {
+  font-style: italic;
+}
+
+.feed-markdown-strikethrough {
+  text-decoration: line-through;
+  color: #999;
+}
+
+.feed-item-content a {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+.feed-item-content a:hover {
+  text-decoration: underline;
 }
   
