@@ -13,9 +13,10 @@ import Markdown from 'react-markdown'
  * - Hooks must be called in the same order every render
  * - Use StoryTreeOperator for node fetching
  * - Markdown rendering support with GitHub-flavored markdown
+ * - Reply functionality with node targeting
  */
 
-function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange }) {
+function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange, onReplyClick }) {
   // All hooks must be called before any conditional returns
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
@@ -116,6 +117,13 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     },
   });
 
+  const handleReplyClick = useCallback((e) => {
+    e.stopPropagation(); // Prevent node selection when clicking reply
+    if (onReplyClick && node?.id) {
+      onReplyClick(node.id);
+    }
+  }, [onReplyClick, node?.id]);
+
   // Early return if node is not properly defined
   if (!node?.id) {
     console.warn('StoryTreeNode received invalid node:', node);
@@ -158,19 +166,27 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
             {currentSibling.text}
           </Markdown>
 
-          {hasSiblings && (
-            <div className="sibling-indicator">
-              {currentSiblingIndex + 1} / {siblings.length}
-              {(hasNextSibling || hasPreviousSibling) && (
-                <span className="swipe-hint">
-                  {hasPreviousSibling && <span className="swipe-hint-previous" onClick={loadPreviousSibling}> (Swipe right for previous)</span>}
-                  {hasPreviousSibling && hasNextSibling && ' |'}
-                  {hasNextSibling && <span className="swipe-hint-next" onClick={loadNextSibling}>   (Swipe left for next)</span>}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+        <div className="story-tree-node-footer">
+            {hasSiblings && (
+              <div className="sibling-indicator">
+                {currentSiblingIndex + 1} / {siblings.length}
+                {(hasNextSibling || hasPreviousSibling) && (
+                  <span className="swipe-hint">
+                    {hasPreviousSibling && <span className="swipe-hint-previous" onClick={loadPreviousSibling}> (Swipe right for previous)</span>}
+                    {hasPreviousSibling && hasNextSibling && ' |'}
+                    {hasNextSibling && <span className="swipe-hint-next" onClick={loadNextSibling}>   (Swipe left for next)</span>}
+                  </span>
+                )}
+              </div>
+            )}
+            <button 
+              className="reply-button"
+              onClick={handleReplyClick}
+              aria-label="Reply to this message"
+            >
+              Reply
+            </button>
+          </div>
       </div>
     </motion.div>
   );

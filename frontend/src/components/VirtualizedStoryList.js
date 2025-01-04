@@ -8,6 +8,7 @@
  * - Memory efficient row rendering with React.memo
  * - Responsive height calculations based on window size
  * - Proper cleanup of resize observers
+ * - Hide child nodes when in reply mode
  */
 
 import React, { useCallback, useRef, useEffect, useState } from 'react';
@@ -24,7 +25,10 @@ const Row = React.memo(({
   rowRefs,
   handleSiblingChange,
   fetchNode,
-  isLoading
+  isLoading,
+  replyToNodeId,
+  onReplySubmit,
+  onReplyClick
 }) => {
   React.useEffect(() => {
     const updateSize = () => {
@@ -55,7 +59,7 @@ const Row = React.memo(({
       resizeObserver.observe(rowRefs.current[index]);
       return () => resizeObserver.disconnect();
     }
-  }, [setSize, index, rowRefs]);
+  }, [setSize, index, rowRefs, node?.text]);
   
   if (isLoading) {
     return (
@@ -117,6 +121,10 @@ const Row = React.memo(({
         setCurrentFocus={setIsFocused}
         siblings={Array.isArray(node?.siblings) ? node.siblings : []}
         onSiblingChange={(newNode) => handleSiblingChange(newNode, index, fetchNode)}
+        onReplyClick={onReplyClick}
+        isReplyMode={!!replyToNodeId}
+        isReplyTarget={replyToNodeId === node?.id}
+        onReplySubmit={onReplySubmit}
       />
     </div>
   );
@@ -129,7 +137,10 @@ function VirtualizedStoryList({
   loadMoreItems,
   setIsFocused,
   handleSiblingChange,
-  fetchNode
+  fetchNode,
+  replyToNodeId,
+  onReplySubmit,
+  onReplyClick
 }) {
   const listRef = useRef();
   const sizeMap = useRef({});
@@ -180,6 +191,9 @@ function VirtualizedStoryList({
         handleSiblingChange={handleSiblingChange}
         fetchNode={fetchNode}
         isLoading={isLoading}
+        replyToNodeId={replyToNodeId}
+        onReplySubmit={onReplySubmit}
+        onReplyClick={onReplyClick}
       />
     );
   };
