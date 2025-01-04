@@ -1,16 +1,16 @@
 /*
 Requirements:
-- Allow users to create posts with title and rich text content
-- Provide rich text editing capabilities
+- Allow users to create posts with title and markdown content
+- Provide markdown editing capabilities
 - Handle form submission and validation
 - Show loading state during submission
 - Display error messages if submission fails
 - Require authentication to create posts
+- Preview markdown while editing
 */
 
 import React, { useState, useEffect } from 'react';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+import MDEditor from '@uiw/react-md-editor';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import './PostPage.css';
@@ -24,26 +24,15 @@ function PostPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const { state} = useUser();
+  const { state } = useUser();
   const loggedOutMessage = 'Please sign in to create a post';
-
-  // Quill editor modules/formats configuration
-  const modules = {
-    toolbar: [
-      [{ 'header': [1, 2, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{'list': 'ordered'}, {'list': 'bullet'}],
-      ['link', 'blockquote'],
-      ['clean']
-    ],
-  };
 
   useEffect(() => {
     if (!state?.verified) {
       setError(loggedOutMessage);
     } else {
       setError('');
-        }
+    }
   }, [state?.verified, navigate]);
 
   const handleSubmit = async (e) => {
@@ -67,7 +56,7 @@ function PostPage() {
           }
         }
       );
-      navigate('/'); // Redirect to home page after successful post
+      navigate('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create post');
     } finally {
@@ -77,48 +66,52 @@ function PostPage() {
 
   return (
     <div className="post-page">
-        <Header 
-          title="Create a New Post"
-          onLogoClick={() => navigate('/feed')}
-        />
+      <Header 
+        title="Create a New Post"
+        onLogoClick={() => navigate('/feed')}
+      />
 
-      {error && <div className="error-message">{error}{ error === loggedOutMessage && <Link to="/login"> here</Link>}</div>}
+      {error && <div className="error-message">{error}{error === loggedOutMessage && <Link to="/login"> here</Link>}</div>}
       
-      { error !== loggedOutMessage &&
-      <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="title">Title</label>
-          <input
-            type="text"
-            id="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Enter your post title"
-            disabled={isSubmitting}
-          />
-        </div>
+      {error !== loggedOutMessage && (
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="title">Title</label>
+            <input
+              type="text"
+              id="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Enter your post title"
+              disabled={isSubmitting}
+            />
+          </div>
 
-        <div className="form-group">
-          <label htmlFor="content">Content</label>
-          <ReactQuill
-            value={content}
-            onChange={setContent}
-            modules={modules}
-            placeholder="Write your post content here..."
-            theme="snow"
-            disabled={isSubmitting}
-          />
-        </div>
+          <div className="form-group">
+            <label htmlFor="content">Content</label>
+            <div data-color-mode="light">
+              <MDEditor
+                value={content}
+                onChange={setContent}
+                preview="edit"
+                height={400}
+                textareaProps={{
+                  placeholder: "Write your post content here using Markdown...",
+                  disabled: isSubmitting
+                }}
+              />
+            </div>
+          </div>
 
-        <button 
-          type="submit" 
-          disabled={isSubmitting}
-          className="submit-button"
-        >
-          {isSubmitting ? 'Posting...' : 'Create Post'}
-            </button>
-          </form>
-        }
+          <button 
+            type="submit" 
+            disabled={isSubmitting}
+            className="submit-button"
+          >
+            {isSubmitting ? 'Posting...' : 'Create Post'}
+          </button>
+        </form>
+      )}
     </div>
   );
 }
