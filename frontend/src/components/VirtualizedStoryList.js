@@ -3,8 +3,6 @@ import { VariableSizeList as List } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import StoryTreeNode from './StoryTreeNode';
 
-const WINDOW_HEIGHT = window.innerHeight - 60;
-
 const Row = React.memo(({ 
   index, 
   style, 
