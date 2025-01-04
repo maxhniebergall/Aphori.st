@@ -166,7 +166,7 @@ function VirtualizedStoryList({
               ref(list);
               listRef.current = list;
             }}
-            height={WINDOW_HEIGHT}
+            height={20000}
             itemCount={itemCount}
             itemSize={getSize}
             onItemsRendered={(props) => {

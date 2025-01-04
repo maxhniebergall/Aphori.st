@@ -57,9 +57,12 @@
   background-color: #f0f0f0;
 }
 
+// ... existing code ...
+
 .page-header {
-  padding: 1rem;
+  padding: 2rem 1rem; /* Increased padding top/bottom */
   text-align: center;
+  border-bottom: 1px solid #e0e0e0; /* Optional: adds a subtle separator */
 }
 
 .page-header h1 {
@@ -74,7 +77,6 @@
   color: #666;
   font-weight: normal;
 } 
-
 .header-menu-modal {
   display: flex;
   flex-direction: column;
