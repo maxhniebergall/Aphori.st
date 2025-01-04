@@ -55,10 +55,9 @@ function Header({ title, subtitle, onLogoClick }) {
                 {/* Show user info if verified */}
                 {state?.verified && state?.user?.id && (
                     <div className="signed-in-user-info">
-                        <div className="user-name-message">
-                            <p>Hello, {state.user.id}!</p>
-                            <p>({state.user.email})</p>
-                        </div>
+                      <form action="https://aphori.st/post">
+                        <button className='post-button'> Make a Post </button>
+                      </form>
                         <button className="sign-in-button" onClick={logout}>Sign Out</button>
                     </div>
                 )}
