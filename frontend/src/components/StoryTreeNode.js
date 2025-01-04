@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useStoryTree } from '../context/StoryTreeContext';
 import Markdown from 'react-markdown'
+import MDEditor from '@uiw/react-md-editor';
 /*
  * Requirements:
  * - Proper null checking for node and node.id
@@ -16,12 +17,21 @@ import Markdown from 'react-markdown'
  * - Reply functionality with node targeting
  */
 
-function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange, onReplyClick }) {
+function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange, onReplyClick, isReplyMode, isReplyTarget, onReplySubmit }) {
   // All hooks must be called before any conditional returns
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
   const { state, dispatch } = useStoryTree();
+  const [replyContent, setReplyContent] = useState('');
+
+  console.log('StoryTreeNode - render:', {
+    nodeId: node?.id,
+    isReplyMode,
+    isReplyTarget,
+    hasReplyClickHandler: !!onReplyClick,
+    hasReplyContent: !!replyContent
+  });
 
   // Update the operator's context whenever state or dispatch changes
   useEffect(() => {
@@ -118,11 +128,16 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   });
 
   const handleReplyClick = useCallback((e) => {
-    e.stopPropagation(); // Prevent node selection when clicking reply
-    if (onReplyClick && node?.id) {
+    e.stopPropagation();
+    console.log('StoryTreeNode - handleReplyClick:', {
+      nodeId: node?.id,
+      hasHandler: !!onReplyClick,
+      currentIsReplyTarget: isReplyTarget
+    });
+    if (onReplyClick) {
       onReplyClick(node.id);
     }
-  }, [onReplyClick, node?.id]);
+  }, [onReplyClick, node.id, isReplyTarget]);
 
   // Early return if node is not properly defined
   if (!node?.id) {
@@ -175,7 +190,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
                   <span className="swipe-hint">
                     {hasPreviousSibling && <span className="swipe-hint-previous" onClick={loadPreviousSibling}> (Swipe right for previous)</span>}
                     {hasPreviousSibling && hasNextSibling && ' |'}
-                    {hasNextSibling && <span className="swipe-hint-next" onClick={loadNextSibling}> (Swipe left for next)</span>}
+                    {hasNextSibling && <span className="swipe-hint-next" onClick={loadNextSibling}>   (Swipe left for next)</span>}
                   </span>
                 )}
               </div>
@@ -186,9 +201,49 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
             onClick={handleReplyClick}
             aria-label="Reply to this message"
           >
-            Reply
+            {isReplyTarget ? 'Cancel Reply' : 'Reply'}
           </button>
         </div>
+
+        {isReplyTarget && (
+          <div className="reply-editor-container">
+            {console.log('StoryTreeNode - Rendering editor:', {
+              nodeId: node?.id,
+              replyContent
+            })}
+            <div data-color-mode="light">
+              <MDEditor
+                value={replyContent}
+                onChange={(val) => {
+                  console.log('StoryTreeNode - Editor onChange:', {
+                    newValue: val
+                  });
+                  setReplyContent(val);
+                }}
+                preview="edit"
+                height={200}
+                textareaProps={{
+                  placeholder: "Write your reply using Markdown..."
+                }}
+              />
+            </div>
+            <div className="reply-actions">
+              <button 
+                onClick={() => onReplySubmit(replyContent)}
+                disabled={!replyContent.trim()}
+                className="submit-reply-button"
+              >
+                Submit Reply
+              </button>
+              <button 
+                onClick={() => onReplyClick(null)}
+                className="cancel-reply-button"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </motion.div>
   );
