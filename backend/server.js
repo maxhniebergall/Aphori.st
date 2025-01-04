@@ -590,7 +590,6 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'healthy' });
 });
 
-// Protected route - only authenticated users can create story trees
 app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
     try {
         const { storyTree } = req.body;
@@ -622,6 +621,7 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
 
         // Store in Redis
         await db.hSet(uuid, 'storyTree', JSON.stringify(formattedStoryTree));
+        await db.lPush('allStoryTreeIds', uuid);
 
         // Add to feed items only if it's a root level story
         if (!storyTree.parentId) {
