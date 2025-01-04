@@ -172,3 +172,52 @@ button {
   100% { transform: rotate(360deg); }
 }
 
+/* Markdown Styles */
+.markdown-paragraph {
+  margin: 0.5em 0;
+  line-height: 1.5;
+}
+
+.markdown-bold {
+  font-weight: 600;
+}
+
+.markdown-italic {
+  font-style: italic;
+}
+
+.markdown-strikethrough {
+  text-decoration: line-through;
+}
+
+.markdown-inline-code {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.markdown-code-block {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 1em;
+  border-radius: 5px;
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+.markdown-code-block code {
+  font-family: monospace;
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.story-tree-node-text a {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+.story-tree-node-text a:hover {
+  text-decoration: underline;
+}
+

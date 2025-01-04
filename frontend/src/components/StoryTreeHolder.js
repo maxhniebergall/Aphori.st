@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import EditingOverlay from './EditingOverlay';
 import './StoryTree.css';
 import Header from './Header';
 import { 
@@ -65,7 +64,7 @@ function StoryTreeContent() {
     }
   }, [rootUUID, dispatch, isOperatorInitialized]);
 
-  const { rootNode, isEditing, currentNode } = state;
+  const { rootNode } = state;
   const title = rootNode?.metadata?.title || '';
   const subtitle = rootNode?.metadata?.author ? `by ${rootNode.metadata.author}` : '';
 
@@ -89,12 +88,6 @@ function StoryTreeContent() {
         setIsFocused={storyTreeOperator.setCurrentFocus}
         handleSiblingChange={handleSiblingChange}
       />      
-      {isEditing && (
-        <EditingOverlay
-          node={currentNode}
-          onClose={() => dispatch({ type: ACTIONS.SET_EDITING, payload: false })}
-        />
-      )}
     </div>
   );
 }
