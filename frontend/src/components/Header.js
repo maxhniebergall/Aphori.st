@@ -62,23 +62,35 @@ function Header({ title, subtitle, onLogoClick }) {
             </div>
             )}
 
-        {/* 
-          logged in (above)    
-          not logged in (below)     
-        */}
 
-        {isModalOpen && isAuthModalOpen && (!state?.verified) && (
-            <AuthModal isOpen={isModalOpen} onClose={() => setAuthModalOpen(false)} onSignIn={handleSignIn} />
-        )}
-        {isModalOpen && !isAuthModalOpen && (!state?.verified) && (
-        <div className="header-menu-modal">
-          <button className="sign-in-button" onClick={() => setAuthModalOpen(true)}>Sign In</button>
-        </div>
-        )}
+
         {isModalOpen && (
-        <div className="header-menu-modal">
-          <a className="report-bug-button" href="https://github.com/maxhniebergall/Aphori.st/issues">Report a Bug</a>
-        </div>
+            <div className="header-menu-modal">
+                {/* Show user info if verified */}
+                {state?.verified && state?.user?.id && (
+                    <>
+                        <div className="user-name-message">
+                            <p>Hello, {state.user.id}!</p>
+                            <p>({state.user.email})</p>
+                        </div>
+                        <button className="sign-in-button" onClick={logout}>Sign Out</button>
+                    </>
+                )}
+
+                {/* Show auth modal or sign in button if not verified */}
+                {!state?.verified && (
+                    <>
+                        {isAuthModalOpen ? (
+                            <AuthModal isOpen={isModalOpen} onClose={() => setAuthModalOpen(false)} onSignIn={handleSignIn} />
+                        ) : (
+                            <button className="sign-in-button" onClick={() => setAuthModalOpen(true)}>Sign In</button>
+                        )}
+                    </>
+                )}
+
+                {/* Report bug button always visible when modal is open */}
+                <a className="report-bug-button" href="https://github.com/maxhniebergall/Aphori.st/issues">Report a Bug</a>
+            </div>
         )}
     </div>
   );
