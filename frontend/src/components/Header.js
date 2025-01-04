@@ -54,13 +54,13 @@ function Header({ title, subtitle, onLogoClick }) {
             <div className="header-menu-modal">
                 {/* Show user info if verified */}
                 {state?.verified && state?.user?.id && (
-                    <>
+                    <div className="signed-in-user-info">
                         <div className="user-name-message">
                             <p>Hello, {state.user.id}!</p>
                             <p>({state.user.email})</p>
                         </div>
                         <button className="sign-in-button" onClick={logout}>Sign Out</button>
-                    </>
+                    </div>
                 )}
 
                 {/* Show auth modal or sign in button if not verified */}
