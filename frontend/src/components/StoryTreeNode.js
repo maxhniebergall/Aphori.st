@@ -157,6 +157,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
         >
             {currentSibling.text}
           </Markdown>
+
           {hasSiblings && (
             <div className="sibling-indicator">
               {currentSiblingIndex + 1} / {siblings.length}
