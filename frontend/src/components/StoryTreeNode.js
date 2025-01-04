@@ -25,14 +25,6 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   const { state, dispatch } = useStoryTree();
   const [replyContent, setReplyContent] = useState('');
 
-  console.log('StoryTreeNode - render:', {
-    nodeId: node?.id,
-    isReplyMode,
-    isReplyTarget,
-    hasReplyClickHandler: !!onReplyClick,
-    hasReplyContent: !!replyContent
-  });
-
   // Update the operator's context whenever state or dispatch changes
   useEffect(() => {
     storyTreeOperator.updateContext(state, dispatch);
@@ -129,11 +121,6 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
 
   const handleReplyClick = useCallback((e) => {
     e.stopPropagation();
-    console.log('StoryTreeNode - handleReplyClick:', {
-      nodeId: node?.id,
-      hasHandler: !!onReplyClick,
-      currentIsReplyTarget: isReplyTarget
-    });
     if (onReplyClick) {
       onReplyClick(node.id);
     }
@@ -207,19 +194,10 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
 
         {isReplyTarget && (
           <div className="reply-editor-container">
-            {console.log('StoryTreeNode - Rendering editor:', {
-              nodeId: node?.id,
-              replyContent
-            })}
             <div data-color-mode="light">
               <MDEditor
                 value={replyContent}
-                onChange={(val) => {
-                  console.log('StoryTreeNode - Editor onChange:', {
-                    newValue: val
-                  });
-                  setReplyContent(val);
-                }}
+                onChange={setReplyContent}
                 preview="edit"
                 height={200}
                 textareaProps={{

@@ -133,12 +133,30 @@ function VirtualizedStoryList({
   fetchNode,
   replyToNodeId,
   onReplySubmit,
+  onReplyClick,
 }) {
   const listRef = useRef();
   const sizeMap = useRef({});
   const rowRefs = useRef({});
   const [listHeight, setListHeight] = useState(window.innerHeight);
   const [totalContentHeight, setTotalContentHeight] = useState(0);
+
+  // Add resize observer to update list height
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const updateHeight = () => {
+      if (containerRef.current) {
+        setListHeight(containerRef.current.offsetHeight);
+      }
+    };
+
+    const resizeObserver = new ResizeObserver(updateHeight);
+    resizeObserver.observe(containerRef.current);
+    updateHeight();
+
+    return () => resizeObserver.disconnect();
+  }, []);
 
   const setSize = useCallback((index, size) => {
     sizeMap.current[index] = size;
