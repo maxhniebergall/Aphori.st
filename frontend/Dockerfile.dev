@@ -20,6 +20,7 @@ EXPOSE 3000
 ENV CHOKIDAR_USEPOLLING=true
 ENV PORT=3000
 ENV HOST=0.0.0.0
+ENV NODE_ENV=dev
 
 # Start the React development server
 CMD ["yarn", "start"]

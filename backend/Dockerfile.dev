@@ -12,6 +12,7 @@ COPY entrypoint_dev.sh /app/
 
 # Make the entrypoint_dev script executable
 RUN chmod +x /app/entrypoint_dev.sh
+ENV NODE_ENV=dev
 
 EXPOSE 5000
 

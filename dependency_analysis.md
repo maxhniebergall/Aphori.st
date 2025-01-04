@@ -10,7 +10,6 @@ Updated Analysis:
    - webpack-bundle-analyzer
 
 3. Core dependencies to keep:
-   - react-quill: Used in EditingOverlay
    - react-window + react-window-infinite-loader: Used in VirtualizedStoryList
    - axios: Used for API calls
    - react-router-dom: Used for routing
@@ -18,7 +17,6 @@ Updated Analysis:
 4. Build optimizations:
    - GENERATE_SOURCEMAP=false is set
    - Production mode is enabled in Dockerfile
-   - Consider code-splitting for react-quill
 
 5. CSS Optimizations:
    - Add transition properties to .story-tree-node-content for smoother animations
