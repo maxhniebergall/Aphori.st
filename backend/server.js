@@ -1,5 +1,6 @@
 /* requirements
 - getUserById checks id with tolowercase
+- Accepts development token in non-production environments
 */
 
 import express, { json } from "express";
@@ -113,7 +114,7 @@ await db.connect().then(() => {
     process.exit(1);
 });
 
-app.post("/api/createStatement", async (req, res) => {
+app.post("/api/createStatement", authenticateToken, async (req, res) => {
     if (req.body.uuid && req.body.value) {
         try {
             const setResult = await db.set(req.body.uuid, req.body.value);
@@ -143,7 +144,7 @@ app.get('/api/getStatement/:key', async (req, res) => {
     }
 });
 
-app.post("/api/setvalue", async (req, res) => {
+app.post("/api/setvalue", authenticateToken, async (req, res) => {
     if (req.body.key && req.body.value) {
         try {
             const setResult = await db.set(req.body.key, req.body.value);
@@ -391,9 +392,16 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req, res) => {
         const userResult = await getUserByEmail(email);
         const isSignup = isSignupInRequest === true || userResult?.error === 'User not found'; // If user doesn't exist, we're doing a signup
         logger.info("Server: send-magic-link request", req.body, "isSignup: ", isSignup, "userResult: ", userResult);
-        // Generate magic token
-        const token = generateMagicToken(email);
         
+        let token;
+        if (process.env.NODE_ENV == 'production') {
+            // Generate magic token
+            token = generateMagicToken(email);
+        } else {
+            // In development, accept the dev token
+            token = 'dev_token';
+        }
+            
         // If isSignup is true, redirect to signup page instead of verify
         const baseUrl = isSignup ? 'https://aphori.st/signup' : 'https://aphori.st/verify';
         const magicLink = `${baseUrl}?token=${token}&email=${encodeURIComponent(email)}`;
@@ -505,6 +513,17 @@ app.post('/api/auth/verify-token', async (req, res) => {
         });
     }
 
+    // In development, accept the dev token
+    if (process.env.NODE_ENV !== 'production' && token === 'dev_token') {
+        return res.json({ 
+            success: true,
+            data: {
+                id: 'dev_user',
+                email: 'dev@example.com'
+            }
+        });
+    }
+
     try {
         const decoded = jwt.verify(token, process.env.AUTH_TOKEN_SECRET);
         const userResult = await getUserById(decoded.id);
@@ -540,6 +559,15 @@ const authenticateToken = (req, res, next) => {
         return res.status(401).json({ error: 'Token required.' });
     }
 
+    // In development, accept the dev token
+    if (process.env.NODE_ENV !== 'production' && token === 'dev_token') {
+        req.user = {
+            id: 'dev_user',
+            email: 'dev@aphori.st'
+        };
+        return next();
+    }
+
     jwt.verify(token, process.env.AUTH_TOKEN_SECRET, (err, user) => {
         if (err) {
             return res.status(403).json({ error: 'Invalid token.' });
@@ -562,7 +590,6 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'healthy' });
 });
 
-// Protected route - only authenticated users can create story trees
 app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
     try {
         const { storyTree } = req.body;
@@ -570,15 +597,8 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'StoryTree data is required' });
         }
 
-        // First check if this story tree already exists in Redis
-        const existingStoryTree = await db.hGet(storyTree.id, 'storyTree');
-        if (existingStoryTree) {
-            logger.info(`Found existing StoryTree with ID: ${storyTree.id}`);
-            return res.json({ id: storyTree.id });
-        }
-
-        // Generate a new UUID for the story tree if one isn't provided
-        const uuid = storyTree.id || crypto.randomUUID();
+        // Generate a new UUID for the story tree
+        const uuid = crypto.randomUUID();
         
         // Format nodes array to match frontend expectations
         const nodes = storyTree.nodes || [];
@@ -586,7 +606,7 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
         // Create the full object for storing in Redis
         const formattedStoryTree = {
             id: uuid,
-            text: storyTree.text,
+            text: storyTree.content || storyTree.text, // Support both content and text fields
             nodes: nodes,
             parentId: storyTree.parentId || null,
             metadata: {
@@ -601,13 +621,14 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
 
         // Store in Redis
         await db.hSet(uuid, 'storyTree', JSON.stringify(formattedStoryTree));
+        await db.lPush('allStoryTreeIds', uuid);
 
         // Add to feed items only if it's a root level story
         if (!storyTree.parentId) {
             const feedItem = {
                 id: uuid,
                 title: storyTree.title,
-                text: storyTree.text,
+                text: storyTree.content || storyTree.text, // Support both content and text fields
                 author: {
                     id: req.user.id,
                     email: req.user.email

@@ -8,6 +8,7 @@ import ProfilePage from './components/ProfilePage';
 import SignupPage from './components/SignupPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import NotFound from './components/NotFound';
+import PostPage from './components/PostPage';
 import { UserProvider } from './context/UserContext';
 import axios from 'axios';
 
@@ -17,6 +18,15 @@ function App() {
         axios.defaults.withCredentials = true;
         axios.defaults.timeout = 8000;
         
+        // Add auth interceptor
+        axios.interceptors.request.use((config) => {
+            const token = localStorage.getItem('token');
+            if (token) {
+                config.headers['Authorization'] = `Bearer ${token}`;
+            }
+            return config;
+        });
+
         // Add build hash to all API requests
         axios.interceptors.request.use((config) => {
             config.headers['X-Frontend-Hash'] = window.BUILD_HASH || 'development';
@@ -55,6 +65,7 @@ function App() {
                 <Route path="/verify" element={<VerifyMagicLink />} />
                 <Route path="/feed" element={<Feed />} />
                 <Route path="/storyTree/:uuid" element={<StoryTreePage />} />
+                <Route path="/post" element={<PostPage />} />
                 <Route path="/" element={<Feed />} />
 
                 <Route 

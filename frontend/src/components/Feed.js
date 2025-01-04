@@ -6,6 +6,40 @@ import { useNavigate } from 'react-router-dom';
 import Header from './Header';
 import feedOperator from '../operators/FeedOperator';
 
+// Helper function to strip markdown and truncate text
+const truncateText = (text, maxLength = 150) => {
+  if (!text) return text;
+
+  // Strip markdown characters and replace newlines with spaces
+  let processedText = text
+    // Remove bold/italic/strikethrough
+    .replace(/[*~_]{1,2}([^*~_]+)[*~_]{1,2}/g, '$1')
+    // Remove links
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    // Remove code blocks
+    .replace(/`([^`]+)`/g, '$1')
+    // Remove headers
+    .replace(/^#+\s+/gm, '')
+    // Replace newlines with spaces
+    .replace(/\n+/g, ' ')
+    // Remove any remaining markdown characters
+    .replace(/[*~_`#[\]()]/g, '')
+    // Collapse multiple spaces
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  if (processedText.length <= maxLength) return processedText;
+
+  // Find the last complete word within maxLength
+  let truncated = processedText.slice(0, maxLength);
+  const lastSpace = truncated.lastIndexOf(' ');
+  if (lastSpace > 0) {
+    truncated = truncated.slice(0, lastSpace);
+  }
+
+  return truncated + '...';
+};
+
 function Feed() {
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -26,6 +60,7 @@ function Feed() {
       console.log('Feed: Setting loading state to true');
       setIsLoading(true);
       try {
+        setCurrentIndex(1); // todo implement pagination
         console.log('Feed: Making API request');
         const result = await feedOperator.getFeedItems(currentIndex);
         console.log('Feed: Received response:', result);
@@ -100,7 +135,6 @@ function Feed() {
                 onClick={() => {
                   if(!item?.id) {
                     console.log("placeholder item, skipping");
-                    // placeholders are just for loading state, so we don't want to navigate to them
                   } else {
                     navigateToStoryTree(item.id);
                   }
@@ -111,18 +145,16 @@ function Feed() {
                 className="feed-item"
               >
                 {item.title && <motion.h3>{item.title}</motion.h3>}
-                <motion.p>
-                  {item.text 
-                    ? (item.text.length > 80 
-                        ? item.text.substring(0, 75) + ". . ."
-                        : item.text)
-                    : 'Loading... '}
-                </motion.p>
+                <motion.div className="feed-item-content">
+                  <p className="feed-text">
+                    {item.text ? truncateText(item.text) : 'Loading...'}
+                  </p>
+                </motion.div>
               </motion.div>
             );
           })
         ) : (
-          <div>Something went wrong. No items to display</div>
+          <div>No items to display</div>
         )}
       </div>
     </>

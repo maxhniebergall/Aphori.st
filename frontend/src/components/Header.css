@@ -9,7 +9,6 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  border-bottom: 1px solid #eee;
 }
 
 .logo-container {
@@ -59,8 +58,9 @@
 }
 
 .page-header {
-  padding: 1rem;
+  padding: 2rem 1rem; /* Increased padding top/bottom */
   text-align: center;
+  border-bottom: 1px solid #e0e0e0; /* Optional: adds a subtle separator */
 }
 
 .page-header h1 {
@@ -75,11 +75,52 @@
   color: #666;
   font-weight: normal;
 } 
-
 .header-menu-modal {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1rem;
 }
+
+.signed-in-user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sign-in-button {
+  margin-top: 0;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  background-color: #f0f0f0;
+  color: #333;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sign-in-button:hover {
+  background-color: #e0e0e0;
+  transform: translateY(-1px);
+}
     
+.post-button {
+  margin-top: 1rem;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  background-color: #399cff;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(57, 156, 255, 0.2);
+}
+
+.post-button:hover {
+  background-color: #2b8ae6;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(57, 156, 255, 0.3);
+}

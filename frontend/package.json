@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+    "@uiw/react-md-editor": "^4.0.5",
     "@use-gesture/react": "^10.3.1",
     "axios": "^1.7.7",
     "buffer": "^6.0.3",
@@ -11,7 +12,7 @@
     "pako": "^2.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-quill": "^2.0.0",
+    "react-markdown": "8.0.7",
     "react-router-dom": "^6.26.2",
     "react-scripts": "^5.0.1",
     "react-window": "^1.8.10",

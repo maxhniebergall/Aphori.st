@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
-import { StoryTreeOperator } from '../operators/StoryTreeOperator';
-
+import { storyTreeOperator } from '../operators/StoryTreeOperator';
+import { useStoryTree } from '../context/StoryTreeContext';
+import Markdown from 'react-markdown'
 /*
  * Requirements:
  * - Proper null checking for node and node.id
@@ -11,6 +12,7 @@ import { StoryTreeOperator } from '../operators/StoryTreeOperator';
  * - Gesture handling for sibling navigation
  * - Hooks must be called in the same order every render
  * - Use StoryTreeOperator for node fetching
+ * - Markdown rendering support with GitHub-flavored markdown
  */
 
 function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange }) {
@@ -18,7 +20,12 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
-  const operator = new StoryTreeOperator();
+  const { state, dispatch } = useStoryTree();
+
+  // Update the operator's context whenever state or dispatch changes
+  useEffect(() => {
+    storyTreeOperator.updateContext(state, dispatch);
+  }, [state, dispatch]);
 
   // Find the current index in siblings array
   useEffect(() => {
@@ -39,7 +46,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
         return;
       }
       
-      const nextNode = await operator.fetchNode(nextSibling.id);
+      const nextNode = await storyTreeOperator.fetchNode(nextSibling.id);
       if (nextNode) {
         nextNode.siblings = siblings; // Preserve siblings information
         setLoadedSiblings(prev => [...prev, nextNode]);
@@ -51,7 +58,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [siblings, currentSiblingIndex, isLoadingSibling, onSiblingChange, operator]);
+  }, [siblings, currentSiblingIndex, isLoadingSibling, onSiblingChange]);
 
   const loadPreviousSibling = useCallback(async () => {
     if (isLoadingSibling || !siblings || currentSiblingIndex <= 0) {
@@ -67,7 +74,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
         return;
       }
 
-      const previousNode = await operator.fetchNode(previousSibling.id);
+      const previousNode = await storyTreeOperator.fetchNode(previousSibling.id);
       if (previousNode) {
         previousNode.siblings = siblings;
         
@@ -85,7 +92,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [currentSiblingIndex, siblings, isLoadingSibling, onSiblingChange, operator]);
+  }, [currentSiblingIndex, siblings, isLoadingSibling, onSiblingChange]);
 
   const bind = useGesture({
     onDrag: ({ down, movement: [mx], cancel, velocity: [vx] }) => {
@@ -116,7 +123,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   }
 
   // Early return if operator is not provided
-  if (!operator?.fetchNode) {
+  if (!storyTreeOperator?.fetchNode) {
     console.error('StoryTreeNode requires a valid operator with fetchNode method');
     return null;
   }
@@ -139,7 +146,17 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
         id={currentSibling.id}
       >
         <div className="story-tree-node-text">
-          {currentSibling.text}
+        <Markdown
+          components={{
+            a: ({ node, children, ...props }) => (
+              <a target="_blank" rel="noopener noreferrer" {...props}>
+                {children}
+              </a>
+            ),
+          }}
+        >
+            {currentSibling.text}
+          </Markdown>
           {hasSiblings && (
             <div className="sibling-indicator">
               {currentSiblingIndex + 1} / {siblings.length}
