@@ -25,10 +25,7 @@ const Row = React.memo(({
   rowRefs,
   handleSiblingChange,
   fetchNode,
-  isLoading,
-  replyToNodeId,
-  onReplySubmit,
-  onReplyClick
+  isLoading
 }) => {
   React.useEffect(() => {
     const updateSize = () => {
@@ -59,7 +56,7 @@ const Row = React.memo(({
       resizeObserver.observe(rowRefs.current[index]);
       return () => resizeObserver.disconnect();
     }
-  }, [setSize, index, rowRefs, node?.text]);
+  }, [setSize, index, rowRefs]);
   
   if (isLoading) {
     return (
@@ -121,10 +118,6 @@ const Row = React.memo(({
         setCurrentFocus={setIsFocused}
         siblings={Array.isArray(node?.siblings) ? node.siblings : []}
         onSiblingChange={(newNode) => handleSiblingChange(newNode, index, fetchNode)}
-        onReplyClick={onReplyClick}
-        isReplyMode={!!replyToNodeId}
-        isReplyTarget={replyToNodeId === node?.id}
-        onReplySubmit={onReplySubmit}
       />
     </div>
   );
@@ -140,7 +133,6 @@ function VirtualizedStoryList({
   fetchNode,
   replyToNodeId,
   onReplySubmit,
-  onReplyClick
 }) {
   const listRef = useRef();
   const sizeMap = useRef({});
@@ -156,7 +148,8 @@ function VirtualizedStoryList({
   }, []);
 
   const getSize = useCallback((index) => {
-    return sizeMap.current[index] || 200;
+    // Ensure minimum height for rows
+    return Math.max(sizeMap.current[index] || 200, 100);
   }, []);
 
   const handleLoadMoreItems = useCallback(async (startIndex, stopIndex) => {
@@ -191,17 +184,16 @@ function VirtualizedStoryList({
         handleSiblingChange={handleSiblingChange}
         fetchNode={fetchNode}
         isLoading={isLoading}
-        replyToNodeId={replyToNodeId}
-        onReplySubmit={onReplySubmit}
-        onReplyClick={onReplyClick}
       />
     );
   };
 
+  // Don't render if there are no items and we're not expecting any
   if (!items?.length && !hasNextPage) {
     return null;
   }
 
+  // Calculate total items based on root node's nodes array length plus one (for root node)
   const rootNode = items[0];
   const totalPossibleItems = rootNode?.nodes?.length ? rootNode.nodes.length + 1 : items.length || 1;
   const itemCount = hasNextPage ? Math.max(items.length + 1, totalPossibleItems) : items.length;

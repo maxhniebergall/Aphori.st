@@ -167,6 +167,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
           </Markdown>
 
         <div className="story-tree-node-footer">
+          <div className="footer-left">
             {hasSiblings && (
               <div className="sibling-indicator">
                 {currentSiblingIndex + 1} / {siblings.length}
@@ -174,19 +175,20 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
                   <span className="swipe-hint">
                     {hasPreviousSibling && <span className="swipe-hint-previous" onClick={loadPreviousSibling}> (Swipe right for previous)</span>}
                     {hasPreviousSibling && hasNextSibling && ' |'}
-                    {hasNextSibling && <span className="swipe-hint-next" onClick={loadNextSibling}>   (Swipe left for next)</span>}
+                    {hasNextSibling && <span className="swipe-hint-next" onClick={loadNextSibling}> (Swipe left for next)</span>}
                   </span>
                 )}
               </div>
             )}
-            <button 
-              className="reply-button"
-              onClick={handleReplyClick}
-              aria-label="Reply to this message"
-            >
-              Reply
-            </button>
           </div>
+          <button 
+            className="reply-button"
+            onClick={handleReplyClick}
+            aria-label="Reply to this message"
+          >
+            Reply
+          </button>
+        </div>
       </div>
     </motion.div>
   );
