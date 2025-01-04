@@ -146,14 +146,15 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
         id={currentSibling.id}
       >
         <div className="story-tree-node-text">
-          <Markdown
-            components={{
-              // Override default link behavior to open in new tab
-              a: ({ node, ...props }) => (
-                <a target="_blank" rel="noopener noreferrer" {...props} />
-              ),
-            }}
-          >
+        <Markdown
+          components={{
+            a: ({ node, children, ...props }) => (  // Add children parameter
+              <a target="_blank" rel="noopener noreferrer" {...props}>
+                {children}
+              </a>
+            ),
+          }}
+        >
             {currentSibling.text}
           </Markdown>
           {hasSiblings && (

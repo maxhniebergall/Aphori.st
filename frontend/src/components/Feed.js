@@ -113,11 +113,13 @@ function Feed() {
               >
                 {item.title && <motion.h3>{item.title}</motion.h3>}
                 <motion.p>
-                  <Markdown components={{
-                    a: ({ node, ...props }) => (
-                      <a target="_blank" rel="noopener noreferrer" {...props} />
-                    ),
-                  }}>
+                <Markdown components={{
+                  a: ({ node, children, ...props }) => (  // Add children parameter
+                    <a target="_blank" rel="noopener noreferrer" {...props}>
+                      {children} 
+                    </a>
+                  ),
+                }}>
                   {item.text 
                     ? (item.text.length > 80 
                         ? item.text.substring(0, 75) + ". . ."
