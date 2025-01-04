@@ -8,14 +8,6 @@
   margin-bottom: 20px;
 }
 
-/* Add specific styling for the content form group */
-.form-group:has(.quill) {
-  position: relative;
-  margin-bottom: 60px;
-  min-height: 360px; /* Height of Quill + some extra space */
-  width: 100%;
-}
-
 label {
   display: block;
   margin-bottom: 8px;
@@ -54,12 +46,6 @@ input[type="text"] {
   cursor: not-allowed;
 }
 
-/* Ensure the Quill editor has a proper height */
-.quill {
-  height: 300px;
-  width: 100%;
-  position: relative;
-}
 
 /* Handle mobile viewport */
 @media screen and (max-width: 768px) {
@@ -67,15 +53,6 @@ input[type="text"] {
     padding: 10px;
     width: 100%;
     box-sizing: border-box;
-  }
-
-  .form-group:has(.quill) {
-    margin-bottom: 80px; /* Extra space on mobile */
-  }
-
-  .quill {
-    max-width: 100%;
-    overflow: hidden;
   }
 
   /* Ensure the editor toolbar stays within bounds */
