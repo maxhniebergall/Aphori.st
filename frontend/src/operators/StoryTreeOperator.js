@@ -4,17 +4,27 @@
  * - Robust loading condition checks to prevent infinite loading
  * - Proper state management for story tree pagination
  * - Validation of node data before dispatching
+ * - Singleton pattern to prevent multiple instances
  */
 
 import { ACTIONS } from '../context/StoryTreeContext';
 import axios from 'axios';
 import { BaseOperator } from './BaseOperator';
 
-export class StoryTreeOperator extends BaseOperator {
-  constructor(state, dispatch) {
+class StoryTreeOperator extends BaseOperator {
+  constructor() {
     super();
-    this.state = state;
-    this.dispatch = dispatch;
+    // Initialize with default state to prevent null reference errors
+    this.state = {
+      items: [],
+      hasNextPage: false,
+      isNextPageLoading: false,
+      rootNode: null,
+      currentNode: null,
+      isEditing: false,
+      error: null
+    };
+    this.dispatch = null;
 
     // Bind class methods to maintain 'this' context
     this.isItemLoaded = this.isItemLoaded.bind(this);
@@ -22,6 +32,22 @@ export class StoryTreeOperator extends BaseOperator {
     this.setCurrentFocus = this.setCurrentFocus.bind(this);
     this.fetchRootNode = this.fetchRootNode.bind(this);
     this.fetchNode = this.fetchNode.bind(this);
+    this.updateContext = this.updateContext.bind(this);
+  }
+
+  updateContext(state, dispatch) {
+    // Merge new state with defaults to ensure required properties exist
+    this.state = {
+      items: [],
+      hasNextPage: false,
+      isNextPageLoading: false,
+      rootNode: null,
+      currentNode: null,
+      isEditing: false,
+      error: null,
+      ...state
+    };
+    this.dispatch = dispatch;
   }
 
   validateNode(node) {
@@ -71,15 +97,25 @@ export class StoryTreeOperator extends BaseOperator {
   }
 
   isItemLoaded = (index) => {
-    return !this.state.hasNextPage || index < this.state.items.length;
+    // Add null checks and default values
+    const hasNextPage = this.state?.hasNextPage ?? false;
+    const items = this.state?.items ?? [];
+    return !hasNextPage || index < items.length;
   };
 
   loadMoreItems = async (startIndex, stopIndex) => {
-    if (this.state?.isNextPageLoading) return;
+    if (!this.state || !this.dispatch) {
+      console.warn('StoryTreeOperator: state or dispatch not initialized');
+      return;
+    }
+
+    if (this.state.isNextPageLoading) return;
 
     this.dispatch({ type: ACTIONS.SET_LOADING, payload: true });
     try {
-      const lastNode = this.state.items[this.state.items.length - 1];
+      const items = this.state.items ?? [];
+      const lastNode = items[items.length - 1];
+      
       // Check if there are actual nodes (not just an empty array) and valid next node ID
       if (!lastNode?.nodes?.length || !lastNode.nodes[0]?.id) {
         this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
@@ -107,7 +143,13 @@ export class StoryTreeOperator extends BaseOperator {
   };
 
   setCurrentFocus = (index) => {
-    const item = this.state.items[index];
+    if (!this.state || !this.dispatch) {
+      console.warn('StoryTreeOperator: state or dispatch not initialized');
+      return;
+    }
+
+    const items = this.state.items ?? [];
+    const item = items[index];
     if (item && this.validateNode(item)) {
       this.dispatch({ 
         type: ACTIONS.SET_CURRENT_NODE, 
@@ -119,4 +161,6 @@ export class StoryTreeOperator extends BaseOperator {
   };
 }
 
-export default StoryTreeOperator;
+// Create a singleton instance
+export const storyTreeOperator = new StoryTreeOperator();
+export default storyTreeOperator;
