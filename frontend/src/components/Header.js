@@ -50,21 +50,7 @@ function Header({ title, subtitle, onLogoClick }) {
         </div>
       )}
       
-         {isModalOpen && state?.verified && state?.user?.id && (
-          <div className="user-name-message">
-            <p>Hello, {state.user.id}!</p>
-            <p>({state.user.email})</p>
-          </div>
-         )}
-        {isModalOpen && state?.verified && state?.user?.id && (
-            <div className="header-menu-modal">
-                <button className="sign-in-button" onClick={logout}>Sign Out</button>
-            </div>
-            )}
-
-
-
-        {isModalOpen && (
+      {isModalOpen && (
             <div className="header-menu-modal">
                 {/* Show user info if verified */}
                 {state?.verified && state?.user?.id && (
