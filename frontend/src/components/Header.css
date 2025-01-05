@@ -124,3 +124,7 @@
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(57, 156, 255, 0.3);
 }
+
+.report-bug-button {
+  margin-bottom: 1rem;
+}
