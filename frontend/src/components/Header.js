@@ -69,8 +69,7 @@ function Header({ title, subtitle, onLogoClick }) {
 
                 {/* Report bug button always visible when modal is open */}
                 <a className="report-bug-button" href="https://github.com/maxhniebergall/Aphori.st/issues">Report a Bug</a>
-                <hr/>
-            </div>
+              </div>
         )}
 
         {(title || subtitle) && (
