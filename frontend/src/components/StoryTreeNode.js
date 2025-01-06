@@ -14,6 +14,7 @@ import MDEditor from '@uiw/react-md-editor';
  * - Use StoryTreeOperator for node fetching
  * - Markdown rendering support with GitHub-flavored markdown
  * - Reply functionality with node targeting
+ * - Import Markdown preview component from MDEditor
  */
 
 function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange, onReplyClick, isReplyMode, isReplyTarget, onReplySubmit }) {
@@ -155,17 +156,19 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
         id={currentSibling.id}
       >
         <div className="story-tree-node-text">
-        <Markdown
-          components={{
-            a: ({ node, children, ...props }) => (
-              <a target="_blank" rel="noopener noreferrer" {...props}>
-                {children}
-              </a>
-            ),
-          }}
-        >
-            {currentSibling.text}
-          </Markdown>
+          <div data-color-mode="light">
+            <MDEditor.Preview
+              components={{
+                a: ({ node, children, ...props }) => (
+                  <a target="_blank" rel="noopener noreferrer" {...props}>
+                    {children}
+                  </a>
+                ),
+              }}
+              source={currentSibling.text}
+            />
+          </div>
+          </div>
 
         <div className="story-tree-node-footer">
         <div className="footer-left">
