@@ -4,8 +4,16 @@ import { motion } from 'framer-motion';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useStoryTree } from '../context/StoryTreeContext';
 import MDEditor from '@uiw/react-md-editor';
+import '@uiw/react-md-editor/markdown-editor.css';
+import rehypeSanitize from 'rehype-sanitize';
 /*
  * Requirements:
+ * - @use-gesture/react: For gesture handling
+ * - framer-motion: For animations
+ * - @uiw/react-md-editor: For markdown editing and preview
+ * - @uiw/react-md-editor/markdown-editor.css: Required CSS for markdown editor
+ * - react: Core React functionality
+ * - rehype-sanitize: For markdown sanitization (required by md-editor)
  * - Proper null checking for node and node.id
  * - Safe handling of undefined siblings
  * - Proper state management for sibling navigation
@@ -14,10 +22,16 @@ import MDEditor from '@uiw/react-md-editor';
  * - Use StoryTreeOperator for node fetching
  * - Markdown rendering support with GitHub-flavored markdown
  * - Reply functionality with node targeting
- * - Import Markdown preview component from MDEditor
+ *  - To start a reply, the user clicks on the text of the node (which becomes the primary node)
+ *  - When starting, the viewport is moved to have the primary node on top, with the text editor directly below
+ *  - When starting, the entire text of the primary node is selected by default
+ *  - When replying, the user can change the selection of the text of the primary node, allowing for any contiguous text in the primary node to be selected
+ *  - When replying, The user can edit the reply and submit it
+ *  - When submitting, the reply is added to the primary node's list of children
+ *  - When submitting, the reply editor is hidden and the node is no longer highlighted
  */
 
-function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange, onReplyClick, isReplyMode, isReplyTarget, onReplySubmit }) {
+function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange, onReplyClick, isReplyMode, isReplyTarget }) {
   // All hooks must be called before any conditional returns
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
@@ -37,6 +51,12 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
       setCurrentSiblingIndex(index !== -1 ? index : 0);
     }
   }, [node?.id, siblings]);
+
+
+  const onReplySubmit = useCallback((content) => {
+    console.log('Reply submitted:', content);
+
+  }, []);
 
   const loadNextSibling = useCallback(async () => {
     if (isLoadingSibling || !siblings || currentSiblingIndex >= siblings.length - 1) return;
@@ -157,7 +177,8 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
       >
         <div className="story-tree-node-text">
           <div data-color-mode="light">
-            <MDEditor.Preview
+            <MDEditor.Markdown
+              source={currentSibling.text}
               components={{
                 a: ({ node, children, ...props }) => (
                   <a target="_blank" rel="noopener noreferrer" {...props}>
@@ -165,10 +186,9 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
                   </a>
                 ),
               }}
-              source={currentSibling.text}
             />
           </div>
-          </div>
+        </div>
 
         <div className="story-tree-node-footer">
         <div className="footer-left">
@@ -205,7 +225,11 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
                 preview="edit"
                 height={200}
                 textareaProps={{
-                  placeholder: "Write your reply using Markdown..."
+                  placeholder: "Write your reply using Markdown...",
+                  autoFocus: true
+                }}
+                previewOptions={{
+                  rehypePlugins: [[rehypeSanitize]]
                 }}
               />
             </div>
