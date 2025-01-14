@@ -1,3 +1,16 @@
+/*
+ * Requirements:
+ * - Global state management using React Context
+ * - Comprehensive action types for all state changes
+ * - Loading state management with defined states (IDLE, LOADING, ERROR, SUCCESS)
+ * - Error handling and propagation
+ * - Initial state with proper type definitions
+ * - Pagination state management
+ * - Sibling navigation state handling
+ * - Editing state management
+ * - Node removal tracking
+ */
+
 import React, { createContext, useContext, useReducer } from 'react';
 import { storyTreeActions } from './StoryTreeActions';
 

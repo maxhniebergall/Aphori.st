@@ -8,6 +8,56 @@
   flex-direction: column;
 }
 
+.story-tree-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.story-list {
+  flex: 1;
+  min-height: 0;
+}
+
+.row-container {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.story-tree-node {
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+  background-color: #fff;
+  padding: 12px;
+  border-radius: 8px;
+  touch-action: pan-y;
+}
+
+.story-tree-node-content {
+  touch-action: none;
+  width: 100%;
+  position: relative;
+  transform: translateX(0);
+  transition: transform 0.3s ease;
+  will-change: transform;
+  overflow: visible;
+}
+
+.story-tree-node-text {
+  width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
 .story-node {
   margin-bottom: 16px;
   position: relative;
@@ -45,7 +95,7 @@ button {
   height: auto;
   width: 100%;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .story-tree-node-content {
@@ -56,6 +106,7 @@ button {
   transform: translateX(0);
   transition: transform 0.3s ease;
   will-change: transform;
+  overflow: visible;
 }
 
 .story-tree-node-content.has-siblings {
@@ -64,7 +115,6 @@ button {
   border-radius: 8px;
   box-sizing: border-box;
   max-width: 100%;
-  overflow: hidden;
 }
 
 .sibling-indicator {
@@ -79,7 +129,7 @@ button {
 /* Add styles for infinite loader and list */
 .story-list {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
 }
 
 /* Row styles from StoryTreeRootNode.js */
@@ -88,9 +138,8 @@ button {
   left: 0;
   right: 0;
   width: 100%;
-  padding: 0 20px;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* Logo container styles */
@@ -245,4 +294,11 @@ h2 {
   font-size: 1rem;
   color: #666;
   font-weight: normal;
+}
+
+.story-tree-node-text {
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
 }
