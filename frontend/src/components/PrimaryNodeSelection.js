@@ -11,17 +11,16 @@
  * - Preserve selection when clicking outside
  */
 
-import React, { useEffect, useRef, useState } from 'react';
-import MDEditor, { commands } from '@uiw/react-md-editor';
+import React, { useEffect, useState } from 'react';
+import MDEditor from '@uiw/react-md-editor';
 import '@uiw/react-md-editor/markdown-editor.css';
 import rehypeSanitize from 'rehype-sanitize';
 
 const PrimaryNodeSelection = ({ text, replyTarget }) => {
   const [selectedText, setSelectedText] = useState('');
-  const [isSelectionMode, setIsSelectionMode] = useState(true);
+  const [isSelectionMode] = useState(true);
   const [selectionStart, setSelectionStart] = useState(0);
   const [selectionEnd, setSelectionEnd] = useState(0);
-  const [markedText, setMarkedText] = useState('');
 
   // When entering reply mode, select all text by default (only once)
   useEffect(() => {
@@ -32,25 +31,15 @@ const PrimaryNodeSelection = ({ text, replyTarget }) => {
       setSelectedText(text);
       setSelectionStart(0);
       setSelectionEnd(text.length);
-        }
-  }, [replyTarget, text]);
+    }
+  }, [replyTarget, text, selectedText]);
 
   useEffect(() => {
     console.log("selectedText: ", selectedText);
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(new Range(selectionStart, selectionEnd));
-    let markedText = text.replace(selection.toString(), `<span class="marked-text">${selection.toString()}</span>`);
-    setMarkedText(markedText);
-  }, [selectedText]);
-
-//   // Handle clicks outside the component
-//   useEffect(() => {
-//     document.addEventListener('mousedown', handleClickOutside);
-//     return () => {
-//       document.removeEventListener('mousedown', handleClickOutside);
-//     };
-//   }, [isSelectionMode, onSelectionChange]);
+  }, [selectedText, selectionStart, selectionEnd]);
 
   const handleMouseUp = () => {
     if (replyTarget && isSelectionMode) {

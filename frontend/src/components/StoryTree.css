@@ -111,7 +111,6 @@ html, body, #root {
   overflow: visible;
 }
 
-.story-tree-node-content {
 .story-tree-node-text {
   width: 100%;
   word-wrap: break-word;
@@ -318,6 +317,8 @@ h2 {
   width: 100%;
   height: auto;
   min-height: 0;
+}
+
 .reply-editor-container {
   position: relative;
   margin-top: 20px;

@@ -3,7 +3,7 @@ import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useStoryTree } from '../context/StoryTreeContext';
-import MDEditor, { commands } from '@uiw/react-md-editor';
+import MDEditor from '@uiw/react-md-editor';
 import '@uiw/react-md-editor/markdown-editor.css';
 import rehypeSanitize from 'rehype-sanitize';
 import PrimaryNodeSelection from './PrimaryNodeSelection';
@@ -24,23 +24,15 @@ import './PrimaryNodeSelection.css';
  * - Use StoryTreeOperator for node fetching
  * - Markdown rendering support with GitHub-flavored markdown
  * - Reply functionality with node targeting
- *  - To start a reply, the user clicks on the text of the node (which becomes the primary node)
- *  - When starting, the viewport is moved to have the primary node on top, with the text editor directly below
- *  - When starting, the entire text of the primary node is selected by default
- *  - When replying, the user can change the selection of the text of the primary node, allowing for any contiguous text in the primary node to be selected
- *  - When replying, The user can edit the reply and submit it
- *  - When submitting, the reply is added to the primary node's list of children
- *  - When submitting, the reply editor is hidden and the node is no longer highlighted
  */
 
 function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange, onReplyClick, isReplyMode, isReplyTarget }) {
-  // All hooks must be called before any conditional returns
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
   const { state, dispatch } = useStoryTree();
   const [replyContent, setReplyContent] = useState('');
-  const [selectedText, setSelectedText] = useState('');
+
   // Update the operator's context whenever state or dispatch changes
   useEffect(() => {
     storyTreeOperator.updateContext(state, dispatch);
@@ -54,10 +46,8 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     }
   }, [node?.id, siblings]);
 
-
   const onReplySubmit = useCallback((content) => {
     console.log('Reply submitted:', content);
-
   }, []);
 
   const loadNextSibling = useCallback(async () => {
@@ -156,7 +146,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
 
   const handleSelectionChange = useCallback((text) => {
     changeChildSelection(text);
-  }, []);
+  }, [changeChildSelection]);
 
   // Early return if node is not properly defined
   if (!node?.id) {
