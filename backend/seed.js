@@ -442,7 +442,7 @@ if (process.env.NODE_ENV !== 'production') {
 
     try {
       // Create the entire tree structure recursively
-      createStoryTreeRecursive(uuid, storyText, metadata, "root");
+      await createStoryTreeRecursive(uuid, storyText, metadata, "root");
 
       // Add to feed items
       const feedItem = {
@@ -461,17 +461,29 @@ if (process.env.NODE_ENV !== 'production') {
   async function createStoryTreeRecursive(nodeId, storyNode, metadata, parentId = null) {
     const childIds = [];
 
-    // First, create all child nodes recursively
+    // Create this node first
+    await createStoryTreeNode(nodeId, storyNode.content, [], metadata, parentId);
+
+    // Then create all child nodes recursively
     if (storyNode.children && storyNode.children.length > 0) {
       for (const child of storyNode.children) {
-        const childId = `${parentId}+${crypto.randomUUID()}`;
-        createStoryTreeRecursive(childId, child, metadata, nodeId);
+        const childId = `${nodeId}+${crypto.randomUUID()}`;
+        await createStoryTreeRecursive(childId, child, metadata, nodeId);
         childIds.push(childId);
       }
+
+      // Update the parent node with child IDs
+      const updatedNode = {
+        id: nodeId,
+        text: storyNode.content,
+        nodes: childIds.map(id => ({ id, parentId: nodeId })),
+        parentId,
+        metadata,
+        totalNodes: childIds.length
+      };
+      await db.hSet(nodeId, "storyTree", updatedNode);
     }
 
-
-    await createStoryTreeNode(nodeId, storyNode.content, childIds, metadata, parentId);
     return nodeId;
   }
 

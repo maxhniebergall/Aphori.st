@@ -1,10 +1,15 @@
 /*
  * Requirements:
+ * - Singleton pattern to prevent multiple instances
  * - Proper class method binding to maintain 'this' context
  * - Robust loading condition checks to prevent infinite loading
  * - Proper state management for story tree pagination
  * - Validation of node data before dispatching
- * - Singleton pattern to prevent multiple instances
+ * - Retry mechanism for failed node fetches
+ * - Compressed response handling
+ * - Error boundary implementation
+ * - Proper sibling state management
+ * - Efficient caching of fetched nodes
  */
 
 import { ACTIONS } from '../context/StoryTreeContext';
@@ -85,7 +90,6 @@ class StoryTreeOperator extends BaseOperator {
         return node;
       } catch (error) {
         if (error.response?.status === 503 && i < retries - 1) {
-          console.log(`Retrying fetch for node ${id} after 503 error (attempt ${i + 1}/${retries})`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -100,7 +104,19 @@ class StoryTreeOperator extends BaseOperator {
     // Add null checks and default values
     const hasNextPage = this.state?.hasNextPage ?? false;
     const items = this.state?.items ?? [];
-    return !hasNextPage || index < items.length;
+    const isLoading = this.state?.isNextPageLoading ?? false;
+    
+    // If we're loading, consider items not loaded
+    if (isLoading) return false;
+    
+    // If we have the item at this index, it's loaded
+    if (index < items.length) return true;
+    
+    // If we don't have the item and there's no next page, consider it loaded (end of list)
+    if (!hasNextPage) return true;
+    
+    // Otherwise, we need to load this item
+    return false;
   };
 
   loadMoreItems = async (startIndex, stopIndex) => {
@@ -109,27 +125,35 @@ class StoryTreeOperator extends BaseOperator {
       return;
     }
 
-    if (this.state.isNextPageLoading) return;
+    if (this.state.isNextPageLoading) {
+      return;
+    }
 
     this.dispatch({ type: ACTIONS.SET_LOADING, payload: true });
     try {
       const items = this.state.items ?? [];
       const lastNode = items[items.length - 1];
       
-      // Check if there are actual nodes (not just an empty array) and valid next node ID
-      if (!lastNode?.nodes?.length || !lastNode.nodes[0]?.id) {
+      if (!lastNode?.nodes?.length) {
+        this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
+        return;
+      }
+
+      const nextNodeId = lastNode.nodes.find(node => node?.id)?.id;
+      if (!nextNodeId) {
         this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
         return;
       }
       
-      const nextNode = await this.fetchNode(lastNode.nodes[0].id);
+      const nextNode = await this.fetchNode(nextNodeId);
+
       if (nextNode && this.validateNode(nextNode)) {
         nextNode.siblings = lastNode.nodes.filter(node => this.validateNode(node));
         this.dispatch({ type: ACTIONS.APPEND_ITEM, payload: nextNode });
-        // Only set hasNextPage true if nextNode has valid child nodes
+        const hasNext = !!(nextNode.nodes?.length && nextNode.nodes.some(node => node?.id));
         this.dispatch({ 
           type: ACTIONS.SET_HAS_NEXT_PAGE, 
-          payload: !!(nextNode.nodes?.length && nextNode.nodes[0]?.id)
+          payload: hasNext
         });
       } else {
         this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });

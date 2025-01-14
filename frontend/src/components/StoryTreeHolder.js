@@ -1,3 +1,17 @@
+/**
+ * Requirements:
+ * - Display story tree with virtualized list
+ * - Handle root node initialization and data fetching
+ * - Properly size content accounting for header height
+ * - Support sibling navigation
+ * - Error handling for invalid root nodes
+ * - Loading state management
+ * - Proper cleanup on unmount
+ * - Navigation handling
+ * - Title and subtitle display
+ * - Context provider wrapping
+ */
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './StoryTree.css';
@@ -10,14 +24,6 @@ import {
 import VirtualizedStoryList from './VirtualizedStoryList';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useSiblingNavigation } from '../hooks/useSiblingNavigation';
-
-/**
- * Requirements:
- * - Display story tree with virtualized list
- * - Handle root node initialization and data fetching
- * - Properly size content accounting for header height
- * - Support sibling navigation
- */
 
 function StoryTreeHolder() {
   return (
@@ -35,7 +41,6 @@ function StoryTreeContent() {
   const { state, dispatch } = useStoryTree();
   const [isOperatorInitialized, setIsOperatorInitialized] = useState(false);
   
-  // Update the operator's context whenever state or dispatch changes
   useEffect(() => {
     if (state && dispatch) {
       storyTreeOperator.updateContext(state, dispatch);
@@ -48,14 +53,12 @@ function StoryTreeContent() {
       if (!isOperatorInitialized) return;
 
       try {
-        console.log('Fetching root node for UUID:', rootUUID);
         const data = await storyTreeOperator.fetchRootNode(rootUUID);
         
         if (!data || !data.id) {
           console.error('Invalid data structure received:', data);
           return;
         }
-        console.log('Root node data:', data);
         
         dispatch({ type: ACTIONS.SET_ROOT_NODE, payload: data });
         dispatch({ type: ACTIONS.SET_ITEMS, payload: [data] });
@@ -65,7 +68,6 @@ function StoryTreeContent() {
     };
 
     if (rootUUID) {
-      console.log('Initializing root node for UUID');
       initializeRootNode();
     } else {
       console.warn('No rootUUID provided');
