@@ -3,9 +3,11 @@ import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useStoryTree } from '../context/StoryTreeContext';
-import MDEditor from '@uiw/react-md-editor';
+import MDEditor, { commands } from '@uiw/react-md-editor';
 import '@uiw/react-md-editor/markdown-editor.css';
 import rehypeSanitize from 'rehype-sanitize';
+import PrimaryNodeSelection from './PrimaryNodeSelection';
+import './PrimaryNodeSelection.css';
 /*
  * Requirements:
  * - @use-gesture/react: For gesture handling
@@ -38,7 +40,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
   const { state, dispatch } = useStoryTree();
   const [replyContent, setReplyContent] = useState('');
-
+  const [selectedText, setSelectedText] = useState('');
   // Update the operator's context whenever state or dispatch changes
   useEffect(() => {
     storyTreeOperator.updateContext(state, dispatch);
@@ -139,12 +141,22 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     },
   });
 
+  const changeChildSelection = useCallback((text) => {
+    // TODO: Implement this
+    console.log('changeChildSelection', text);
+    //should load and display the children who replied to the selected text
+  }, []);
+
   const handleReplyClick = useCallback((e) => {
     e.stopPropagation();
     if (onReplyClick) {
       onReplyClick(node.id);
     }
   }, [onReplyClick, node.id]);
+
+  const handleSelectionChange = useCallback((text) => {
+    changeChildSelection(text);
+  }, []);
 
   // Early return if node is not properly defined
   if (!node?.id) {
@@ -176,27 +188,35 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
         id={currentSibling.id}
       >
         <div className="story-tree-node-text">
-          <div data-color-mode="light">
-            <MDEditor.Markdown
-              source={currentSibling.text}
-              components={{
-                a: ({ node, children, ...props }) => (
-                  <a target="_blank" rel="noopener noreferrer" {...props}>
-                    {children}
-                  </a>
-                ),
-              }}
+          {isReplyTarget ? (
+            <PrimaryNodeSelection
+              text={currentSibling.text}
+              isReplyTarget={isReplyTarget}
+              onSelectionChange={handleSelectionChange}
             />
-          </div>
+          ) : (
+            <div data-color-mode="light">
+              <MDEditor.Markdown
+                source={currentSibling.text}
+                components={{
+                  a: ({ node, children, ...props }) => (
+                    <a target="_blank" rel="noopener noreferrer" {...props}>
+                      {children}
+                    </a>
+                  ),
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="story-tree-node-footer">
-        <div className="footer-left">
+          <div className="footer-left">
             <button 
               className="reply-button"
               onClick={handleReplyClick}
-            aria-label="Reply to this message"
-          >
+              aria-label="Reply to this message"
+            >
               {isReplyTarget ? 'Cancel Reply' : 'Reply'}
             </button>
           </div>
