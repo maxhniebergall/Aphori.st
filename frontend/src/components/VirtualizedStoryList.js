@@ -192,21 +192,67 @@ function VirtualizedStoryList({
     const node = items[index];
     const isLoading = !isItemLoaded(index);
     
+    console.log('Rendering row:', { index, isLoading, node });
+    
+    // Return loading placeholder if item is not loaded yet
+    if (isLoading) {
+      return (
+        <div 
+          className="loading-row"
+          ref={el => rowRefs.current[index] = el}
+          style={{
+            ...style,
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            height: 'auto',
+            width: '100%',
+            padding: '20px',
+            boxSizing: 'border-box'
+          }}
+        >
+          <div className="loading-placeholder">Loading...</div>
+        </div>
+      );
+    }
+
+    // Return empty placeholder if node is undefined or invalid
+    if (!node || typeof node !== 'object') {
+      console.warn(`Invalid or undefined node at index ${index}:`, node);
+      return (
+        <div 
+          ref={el => rowRefs.current[index] = el}
+          style={{
+            ...style,
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            height: 'auto',
+            width: '100%',
+            padding: '20px',
+            boxSizing: 'border-box'
+          }}
+        >
+          <div className="empty-placeholder">No content available</div>
+        </div>
+      );
+    }
+    
     return (
-        <Row
-          className="row"
-          index={index}
-          style={style}
-          node={node}
-          setIsFocused={setIsFocused}
-          setSize={setSize}
-          rowRefs={rowRefs}
-          handleSiblingChange={handleSiblingChange}
-          fetchNode={fetchNode}
-          isLoading={isLoading}
-          replyToNodeId={replyToNodeId}
-          onReplyClick={onReplyClick}
-        />
+      <Row
+        className="row"
+        index={index}
+        style={style}
+        node={node}
+        setIsFocused={setIsFocused}
+        setSize={setSize}
+        rowRefs={rowRefs}
+        handleSiblingChange={handleSiblingChange}
+        fetchNode={fetchNode}
+        isLoading={isLoading}
+        replyToNodeId={replyToNodeId}
+        onReplyClick={onReplyClick}
+      />
     );
   };
 
