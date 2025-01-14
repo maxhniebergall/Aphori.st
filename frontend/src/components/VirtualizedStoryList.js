@@ -1,6 +1,7 @@
 /*
  * Requirements:
  * - React-window for virtualized list rendering
+ * - useRef for container reference management
  * - Dynamic height calculations for variable-sized rows
  * - Infinite loading support with InfiniteLoader
  * - ResizeObserver for dynamic content updates
@@ -136,6 +137,7 @@ function VirtualizedStoryList({
   onReplySubmit,
   onReplyClick,
 }) {
+  const containerRef = useRef(null);
   const listRef = useRef();
   const sizeMap = useRef({});
   const rowRefs = useRef({});

@@ -1,5 +1,6 @@
 /**
  * Requirements:
+ * - React, useCallback - For component rendering and memoization
  * - Display story tree with virtualized list
  * - Handle root node initialization and data fetching
  * - Properly size content accounting for header height
@@ -12,7 +13,7 @@
  * - Context provider wrapping
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './StoryTree.css';
 import Header from './Header';
