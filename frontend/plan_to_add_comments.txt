@@ -24,3 +24,46 @@ Only one active selection per reply composition
 Data Storage:
 Quote metadata stored with reply in backend
 Includes reference to source post and selection positions
+
+@@ -23,4 +23,39 @@ Selection persists when clicking elsewhere
+Only one active selection per reply composition
+Data Storage:
+Quote metadata stored with reply in backend
+Includes reference to source post and selection positions
+No newline at end of file
+Includes reference to source post and selection positions
+
+Phase 1: Selection State Management
+Update StoryTreeContext to include selection state:
+Add selection range data (start/end positions)
+Track source post ID
+Store quoted text
+Track active reply state
+Create Selection Helper Functions:
+Word selection logic for click events
+Range selection logic for drag events
+Selection boundary calculations
+Text extraction from selection
+
+Phase 2: UI Components & Interaction
+Post Component Updates:
+Add click handlers for word selection
+Implement drag selection functionality
+Add "reply mode" visual state
+Selection UI:
+Create selection highlight styling
+Implement drag handles component
+Handle drag events for selection modification
+Reply Composer Updates:
+Add quote preview section
+Connect to selection state
+Handle selection persistence
+
+Phase 3: Backend Integration
+Update Reply Schema:
+Add quote metadata fields
+Store selection positions
+Reference to source post
+API Updates:
+Modify reply endpoints to handle quote data
+Add validation for quote metadata
