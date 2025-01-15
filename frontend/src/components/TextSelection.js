@@ -1,37 +1,16 @@
 /*
  * Requirements:
  * - React component for text selection UI
- * - Styled components for selection styling
+ * - CSS modules for styling
  * - Drag handle implementation
  * - Selection highlight rendering
  * - Mouse and touch event handling
  */
 
-import React, { useRef, useEffect } from 'react';
-import styled from 'styled-components';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { useStoryTree } from '../context/StoryTreeContext';
 import { getSelectionRange, getWordBoundaries, getSelectedText, isValidSelection } from '../utils/selectionUtils';
-
-const SelectionContainer = styled.div`
-  position: relative;
-  display: inline;
-`;
-
-const SelectionHighlight = styled.span`
-  background-color: rgba(255, 255, 0, 0.3);
-  position: relative;
-`;
-
-const SelectionHandle = styled.div`
-  width: 8px;
-  height: 8px;
-  background-color: #007AFF;
-  border-radius: 50%;
-  position: absolute;
-  transform: translate(-50%, -50%);
-  cursor: ew-resize;
-  touch-action: none;
-`;
+import './TextSelection.css';
 
 const TextSelection = ({ children, postId }) => {
   const { state, dispatch } = useStoryTree();
@@ -68,7 +47,7 @@ const TextSelection = ({ children, postId }) => {
     event.stopPropagation();
   };
 
-  const handleDragMove = (event) => {
+  const handleDragMove = useCallback((event) => {
     if (isDragging.current && containerRef.current) {
       const range = getSelectionRange(containerRef.current, event);
       if (!range) return;
@@ -94,7 +73,7 @@ const TextSelection = ({ children, postId }) => {
         });
       }
     }
-  };
+  }, [dispatch, state.selection.startOffset, state.selection.endOffset]);
 
   const handleDragEnd = () => {
     isDragging.current = false;
@@ -116,7 +95,7 @@ const TextSelection = ({ children, postId }) => {
       document.removeEventListener('mouseup', handleDragEnd);
       document.removeEventListener('touchend', handleDragEnd);
     };
-  }, [state.selection]);
+  }, [handleDragMove]);
 
   const renderContent = () => {
     if (!state.selection.active || state.selection.sourcePostId !== postId) {
@@ -129,31 +108,34 @@ const TextSelection = ({ children, postId }) => {
     return (
       <>
         {text.substring(0, startOffset)}
-        <SelectionHighlight>
+        <span className="selection-highlight">
           {text.substring(startOffset, endOffset)}
-          <SelectionHandle
+          <div
+            className="selection-handle"
             style={{ left: 0, top: '50%' }}
             onMouseDown={(e) => handleDragStart(e, 'start')}
             onTouchStart={(e) => handleDragStart(e, 'start')}
           />
-          <SelectionHandle
+          <div
+            className="selection-handle"
             style={{ right: 0, top: '50%' }}
             onMouseDown={(e) => handleDragStart(e, 'end')}
             onTouchStart={(e) => handleDragStart(e, 'end')}
           />
-        </SelectionHighlight>
+        </span>
         {text.substring(endOffset)}
       </>
     );
   };
 
   return (
-    <SelectionContainer
+    <div
       ref={containerRef}
       onClick={handleClick}
+      className="selection-container"
     >
       {renderContent()}
-    </SelectionContainer>
+    </div>
   );
 };
 

@@ -614,7 +614,12 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
                 author: storyTree.author,
                 authorId: req.user.id,
                 authorEmail: req.user.email,
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                quote: storyTree.quote ? {
+                    text: storyTree.quote.text,
+                    sourcePostId: storyTree.quote.sourcePostId,
+                    selectionRange: storyTree.quote.selectionRange
+                } : null
             },
             totalNodes: nodes.length
         };
@@ -633,7 +638,8 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
                     id: req.user.id,
                     email: req.user.email
                 },
-                createdAt: formattedStoryTree.metadata.createdAt
+                createdAt: formattedStoryTree.metadata.createdAt,
+                quote: formattedStoryTree.metadata.quote
             };
             await db.lPush('feedItems', JSON.stringify(feedItem));
             logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);

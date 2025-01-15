@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
@@ -6,8 +6,7 @@ import { useStoryTree } from '../context/StoryTreeContext';
 import MDEditor from '@uiw/react-md-editor';
 import '@uiw/react-md-editor/markdown-editor.css';
 import rehypeSanitize from 'rehype-sanitize';
-import PrimaryNodeSelection from './PrimaryNodeSelection';
-import './PrimaryNodeSelection.css';
+import TextSelection from './TextSelection';
 /*
  * Requirements:
  * - @use-gesture/react: For gesture handling
@@ -24,6 +23,10 @@ import './PrimaryNodeSelection.css';
  * - Use StoryTreeOperator for node fetching
  * - Markdown rendering support with GitHub-flavored markdown
  * - Reply functionality with node targeting
+ * - Text selection support for replies
+ * - Quote preview in reply mode
+ * - Selection persistence
+ * - Selection handles
  */
 
 function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange, onReplyClick, isReplyMode, isReplyTarget }) {
@@ -32,6 +35,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
   const { state, dispatch } = useStoryTree();
   const [replyContent, setReplyContent] = useState('');
+  const nodeRef = useRef(null);
 
   // Update the operator's context whenever state or dispatch changes
   useEffect(() => {
@@ -131,22 +135,12 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     },
   });
 
-  const changeChildSelection = useCallback((text) => {
-    // TODO: Implement this
-    console.log('changeChildSelection', text);
-    //should load and display the children who replied to the selected text
-  }, []);
-
   const handleReplyClick = useCallback((e) => {
     e.stopPropagation();
     if (onReplyClick) {
       onReplyClick(node.id);
     }
   }, [onReplyClick, node.id]);
-
-  const handleSelectionChange = useCallback((text) => {
-    changeChildSelection(text);
-  }, [changeChildSelection]);
 
   // Early return if node is not properly defined
   if (!node?.id) {
@@ -165,41 +159,127 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
   const hasNextSibling = siblings && currentSiblingIndex < siblings.length - 1;
   const hasPreviousSibling = currentSiblingIndex > 0;
 
+  const renderQuote = () => {
+    if (!currentSibling?.metadata?.quote) return null;
+
+    const { quote } = currentSibling.metadata;
+    return (
+      <div className="story-tree-node-quote">
+        {quote.text}
+        <div className="story-tree-node-quote-source">
+          Quoted from <a href={`/story/${quote.sourcePostId}`}>original post</a>
+        </div>
+      </div>
+    );
+  };
+
+  const renderContent = () => {
+    if (!currentSibling?.text) return null;
+
+    return (
+      <div className="story-tree-node-text">
+        {renderQuote()}
+        {isReplyTarget ? (
+          <TextSelection postId={currentSibling.id}>
+            {currentSibling.text}
+          </TextSelection>
+        ) : (
+          <div data-color-mode="light">
+            <MDEditor.Markdown
+              source={currentSibling.text}
+              components={{
+                a: ({ node, children, ...props }) => (
+                  <a target="_blank" rel="noopener noreferrer" {...props}>
+                    {children}
+                  </a>
+                ),
+              }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderReplyEditor = () => {
+    if (!isReplyTarget) return null;
+
+    const selectedText = state.selection.active && state.selection.sourcePostId === currentSibling.id
+      ? state.selection.selectedText
+      : null;
+
+    return (
+      <div className="reply-editor-container">
+        {selectedText && (
+          <div className="quote-preview">
+            <blockquote>
+              {selectedText}
+            </blockquote>
+          </div>
+        )}
+        <div data-color-mode="light">
+          <MDEditor
+            value={replyContent}
+            onChange={setReplyContent}
+            preview="edit"
+            height={200}
+            textareaProps={{
+              placeholder: "Write your reply using Markdown...",
+              autoFocus: true
+            }}
+            previewOptions={{
+              rehypePlugins: [[rehypeSanitize]]
+            }}
+          />
+        </div>
+        <div className="reply-actions">
+          <button 
+            onClick={() => {
+              onReplySubmit({
+                content: replyContent,
+                quote: selectedText,
+                sourcePostId: currentSibling.id,
+                selectionRange: selectedText ? {
+                  start: state.selection.startOffset,
+                  end: state.selection.endOffset
+                } : null
+              });
+              dispatch({ type: 'CLEAR_SELECTION' });
+            }}
+            disabled={!replyContent.trim()}
+            className="submit-reply-button"
+          >
+            Submit Reply
+          </button>
+          <button 
+            onClick={() => {
+              onReplyClick(null);
+              dispatch({ type: 'CLEAR_SELECTION' });
+            }}
+            className="cancel-reply-button"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <motion.div
-      key={currentSibling.id}
-      layoutId={currentSibling.id}
-      onClick={() => setCurrentFocus(index)}
-      className="story-tree-node"
+      className={`story-tree-node ${isReplyTarget ? 'reply-target' : ''}`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      ref={nodeRef}
     >
       <div 
         {...bind()} 
         className={`story-tree-node-content ${hasSiblings ? 'has-siblings' : ''}`}
         id={currentSibling.id}
       >
-        <div className="story-tree-node-text">
-          {isReplyTarget ? (
-            <PrimaryNodeSelection
-              text={currentSibling.text}
-              isReplyTarget={isReplyTarget}
-              onSelectionChange={handleSelectionChange}
-            />
-          ) : (
-            <div data-color-mode="light">
-              <MDEditor.Markdown
-                source={currentSibling.text}
-                components={{
-                  a: ({ node, children, ...props }) => (
-                    <a target="_blank" rel="noopener noreferrer" {...props}>
-                      {children}
-                    </a>
-                  ),
-                }}
-              />
-            </div>
-          )}
-        </div>
-
+        {renderContent()}
         <div className="story-tree-node-footer">
           <div className="footer-left">
             <button 
@@ -225,41 +305,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
             )}
           </div>
         </div>
-
-        {isReplyTarget && (
-          <div className="reply-editor-container">
-            <div data-color-mode="light">
-              <MDEditor
-                value={replyContent}
-                onChange={setReplyContent}
-                preview="edit"
-                height={200}
-                textareaProps={{
-                  placeholder: "Write your reply using Markdown...",
-                  autoFocus: true
-                }}
-                previewOptions={{
-                  rehypePlugins: [[rehypeSanitize]]
-                }}
-              />
-            </div>
-            <div className="reply-actions">
-              <button 
-                onClick={() => onReplySubmit(replyContent)}
-                disabled={!replyContent.trim()}
-                className="submit-reply-button"
-              >
-                Submit Reply
-              </button>
-              <button 
-                onClick={() => onReplyClick(null)}
-                className="cancel-reply-button"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
+        {renderReplyEditor()}
       </div>
     </motion.div>
   );
