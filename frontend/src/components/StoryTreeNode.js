@@ -50,9 +50,25 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     }
   }, [node?.id, siblings]);
 
-  const onReplySubmit = useCallback((content) => {
-    console.log('Reply submitted:', content);
-  }, []);
+  const onReplySubmit = useCallback(async (replyData) => {
+    try {
+      const result = await storyTreeOperator.submitReply(
+        node.id,
+        replyData.content,
+        replyData.quote ? {
+          quote: replyData.quote,
+          sourcePostId: replyData.sourcePostId,
+          selectionRange: replyData.selectionRange
+        } : null
+      );
+      if (result) {
+        setReplyContent('');
+        onReplyClick(null); // Close reply mode
+      }
+    } catch (error) {
+      console.error('Error submitting reply:', error);
+    }
+  }, [node.id, onReplyClick]);
 
   const loadNextSibling = useCallback(async () => {
     if (isLoadingSibling || !siblings || currentSiblingIndex >= siblings.length - 1) return;
@@ -137,6 +153,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
 
   const handleReplyClick = useCallback((e) => {
     e.stopPropagation();
+    console.log('Reply clicked for node:', node.id);
     if (onReplyClick) {
       onReplyClick(node.id);
     }
@@ -153,6 +170,13 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     console.error('StoryTreeNode requires a valid operator with fetchNode method');
     return null;
   }
+
+  console.log('StoryTreeNode render:', {
+    nodeId: node.id,
+    isReplyTarget,
+    replyContent,
+    hasSelection: state.selection.active
+  });
 
   const currentSibling = loadedSiblings[currentSiblingIndex] || node;
   const hasSiblings = siblings && siblings.length > 1;

@@ -26,7 +26,9 @@ const Row = React.memo(({
   rowRefs,
   handleSiblingChange,
   fetchNode,
-  isLoading
+  isLoading,
+  replyToNodeId,
+  onReplyClick
 }) => {
   React.useEffect(() => {
     const updateSize = () => {
@@ -120,6 +122,8 @@ const Row = React.memo(({
         setCurrentFocus={setIsFocused}
         siblings={Array.isArray(node?.siblings) ? node.siblings : []}
         onSiblingChange={(newNode) => handleSiblingChange(newNode, index, fetchNode)}
+        onReplyClick={onReplyClick}
+        isReplyTarget={replyToNodeId === node.id}
       />
     </div>
   );

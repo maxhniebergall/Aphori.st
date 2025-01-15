@@ -90,8 +90,10 @@ function StoryTreeContent() {
   };
 
   const handleReplyClick = useCallback((nodeId) => {
+    console.log('StoryTreeHolder handleReplyClick:', { nodeId, currentReplyToNodeId: replyToNodeId });
     setReplyToNodeId(current => {
       const newValue = nodeId === current ? null : nodeId;
+      console.log('Setting replyToNodeId to:', newValue);
       if (newValue !== null) {
         setTimeout(() => {
           const storyTreeContent = document.querySelector('.story-tree-content');
