@@ -37,10 +37,6 @@ export const getWordBoundaries = (text, position) => {
  * @returns {{start: number, end: number}} Selection range positions
  */
 export const getSelectionRange = (element, event) => {
-  const range = document.createRange();
-  const selection = window.getSelection();
-  
-  // Get text node and offset from event coordinates
   const { clientX, clientY } = event.touches ? event.touches[0] : event;
   const position = document.caretRangeFromPoint(clientX, clientY);
   

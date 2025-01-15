@@ -10,6 +10,7 @@
  * - Error boundary implementation
  * - Proper sibling state management
  * - Efficient caching of fetched nodes
+ * - Quote metadata handling in replies
  */
 
 import { ACTIONS } from '../context/StoryTreeContext';
@@ -38,6 +39,7 @@ class StoryTreeOperator extends BaseOperator {
     this.fetchRootNode = this.fetchRootNode.bind(this);
     this.fetchNode = this.fetchNode.bind(this);
     this.updateContext = this.updateContext.bind(this);
+    this.submitReply = this.submitReply.bind(this);
   }
 
   updateContext(state, dispatch) {
@@ -183,6 +185,57 @@ class StoryTreeOperator extends BaseOperator {
       console.warn('Attempted to focus invalid node at index:', index);
     }
   };
+
+  async submitReply(parentId, content, quoteData = null) {
+    if (!parentId || !content) {
+      console.error('Parent ID and content are required for reply');
+      return null;
+    }
+
+    try {
+      const replyData = {
+        storyTree: {
+          parentId,
+          content,
+          nodes: []
+        }
+      };
+
+      // Add quote metadata if provided
+      if (quoteData) {
+        replyData.storyTree.quote = {
+          text: quoteData.quote,
+          sourcePostId: quoteData.sourcePostId,
+          selectionRange: quoteData.selectionRange
+        };
+      }
+
+      const response = await axios.post(
+        `${process.env.REACT_APP_API_URL}/api/createStoryTree`,
+        replyData
+      );
+
+      const newNode = await this.fetchNode(response.data.id);
+      if (newNode) {
+        // Update the parent node's children
+        const parentNode = this.state.items.find(item => item.id === parentId);
+        if (parentNode) {
+          parentNode.nodes = [...(parentNode.nodes || []), { id: newNode.id }];
+          this.dispatch({ type: ACTIONS.SET_ITEMS, payload: [...this.state.items] });
+        }
+
+        // If this is a reply to the last visible node, append it
+        if (parentId === this.state.items[this.state.items.length - 1]?.id) {
+          this.dispatch({ type: ACTIONS.APPEND_ITEM, payload: newNode });
+        }
+
+        return newNode;
+      }
+    } catch (error) {
+      console.error('Error submitting reply:', error);
+      return null;
+    }
+  }
 }
 
 // Create a singleton instance
