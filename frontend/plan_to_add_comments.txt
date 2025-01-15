@@ -1,0 +1,26 @@
+Core Functionality:
+Users can select text while composing a reply through two methods:
+1. Click/Tap: Selects the specific word clicked
+Drag: Selects the text dragged over
+Selection must be contiguous
+Selection persists until reply submitted/cancelled
+Selection can be modified using drag handles
+Technical Requirements:
+Selection State:
+Store selection range data in StoryTree context
+Track: source post ID, selection positions, quoted text
+Associate with reply being composed
+UI Components:
+Highlight styling for selected text
+Draggable handles at selection boundaries
+Quote preview in reply composer
+Visual indication that post is in "reply mode"
+3. User Interaction:
+Click on word → selects whole word
+Drag over text → creates selection
+Handles can be dragged to adjust selection
+Selection persists when clicking elsewhere
+Only one active selection per reply composition
+Data Storage:
+Quote metadata stored with reply in backend
+Includes reference to source post and selection positions
