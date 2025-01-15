@@ -1,0 +1,68 @@
+/*
+ * Requirements:
+ * - Styles for text selection UI
+ * - Handle styling
+ * - Selection highlight styling
+ * - Touch-friendly UI elements
+ * - Responsive design
+ */
+
+.selection-container {
+  position: relative;
+  display: inline;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.selection-highlight {
+  background-color: rgba(255, 255, 0, 0.3);
+  position: relative;
+  transition: background-color 0.2s ease;
+}
+
+.selection-highlight:hover {
+  background-color: rgba(255, 255, 0, 0.4);
+}
+
+.selection-handle {
+  width: 12px;
+  height: 12px;
+  background-color: #007AFF;
+  border: 2px solid #FFFFFF;
+  border-radius: 50%;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
+  touch-action: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  z-index: 100;
+}
+
+.selection-handle:hover {
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+@media (max-width: 768px) {
+  .selection-handle {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.selection-container.reply-mode {
+  cursor: text;
+}
+
+.selection-container.reply-mode::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  border: 1px dashed rgba(0, 122, 255, 0.3);
+  border-radius: 4px;
+} 
