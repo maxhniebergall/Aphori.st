@@ -1,10 +1,13 @@
 /*
  * Requirements:
- * - Text selection utilities for handling word and range selection
- * - DOM manipulation for selection handling
- * - Word boundary detection
- * - Selection range calculations
- * - React event handling utilities
+ * - Word boundary detection for click selection
+ * - Range selection calculations for drag selection
+ * - DOM text node traversal and manipulation
+ * - Selection offset calculations and validation
+ * - Text extraction from selection ranges
+ * - Cross-browser event handling support
+ * - Touch and mouse event coordinate handling
+ * - Selection range validation and sanitization
  */
 
 /**
@@ -31,21 +34,138 @@ export const getWordBoundaries = (text, position) => {
 };
 
 /**
+ * Finds the text node and offset at a specific point
+ * @param {Element} element - The container element
+ * @param {number} x - Client X coordinate
+ * @param {number} y - Client Y coordinate
+ * @returns {{node: Node, offset: number} | null}
+ */
+export const findTextNodeAtPoint = (element, x, y) => {
+  // Validate coordinates
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  // Get element bounds to validate click is within element
+  const rect = element.getBoundingClientRect();
+  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+    return null;
+  }
+
+  // Try modern API first
+  if (document.caretPositionFromPoint) {
+    try {
+      const position = document.caretPositionFromPoint(x, y);
+      if (position && position.offsetNode.nodeType === Node.TEXT_NODE) {
+        return {
+          node: position.offsetNode,
+          offset: position.offset
+        };
+      }
+    } catch (e) {
+      // Fall through to next method if this fails
+    }
+  }
+
+  // Fallback to range API
+  try {
+    const range = document.caretRangeFromPoint(x, y);
+    if (range && range.startContainer.nodeType === Node.TEXT_NODE) {
+      return {
+        node: range.startContainer,
+        offset: range.startOffset
+      };
+    }
+  } catch (e) {
+    // Fall through to return null if all methods fail
+  }
+  
+  return null;
+};
+
+/**
+ * Gets the cumulative offset for a text node within its container
+ * @param {Node} textNode - The text node
+ * @param {Element} container - The container element
+ * @returns {number} The cumulative offset
+ */
+const getCumulativeOffset = (textNode, container) => {
+  let offset = 0;
+  const walk = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  
+  while (walk.nextNode()) {
+    if (walk.currentNode === textNode) {
+      return offset;
+    }
+    offset += walk.currentNode.textContent.length;
+  }
+  return offset;
+};
+
+/**
  * Calculates selection range from mouse/touch events
  * @param {Element} element - The DOM element containing the text
  * @param {Event} event - Mouse or touch event
- * @returns {{start: number, end: number}} Selection range positions
+ * @param {string} activeHandle - Which handle is being dragged ('start' or 'end')
+ * @returns {{start: number | null, end: number | null}} Selection range positions
  */
-export const getSelectionRange = (element, event) => {
-  const { clientX, clientY } = event.touches ? event.touches[0] : event;
-  const position = document.caretRangeFromPoint(clientX, clientY);
+export const getSelectionRange = (element, event, activeHandle) => {
+  if (!element || !event) return null;
+
+  let clientX, clientY;
   
-  if (!position) return null;
+  if (event.touches && event.touches[0]) {
+    clientX = event.touches[0].clientX;
+    clientY = event.touches[0].clientY;
+  } else if (event.changedTouches && event.changedTouches[0]) {
+    clientX = event.changedTouches[0].clientX;
+    clientY = event.changedTouches[0].clientY;
+  } else if ('clientX' in event && 'clientY' in event) {
+    clientX = event.clientX;
+    clientY = event.clientY;
+  } else {
+    return null;
+  }
+
+  const result = findTextNodeAtPoint(element, clientX, clientY);
   
-  return {
-    start: position.startOffset,
-    end: position.endOffset
-  };
+  if (!result) return null;
+  
+  const { node, offset } = result;
+  const currentOffset = getCumulativeOffset(node, element) + offset;
+  
+  if (activeHandle === 'start') {
+    return { start: currentOffset, end: null };
+  } else if (activeHandle === 'end') {
+    return { start: null, end: currentOffset };
+  } else {
+    return { start: currentOffset, end: currentOffset };
+  }
+};
+
+/**
+ * Finds a text node and offset from a cumulative position
+ * @param {Element} element - The container element
+ * @param {number} position - The cumulative position
+ * @returns {{node: Node, offset: number} | null}
+ */
+const findNodeAndOffsetFromPosition = (element, position) => {
+  let currentOffset = 0;
+  const walk = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  
+  while (walk.nextNode()) {
+    const node = walk.currentNode;
+    const length = node.textContent.length;
+    
+    if (currentOffset + length > position) {
+      return {
+        node,
+        offset: position - currentOffset
+      };
+    }
+    currentOffset += length;
+  }
+  return null;
 };
 
 /**
@@ -56,9 +176,14 @@ export const getSelectionRange = (element, event) => {
  * @returns {string} Selected text
  */
 export const getSelectedText = (element, start, end) => {
+  const startPos = findNodeAndOffsetFromPosition(element, start);
+  const endPos = findNodeAndOffsetFromPosition(element, end);
+  
+  if (!startPos || !endPos) return '';
+  
   const range = document.createRange();
-  range.setStart(element.firstChild, start);
-  range.setEnd(element.firstChild, end);
+  range.setStart(startPos.node, startPos.offset);
+  range.setEnd(endPos.node, endPos.offset);
   return range.toString();
 };
 

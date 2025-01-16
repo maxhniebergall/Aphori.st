@@ -1,68 +1,68 @@
 /*
  * Requirements:
- * - Styles for text selection UI
- * - Handle styling
- * - Selection highlight styling
- * - Touch-friendly UI elements
- * - Responsive design
+ * - Smooth handle movement and interaction
+ * - GPU-accelerated animations
+ * - Enhanced touch targets
+ * - Visual feedback on interaction
  */
 
 .selection-container {
   position: relative;
-  display: inline;
+  cursor: text;
   user-select: none;
   -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .selection-highlight {
-  background-color: rgba(255, 255, 0, 0.3);
+  background-color: rgba(0, 120, 215, 0.2);
   position: relative;
-  transition: background-color 0.2s ease;
-}
-
-.selection-highlight:hover {
-  background-color: rgba(255, 255, 0, 0.4);
+  display: inline;
 }
 
 .selection-handle {
-  width: 12px;
-  height: 12px;
-  background-color: #007AFF;
-  border: 2px solid #FFFFFF;
-  border-radius: 50%;
   position: absolute;
-  transform: translate(-50%, -50%);
-  cursor: ew-resize;
+  width: 24px; /* Larger touch target */
+  height: 24px; /* Larger touch target */
+  background-color: #0078d7;
+  border-radius: 50%;
+  cursor: grab;
   touch-action: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  z-index: 100;
+  z-index: 1000;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.1s ease-out, background-color 0.2s ease;
+  will-change: transform;
 }
 
-.selection-handle:hover {
-  transform: translate(-50%, -50%) scale(1.2);
-}
-
-@media (max-width: 768px) {
-  .selection-handle {
-    width: 16px;
-    height: 16px;
-  }
-}
-
-.selection-container.reply-mode {
-  cursor: text;
-}
-
-.selection-container.reply-mode::after {
+/* Center the visible handle within the larger touch target */
+.selection-handle::after {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-  border: 1px dashed rgba(0, 122, 255, 0.3);
-  border-radius: 4px;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  background-color: inherit;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.selection-handle:active {
+  cursor: grabbing;
+  background-color: #005a9e;
+  transform: scale(1.1) translate(-50%, -50%);
+}
+
+.start-handle:active {
+  transform: scale(1.1) translate(-50%, -50%);
+}
+
+.end-handle:active {
+  transform: scale(1.1) translate(50%, -50%);
+}
+
+/* Prevent text selection during handle drag */
+.selection-container.dragging {
+  user-select: none;
+  -webkit-user-select: none;
 } 
