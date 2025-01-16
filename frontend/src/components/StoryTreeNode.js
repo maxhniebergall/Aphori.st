@@ -29,7 +29,7 @@ import TextSelection from './TextSelection';
  * - Selection handles
  */
 
-function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange, onReplyClick, isReplyMode, isReplyTarget }) {
+function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
@@ -63,12 +63,11 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
       );
       if (result) {
         setReplyContent('');
-        onReplyClick(null); // Close reply mode
       }
     } catch (error) {
       console.error('Error submitting reply:', error);
     }
-  }, [node.id, onReplyClick]);
+  }, [node.id]);
 
   const loadNextSibling = useCallback(async () => {
     if (isLoadingSibling || !siblings || currentSiblingIndex >= siblings.length - 1) return;
@@ -151,14 +150,6 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     },
   });
 
-  const handleReplyClick = useCallback((e) => {
-    e.stopPropagation();
-    console.log('Reply clicked for node:', node.id);
-    if (onReplyClick) {
-      onReplyClick(node.id);
-    }
-  }, [onReplyClick, node.id]);
-
   // Early return if node is not properly defined
   if (!node?.id) {
     console.warn('StoryTreeNode received invalid node:', node);
@@ -170,13 +161,6 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     console.error('StoryTreeNode requires a valid operator with fetchNode method');
     return null;
   }
-
-  console.log('StoryTreeNode render:', {
-    nodeId: node.id,
-    isReplyTarget,
-    replyContent,
-    hasSelection: state.selection.active
-  });
 
   const currentSibling = loadedSiblings[currentSiblingIndex] || node;
   const hasSiblings = siblings && siblings.length > 1;
@@ -197,38 +181,32 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
     );
   };
 
+  const handleReplyButtonClick = () => {
+      dispatch({ type: 'SET_SELECTION', payload: {
+        active: true,
+        sourcePostId: postRootId,
+        startOffset: 0,
+        endOffset: currentSibling.text.length,
+        selectedText: currentSibling.text,
+        parentNodeId: currentSibling.id
+      }});
+  };
+
   const renderContent = () => {
     if (!currentSibling?.text) return null;
 
     return (
       <div className="story-tree-node-text">
-        {renderQuote()}
-        {isReplyTarget ? (
-          <TextSelection postId={currentSibling.id}>
+        {renderQuote()} 
+          <TextSelection parentNodeId={currentSibling.id} postRootId={postRootId}>
             {currentSibling.text}
           </TextSelection>
-        ) : (
-          <div data-color-mode="light">
-            <MDEditor.Markdown
-              source={currentSibling.text}
-              components={{
-                a: ({ node, children, ...props }) => (
-                  <a target="_blank" rel="noopener noreferrer" {...props}>
-                    {children}
-                  </a>
-                ),
-              }}
-            />
-          </div>
-        )}
       </div>
     );
   };
 
   const renderReplyEditor = () => {
-    if (!isReplyTarget) return null;
-
-    const selectedText = state.selection.active && state.selection.sourcePostId === currentSibling.id
+    const selectedText = state.selection.sourcePostId === currentSibling.id
       ? state.selection.selectedText
       : null;
 
@@ -277,7 +255,6 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
           </button>
           <button 
             onClick={() => {
-              onReplyClick(null);
               dispatch({ type: 'CLEAR_SELECTION' });
             }}
             className="cancel-reply-button"
@@ -291,7 +268,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
 
   return (
     <motion.div
-      className={`story-tree-node ${isReplyTarget ? 'reply-target' : ''}`}
+      className={`story-tree-node}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -308,10 +285,10 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
           <div className="footer-left">
             <button 
               className="reply-button"
-              onClick={handleReplyClick}
+              onClick={handleReplyButtonClick}
               aria-label="Reply to this message"
             >
-              {isReplyTarget ? 'Cancel Reply' : 'Reply'}
+              {state.selection.startOffset ? 'Cancel Reply' : 'Reply'}
             </button>
           </div>
           <div className="footer-right">
@@ -329,7 +306,7 @@ function StoryTreeNode({ node, index, setCurrentFocus, siblings, onSiblingChange
             )}
           </div>
         </div>
-        {renderReplyEditor()}
+        {state.selection.startOffset !== null && (renderReplyEditor())}
       </div>
     </motion.div>
   );

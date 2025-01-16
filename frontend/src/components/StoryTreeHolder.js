@@ -41,7 +41,6 @@ function StoryTreeContent() {
   const { handleSiblingChange } = useSiblingNavigation();
   const { state, dispatch } = useStoryTree();
   const [isOperatorInitialized, setIsOperatorInitialized] = useState(false);
-  const [replyToNodeId, setReplyToNodeId] = useState(null);
   
   useEffect(() => {
     if (state && dispatch) {
@@ -80,34 +79,6 @@ function StoryTreeContent() {
   const title = rootNode?.metadata?.title || '';
   const subtitle = rootNode?.metadata?.author ? `by ${rootNode.metadata.author}` : '';
 
-  const handleReplySubmit = async (content) => {
-    try {
-      await storyTreeOperator.submitReply(replyToNodeId, content);
-      setReplyToNodeId(null);
-    } catch (error) {
-      console.error('Error submitting reply:', error);
-    }
-  };
-
-  const handleReplyClick = useCallback((nodeId) => {
-    console.log('StoryTreeHolder handleReplyClick:', { nodeId, currentReplyToNodeId: replyToNodeId });
-    setReplyToNodeId(current => {
-      const newValue = nodeId === current ? null : nodeId;
-      console.log('Setting replyToNodeId to:', newValue);
-      if (newValue !== null) {
-        setTimeout(() => {
-          const storyTreeContent = document.querySelector('.story-tree-content');
-          if (storyTreeContent) {
-            storyTreeContent.scrollTo({
-              top: storyTreeContent.scrollHeight,
-              behavior: 'smooth'
-            });
-          }
-        }, 100);
-      }
-      return newValue;
-    });
-  }, []);
 
   if (!isOperatorInitialized) {
     return <div>Loading...</div>;
@@ -126,6 +97,7 @@ function StoryTreeContent() {
           {subtitle && <h2 className="story-subtitle">{subtitle}</h2>}
         </div>
         <VirtualizedStoryList
+          postRootId={rootUUID}
           items={state?.items ?? []}
           hasNextPage={state?.hasNextPage ?? false}
           isItemLoaded={storyTreeOperator.isItemLoaded}
@@ -133,9 +105,6 @@ function StoryTreeContent() {
           fetchNode={storyTreeOperator.fetchNode}
           setIsFocused={storyTreeOperator.setCurrentFocus}
           handleSiblingChange={handleSiblingChange}
-          replyToNodeId={replyToNodeId}
-          onReplySubmit={handleReplySubmit}
-          onReplyClick={handleReplyClick}
         />
       </div>
     </div>

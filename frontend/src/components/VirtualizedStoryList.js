@@ -21,14 +21,12 @@ const Row = React.memo(({
   index, 
   style, 
   node, 
-  setIsFocused, 
   setSize, 
   rowRefs,
   handleSiblingChange,
   fetchNode,
   isLoading,
-  replyToNodeId,
-  onReplyClick
+  postRootId,
 }) => {
   React.useEffect(() => {
     const updateSize = () => {
@@ -118,18 +116,16 @@ const Row = React.memo(({
       <StoryTreeNode
         key={node?.id}
         node={node}
-        index={index}
-        setCurrentFocus={setIsFocused}
         siblings={Array.isArray(node?.siblings) ? node.siblings : []}
         onSiblingChange={(newNode) => handleSiblingChange(newNode, index, fetchNode)}
-        onReplyClick={onReplyClick}
-        isReplyTarget={replyToNodeId === node.id}
+        postRootId={postRootId}
       />
     </div>
   );
 });
 
 function VirtualizedStoryList({
+  postRootId,
   items,
   hasNextPage,
   isItemLoaded,
@@ -137,9 +133,6 @@ function VirtualizedStoryList({
   setIsFocused,
   handleSiblingChange,
   fetchNode,
-  replyToNodeId,
-  onReplySubmit,
-  onReplyClick,
 }) {
   const containerRef = useRef(null);
   const listRef = useRef();
@@ -197,9 +190,7 @@ function VirtualizedStoryList({
   const renderRow = ({ index, style }) => {
     const node = items[index];
     const isLoading = !isItemLoaded(index);
-    
-    console.log('Rendering row:', { index, isLoading, node });
-    
+        
     // Return loading placeholder if item is not loaded yet
     if (isLoading) {
       return (
@@ -256,8 +247,7 @@ function VirtualizedStoryList({
         handleSiblingChange={handleSiblingChange}
         fetchNode={fetchNode}
         isLoading={isLoading}
-        replyToNodeId={replyToNodeId}
-        onReplyClick={onReplyClick}
+        postRootId={postRootId}
       />
     );
   };

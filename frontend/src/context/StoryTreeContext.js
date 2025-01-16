@@ -59,12 +59,11 @@ const initialState = {
   error: null,
   loadingState: LOADING_STATES.IDLE,
   selection: {
-    active: false,
     sourcePostId: null,
     startOffset: null,
     endOffset: null,
     selectedText: null,
-    replyId: null
+    parentNodeId: null
   },
 };
 
@@ -130,12 +129,11 @@ function storyTreeReducer(state, action) {
       return {
         ...state,
         selection: {
-          active: true,
           sourcePostId: action.payload.sourcePostId,
           startOffset: action.payload.startOffset,
           endOffset: action.payload.endOffset,
           selectedText: action.payload.selectedText,
-          replyId: action.payload.replyId
+          parentNodeId: action.payload.parentNodeId
         }
       };
 
@@ -143,12 +141,11 @@ function storyTreeReducer(state, action) {
       return {
         ...state,
         selection: {
-          active: false,
           sourcePostId: null,
           startOffset: null,
           endOffset: null,
           selectedText: null,
-          replyId: null
+          parentNodeId: null
         }
       };
 

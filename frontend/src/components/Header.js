@@ -9,8 +9,6 @@ function Header({ title, subtitle, onLogoClick }) {
   const [isModalOpen, setModalOpen] = useState(false);
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
 
-  console.log('Header state:', state);  // Debug log
-
   const handleSignIn = async (email) => {
     console.log('Attempting to sign in with email:', email);
     return await sendMagicLink(email);
