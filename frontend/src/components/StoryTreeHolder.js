@@ -13,7 +13,7 @@
  * - Context provider wrapping
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './StoryTree.css';
 import Header from './Header';
