@@ -1,150 +1,77 @@
 /*
  * Requirements:
- * - Browser native text selection
- * - Selection persistence via DOM manipulation
- * - Selection validation and boundary checks
- * - Support for hybrid touch/mouse devices
+ * - Custom text selection component
+ * - Selection animation via DOM manipulation
+ * - Selection animation must use throttling to prevent performance issues
  * - Smooth selection animation without re-renders
+ * - Rerenders must be avoided during animation
+ * - Selection validation and boundary checks after selection finishes
+ * - Selection persistence with debouncing in react state
+ * - Support for hybrid touch/mouse devices
+ * - User can select text forward or backward
+ *
  */
 
 import React, { useRef, useEffect, useCallback } from 'react';
+import { getCurrentOffset } from '../utils/selectionUtils';
 import './TextSelection.css';
 
-const TextSelection = ({ children, parentNodeId, postRootId, onSelectionChange }) => {
+const TextSelection = ({ children, onSelectionCompleted, completedSelection }) => {
     const containerRef = useRef(null);
-    const highlightRef = useRef(null);
-    const selectionStateRef = useRef({
-        sourcePostId: null,
-        startOffset: null,
-        endOffset: null,
-        selectedText: null
-    });
+    let initialOffset = null;
+    let finalOffset = null;
 
-    const updateHighlight = useCallback((startOffset, endOffset) => {
-        if (!containerRef.current) return;
+    // TODO throttle
+    const animationLoop = (event) => {
+        console.log("animationLoop");
 
-        // Remove existing highlight if any
-        if (highlightRef.current) {
-            highlightRef.current.remove();
-            highlightRef.current = null;
-        }
+        const currentOffset = getCurrentOffset(containerRef.current, event);
+        console.log("currentOffset", currentOffset);
+    }
 
-        if (!startOffset || !endOffset || startOffset === endOffset) return;
+    const animateSelection = (event) => {
+        console.log("animateSelection");
+        event.preventDefault();
+        event.stopPropagation();
 
-        const range = document.createRange();
-        let currentNode = containerRef.current.firstChild;
-        let currentOffset = 0;
+        initialOffset = getCurrentOffset(containerRef.current, event);
+        console.log("initialOffset", initialOffset);
+        containerRef.current.addEventListener('mousemove', animationLoop);
+        containerRef.current.addEventListener('touchmove', animationLoop);
+    }   
 
-        // Find start node and offset
-        while (currentNode && currentOffset + currentNode.textContent.length < startOffset) {
-            currentOffset += currentNode.textContent.length;
-            currentNode = currentNode.nextSibling;
-        }
+    const endAnimationLoop = (event) => {
+        console.log("endAnimationLoop");
+        event.preventDefault();
+        event.stopPropagation();
+        containerRef.current.removeEventListener('mousemove', animationLoop);
+        containerRef.current.removeEventListener('touchmove', animationLoop);
+        finalOffset = getCurrentOffset(containerRef.current, event);
+        console.log("finalOffset", finalOffset);
+        const selection = {
+            start: initialOffset,
+            end: finalOffset
+        };
+        return selection;
+    }
 
-        if (currentNode) {
-            range.setStart(currentNode, startOffset - currentOffset);
+    // TODO debounce
+    const handleSelectionCompleted = (event) => {
+        console.log("handleSelectionCompleted");
 
-            // Find end node and offset
-            while (currentNode && currentOffset + currentNode.textContent.length < endOffset) {
-                currentOffset += currentNode.textContent.length;
-                currentNode = currentNode.nextSibling;
-            }
-
-            if (currentNode) {
-                range.setEnd(currentNode, endOffset - currentOffset);
-                
-                const span = document.createElement('span');
-                span.className = 'selection-highlight';
-                range.surroundContents(span);
-                highlightRef.current = span;
-            }
-        }
-    }, []);
-
-    const handleSelectionChange = useCallback(() => {
-        if (!containerRef.current) return;
-
-        const selection = window.getSelection();
-        if (!selection || !selection.rangeCount) {
-            if (selectionStateRef.current.sourcePostId === postRootId) {
-                selectionStateRef.current = {
-                    sourcePostId: null,
-                    startOffset: null,
-                    endOffset: null,
-                    selectedText: null
-                };
-                onSelectionChange?.(null);
-            }
-            return;
-        }
-
-        const range = selection.getRangeAt(0);
-        const container = containerRef.current;
-
-        if (!range.commonAncestorContainer || !container.contains(range.commonAncestorContainer)) {
-            if (selectionStateRef.current.sourcePostId === postRootId) {
-                selectionStateRef.current = {
-                    sourcePostId: null,
-                    startOffset: null,
-                    endOffset: null,
-                    selectedText: null
-                };
-                onSelectionChange?.(null);
-            }
-            return;
-        }
-
-        try {
-            const tempRange = document.createRange();
-            tempRange.setStart(container, 0);
-            tempRange.setEnd(range.startContainer, range.startOffset);
-            const startOffset = tempRange.toString().length;
-
-            tempRange.setEnd(range.endContainer, range.endOffset);
-            const endOffset = tempRange.toString().length;
-
-            if (startOffset === endOffset) return;
-
-            const selectionData = {
-                sourcePostId: postRootId,
-                startOffset,
-                endOffset,
-                selectedText: range.toString(),
-                parentNodeId
-            };
-
-            selectionStateRef.current = selectionData;
-            onSelectionChange?.(selectionData);
-            updateHighlight(startOffset, endOffset);
-        } catch (error) {
-            console.error('Error calculating selection:', error);
-            selectionStateRef.current = {
-                sourcePostId: null,
-                startOffset: null,
-                endOffset: null,
-                selectedText: null
-            };
-            onSelectionChange?.(null);
-        }
-    }, [postRootId, parentNodeId, updateHighlight, onSelectionChange]);
-
-    useEffect(() => {
-        if (containerRef.current) {
-            document.addEventListener('selectionchange', handleSelectionChange);
-            return () => {
-                document.removeEventListener('selectionchange', handleSelectionChange);
-                if (highlightRef.current) {
-                    highlightRef.current.remove();
-                }
-            };
-        }
-    }, [handleSelectionChange]);
-
+        const selection = endAnimationLoop(event);
+        onSelectionCompleted(selection);
+    }
+  
     return (
         <div
             ref={containerRef}
             className="selection-container"
-            style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+            style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+            onMouseDown={animateSelection}
+            onTouchStart={animateSelection}
+            onMouseUp={handleSelectionCompleted}
+            onTouchEnd={handleSelectionCompleted}
         >
             {children}
         </div>

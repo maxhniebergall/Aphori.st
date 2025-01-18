@@ -207,8 +207,8 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
         <TextSelection 
           parentNodeId={currentSibling.id} 
           postRootId={postRootId} 
-          onSelectionChange={(selection) => {
-            setSelectionState(selection);
+          onSelectionCompleted={(selection) => {
+            setSelectionState(prev => ({...prev, selectedText: selection}));
           }}
           key={""+postRootId+currentSibling.id}
         >
