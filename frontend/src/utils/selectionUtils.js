@@ -110,10 +110,9 @@ const getCumulativeOffset = (textNode, container) => {
  * Calculates selection range from mouse/touch events
  * @param {Element} element - The DOM element containing the text
  * @param {Event} event - Mouse or touch event
- * @param {string} activeHandle - Which handle is being dragged ('start' or 'end')
- * @returns {{start: number | null, end: number | null}} Selection range positions
+ * @returns {number | null} Current offset
  */
-export const getSelectionRange = (element, event, activeHandle, state) => {
+export const getCurrentOffset = (element, event) => {
     if (!element || !event) return null;
     const result = findNodeTextFromEvent(element, event);
 
@@ -122,13 +121,7 @@ export const getSelectionRange = (element, event, activeHandle, state) => {
     const { node, offset } = result;
     const currentOffset = getCumulativeOffset(node, element) + offset;
 
-    if (activeHandle === 'start') {
-        return { start: currentOffset, end: null };
-    } else if (activeHandle === 'end') {
-        return { start: state.selection.startOffset, end: currentOffset };
-    } else {
-        return { start: currentOffset, end: currentOffset };
-    }
+    return currentOffset;
 };
 
 /**
