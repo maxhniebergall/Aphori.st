@@ -40,7 +40,11 @@ export const getWordBoundaries = (text, position) => {
  * @param {number} y - Client Y coordinate
  * @returns {{node: Node, offset: number} | null}
  */
-export const findTextNodeAtPoint = (element, x, y) => {
+export const findNodeTextFromEvent = (element, event) => {
+
+  const x = event.type === 'touchstart' ? event.touches[0].clientX : event.clientX;
+  const y = event.type === 'touchstart' ? event.touches[0].clientY : event.clientY;
+
   // Validate coordinates
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
     return null;
@@ -111,23 +115,7 @@ const getCumulativeOffset = (textNode, container) => {
  */
 export const getSelectionRange = (element, event, activeHandle) => {
   if (!element || !event) return null;
-
-  let clientX, clientY;
-  
-  if (event.touches && event.touches[0]) {
-    clientX = event.touches[0].clientX;
-    clientY = event.touches[0].clientY;
-  } else if (event.changedTouches && event.changedTouches[0]) {
-    clientX = event.changedTouches[0].clientX;
-    clientY = event.changedTouches[0].clientY;
-  } else if ('clientX' in event && 'clientY' in event) {
-    clientX = event.clientX;
-    clientY = event.clientY;
-  } else {
-    return null;
-  }
-
-  const result = findTextNodeAtPoint(element, clientX, clientY);
+  const result = findNodeTextFromEvent(element, event);
   
   if (!result) return null;
   
@@ -202,4 +190,23 @@ export const isValidSelection = (start, end, textLength) => {
     Number.isInteger(start) &&
     Number.isInteger(end)
   );
+};
+
+/**
+ * Checks if coordinates are within container bounds
+ * @param {Element} container - The container element
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @returns {boolean} Whether coordinates are within bounds
+ */
+export const isWithinContainerBounds = (container, event) => {
+    const x = event.type === 'touchstart' ? event.touches[0].clientX : event.clientX;
+    const y = event.type === 'touchstart' ? event.touches[0].clientY : event.clientY;
+    const containerRect = container.getBoundingClientRect();
+    return (
+        x >= containerRect.left &&
+        x <= containerRect.right &&
+        y >= containerRect.top &&
+        y <= containerRect.bottom
+    );
 }; 

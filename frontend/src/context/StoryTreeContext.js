@@ -133,7 +133,9 @@ function storyTreeReducer(state, action) {
           startOffset: action.payload.startOffset,
           endOffset: action.payload.endOffset,
           selectedText: action.payload.selectedText,
-          parentNodeId: action.payload.parentNodeId
+          parentNodeId: action.payload.parentNodeId,
+          isDragging: action.payload.isDragging,
+          activeHandle: action.payload.activeHandle,
         }
       };
 
@@ -145,7 +147,9 @@ function storyTreeReducer(state, action) {
           startOffset: null,
           endOffset: null,
           selectedText: null,
-          parentNodeId: null
+          parentNodeId: null,
+          isDragging: false,
+          activeHandle: null,
         }
       };
 
@@ -156,7 +160,10 @@ function storyTreeReducer(state, action) {
           ...state.selection,
           startOffset: action.payload.startOffset,
           endOffset: action.payload.endOffset,
-          selectedText: action.payload.selectedText
+          selectedText: action.payload.selectedText,
+          isDragging: action.payload.isDragging,
+          activeHandle: action.payload.activeHandle,
+          initialClickPos: action.payload.initialClickPos
         }
       };
 
