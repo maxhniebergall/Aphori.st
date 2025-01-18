@@ -265,7 +265,7 @@ function VirtualizedStoryList({
   return (
     <div style={{ 
       height: totalContentHeight < listHeight ? 'auto' : listHeight,
-      overflow: totalContentHeight > listHeight ? 'auto' : 'hidden'
+      overflow: 'visible'
     }}>
       <InfiniteLoader
         isItemLoaded={isItemLoaded}
