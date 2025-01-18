@@ -113,22 +113,22 @@ const getCumulativeOffset = (textNode, container) => {
  * @param {string} activeHandle - Which handle is being dragged ('start' or 'end')
  * @returns {{start: number | null, end: number | null}} Selection range positions
  */
-export const getSelectionRange = (element, event, activeHandle) => {
-  if (!element || !event) return null;
-  const result = findNodeTextFromEvent(element, event);
-  
-  if (!result) return null;
-  
-  const { node, offset } = result;
-  const currentOffset = getCumulativeOffset(node, element) + offset;
-  
-  if (activeHandle === 'start') {
-    return { start: currentOffset, end: null };
-  } else if (activeHandle === 'end') {
-    return { start: null, end: currentOffset };
-  } else {
-    return { start: currentOffset, end: currentOffset };
-  }
+export const getSelectionRange = (element, event, activeHandle, state) => {
+    if (!element || !event) return null;
+    const result = findNodeTextFromEvent(element, event);
+
+    if (!result) return null;
+
+    const { node, offset } = result;
+    const currentOffset = getCumulativeOffset(node, element) + offset;
+
+    if (activeHandle === 'start') {
+        return { start: currentOffset, end: null };
+    } else if (activeHandle === 'end') {
+        return { start: state.selection.startOffset, end: currentOffset };
+    } else {
+        return { start: currentOffset, end: currentOffset };
+    }
 };
 
 /**

@@ -47,7 +47,7 @@ const TextSelection = ({ children, parentNodeId, postRootId }) => {
         event.stopPropagation();
         dispatch({ type: 'CLEAR_SELECTION' });
 
-        const selectionRange = getSelectionRange(containerRef.current, event, 'start');
+        const selectionRange = getSelectionRange(containerRef.current, event, 'start', state);
 
         if (selectionRange && selectionRange.start !== null) {
             console.log('handleMouseTouchDownInTextArea text node found', {containerRef: containerRef.current});
@@ -125,18 +125,25 @@ const TextSelection = ({ children, parentNodeId, postRootId }) => {
             handleTouchSpecificBehavior(event);
         }
 
-        if (!isWithinContainerBounds(containerRef.current, event)) {
-            dispatch({ type: 'CLEAR_SELECTION' });
-            return;
-        }
+        if (!rafId.current) {
+            rafId.current = requestAnimationFrame(() => {
+                if (containerRef.current && !isWithinContainerBounds(containerRef.current, event)) {
+                    dispatch({ type: 'CLEAR_SELECTION' });
+                    rafId.current = null;
+                    return;
+                }
 
-        const selectionRange = getSelectionRange(containerRef.current, event, 'end');
-        if (!selectionRange || selectionRange.end === null) {
-            dispatch({ type: 'CLEAR_SELECTION' });
-            return; 
+                const selectionRange = getSelectionRange(containerRef.current, event, 'end', state);
+                if (!selectionRange || selectionRange.end === null) {
+                    dispatch({ type: 'CLEAR_SELECTION' });
+                    rafId.current = null;
+                    return;
+                }
+
+                updateSelectionRange(selectionRange.end);
+                rafId.current = null;
+            });
         }
-        
-        updateSelectionRange(selectionRange.end);
     };
 
     function finalizeSelection(finalOffset) {
