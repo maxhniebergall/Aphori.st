@@ -25,7 +25,7 @@ import TextSelection from './TextSelection';
  * - Reply functionality with node targeting
  * - Text selection support for replies
  * - Quote preview in reply mode
- * - Selection persistence
+ * - Selection persistence via DOM
  * - Selection handles
  */
 
@@ -35,6 +35,7 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
   const { state, dispatch } = useStoryTree();
   const [replyContent, setReplyContent] = useState('');
+  const [selectionState, setSelectionState] = useState(null);
   const nodeRef = useRef(null);
 
   // Update the operator's context whenever state or dispatch changes
@@ -182,14 +183,19 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
   };
 
   const handleReplyButtonClick = () => {
-      dispatch({ type: 'SET_SELECTION', payload: {
-        active: true,
+    if (selectionState) {
+      setSelectionState(null);
+    } else {
+      // Select entire text when reply button is clicked without selection
+      const currentSibling = loadedSiblings[currentSiblingIndex] || node;
+      setSelectionState({
         sourcePostId: postRootId,
         startOffset: 0,
         endOffset: currentSibling.text.length,
         selectedText: currentSibling.text,
         parentNodeId: currentSibling.id
-      }});
+      });
+    }
   };
 
   const renderContent = () => {
@@ -198,24 +204,29 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
     return (
       <div className="story-tree-node-text">
         {renderQuote()} 
-          <TextSelection parentNodeId={currentSibling.id} postRootId={postRootId} key={""+postRootId+currentSibling.id}>
-            {currentSibling.text}
-          </TextSelection>
+        <TextSelection 
+          parentNodeId={currentSibling.id} 
+          postRootId={postRootId} 
+          onSelectionChange={(selection) => {
+            setSelectionState(selection);
+          }}
+          key={""+postRootId+currentSibling.id}
+        >
+          {currentSibling.text}
+        </TextSelection>
       </div>
     );
   };
 
   const renderReplyEditor = () => {
-    const selectedText = state.selection.sourcePostId === currentSibling.id
-      ? state.selection.selectedText
-      : null;
+    if (!selectionState) return null;
 
     return (
       <div className="reply-editor-container">
-        {selectedText && (
+        {selectionState.selectedText && (
           <div className="quote-preview">
             <blockquote>
-              {selectedText}
+              {selectionState.selectedText}
             </blockquote>
           </div>
         )}
@@ -239,14 +250,14 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
             onClick={() => {
               onReplySubmit({
                 content: replyContent,
-                quote: selectedText,
+                quote: selectionState.selectedText,
                 sourcePostId: currentSibling.id,
-                selectionRange: selectedText ? {
-                  start: state.selection.startOffset,
-                  end: state.selection.endOffset
+                selectionRange: selectionState.selectedText ? {
+                  start: selectionState.startOffset,
+                  end: selectionState.endOffset
                 } : null
               });
-              dispatch({ type: 'CLEAR_SELECTION' });
+              setSelectionState(null);
             }}
             disabled={!replyContent.trim()}
             className="submit-reply-button"
@@ -255,7 +266,7 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
           </button>
           <button 
             onClick={() => {
-              dispatch({ type: 'CLEAR_SELECTION' });
+              setSelectionState(null);
             }}
             className="cancel-reply-button"
           >
@@ -288,7 +299,7 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
               onClick={handleReplyButtonClick}
               aria-label="Reply to this message"
             >
-              {state.selection.startOffset ? 'Cancel Reply' : 'Reply'}
+              {selectionState ? 'Cancel Reply' : 'Reply'}
             </button>
           </div>
           <div className="footer-right">
@@ -306,7 +317,7 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
             )}
           </div>
         </div>
-        {state.selection.startOffset !== null && (renderReplyEditor())}
+        {selectionState && renderReplyEditor()}
       </div>
     </motion.div>
   );

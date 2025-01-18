@@ -1,246 +1,152 @@
 /*
  * Requirements:
- * - Click/tap word selection functionality
- * - Drag selection with mouse/touch events
- * - Selection highlight rendering
- * - Drag handles for selection adjustment
- * - Selection persistence via context
+ * - Browser native text selection
+ * - Selection persistence via DOM manipulation
  * - Selection validation and boundary checks
- * - Mouse and touch event handling
- * - Integration with StoryTree context
  * - Support for hybrid touch/mouse devices
- * - Prevention of duplicate events on touch devices
- * - Non-passive touch event handling for preventDefault support
+ * - Smooth selection animation without re-renders
  */
 
 import React, { useRef, useEffect, useCallback } from 'react';
-import { useStoryTree } from '../context/StoryTreeContext';
-import { findNodeTextFromEvent, getSelectedText, isValidSelection, isWithinContainerBounds, getSelectionRange } from '../utils/selectionUtils';
 import './TextSelection.css';
 
-const TextSelection = ({ children, parentNodeId, postRootId }) => {
-    const { state, dispatch } = useStoryTree();
+const TextSelection = ({ children, parentNodeId, postRootId, onSelectionChange }) => {
     const containerRef = useRef(null);
+    const highlightRef = useRef(null);
+    const selectionStateRef = useRef({
+        sourcePostId: null,
+        startOffset: null,
+        endOffset: null,
+        selectedText: null
+    });
 
-    const rafId = useRef(null);
-    const isTouchDevice = useRef(false);
+    const updateHighlight = useCallback((startOffset, endOffset) => {
+        if (!containerRef.current) return;
 
-
-    const handleTouchSpecificBehavior = (event) => {
-        if (event.type === 'touchstart') {
-            event.preventDefault();
-            event.stopPropagation();
-            isTouchDevice.current = true;
-            return true;
+        // Remove existing highlight if any
+        if (highlightRef.current) {
+            highlightRef.current.remove();
+            highlightRef.current = null;
         }
-        return false;
-    };
 
-    useEffect(() => {
-        isTouchDevice.current = 'ontouchstart' in window ||
-            navigator.maxTouchPoints > 0;
+        if (!startOffset || !endOffset || startOffset === endOffset) return;
+
+        const range = document.createRange();
+        let currentNode = containerRef.current.firstChild;
+        let currentOffset = 0;
+
+        // Find start node and offset
+        while (currentNode && currentOffset + currentNode.textContent.length < startOffset) {
+            currentOffset += currentNode.textContent.length;
+            currentNode = currentNode.nextSibling;
+        }
+
+        if (currentNode) {
+            range.setStart(currentNode, startOffset - currentOffset);
+
+            // Find end node and offset
+            while (currentNode && currentOffset + currentNode.textContent.length < endOffset) {
+                currentOffset += currentNode.textContent.length;
+                currentNode = currentNode.nextSibling;
+            }
+
+            if (currentNode) {
+                range.setEnd(currentNode, endOffset - currentOffset);
+                
+                const span = document.createElement('span');
+                span.className = 'selection-highlight';
+                range.surroundContents(span);
+                highlightRef.current = span;
+            }
+        }
     }, []);
 
-    async function handleMouseTouchDownInTextArea(event) {
-        handleTouchSpecificBehavior(event);
-        event.preventDefault();
-        event.stopPropagation();
-        dispatch({ type: 'CLEAR_SELECTION' });
+    const handleSelectionChange = useCallback(() => {
+        if (!containerRef.current) return;
 
-        const selectionRange = getSelectionRange(containerRef.current, event, 'start', state);
-
-        if (selectionRange && selectionRange.start !== null) {
-            console.log('handleMouseTouchDownInTextArea text node found', {containerRef: containerRef.current});
-            await handleSelectionStart(selectionRange.start);
-        } else {
-            console.log('handleMouseTouchDownInTextArea no text node found');
-            dispatch({ type: 'CLEAR_SELECTION' });
-        }
-    };
-
-    // const handleAdjustSelection = (event, handle) => { TODO - implement handle adjustment
-    //     console.log('handleAdjustSelection triggered', {
-    //         type: event.type,
-    //         handle,
-    //         currentSelection: state.selection
-    //     });
-
-    //     activeHandle.current = handle;
-    //     containerRef.current.addEventListener('mousemove', handleDrag);
-    //     containerRef.current.addEventListener('mouseup', handleEndDrag);
-    //     containerRef.current.addEventListener('touchmove', handleDrag);
-    //     containerRef.current.addEventListener('touchend', handleEndDrag);
-    // };
-
-    async function handleSelectionStart(startOffset) {
-        const newSelection = {
-            sourcePostId: postRootId,
-            startOffset,
-            endOffset: null,
-            selectedText: null,
-            parentNodeId: parentNodeId,
-            activeHandle: 'end',
-            isDragging: true
-        };
-
-        dispatch({ type: 'SET_SELECTION', payload: newSelection });
-        console.log('handleSelectionStart', {
-            activeHandle: state.selection.activeHandle,
-            isDragging: state.selection.isDragging,
-            newSelection,
-            currentSelection: state.selection
-        });
-    };
-
-    function handleDragEnd(event) {
-        if (!state.selection.isDragging || state.selection.activeHandle !== 'end') {
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) {
+            if (selectionStateRef.current.sourcePostId === postRootId) {
+                selectionStateRef.current = {
+                    sourcePostId: null,
+                    startOffset: null,
+                    endOffset: null,
+                    selectedText: null
+                };
+                onSelectionChange?.(null);
+            }
             return;
         }
 
-        if (event.type === 'touchend') {
-            handleTouchSpecificBehavior(event);
-        }
+        const range = selection.getRangeAt(0);
+        const container = containerRef.current;
 
-        const textNodeInfo = findNodeTextFromEvent(containerRef.current, event);
-        if (!textNodeInfo) {
-            console.log('drag ended');
-            dispatch({ type: 'CLEAR_SELECTION' });
-            return;
-        }
-        
-        finalizeSelection(textNodeInfo.offset);
-
-        if (rafId.current) {
-            cancelAnimationFrame(rafId.current);
-            rafId.current = null;
-        }
-    };
-
-    function handleDragAnimation(event) {
-        if (!state.selection.isDragging || state.selection.activeHandle !== 'end') {
+        if (!range.commonAncestorContainer || !container.contains(range.commonAncestorContainer)) {
+            if (selectionStateRef.current.sourcePostId === postRootId) {
+                selectionStateRef.current = {
+                    sourcePostId: null,
+                    startOffset: null,
+                    endOffset: null,
+                    selectedText: null
+                };
+                onSelectionChange?.(null);
+            }
             return;
         }
 
-        if (event.type === 'touchmove') {
-            handleTouchSpecificBehavior(event);
-        }
+        try {
+            const tempRange = document.createRange();
+            tempRange.setStart(container, 0);
+            tempRange.setEnd(range.startContainer, range.startOffset);
+            const startOffset = tempRange.toString().length;
 
-        if (!rafId.current) {
-            rafId.current = requestAnimationFrame(() => {
-                if (containerRef.current && !isWithinContainerBounds(containerRef.current, event)) {
-                    dispatch({ type: 'CLEAR_SELECTION' });
-                    rafId.current = null;
-                    return;
+            tempRange.setEnd(range.endContainer, range.endOffset);
+            const endOffset = tempRange.toString().length;
+
+            if (startOffset === endOffset) return;
+
+            const selectionData = {
+                sourcePostId: postRootId,
+                startOffset,
+                endOffset,
+                selectedText: range.toString(),
+                parentNodeId
+            };
+
+            selectionStateRef.current = selectionData;
+            onSelectionChange?.(selectionData);
+            updateHighlight(startOffset, endOffset);
+        } catch (error) {
+            console.error('Error calculating selection:', error);
+            selectionStateRef.current = {
+                sourcePostId: null,
+                startOffset: null,
+                endOffset: null,
+                selectedText: null
+            };
+            onSelectionChange?.(null);
+        }
+    }, [postRootId, parentNodeId, updateHighlight, onSelectionChange]);
+
+    useEffect(() => {
+        if (containerRef.current) {
+            document.addEventListener('selectionchange', handleSelectionChange);
+            return () => {
+                document.removeEventListener('selectionchange', handleSelectionChange);
+                if (highlightRef.current) {
+                    highlightRef.current.remove();
                 }
-
-                const selectionRange = getSelectionRange(containerRef.current, event, 'end', state);
-                if (!selectionRange || selectionRange.end === null) {
-                    dispatch({ type: 'CLEAR_SELECTION' });
-                    rafId.current = null;
-                    return;
-                }
-
-                updateSelectionRange(selectionRange.end);
-                rafId.current = null;
-            });
+            };
         }
-    };
-
-    function finalizeSelection(finalOffset) {
-        console.log('finalizeSelection triggered', {
-            finalOffset,
-            currentSelection: state.selection
-        });
-        const text = containerRef.current.textContent;
-        const boundedOffset = Math.max(Math.min(text.length, finalOffset), 0);
-
-        if (isValidSelection(state.selection.startOffset, boundedOffset, text.length)) {
-            dispatch({
-                type: 'SET_SELECTION',
-                payload: {
-                    sourcePostId: postRootId,
-                    startOffset: state.selection.startOffset,
-                    endOffset: boundedOffset,
-                    selectedText: getSelectedText(containerRef.current, state.selection.startOffset, boundedOffset),
-                    parentNodeId: parentNodeId,
-                    isDragging: false,
-                    activeHandle: null
-                }
-            });
-        }
-    }
-
-    function updateSelectionRange(newEndOffset) {
-        const text = containerRef.current.textContent;
-        const newEnd = Math.max(Math.min(text.length, newEndOffset), 0);
-
-        if (isValidSelection(state.selection.startOffset, newEnd, text.length)) {
-            dispatch({
-                type: 'UPDATE_SELECTION_RANGE',
-                payload: {
-                    startOffset: state.selection.startOffset,
-                    endOffset: newEnd,
-                    selectedText: getSelectedText(containerRef.current, state.selection.startOffset, newEnd)
-                }
-            });
-        }
-    };
-
-    const renderSelectionHandle = (position) => {
-        const isStart = position === 'start';
-        return (
-            <div
-                className={`selection-handle ${position}-handle ${isTouchDevice.current ? 'touch-handle' : ''}`}
-                style={{
-                    [isStart ? 'left' : 'right']: 0,
-                    top: '50%',
-                    willChange: 'transform',
-                    transform: `translate(${isStart ? '-50%' : '50%'}, -50%)`,
-                    touchAction: 'none',
-                    width: isTouchDevice.current ? '24px' : '12px',
-                    height: isTouchDevice.current ? '24px' : '12px',
-                }}
-                // TODO: Implement handle adjustment
-                // onMouseDown={(e) => handleAdjustSelection(e, position)}
-                // onTouchStart={(e) => handleAdjustSelection(e, position)}
-            />
-        );
-    };
-
-
-    const renderContent = useCallback(() => {
-        const text = children.toString();
-        const { startOffset, endOffset } = state.selection;
-        if (!isValidSelection(startOffset, endOffset, text.length)) {
-            return (
-                text
-            );
-        }
-
-        return (
-            <>
-                    {text.substring(0, startOffset)}
-                    <span className="selection-highlight">
-                        {renderSelectionHandle('start')}
-                        {text.substring(startOffset, endOffset)}
-                        {renderSelectionHandle('end')}
-                    </span>
-                    {text.substring(endOffset)}
-            </>
-        );
-    }, [state.selection, children]);
+    }, [handleSelectionChange]);
 
     return (
         <div
             ref={containerRef}
-            onMouseDown={handleMouseTouchDownInTextArea}
-            onMouseMove={handleDragAnimation}
-            onTouchMove={handleDragAnimation}
-            onMouseUp={handleDragEnd}
-            onTouchEnd={handleDragEnd}
             className="selection-container"
+            style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
         >
-            {renderContent()}
+            {children}
         </div>
     );
 };
