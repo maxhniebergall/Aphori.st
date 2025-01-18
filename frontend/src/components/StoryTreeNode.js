@@ -184,17 +184,14 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
 
   const handleReplyButtonClick = () => {
     if (selectionState) {
-      setSelectionState(null);
+        setSelectionState(null);
     } else {
-      // Select entire text when reply button is clicked without selection
-      const currentSibling = loadedSiblings[currentSiblingIndex] || node;
-      setSelectionState({
-        sourcePostId: postRootId,
-        startOffset: 0,
-        endOffset: currentSibling.text.length,
-        selectedText: currentSibling.text,
-        parentNodeId: currentSibling.id
-      });
+        // Select entire text when reply button is clicked without selection
+        const currentSibling = loadedSiblings[currentSiblingIndex] || node;
+        setSelectionState({
+            start: 0,
+            end: currentSibling.text.length
+        });
     }
   };
 
@@ -205,10 +202,8 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
       <div className="story-tree-node-text">
         {renderQuote()} 
         <TextSelection 
-          parentNodeId={currentSibling.id} 
-          postRootId={postRootId} 
           onSelectionCompleted={(selection) => {
-            setSelectionState(prev => ({...prev, selectedText: selection}));
+            setSelectionState(selection);
           }}
           key={""+postRootId+currentSibling.id}
         >
@@ -221,12 +216,14 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
   const renderReplyEditor = () => {
     if (!selectionState) return null;
 
+    const selectedText = currentSibling.text.slice(selectionState.start, selectionState.end);
+
     return (
       <div className="reply-editor-container">
-        {selectionState.selectedText && (
+        {selectedText && (
           <div className="quote-preview">
             <blockquote>
-              {selectionState.selectedText}
+              {selectedText}
             </blockquote>
           </div>
         )}
@@ -250,12 +247,9 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
             onClick={() => {
               onReplySubmit({
                 content: replyContent,
-                quote: selectionState.selectedText,
+                quote: selectedText,
                 sourcePostId: currentSibling.id,
-                selectionRange: selectionState.selectedText ? {
-                  start: selectionState.startOffset,
-                  end: selectionState.endOffset
-                } : null
+                selectionRange: selectionState
               });
               setSelectionState(null);
             }}
@@ -292,6 +286,9 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
         id={currentSibling.id}
       >
         {renderContent()}
+        <div className="reply-editor-container">
+            {selectionState && renderReplyEditor()}
+          </div>
         <div className="story-tree-node-footer">
           <div className="footer-left">
             <button 
@@ -317,7 +314,6 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
             )}
           </div>
         </div>
-        {selectionState && renderReplyEditor()}
       </div>
     </motion.div>
   );
