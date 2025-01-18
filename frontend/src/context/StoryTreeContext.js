@@ -9,8 +9,6 @@
  * - Sibling navigation state handling
  * - Editing state management
  * - Node removal tracking
- * - Text selection state management for replies
- * - Quote metadata tracking
  */
 
 import React, { createContext, useContext, useReducer } from 'react';
@@ -32,9 +30,6 @@ export const ACTIONS = {
   SET_INITIAL_LOADING: 'SET_INITIAL_LOADING',
   SET_PAGINATION_LOADING: 'SET_PAGINATION_LOADING',
   HANDLE_SIBLING_CHANGE: 'HANDLE_SIBLING_CHANGE',
-  SET_SELECTION: 'SET_SELECTION',
-  CLEAR_SELECTION: 'CLEAR_SELECTION',
-  UPDATE_SELECTION_RANGE: 'UPDATE_SELECTION_RANGE',
 };
 
 // Add these at the top of the file
@@ -58,13 +53,6 @@ const initialState = {
   currentNode: null,
   error: null,
   loadingState: LOADING_STATES.IDLE,
-  selection: {
-    sourcePostId: null,
-    startOffset: null,
-    endOffset: null,
-    selectedText: null,
-    parentNodeId: null
-  },
 };
 
 // Reducer function
@@ -123,48 +111,6 @@ function storyTreeReducer(state, action) {
       return {
         ...state,
         currentNode: action.payload,
-      };
-    
-    case ACTIONS.SET_SELECTION:
-      return {
-        ...state,
-        selection: {
-          sourcePostId: action.payload.sourcePostId,
-          startOffset: action.payload.startOffset,
-          endOffset: action.payload.endOffset,
-          selectedText: action.payload.selectedText,
-          parentNodeId: action.payload.parentNodeId,
-          isDragging: action.payload.isDragging,
-          activeHandle: action.payload.activeHandle,
-        }
-      };
-
-    case ACTIONS.CLEAR_SELECTION:
-      return {
-        ...state,
-        selection: {
-          sourcePostId: null,
-          startOffset: null,
-          endOffset: null,
-          selectedText: null,
-          parentNodeId: null,
-          isDragging: false,
-          activeHandle: null,
-        }
-      };
-
-    case ACTIONS.UPDATE_SELECTION_RANGE:
-      return {
-        ...state,
-        selection: {
-          ...state.selection,
-          startOffset: action.payload.startOffset,
-          endOffset: action.payload.endOffset,
-          selectedText: action.payload.selectedText,
-          isDragging: action.payload.isDragging,
-          activeHandle: action.payload.activeHandle,
-          initialClickPos: action.payload.initialClickPos
-        }
       };
 
     default:

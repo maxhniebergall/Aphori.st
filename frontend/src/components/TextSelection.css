@@ -1,16 +1,14 @@
 /*
  * Requirements:
- * - Smooth handle movement and interaction
+ * - Native text selection styling
+ * - Selection highlight styling
  * - GPU-accelerated animations
- * - Enhanced touch targets
  * - Visual feedback on interaction
  */
 
 .selection-container {
   position: relative;
   cursor: text;
-  user-select: none;
-  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -20,49 +18,15 @@
   display: inline;
 }
 
-.selection-handle {
-  position: absolute;
-  width: 24px; /* Larger touch target */
-  height: 24px; /* Larger touch target */
-  background-color: #0078d7;
-  border-radius: 50%;
-  cursor: grab;
-  touch-action: none;
-  z-index: 1000;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  transition: transform 0.1s ease-out, background-color 0.2s ease;
-  will-change: transform;
+/* Style for native text selection */
+.selection-container::selection,
+.selection-container *::selection {
+  background-color: rgba(0, 120, 215, 0.2);
+  color: inherit;
 }
 
-/* Center the visible handle within the larger touch target */
-.selection-handle::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 12px;
-  height: 12px;
-  background-color: inherit;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-}
-
-.selection-handle:active {
-  cursor: grabbing;
-  background-color: #005a9e;
-  transform: scale(1.1) translate(-50%, -50%);
-}
-
-.start-handle:active {
-  transform: scale(1.1) translate(-50%, -50%);
-}
-
-.end-handle:active {
-  transform: scale(1.1) translate(50%, -50%);
-}
-
-/* Prevent text selection during handle drag */
-.selection-container.dragging {
-  user-select: none;
-  -webkit-user-select: none;
+.selection-container::-moz-selection,
+.selection-container *::-moz-selection {
+  background-color: rgba(0, 120, 215, 0.2);
+  color: inherit;
 } 
