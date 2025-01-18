@@ -198,7 +198,7 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
     return (
       <div className="story-tree-node-text">
         {renderQuote()} 
-          <TextSelection parentNodeId={currentSibling.id} postRootId={postRootId}>
+          <TextSelection parentNodeId={currentSibling.id} postRootId={postRootId} key={""+postRootId+currentSibling.id}>
             {currentSibling.text}
           </TextSelection>
       </div>
