@@ -36,6 +36,8 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
   const { state, dispatch } = useStoryTree();
   const [replyContent, setReplyContent] = useState('');
   const [selectionState, setSelectionState] = useState(null);
+  const [selectAll, setSelectAll] = useState(false);
+  const [clearSelection, setClearSelection] = useState(false);
   const nodeRef = useRef(null);
 
   // Update the operator's context whenever state or dispatch changes
@@ -184,7 +186,10 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
 
   const handleReplyButtonClick = () => {
     if (selectionState) {
+        // cancel button was clicked
         setSelectionState(null);
+        setSelectAll(false);
+        setClearSelection(true);
     } else {
         // Select entire text when reply button is clicked without selection
         const currentSibling = loadedSiblings[currentSiblingIndex] || node;
@@ -192,6 +197,8 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
             start: 0,
             end: currentSibling.text.length
         });
+        setSelectAll(true);
+        setClearSelection(false);
     }
   };
 
@@ -204,8 +211,11 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
         <TextSelection 
           onSelectionCompleted={(selection) => {
             setSelectionState(selection);
+            setSelectAll(false);
           }}
           key={""+postRootId+currentSibling.id}
+          selectAll={selectAll}
+          clearSelection={clearSelection}
         >
           {currentSibling.text}
         </TextSelection>
@@ -286,9 +296,7 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
         id={currentSibling.id}
       >
         {renderContent()}
-        <div className="reply-editor-container">
-            {selectionState && renderReplyEditor()}
-          </div>
+        {selectionState && renderReplyEditor()}
         <div className="story-tree-node-footer">
           <div className="footer-left">
             <button 

@@ -9,16 +9,22 @@
  * - Selection persistence with debouncing in react state
  * - Support for hybrid touch/mouse devices
  * - User can select text forward or backward
- *
+ * - Custom handles for adjusting selection
+ * - Mouse state tracking to prevent stuck animations
  */
 
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { getCurrentOffset } from '../utils/selectionUtils';
 import './TextSelection.css';
 import { throttle, debounce } from 'lodash';
-
 // Create throttled animation loop outside component to prevent recreation
-const throttledAnimationLoop = throttle((event, containerRef, startOffset) => {
+const throttledAnimationLoop = throttle((event, containerRef, startOffset, mouseIsDownRef) => {
+    // Check if mouse is still down, if not, clean up and return
+    if (!mouseIsDownRef.current) {
+        removeExistingHighlights(containerRef.current);
+        return;
+    }
+
     console.log("animationLoop");
     const endOffset = getCurrentOffset(containerRef.current, event);
     // use DOM manupipulation of CSS to highlight the text between the start and end offsets
@@ -26,25 +32,31 @@ const throttledAnimationLoop = throttle((event, containerRef, startOffset) => {
 
 }, 16); // 60fps = ~16ms throttle
 
-function highlightText(element, startOffset, endOffset) {
-    // Remove any existing highlights first
+function removeExistingHighlights(element) {
     const existingHighlights = element.querySelectorAll('span[style*="background-color: yellow"]');
     existingHighlights.forEach(highlight => {
         const parent = highlight.parentNode;
         parent.replaceChild(document.createTextNode(highlight.textContent), highlight);
         parent.normalize(); // Merge adjacent text nodes
     });
+}
+
+function highlightText(element, startOffset, endOffset) {
+    console.log("highlightText", startOffset, endOffset);
+    // Use the extracted function
+    removeExistingHighlights(element);
 
     // Find the text node and offset positions
     const findNodeAndOffset = (offset) => {
         let currentOffset = 0;
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-        
+        console.log("walker", walker);
+        console.log("walker.currentNode", walker.currentNode);
         while (walker.nextNode()) {
             const node = walker.currentNode;
             const length = node.textContent.length;
             
-            if (currentOffset + length > offset) {
+            if (currentOffset + length >= offset) {
                 return {
                     node,
                     offset: offset - currentOffset
@@ -52,6 +64,7 @@ function highlightText(element, startOffset, endOffset) {
             }
             currentOffset += length;
         }
+        console.log("couldn't find node");
         return null;
     };
 
@@ -59,7 +72,10 @@ function highlightText(element, startOffset, endOffset) {
     const start = findNodeAndOffset(Math.min(startOffset, endOffset));
     const end = findNodeAndOffset(Math.max(startOffset, endOffset));
 
-    if (!start || !end) return;
+    if (!start || !end) {
+        console.log("couldn't find node", start, end);
+        return;
+    }
 
     // Create and set the range
     const range = document.createRange();
@@ -77,16 +93,49 @@ function highlightText(element, startOffset, endOffset) {
     }
 }
 
-const TextSelection = ({ children, onSelectionCompleted }) => {
+const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelection}) => {
     const containerRef = useRef(null);
-    const boundThrottledAnimationRef = useRef(null); // Store the bound function
+    const boundThrottledAnimationRef = useRef(null);
+    const mouseIsDownRef = useRef(false);
     let initialOffset = null;
     let finalOffset = null;
+
+    // Add cleanup function for unexpected mouse up events
+    useEffect(() => {
+        const handleGlobalMouseUp = () => {
+            if (mouseIsDownRef.current) {
+                mouseIsDownRef.current = false;
+                removeExistingHighlights(containerRef.current);
+                if (boundThrottledAnimationRef.current) {
+                    containerRef.current?.removeEventListener('mousemove', boundThrottledAnimationRef.current);
+                    containerRef.current?.removeEventListener('touchmove', boundThrottledAnimationRef.current);
+                }
+            }
+        };
+
+        window.addEventListener('mouseup', handleGlobalMouseUp);
+        window.addEventListener('touchend', handleGlobalMouseUp);
+
+        return () => {
+            window.removeEventListener('mouseup', handleGlobalMouseUp);
+            window.removeEventListener('touchend', handleGlobalMouseUp);
+        };
+    }, []);
+
+    useEffect(() => {
+        console.log("TextSelection useEffect selectAll", selectAll,clearSelection, containerRef.current, );
+        if (selectAll) {
+            highlightText(containerRef.current, 0, containerRef.current.textContent.length);
+        } else if (clearSelection) {
+            removeExistingHighlights(containerRef.current);
+        }
+    }, [children, containerRef, selectAll, clearSelection]);   
 
     // Create debounced version of onSelectionCompleted
     const debouncedSelectionCallback = useRef(
         debounce((selection) => {
             if (selection.start > selection.end) {
+                // If the selection is backwards, swap the start and end
                 onSelectionCompleted({start: selection.end, end: selection.start});
             } else {
                 onSelectionCompleted(selection);
@@ -99,11 +148,12 @@ const TextSelection = ({ children, onSelectionCompleted }) => {
         event.preventDefault();
         event.stopPropagation();
 
+        mouseIsDownRef.current = true;
         initialOffset = getCurrentOffset(containerRef.current, event);
         console.log("initialOffset", initialOffset);
         
         // Create the bound function once and store it
-        boundThrottledAnimationRef.current = (e) => throttledAnimationLoop(e, containerRef, initialOffset);
+        boundThrottledAnimationRef.current = (e) => throttledAnimationLoop(e, containerRef, initialOffset, mouseIsDownRef);
         
         containerRef.current.addEventListener('mousemove', boundThrottledAnimationRef.current);
         containerRef.current.addEventListener('touchmove', boundThrottledAnimationRef.current);
@@ -113,6 +163,8 @@ const TextSelection = ({ children, onSelectionCompleted }) => {
         console.log("endAnimationLoop");
         event.preventDefault();
         event.stopPropagation();
+        
+        mouseIsDownRef.current = false;
         
         // Use the stored reference to remove listeners
         containerRef.current.removeEventListener('mousemove', boundThrottledAnimationRef.current);
@@ -129,6 +181,11 @@ const TextSelection = ({ children, onSelectionCompleted }) => {
 
     const handleSelectionCompleted = (event) => {
         console.log("handleSelectionCompleted");
+        
+        // Only process selection if we were actually selecting
+        if (!mouseIsDownRef.current) {
+            return;
+        }
 
         const selection = endAnimationLoop(event);
         debouncedSelectionCallback(selection);
