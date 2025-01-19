@@ -25,7 +25,7 @@ Data Storage:
 Quote metadata stored with reply in backend
 Includes reference to source post and selection positions
 
-@@ -23,4 +23,39 @@ Selection persists when clicking elsewhere
+Selection persists when clicking elsewhere
 Only one active selection per reply composition
 Data Storage:
 Quote metadata stored with reply in backend
@@ -60,10 +60,8 @@ Connect to selection state
 Handle selection persistence
 
 Phase 3: Backend Integration
-Update Reply Schema:
-Add quote metadata fields
-Store selection positions
-Reference to source post
-API Updates:
-Modify reply endpoints to handle quote data
-Add validation for quote metadata
+Update `backend/db/DatabaseClientInterface.js`:
+  - Update the `StoryTree` interface to include `quotes`: Array of quote objects.
+Update `backend/server.js`:
+  - Modify the `/api/createReply` endpoint to accept quote metadata in the request body and store it with the reply.
+  - Modify the `/api/getStoryTree/:uuid` endpoint to return the quote metadata with the story tree.
