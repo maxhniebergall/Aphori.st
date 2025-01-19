@@ -14,7 +14,7 @@
  */
 
 import React, { useRef, useEffect } from 'react';
-import { getCurrentOffset } from '../utils/selectionUtils';
+import { getCurrentOffset, getWordBoundaries } from '../utils/selectionUtils';
 import './TextSelection.css';
 import { throttle, debounce } from 'lodash';
 // Create throttled animation loop outside component to prevent recreation
@@ -97,6 +97,7 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
     const containerRef = useRef(null);
     const boundThrottledAnimationRef = useRef(null);
     const mouseIsDownRef = useRef(false);
+    const isDraggingRef = useRef(false);
     let initialOffset = null;
     let finalOffset = null;
 
@@ -143,23 +144,46 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
         }, 250)
     ).current;
 
+    const handleWordSelection = (offset) => {
+        if (!containerRef.current) return;
+        
+        const text = containerRef.current.textContent;
+        const { start, end } = getWordBoundaries(text, offset);
+        
+        // Highlight the word
+        highlightText(containerRef.current, start, end);
+        
+        // Notify parent of selection
+        debouncedSelectionCallback({ start, end });
+    };
+
     const animateSelection = (event) => {
         console.log("animateSelection");
-        event.preventDefault();
+        
+        // Only prevent default for mouse events
+        if (!event.type.startsWith('touch')) {
+            event.preventDefault();
+        }
+        
         event.stopPropagation();
-
         mouseIsDownRef.current = true;
-        const eventToUse = event.type === 'touchstart' ? event : event;
-        initialOffset = getCurrentOffset(containerRef.current, eventToUse);
+        isDraggingRef.current = false;
+        initialOffset = getCurrentOffset(containerRef.current, event);
         
         boundThrottledAnimationRef.current = (e) => {
-            e.preventDefault();
-            const moveEvent = e.type === 'touchmove' ? e : e;
-            throttledAnimationLoop(moveEvent, containerRef, initialOffset, mouseIsDownRef);
+            // Prevent default during move to stop scrolling
+            if (e.cancelable) {
+                e.preventDefault();
+            }
+            isDraggingRef.current = true;
+            throttledAnimationLoop(e, containerRef, initialOffset, mouseIsDownRef);
         };
         
         if (event.type === 'touchstart') {
-            containerRef.current.addEventListener('touchmove', boundThrottledAnimationRef.current, { passive: false });
+            containerRef.current.addEventListener('touchmove', boundThrottledAnimationRef.current, {
+                passive: false,
+                capture: true
+            });
         } else {
             containerRef.current.addEventListener('mousemove', boundThrottledAnimationRef.current);
         }
@@ -188,13 +212,22 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
     const handleSelectionCompleted = (event) => {
         console.log("handleSelectionCompleted");
         
-        // Only process selection if we were actually selecting
+        // Only process if mouse was down
         if (!mouseIsDownRef.current) {
             return;
         }
 
+        // If not dragging, handle as word selection
+        if (!isDraggingRef.current && initialOffset !== null) {
+            handleWordSelection(initialOffset);
+            mouseIsDownRef.current = false;
+            return;
+        }
+
         const selection = endAnimationLoop(event);
-        debouncedSelectionCallback(selection);
+        if (selection) {
+            debouncedSelectionCallback(selection);
+        }
     }
   
     return (

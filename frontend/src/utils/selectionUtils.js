@@ -20,13 +20,24 @@ export const getWordBoundaries = (text, position) => {
   let start = position;
   let end = position;
 
+  // Handle edge cases
+  if (!text || position < 0 || position >= text.length) {
+    return { start: 0, end: 0 };
+  }
+
+  // Skip whitespace if we're starting on it
+  while (start < text.length && /\s/.test(text[start])) {
+    start++;
+  }
+  end = start;
+
   // Move start to the beginning of the word
-  while (start > 0 && /\w/.test(text[start - 1])) {
+  while (start > 0 && !/\s/.test(text[start - 1])) {
     start--;
   }
 
   // Move end to the end of the word
-  while (end < text.length && /\w/.test(text[end])) {
+  while (end < text.length && !/\s/.test(text[end])) {
     end++;
   }
 
