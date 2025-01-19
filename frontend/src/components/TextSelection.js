@@ -149,14 +149,20 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
         event.stopPropagation();
 
         mouseIsDownRef.current = true;
-        initialOffset = getCurrentOffset(containerRef.current, event);
-        console.log("initialOffset", initialOffset);
+        const eventToUse = event.type === 'touchstart' ? event : event;
+        initialOffset = getCurrentOffset(containerRef.current, eventToUse);
         
-        // Create the bound function once and store it
-        boundThrottledAnimationRef.current = (e) => throttledAnimationLoop(e, containerRef, initialOffset, mouseIsDownRef);
+        boundThrottledAnimationRef.current = (e) => {
+            e.preventDefault();
+            const moveEvent = e.type === 'touchmove' ? e : e;
+            throttledAnimationLoop(moveEvent, containerRef, initialOffset, mouseIsDownRef);
+        };
         
-        containerRef.current.addEventListener('mousemove', boundThrottledAnimationRef.current);
-        containerRef.current.addEventListener('touchmove', boundThrottledAnimationRef.current);
+        if (event.type === 'touchstart') {
+            containerRef.current.addEventListener('touchmove', boundThrottledAnimationRef.current, { passive: false });
+        } else {
+            containerRef.current.addEventListener('mousemove', boundThrottledAnimationRef.current);
+        }
     }   
 
     const endAnimationLoop = (event) => {
@@ -195,7 +201,11 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
         <div
             ref={containerRef}
             className="selection-container"
-            style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+            style={{ 
+                userSelect: 'none', 
+                WebkitUserSelect: 'none',
+                touchAction: 'none'
+            }}
             onMouseDown={animateSelection}
             onTouchStart={animateSelection}
             onMouseUp={handleSelectionCompleted}

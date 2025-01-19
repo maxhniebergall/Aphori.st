@@ -41,9 +41,12 @@ export const getWordBoundaries = (text, position) => {
  * @returns {{node: Node, offset: number} | null}
  */
 export const findNodeTextFromEvent = (element, event) => {
-
-  const x = event.type === 'touchstart' ? event.touches[0].clientX : event.clientX;
-  const y = event.type === 'touchstart' ? event.touches[0].clientY : event.clientY;
+  // Fix: Properly handle touch events
+  const isTouchEvent = event.type.startsWith('touch');
+  const eventData = isTouchEvent ? (event.touches[0] || event.changedTouches[0]) : event;
+  
+  const x = eventData.clientX;
+  const y = eventData.clientY;
 
   // Validate coordinates
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
