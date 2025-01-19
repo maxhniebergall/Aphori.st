@@ -101,16 +101,25 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
     let initialOffset = null;
     let finalOffset = null;
 
-    // Add cleanup function for unexpected mouse up events
+    const cleanupEventListeners = () => {
+        console.log("Cleaning up event listeners");
+        if (boundThrottledAnimationRef.current) {
+            containerRef.current?.removeEventListener('mousemove', boundThrottledAnimationRef.current);
+            containerRef.current?.removeEventListener('touchmove', boundThrottledAnimationRef.current, {
+                capture: true
+            });
+            boundThrottledAnimationRef.current = null;
+        }
+    };
+
     useEffect(() => {
         const handleGlobalMouseUp = () => {
             if (mouseIsDownRef.current) {
                 mouseIsDownRef.current = false;
-                removeExistingHighlights(containerRef.current);
-                if (boundThrottledAnimationRef.current) {
-                    containerRef.current?.removeEventListener('mousemove', boundThrottledAnimationRef.current);
-                    containerRef.current?.removeEventListener('touchmove', boundThrottledAnimationRef.current);
+                if (isDraggingRef.current) {
+                    removeExistingHighlights(containerRef.current);
                 }
+                cleanupEventListeners();
             }
         };
 
@@ -120,6 +129,7 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
         return () => {
             window.removeEventListener('mouseup', handleGlobalMouseUp);
             window.removeEventListener('touchend', handleGlobalMouseUp);
+            cleanupEventListeners();
         };
     }, []);
 
@@ -149,6 +159,9 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
         
         const text = containerRef.current.textContent;
         const { start, end } = getWordBoundaries(text, offset);
+        
+        // Remove any existing highlights before adding new one
+        removeExistingHighlights(containerRef.current);
         
         // Highlight the word
         highlightText(containerRef.current, start, end);
@@ -195,10 +208,10 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
         event.stopPropagation();
         
         mouseIsDownRef.current = false;
+        isDraggingRef.current = false;
         
-        // Use the stored reference to remove listeners
-        containerRef.current.removeEventListener('mousemove', boundThrottledAnimationRef.current);
-        containerRef.current.removeEventListener('touchmove', boundThrottledAnimationRef.current);
+        // Clean up event listeners
+        cleanupEventListeners();
         
         finalOffset = getCurrentOffset(containerRef.current, event);
         console.log("finalOffset", finalOffset);
@@ -210,20 +223,30 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
     }
 
     const handleSelectionCompleted = (event) => {
-        console.log("handleSelectionCompleted");
+        console.log("handleSelectionCompleted", { 
+            mouseIsDown: mouseIsDownRef.current,
+            isDragging: isDraggingRef.current,
+            initialOffset
+        });
         
         // Only process if mouse was down
         if (!mouseIsDownRef.current) {
+            console.log("Mouse wasn't down, ignoring");
             return;
         }
 
+        // Clean up event listeners first
+        cleanupEventListeners();
+
         // If not dragging, handle as word selection
         if (!isDraggingRef.current && initialOffset !== null) {
+            console.log("Handling as word selection");
             handleWordSelection(initialOffset);
             mouseIsDownRef.current = false;
             return;
         }
 
+        console.log("Handling as drag selection");
         const selection = endAnimationLoop(event);
         if (selection) {
             debouncedSelectionCallback(selection);
