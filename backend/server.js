@@ -1,6 +1,8 @@
 /* requirements
 - getUserById checks id with tolowercase
 - Accepts development token in non-production environments
+- Handles quote metadata in story creation and retrieval
+- Stores quote data with source post ID and selection range
 */
 
 import express, { json } from "express";
@@ -618,7 +620,10 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
                 quote: storyTree.quote ? {
                     text: storyTree.quote.text,
                     sourcePostId: storyTree.quote.sourcePostId,
-                    selectionRange: storyTree.quote.selectionRange
+                    selectionRange: {
+                        start: storyTree.quote.selectionRange.start,
+                        end: storyTree.quote.selectionRange.end
+                    }
                 } : null
             },
             totalNodes: nodes.length
@@ -633,7 +638,7 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
             const feedItem = {
                 id: uuid,
                 title: storyTree.title,
-                text: storyTree.content || storyTree.text, // Support both content and text fields
+                text: storyTree.content || storyTree.text,
                 author: {
                     id: req.user.id,
                     email: req.user.email
