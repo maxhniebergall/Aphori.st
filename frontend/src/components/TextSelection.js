@@ -113,6 +113,18 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
     };
 
     useEffect(() => {
+        console.log("TextSelection useEffect", { selectAll, clearSelection });
+        
+        // Handle selection state changes
+        if (containerRef.current) {
+            if (selectAll) {
+                highlightText(containerRef.current, 0, containerRef.current.textContent.length);
+            } else if (clearSelection) {
+                removeExistingHighlights(containerRef.current);
+            }
+        }
+
+        // Handle global mouse/touch events
         const handleGlobalMouseUp = () => {
             if (mouseIsDownRef.current) {
                 mouseIsDownRef.current = false;
@@ -131,16 +143,7 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
             window.removeEventListener('touchend', handleGlobalMouseUp);
             cleanupEventListeners();
         };
-    }, []);
-
-    useEffect(() => {
-        console.log("TextSelection useEffect selectAll", selectAll,clearSelection, containerRef.current, );
-        if (selectAll) {
-            highlightText(containerRef.current, 0, containerRef.current.textContent.length);
-        } else if (clearSelection) {
-            removeExistingHighlights(containerRef.current);
-        }
-    }, [children, containerRef, selectAll, clearSelection]);   
+    }, [children, selectAll, clearSelection, containerRef]);
 
     // Create debounced version of onSelectionCompleted
     const debouncedSelectionCallback = useRef(

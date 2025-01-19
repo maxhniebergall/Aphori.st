@@ -185,11 +185,18 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
   };
 
   const handleReplyButtonClick = () => {
+    // First, ensure clearSelection is false before making any changes
+    setClearSelection(false);
+    
     if (selectionState) {
-        // cancel button was clicked
+        // Cancel button was clicked
         setSelectionState(null);
         setSelectAll(false);
+        // Set clearSelection to true and reset it after a short delay
         setClearSelection(true);
+        setTimeout(() => {
+            setClearSelection(false);
+        }, 0);
     } else {
         // Select entire text when reply button is clicked without selection
         const currentSibling = loadedSiblings[currentSiblingIndex] || node;
@@ -198,7 +205,6 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
             end: currentSibling.text.length
         });
         setSelectAll(true);
-        setClearSelection(false);
     }
   };
 
