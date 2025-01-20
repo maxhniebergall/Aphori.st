@@ -27,9 +27,20 @@ import TextSelection from './TextSelection';
  * - Quote preview in reply mode
  * - Selection persistence via DOM
  * - Selection handles
+ * - Single reply editor display management
+ * - Dynamic height adjustments for reply editor
+ * - Proper cleanup of reply editor state
  */
 
-function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
+function StoryTreeNode({
+  postRootId, 
+  node, 
+  siblings, 
+  onSiblingChange,
+}) {
+  console.log('StoryTreeNode rendering:', { 
+    nodeId: node?.id });
+
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
@@ -178,39 +189,54 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
       <div className="story-tree-node-quote">
         {quote.text}
         <div className="story-tree-node-quote-source">
-          Quoted from <a href={`/story/${quote.sourcePostId}`}>original post</a>
+          Quoted from <a href={`/storyTree/${quote.sourcePostId}`}>original post</a>
         </div>
       </div>
     );
   };
 
   const handleReplyButtonClick = () => {
-    // First, ensure clearSelection is false before making any changes
-    setClearSelection(false);
-    
-    if (selectionState) {
-        // Cancel button was clicked
+    try {
+      console.log('Reply button clicked:', { 
+        currentSelectionState: selectionState      });
+      
+      setClearSelection(false);
+      
+      if (selectionState) {
+        console.log('Canceling reply');
         setSelectionState(null);
         setSelectAll(false);
-        // Set clearSelection to true and reset it after a short delay
         setClearSelection(true);
         setTimeout(() => {
-            setClearSelection(false);
+          setClearSelection(false);
         }, 0);
-    } else {
-        // Select entire text when reply button is clicked without selection
+      } else {
+        console.log('Opening reply editor');
         const currentSibling = loadedSiblings[currentSiblingIndex] || node;
+        if (!currentSibling?.text) {
+          console.warn('Cannot open reply editor: invalid text content');
+          return;
+        }
         setSelectionState({
-            start: 0,
-            end: currentSibling.text.length
+          start: 0,
+          end: currentSibling.text.length
         });
         setSelectAll(true);
+      }
+    } catch (error) {
+      console.error('Error handling reply button click:', error);
+      // Ensure we clean up state in case of error
+      setSelectionState(null);
+      setSelectAll(false);
+      setClearSelection(false);
     }
   };
 
   const renderContent = () => {
-    if (!currentSibling?.text) return null;
-
+    const currentSibling = loadedSiblings[currentSiblingIndex] || node;
+    if (!currentSibling?.text) {
+      return null;
+    }
     return (
       <div className="story-tree-node-text">
         {renderQuote()} 
@@ -230,6 +256,11 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
   };
 
   const renderReplyEditor = () => {
+    console.log('Attempting to render reply editor:', {
+      hasSelectionState: !!selectionState,
+      willRender: !!(selectionState)
+    });
+
     if (!selectionState) return null;
 
     const selectedText = currentSibling.text.slice(selectionState.start, selectionState.end);
@@ -267,12 +298,11 @@ function StoryTreeNode({postRootId, node, siblings, onSiblingChange }) {
                 sourcePostId: currentSibling.id,
                 selectionRange: selectionState
               });
-              setSelectionState(null);
             }}
             disabled={!replyContent.trim()}
             className="submit-reply-button"
           >
-            Submit Reply
+            Submit
           </button>
           <button 
             onClick={() => {

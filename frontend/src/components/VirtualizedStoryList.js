@@ -32,7 +32,6 @@ const Row = React.memo(({
     const updateSize = () => {
       if (rowRefs.current[index]) {
         const element = rowRefs.current[index];
-        // Create a temporary div to measure the natural height
         const tempDiv = document.createElement('div');
         tempDiv.style.position = 'absolute';
         tempDiv.style.visibility = 'hidden';
@@ -41,10 +40,10 @@ const Row = React.memo(({
         tempDiv.innerHTML = element.innerHTML;
         document.body.appendChild(tempDiv);
         
-        const naturalHeight = tempDiv.offsetHeight;
-        document.body.removeChild(tempDiv);
+        let naturalHeight = tempDiv.offsetHeight;
         
-        setSize(index, naturalHeight + 32); // Add padding
+        document.body.removeChild(tempDiv);
+        setSize(index, naturalHeight + 32);
       }
     };
 
@@ -141,7 +140,6 @@ function VirtualizedStoryList({
   const [listHeight, setListHeight] = useState(window.innerHeight);
   const [totalContentHeight, setTotalContentHeight] = useState(0);
 
-  // Add resize observer to update list height
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -166,7 +164,6 @@ function VirtualizedStoryList({
   }, []);
 
   const getSize = useCallback((index) => {
-    // Ensure minimum height for rows
     return Math.max(sizeMap.current[index] || 200, 100);
   }, []);
 
@@ -190,8 +187,7 @@ function VirtualizedStoryList({
   const renderRow = ({ index, style }) => {
     const node = items[index];
     const isLoading = !isItemLoaded(index);
-        
-    // Return loading placeholder if item is not loaded yet
+    
     if (isLoading) {
       return (
         <div 
@@ -213,7 +209,6 @@ function VirtualizedStoryList({
       );
     }
 
-    // Return empty placeholder if node is undefined or invalid
     if (!node || typeof node !== 'object') {
       console.warn(`Invalid or undefined node at index ${index}:`, node);
       return (
@@ -252,12 +247,10 @@ function VirtualizedStoryList({
     );
   };
 
-  // Don't render if there are no items and we're not expecting any
   if (!items?.length && !hasNextPage) {
     return null;
   }
 
-  // Calculate total items based on root node's nodes array length plus one (for root node)
   const rootNode = items[0];
   const totalPossibleItems = rootNode?.nodes?.length ? rootNode.nodes.length + 1 : items.length || 1;
   const itemCount = hasNextPage ? Math.max(items.length + 1, totalPossibleItems) : items.length;

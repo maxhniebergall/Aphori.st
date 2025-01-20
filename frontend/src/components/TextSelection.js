@@ -139,9 +139,11 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
         window.addEventListener('touchend', handleGlobalMouseUp);
 
         return () => {
-            window.removeEventListener('mouseup', handleGlobalMouseUp);
-            window.removeEventListener('touchend', handleGlobalMouseUp);
-            cleanupEventListeners();
+            if (!selectAll && !clearSelection) {
+                window.removeEventListener('mouseup', handleGlobalMouseUp);
+                window.removeEventListener('touchend', handleGlobalMouseUp);
+                cleanupEventListeners();
+            }
         };
     }, [children, selectAll, clearSelection, containerRef]);
 
