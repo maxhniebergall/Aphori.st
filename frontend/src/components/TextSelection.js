@@ -113,13 +113,13 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
     };
 
     useEffect(() => {
-        console.log("TextSelection useEffect", { selectAll, clearSelection });
+        console.log("TextSelection useEffect", { selectAll });
         
         // Handle selection state changes
         if (containerRef.current) {
             if (selectAll) {
                 highlightText(containerRef.current, 0, containerRef.current.textContent.length);
-            } else if (clearSelection) {
+            } else {
                 removeExistingHighlights(containerRef.current);
             }
         }
@@ -139,13 +139,13 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
         window.addEventListener('touchend', handleGlobalMouseUp);
 
         return () => {
-            if (!selectAll && !clearSelection) {
+            if (!selectAll) {
                 window.removeEventListener('mouseup', handleGlobalMouseUp);
                 window.removeEventListener('touchend', handleGlobalMouseUp);
                 cleanupEventListeners();
             }
         };
-    }, [children, selectAll, clearSelection, containerRef]);
+    }, [children, selectAll, containerRef]);
 
     // Create debounced version of onSelectionCompleted
     const debouncedSelectionCallback = useRef(

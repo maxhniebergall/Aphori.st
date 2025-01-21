@@ -31,11 +31,14 @@ import { useSiblingNavigation } from '../hooks/useSiblingNavigation';
 import MDEditor from '@uiw/react-md-editor';
 import '@uiw/react-md-editor/markdown-editor.css';
 import rehypeSanitize from 'rehype-sanitize';
+import { ReplyProvider, useReplyContext } from '../context/ReplyContext';
 
 function StoryTreeHolder() {
   return (
     <StoryTreeProvider>
-      <StoryTreeContent />
+      <ReplyProvider>
+        <StoryTreeContent />
+      </ReplyProvider>
     </StoryTreeProvider>
   );
 }
@@ -47,9 +50,14 @@ function StoryTreeContent() {
   const { handleSiblingChange } = useSiblingNavigation();
   const { state, dispatch } = useStoryTree();
   const [isOperatorInitialized, setIsOperatorInitialized] = useState(false);
-  const [replyContent, setReplyContent] = useState('');
-  const [replyTarget, setReplyTarget] = useState(null);
-  const [selectionState, setSelectionState] = useState(null);
+  const { 
+    replyTarget, 
+    setReplyTarget,
+    replyContent,
+    setReplyContent,
+    selectionState,
+    setSelectionState 
+  } = useReplyContext();
   
   useEffect(() => {
     if (state && dispatch) {
@@ -94,16 +102,25 @@ function StoryTreeContent() {
     if (!replyTarget || !selectionState) return;
 
     try {
-      const selectedText = replyTarget.text.slice(selectionState.start, selectionState.end);
+      const quoteData = selectionState ? {
+        quote: replyTarget.text.slice(selectionState.start, selectionState.end),
+        sourcePostId: replyTarget.id,
+        selectionRange: selectionState
+      } : {
+        quote: replyTarget.text,
+        sourcePostId: replyTarget.id,
+        selectionRange: {
+          start: 0,
+          end: replyTarget.text.length
+        }
+      };
+
       const result = await storyTreeOperator.submitReply(
         replyTarget.id,
         replyContent,
-        {
-          quote: selectedText,
-          sourcePostId: replyTarget.id,
-          selectionRange: selectionState
-        }
+        quoteData
       );
+      
       if (result) {
         setReplyContent('');
         setReplyTarget(null);
@@ -112,25 +129,23 @@ function StoryTreeContent() {
     } catch (error) {
       console.error('Error submitting reply:', error);
     }
-  }, [replyTarget, selectionState, replyContent]);
+  }, [replyTarget, selectionState, replyContent, setReplyContent, setReplyTarget, setSelectionState]);
 
   const handleReplyCancel = useCallback(() => {
     setReplyContent('');
     setReplyTarget(null);
     setSelectionState(null);
-  }, []);
-
-  const handleNodeReply = useCallback((node, selection) => {
-    setReplyTarget(node);
-    setSelectionState(selection);
-  }, []);
+  }, [setReplyContent, setReplyTarget, setSelectionState]);
 
   if (!isOperatorInitialized) {
     return <div>Loading...</div>;
   }
 
   const renderReplyEditor = () => {
-    if (!replyTarget || !selectionState) return null;
+    if (!replyTarget || !selectionState) {
+      console.log("No reply target or selection state", replyTarget, selectionState);
+      return null;
+    }
 
     const selectedText = replyTarget.text.slice(selectionState.start, selectionState.end);
     console.log("selectedText", selectedText);
@@ -187,8 +202,6 @@ function StoryTreeContent() {
           fetchNode={storyTreeOperator.fetchNode}
           setIsFocused={storyTreeOperator.setCurrentFocus}
           handleSiblingChange={handleSiblingChange}
-          onNodeReply={handleNodeReply}
-          replyTarget={replyTarget}
         />
         {renderReplyEditor()}
       </div>
@@ -196,4 +209,4 @@ function StoryTreeContent() {
   );
 }
 
-export default StoryTreeHolder; 
+export default StoryTreeHolder;

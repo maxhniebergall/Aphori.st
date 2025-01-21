@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useStoryTree } from '../context/StoryTreeContext';
 import TextSelection from './TextSelection';
+import { useReplyContext } from '../context/ReplyContext';
 /*
  * Requirements:
  * - @use-gesture/react: For gesture handling
@@ -27,8 +28,6 @@ function StoryTreeNode({
   node, 
   siblings, 
   onSiblingChange,
-  onNodeReply,
-  isReplyTarget,
 }) {
   console.log('StoryTreeNode rendering:', { 
     nodeId: node?.id });
@@ -38,8 +37,9 @@ function StoryTreeNode({
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
   const { state, dispatch } = useStoryTree();
   const [selectAll, setSelectAll] = useState(false);
-  const [clearSelection, setClearSelection] = useState(false);
   const nodeRef = useRef(null);
+  const { setReplyTarget, replyTarget, setSelectionState } = useReplyContext();
+  const isReplyTarget = replyTarget?.id === node?.id;
 
   // Update the operator's context whenever state or dispatch changes
   useEffect(() => {
@@ -168,31 +168,17 @@ function StoryTreeNode({
   };
 
   const handleReplyButtonClick = () => {
-    try {
-      if (isReplyTarget) {
-        onNodeReply?.(null, null);
-        setSelectAll(false);
-        setClearSelection(true);
-        setTimeout(() => {
-          setClearSelection(false);
-        }, 0);
-      } else {
-        if (!currentSibling?.text) {
-          console.warn('Cannot open reply editor: invalid text content');
-          return;
-        }
-        const selection = {
-          start: 0,
-          end: currentSibling.text.length
-        };
-        onNodeReply?.(currentSibling, selection);
-        setSelectAll(true);
-      }
-    } catch (error) {
-      console.error('Error handling reply button click:', error);
-      onNodeReply?.(null, null);
+    if (isReplyTarget) {
+      setReplyTarget(null);
+      setSelectionState(null);
       setSelectAll(false);
-      setClearSelection(false);
+    } else {
+      setReplyTarget(currentSibling);
+      setSelectionState({
+        start: 0,
+        end: currentSibling.text.length
+      });
+      setSelectAll(true);
     }
   };
 
@@ -206,12 +192,12 @@ function StoryTreeNode({
         {renderQuote()} 
         <TextSelection 
           onSelectionCompleted={(selection) => {
-            onNodeReply?.(currentSibling, selection);
+            onSiblingChange?.(currentSibling);
             setSelectAll(false);
+            setReplyTarget(currentSibling);
+            setSelectionState(selection);
           }}
-          key={""+postRootId+currentSibling.id}
           selectAll={selectAll}
-          clearSelection={clearSelection}
         >
           {currentSibling.text}
         </TextSelection>
