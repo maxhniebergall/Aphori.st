@@ -3,18 +3,12 @@ import { useGesture } from '@use-gesture/react';
 import { motion } from 'framer-motion';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useStoryTree } from '../context/StoryTreeContext';
-import MDEditor from '@uiw/react-md-editor';
-import '@uiw/react-md-editor/markdown-editor.css';
-import rehypeSanitize from 'rehype-sanitize';
 import TextSelection from './TextSelection';
 /*
  * Requirements:
  * - @use-gesture/react: For gesture handling
  * - framer-motion: For animations
- * - @uiw/react-md-editor: For markdown editing and preview
- * - @uiw/react-md-editor/markdown-editor.css: Required CSS for markdown editor
  * - react: Core React functionality
- * - rehype-sanitize: For markdown sanitization (required by md-editor)
  * - Proper null checking for node and node.id
  * - Safe handling of undefined siblings
  * - Proper state management for sibling navigation
@@ -22,14 +16,9 @@ import TextSelection from './TextSelection';
  * - Hooks must be called in the same order every render
  * - Use StoryTreeOperator for node fetching
  * - Markdown rendering support with GitHub-flavored markdown
- * - Reply functionality with node targeting
  * - Text selection support for replies
- * - Quote preview in reply mode
  * - Selection persistence via DOM
  * - Selection handles
- * - Single reply editor display management
- * - Dynamic height adjustments for reply editor
- * - Proper cleanup of reply editor state
  */
 
 function StoryTreeNode({
@@ -37,6 +26,8 @@ function StoryTreeNode({
   node, 
   siblings, 
   onSiblingChange,
+  onNodeReply,
+  isReplyTarget,
 }) {
   console.log('StoryTreeNode rendering:', { 
     nodeId: node?.id });
@@ -45,8 +36,6 @@ function StoryTreeNode({
   const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
   const { state, dispatch } = useStoryTree();
-  const [replyContent, setReplyContent] = useState('');
-  const [selectionState, setSelectionState] = useState(null);
   const [selectAll, setSelectAll] = useState(false);
   const [clearSelection, setClearSelection] = useState(false);
   const nodeRef = useRef(null);
@@ -63,25 +52,6 @@ function StoryTreeNode({
       setCurrentSiblingIndex(index !== -1 ? index : 0);
     }
   }, [node?.id, siblings]);
-
-  const onReplySubmit = useCallback(async (replyData) => {
-    try {
-      const result = await storyTreeOperator.submitReply(
-        node.id,
-        replyData.content,
-        replyData.quote ? {
-          quote: replyData.quote,
-          sourcePostId: replyData.sourcePostId,
-          selectionRange: replyData.selectionRange
-        } : null
-      );
-      if (result) {
-        setReplyContent('');
-      }
-    } catch (error) {
-      console.error('Error submitting reply:', error);
-    }
-  }, [node.id]);
 
   const loadNextSibling = useCallback(async () => {
     if (isLoadingSibling || !siblings || currentSiblingIndex >= siblings.length - 1) return;
@@ -197,36 +167,28 @@ function StoryTreeNode({
 
   const handleReplyButtonClick = () => {
     try {
-      console.log('Reply button clicked:', { 
-        currentSelectionState: selectionState      });
-      
-      setClearSelection(false);
-      
-      if (selectionState) {
-        console.log('Canceling reply');
-        setSelectionState(null);
+      if (isReplyTarget) {
+        onNodeReply?.(null, null);
         setSelectAll(false);
         setClearSelection(true);
         setTimeout(() => {
           setClearSelection(false);
         }, 0);
       } else {
-        console.log('Opening reply editor');
-        const currentSibling = loadedSiblings[currentSiblingIndex] || node;
         if (!currentSibling?.text) {
           console.warn('Cannot open reply editor: invalid text content');
           return;
         }
-        setSelectionState({
+        const selection = {
           start: 0,
           end: currentSibling.text.length
-        });
+        };
+        onNodeReply?.(currentSibling, selection);
         setSelectAll(true);
       }
     } catch (error) {
       console.error('Error handling reply button click:', error);
-      // Ensure we clean up state in case of error
-      setSelectionState(null);
+      onNodeReply?.(null, null);
       setSelectAll(false);
       setClearSelection(false);
     }
@@ -242,7 +204,7 @@ function StoryTreeNode({
         {renderQuote()} 
         <TextSelection 
           onSelectionCompleted={(selection) => {
-            setSelectionState(selection);
+            onNodeReply?.(currentSibling, selection);
             setSelectAll(false);
           }}
           key={""+postRootId+currentSibling.id}
@@ -255,71 +217,9 @@ function StoryTreeNode({
     );
   };
 
-  const renderReplyEditor = () => {
-    console.log('Attempting to render reply editor:', {
-      hasSelectionState: !!selectionState,
-      willRender: !!(selectionState)
-    });
-
-    if (!selectionState) return null;
-
-    const selectedText = currentSibling.text.slice(selectionState.start, selectionState.end);
-
-    return (
-      <div className="reply-editor-container">
-        {selectedText && (
-          <div className="quote-preview">
-            <blockquote>
-              {selectedText}
-            </blockquote>
-          </div>
-        )}
-        <div data-color-mode="light">
-          <MDEditor
-            value={replyContent}
-            onChange={setReplyContent}
-            preview="edit"
-            height={200}
-            textareaProps={{
-              placeholder: "Write your reply using Markdown...",
-              autoFocus: true
-            }}
-            previewOptions={{
-              rehypePlugins: [[rehypeSanitize]]
-            }}
-          />
-        </div>
-        <div className="reply-actions">
-          <button 
-            onClick={() => {
-              onReplySubmit({
-                content: replyContent,
-                quote: selectedText,
-                sourcePostId: currentSibling.id,
-                selectionRange: selectionState
-              });
-            }}
-            disabled={!replyContent.trim()}
-            className="submit-reply-button"
-          >
-            Submit
-          </button>
-          <button 
-            onClick={() => {
-              setSelectionState(null);
-            }}
-            className="cancel-reply-button"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <motion.div
-      className={`story-tree-node}`}
+      className={`story-tree-node ${isReplyTarget ? 'reply-target' : ''}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -332,7 +232,6 @@ function StoryTreeNode({
         id={currentSibling.id}
       >
         {renderContent()}
-        {selectionState && renderReplyEditor()}
         <div className="story-tree-node-footer">
           <div className="footer-left">
             <button 
@@ -340,7 +239,7 @@ function StoryTreeNode({
               onClick={handleReplyButtonClick}
               aria-label="Reply to this message"
             >
-              {selectionState ? 'Cancel Reply' : 'Reply'}
+              {isReplyTarget ? 'Cancel Reply' : 'Reply'}
             </button>
           </div>
           <div className="footer-right">

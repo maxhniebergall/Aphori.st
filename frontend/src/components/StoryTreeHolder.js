@@ -11,9 +11,12 @@
  * - Navigation handling
  * - Title and subtitle display
  * - Context provider wrapping
+ * - @uiw/react-md-editor: For markdown editing and preview
+ * - @uiw/react-md-editor/markdown-editor.css: Required CSS for markdown editor
+ * - rehype-sanitize: For markdown sanitization
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './StoryTree.css';
 import Header from './Header';
@@ -25,6 +28,9 @@ import {
 import VirtualizedStoryList from './VirtualizedStoryList';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useSiblingNavigation } from '../hooks/useSiblingNavigation';
+import MDEditor from '@uiw/react-md-editor';
+import '@uiw/react-md-editor/markdown-editor.css';
+import rehypeSanitize from 'rehype-sanitize';
 
 function StoryTreeHolder() {
   return (
@@ -41,6 +47,9 @@ function StoryTreeContent() {
   const { handleSiblingChange } = useSiblingNavigation();
   const { state, dispatch } = useStoryTree();
   const [isOperatorInitialized, setIsOperatorInitialized] = useState(false);
+  const [replyContent, setReplyContent] = useState('');
+  const [replyTarget, setReplyTarget] = useState(null);
+  const [selectionState, setSelectionState] = useState(null);
   
   useEffect(() => {
     if (state && dispatch) {
@@ -75,14 +84,96 @@ function StoryTreeContent() {
     }
   }, [rootUUID, dispatch, isOperatorInitialized]);
 
+  const handleReplySubmit = useCallback(async () => {
+    if (!replyTarget || !selectionState) return;
+
+    try {
+      const selectedText = replyTarget.text.slice(selectionState.start, selectionState.end);
+      const result = await storyTreeOperator.submitReply(
+        replyTarget.id,
+        replyContent,
+        {
+          quote: selectedText,
+          sourcePostId: replyTarget.id,
+          selectionRange: selectionState
+        }
+      );
+      if (result) {
+        setReplyContent('');
+        setReplyTarget(null);
+        setSelectionState(null);
+      }
+    } catch (error) {
+      console.error('Error submitting reply:', error);
+    }
+  }, [replyTarget, selectionState, replyContent]);
+
+  const handleReplyCancel = useCallback(() => {
+    setReplyContent('');
+    setReplyTarget(null);
+    setSelectionState(null);
+  }, []);
+
+  const handleNodeReply = useCallback((node, selection) => {
+    setReplyTarget(node);
+    setSelectionState(selection);
+  }, []);
+
   const { rootNode } = state;
   const title = rootNode?.metadata?.title || '';
   const subtitle = rootNode?.metadata?.author ? `by ${rootNode.metadata.author}` : '';
 
-
   if (!isOperatorInitialized) {
     return <div>Loading...</div>;
   }
+
+  const renderReplyEditor = () => {
+    if (!replyTarget || !selectionState) return null;
+
+    const selectedText = replyTarget.text.slice(selectionState.start, selectionState.end);
+
+    return (
+      <div className="reply-editor-container">
+        {selectedText && (
+          <div className="quote-preview">
+            <blockquote>
+              {selectedText}
+            </blockquote>
+          </div>
+        )}
+        <div data-color-mode="light">
+          <MDEditor
+            value={replyContent}
+            onChange={setReplyContent}
+            preview="edit"
+            height={200}
+            textareaProps={{
+              placeholder: "Write your reply using Markdown...",
+              autoFocus: true
+            }}
+            previewOptions={{
+              rehypePlugins: [[rehypeSanitize]]
+            }}
+          />
+        </div>
+        <div className="reply-actions">
+          <button 
+            onClick={handleReplySubmit}
+            disabled={!replyContent.trim()}
+            className="submit-reply-button"
+          >
+            Submit
+          </button>
+          <button 
+            onClick={handleReplyCancel}
+            className="cancel-reply-button"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="story-tree-container">
@@ -105,7 +196,10 @@ function StoryTreeContent() {
           fetchNode={storyTreeOperator.fetchNode}
           setIsFocused={storyTreeOperator.setCurrentFocus}
           handleSiblingChange={handleSiblingChange}
+          onNodeReply={handleNodeReply}
+          replyTarget={replyTarget}
         />
+        {renderReplyEditor()}
       </div>
     </div>
   );
