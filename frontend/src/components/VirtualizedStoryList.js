@@ -32,8 +32,6 @@ const Row = React.memo(({
   fetchNode,
   isLoading,
   postRootId,
-  onNodeReply,
-  replyTarget,
 }) => {
   React.useEffect(() => {
     const updateSize = () => {
@@ -123,15 +121,7 @@ const Row = React.memo(({
     <div 
       ref={el => rowRefs.current[index] = el} 
       className="row-container"
-      style={{
-        ...style,
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        width: '100%',
-        padding: '0 20px',
-        boxSizing: 'border-box'
-      }}
+      style={{...style}}
     >
       <StoryTreeNode
         key={node?.id}
@@ -139,10 +129,14 @@ const Row = React.memo(({
         siblings={Array.isArray(node?.siblings) ? node.siblings : []}
         onSiblingChange={(newNode) => handleSiblingChange(newNode, index, fetchNode)}
         postRootId={postRootId}
-        onNodeReply={onNodeReply}
-        isReplyTarget={replyTarget?.id === node?.id}
       />
     </div>
+  );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.node?.id === nextProps.node?.id &&
+    prevProps.style === nextProps.style &&
+    prevProps.isLoading === nextProps.isLoading
   );
 });
 
@@ -208,8 +202,6 @@ function VirtualizedStoryList({
         fetchNode={fetchNode}
         isLoading={isLoading}
         postRootId={postRootId}
-        onNodeReply={onNodeReply}
-        replyTarget={replyTarget}
       />
     );
   };
