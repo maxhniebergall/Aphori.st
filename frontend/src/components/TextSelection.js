@@ -11,9 +11,9 @@
  * - User can select text forward or backward
  * - Custom handles for adjusting selection
  * - Mouse state tracking to prevent stuck animations
+ * - Selection state should be stored externally in ReplyContext
  */
-
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { getCurrentOffset, getWordBoundaries } from '../utils/selectionUtils';
 import './TextSelection.css';
 import { throttle, debounce } from 'lodash';
@@ -93,7 +93,7 @@ function highlightText(element, startOffset, endOffset) {
     }
 }
 
-const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelection}) => {
+const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionState }) => {
     const containerRef = useRef(null);
     const boundThrottledAnimationRef = useRef(null);
     const mouseIsDownRef = useRef(false);
@@ -113,12 +113,14 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
     };
 
     useEffect(() => {
-        console.log("TextSelection useEffect", { selectAll });
+        console.log("TextSelection useEffect", { selectAll, selectionState });
         
         // Handle selection state changes
         if (containerRef.current) {
             if (selectAll) {
                 highlightText(containerRef.current, 0, containerRef.current.textContent.length);
+            } else if (selectionState) {
+                highlightText(containerRef.current, selectionState.start, selectionState.end);
             } else {
                 removeExistingHighlights(containerRef.current);
             }
@@ -145,19 +147,7 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
                 cleanupEventListeners();
             }
         };
-    }, [children, selectAll, containerRef]);
-
-    // Create debounced version of onSelectionCompleted
-    const debouncedSelectionCallback = useRef(
-        debounce((selection) => {
-            if (selection.start > selection.end) {
-                // If the selection is backwards, swap the start and end
-                onSelectionCompleted({start: selection.end, end: selection.start});
-            } else {
-                onSelectionCompleted(selection);
-            }
-        }, 250)
-    ).current;
+    }, [children, selectAll, containerRef, selectionState]);
 
     const handleWordSelection = (offset) => {
         if (!containerRef.current) return;
@@ -172,7 +162,7 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
         highlightText(containerRef.current, start, end);
         
         // Notify parent of selection
-        debouncedSelectionCallback({ start, end });
+        onSelectionCompleted({ start, end });
     };
 
     const animateSelection = (event) => {
@@ -254,7 +244,7 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, clearSelecti
         console.log("Handling as drag selection");
         const selection = endAnimationLoop(event);
         if (selection) {
-            debouncedSelectionCallback(selection);
+            onSelectionCompleted(selection);
         }
     }
   
