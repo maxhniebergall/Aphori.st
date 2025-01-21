@@ -13,6 +13,7 @@
  * - Implement minimumBatchSize and threshold for InfiniteLoader
  * - Implement overscanCount for react-window List
  * - Use AutoSizer for dynamic list sizing
+ * - Display story title and subtitle in the root node
  */
 
 import React, { useCallback, useRef, useEffect, useState } from 'react';

@@ -92,7 +92,7 @@ html, body, #root {
   box-sizing: border-box;
   overflow: visible;
   background-color: #fff;
-  padding: 12px;
+  padding: 8px;
   border-radius: 8px;
   touch-action: pan-y;
 }
@@ -193,9 +193,7 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #edf2f7;
+  padding-bottom: 8px;
   overflow: visible;
 }
 
@@ -277,9 +275,7 @@ button {
 
 /* Title section styling */
 .story-title-section {
-  padding: 24px 20px;
   text-align: center;
-  background-color: #f8f9fa;
   flex-shrink: 0;
 }
 
@@ -379,8 +375,6 @@ h2 {
 .story-tree-node.reply-target {
   border: 2px solid rgba(0, 122, 255, 0.3);
   border-radius: 8px;
-  padding: 16px;
-  margin: -16px;
   background-color: rgba(0, 122, 255, 0.05);
 }
 
