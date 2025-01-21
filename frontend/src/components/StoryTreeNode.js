@@ -21,6 +21,7 @@ import { useReplyContext } from '../context/ReplyContext';
  * - Selection persistence via DOM
  * - Selection handles
  * - Render story title if node is root
+ * - Use ReplyContext for selection state
  */
 
 function StoryTreeNode({
@@ -38,7 +39,7 @@ function StoryTreeNode({
   const { state, dispatch } = useStoryTree();
   const [selectAll, setSelectAll] = useState(false);
   const nodeRef = useRef(null);
-  const { setReplyTarget, replyTarget, setSelectionState } = useReplyContext();
+  const { setReplyTarget, replyTarget, setSelectionState, selectionState } = useReplyContext();
   const isReplyTarget = replyTarget?.id === node?.id;
 
   // Update the operator's context whenever state or dispatch changes
@@ -182,6 +183,13 @@ function StoryTreeNode({
     }
   };
 
+  const handleTextSelectionCompleted = (selection) => {
+    onSiblingChange?.(currentSibling);
+    setSelectAll(false);
+    setReplyTarget(currentSibling);
+    setSelectionState(selection);
+  };
+
   const renderContent = () => {
     const currentSibling = loadedSiblings[currentSiblingIndex] || node;
     if (!currentSibling?.text) {
@@ -191,13 +199,9 @@ function StoryTreeNode({
       <div className="story-tree-node-text">
         {renderQuote()} 
         <TextSelection 
-          onSelectionCompleted={(selection) => {
-            onSiblingChange?.(currentSibling);
-            setSelectAll(false);
-            setReplyTarget(currentSibling);
-            setSelectionState(selection);
-          }}
+          onSelectionCompleted={handleTextSelectionCompleted}
           selectAll={selectAll}
+          selectionState={isReplyTarget ? selectionState : null}
         >
           {currentSibling.text}
         </TextSelection>
