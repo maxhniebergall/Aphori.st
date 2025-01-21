@@ -30,6 +30,7 @@ export const ACTIONS = {
   SET_INITIAL_LOADING: 'SET_INITIAL_LOADING',
   SET_PAGINATION_LOADING: 'SET_PAGINATION_LOADING',
   HANDLE_SIBLING_CHANGE: 'HANDLE_SIBLING_CHANGE',
+  SET_LOADING_STATE: 'SET_LOADING_STATE',
 };
 
 // Add these at the top of the file
@@ -111,6 +112,12 @@ function storyTreeReducer(state, action) {
       return {
         ...state,
         currentNode: action.payload,
+      };
+
+    case ACTIONS.SET_LOADING_STATE:
+      return {
+        ...state,
+        loadingState: action.payload,
       };
 
     default:
