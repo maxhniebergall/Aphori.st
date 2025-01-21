@@ -63,15 +63,21 @@ function StoryTreeContent() {
       if (!isOperatorInitialized) return;
 
       try {
-        const data = await storyTreeOperator.fetchRootNode(rootUUID);
+        const allNodes = await storyTreeOperator.fetchRootNode(rootUUID);
         
-        if (!data || !data.id) {
-          console.error('Invalid data structure received:', data);
+        if (!allNodes || allNodes.length === 0) {
+          console.error('Invalid data structure received:', allNodes);
           return;
         }
         
-        dispatch({ type: ACTIONS.SET_ROOT_NODE, payload: data });
-        dispatch({ type: ACTIONS.SET_ITEMS, payload: [data] });
+        const rootNode = allNodes.find(node => node.id === rootUUID);
+        if (!rootNode) {
+          console.error('Root node not found in fetched nodes:', allNodes);
+          return;
+        }
+
+        dispatch({ type: ACTIONS.SET_ROOT_NODE, payload: rootNode });
+        dispatch({ type: ACTIONS.SET_ITEMS, payload: allNodes });
       } catch (error) {
         console.error('Error fetching story data:', error);
       }

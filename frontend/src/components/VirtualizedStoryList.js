@@ -166,16 +166,15 @@ function VirtualizedStoryList({
 
   useEffect(() => {
     const handleResize = () => {
-      const headerHeight = document.querySelector('.story-tree-header')?.offsetHeight || 0;
-      const titleHeight = document.querySelector('.story-title-section')?.offsetHeight || 0;
-      const availableHeight = window.innerHeight - headerHeight - titleHeight;
-      // setListHeight(availableHeight); // No longer needed
+      if (!containerRef.current) return;
+      const containerHeight = containerRef.current.clientHeight;
+      setSize(containerHeight);
     };
 
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [totalContentHeight]);
+  }, [totalContentHeight, setSize]);
 
   const renderRow = ({ index, style }) => {
     const node = items[index];

@@ -57,11 +57,19 @@ class StoryTreeOperator extends BaseOperator {
     this.dispatch = dispatch;
   }
 
+  updateLoadingState(loadingState) {
+    if (this.dispatch) {
+      this.dispatch({ type: ACTIONS.SET_LOADING_STATE, payload: loadingState });
+    } else {
+      console.warn('Dispatch not initialized in StoryTreeOperator');
+    }
+  }
+
   validateNode(node) {
     return node && typeof node === 'object' && typeof node.id === 'string';
   }
 
-  async fetchRootNode(uuid) {
+  async fetchRootNode(uuid, fetchedNodes = {}) {
     try {
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/storyTree/${uuid}`
@@ -71,8 +79,18 @@ class StoryTreeOperator extends BaseOperator {
         console.error('Invalid root node data received:', node);
         return null;
       }
-      return node;
-    } catch (error) { 
+
+      fetchedNodes[node.id] = node;
+
+      if (node.nodes && node.nodes.length > 0) {
+        for (const childNode of node.nodes) {
+          if (childNode.id && !fetchedNodes[childNode.id]) {
+            await this.fetchRootNode(childNode.id, fetchedNodes);
+          }
+        }
+      }
+      return Object.values(fetchedNodes);
+    } catch (error) {
       console.error('Error fetching root node:', error);
       return null;
     }
