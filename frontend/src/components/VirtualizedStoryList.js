@@ -39,18 +39,32 @@ const Row = React.memo(({
     const updateSize = () => {
       if (rowRefs.current[index]) {
         const element = rowRefs.current[index];
-        const tempDiv = document.createElement('div');
-        tempDiv.style.position = 'absolute';
-        tempDiv.style.visibility = 'hidden';
-        tempDiv.style.height = 'auto';
-        tempDiv.style.width = element.offsetWidth + 'px';
-        tempDiv.innerHTML = element.innerHTML;
-        document.body.appendChild(tempDiv);
         
-        let naturalHeight = tempDiv.offsetHeight;
+        // Get the actual rendered height including all children
+        const titleSection = element.querySelector('.story-title-section');
+        const textSection = element.querySelector('.story-tree-node-text');
+        const footer = element.querySelector('.story-tree-node-footer');
         
-        document.body.removeChild(tempDiv);
-        setSize(index, naturalHeight + 32);
+        let totalHeight = 0;
+        
+        // Add heights of all sections
+        if (titleSection) {
+          totalHeight += titleSection.offsetHeight;
+        }
+        if (textSection) {
+          totalHeight += textSection.offsetHeight;
+        }
+        if (footer) {
+          totalHeight += footer.offsetHeight;
+        }
+        
+        // Add padding
+        totalHeight += 32; // Standard padding
+        
+        // Set minimum height
+        totalHeight = Math.max(totalHeight, 100);
+        
+        setSize(index, totalHeight);
       }
     };
 
@@ -63,7 +77,7 @@ const Row = React.memo(({
       resizeObserver.observe(rowRefs.current[index]);
       return () => resizeObserver.disconnect();
     }
-  }, [setSize, index, rowRefs]);
+  }, [setSize, index, rowRefs, node, postRootId]);
   
   if (isLoading) {
     return (
