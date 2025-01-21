@@ -19,6 +19,7 @@ import TextSelection from './TextSelection';
  * - Text selection support for replies
  * - Selection persistence via DOM
  * - Selection handles
+ * - Render story title if node is root
  */
 
 function StoryTreeNode({
@@ -150,6 +151,7 @@ function StoryTreeNode({
   const hasSiblings = siblings && siblings.length > 1;
   const hasNextSibling = siblings && currentSiblingIndex < siblings.length - 1;
   const hasPreviousSibling = currentSiblingIndex > 0;
+  const isRootNode = node?.id === postRootId;
 
   const renderQuote = () => {
     if (!currentSibling?.metadata?.quote) return null;
@@ -231,6 +233,12 @@ function StoryTreeNode({
         className={`story-tree-node-content ${hasSiblings ? 'has-siblings' : ''}`}
         id={currentSibling.id}
       >
+        {isRootNode && currentSibling?.metadata?.title && (
+          <div className="story-title-section">
+            <h1>{currentSibling.metadata.title}</h1>
+            {currentSibling.metadata.author && <h2 className="story-subtitle">by {currentSibling.metadata.author}</h2>}
+          </div>
+        )}
         {renderContent()}
         <div className="story-tree-node-footer">
           <div className="footer-left">

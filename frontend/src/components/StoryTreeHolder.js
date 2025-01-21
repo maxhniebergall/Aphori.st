@@ -125,10 +125,6 @@ function StoryTreeContent() {
     setSelectionState(selection);
   }, []);
 
-  const { rootNode } = state;
-  const title = rootNode?.metadata?.title || '';
-  const subtitle = rootNode?.metadata?.author ? `by ${rootNode.metadata.author}` : '';
-
   if (!isOperatorInitialized) {
     return <div>Loading...</div>;
   }
@@ -182,10 +178,6 @@ function StoryTreeContent() {
         />
       </div>
       <div className="story-tree-content">
-        <div className="story-title-section">
-          <h1>{title}</h1>
-          {subtitle && <h2 className="story-subtitle">{subtitle}</h2>}
-        </div>
         <VirtualizedStoryList
           postRootId={rootUUID}
           items={state?.items ?? []}
