@@ -137,16 +137,9 @@ function StoryTreeContent() {
     if (!replyTarget || !selectionState) return null;
 
     const selectedText = replyTarget.text.slice(selectionState.start, selectionState.end);
-
+    console.log("selectedText", selectedText);
     return (
       <div className="reply-editor-container">
-        {selectedText && (
-          <div className="quote-preview">
-            <blockquote>
-              {selectedText}
-            </blockquote>
-          </div>
-        )}
         <div data-color-mode="light">
           <MDEditor
             value={replyContent}
