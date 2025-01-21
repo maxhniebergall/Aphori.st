@@ -29,6 +29,7 @@ html, body, #root {
   flex-direction: column;
   background-color: #f8f9fa;
   min-height: 0; /* Important for Firefox */
+  height: 100%;
 }
 
 /* Fixed header */
@@ -43,7 +44,7 @@ html, body, #root {
 /* Scrollable content area */
 .story-tree-content {
   position: relative;
-  height: calc(100vh - var(--header-height));
+  height: 100%;
   overflow: hidden;
   display: flex;
   flex-direction: column;

@@ -10,11 +10,15 @@
  * - Responsive height calculations based on window size
  * - Proper cleanup of resize observers
  * - Hide child nodes when in reply mode
+ * - Implement minimumBatchSize and threshold for InfiniteLoader
+ * - Implement overscanCount for react-window List
+ * - Use AutoSizer for dynamic list sizing
  */
 
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { VariableSizeList as List } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
+import AutoSizer from 'react-virtualized-auto-sizer';
 import StoryTreeNode from './StoryTreeNode';
 
 const Row = React.memo(({ 
@@ -143,24 +147,7 @@ function VirtualizedStoryList({
   const listRef = useRef();
   const sizeMap = useRef({});
   const rowRefs = useRef({});
-  const [listHeight, setListHeight] = useState(window.innerHeight);
   const [totalContentHeight, setTotalContentHeight] = useState(0);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const updateHeight = () => {
-      if (containerRef.current) {
-        setListHeight(containerRef.current.offsetHeight);
-      }
-    };
-
-    const resizeObserver = new ResizeObserver(updateHeight);
-    resizeObserver.observe(containerRef.current);
-    updateHeight();
-
-    return () => resizeObserver.disconnect();
-  }, []);
 
   const setSize = useCallback((index, size) => {
     sizeMap.current[index] = size;
@@ -182,7 +169,7 @@ function VirtualizedStoryList({
       const headerHeight = document.querySelector('.story-tree-header')?.offsetHeight || 0;
       const titleHeight = document.querySelector('.story-title-section')?.offsetHeight || 0;
       const availableHeight = window.innerHeight - headerHeight - titleHeight;
-      setListHeight(availableHeight);
+      // setListHeight(availableHeight); // No longer needed
     };
 
     handleResize();
@@ -223,33 +210,40 @@ function VirtualizedStoryList({
 
   return (
     <div style={{ 
-      height: totalContentHeight < listHeight ? 'auto' : listHeight,
+      height: '100%',
       overflow: 'visible'
-    }}>
-      <InfiniteLoader
-        isItemLoaded={isItemLoaded}
-        itemCount={itemCount}
-        loadMoreItems={handleLoadMoreItems}
-        threshold={1}
-        minimumBatchSize={1}
-      >
-        {({ onItemsRendered, ref }) => (
-          <List
-            ref={(list) => {
-              ref(list);
-              listRef.current = list;
-            }}
-            height={totalContentHeight < listHeight ? totalContentHeight : listHeight}
+    }}
+    ref={containerRef}
+    >
+      <AutoSizer>
+        {({ height, width }) => (
+          <InfiniteLoader
+            isItemLoaded={isItemLoaded}
             itemCount={itemCount}
-            itemSize={getSize}
-            onItemsRendered={onItemsRendered}
-            width="100%"
-            className="story-list"
+            loadMoreItems={handleLoadMoreItems}
+            threshold={15}
+            minimumBatchSize={10}
           >
-            {renderRow}
-          </List>
+            {({ onItemsRendered, ref }) => (
+              <List
+                ref={(list) => {
+                  ref(list);
+                  listRef.current = list;
+                }}
+                height={height}
+                itemCount={itemCount}
+                itemSize={getSize}
+                onItemsRendered={onItemsRendered}
+                width={width}
+                className="story-list"
+                overscanCount={3}
+              >
+                {renderRow}
+              </List>
+            )}
+          </InfiniteLoader>
         )}
-      </InfiniteLoader>
+      </AutoSizer>
     </div>
   );
 }

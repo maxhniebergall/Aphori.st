@@ -15,6 +15,7 @@
     "react-markdown": "8.0.7",
     "react-router-dom": "^6.26.2",
     "react-scripts": "^5.0.1",
+    "react-virtualized-auto-sizer": "^1.0.25",
     "react-window": "^1.8.10",
     "react-window-infinite-loader": "^1.0.9",
     "rehype-sanitize": "^6.0.0",
@@ -46,8 +47,14 @@
       "react-app",
       "react-app/jest"
     ],
-    "rules": {    
-      "no-use-before-define": ["error", {"functions": false, "classes": false}]
+    "rules": {
+      "no-use-before-define": [
+        "error",
+        {
+          "functions": false,
+          "classes": false
+        }
+      ]
     }
   },
   "browserslist": {
