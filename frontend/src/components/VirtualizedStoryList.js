@@ -27,6 +27,8 @@ const Row = React.memo(({
   fetchNode,
   isLoading,
   postRootId,
+  onNodeReply,
+  replyTarget,
 }) => {
   React.useEffect(() => {
     const updateSize = () => {
@@ -118,6 +120,8 @@ const Row = React.memo(({
         siblings={Array.isArray(node?.siblings) ? node.siblings : []}
         onSiblingChange={(newNode) => handleSiblingChange(newNode, index, fetchNode)}
         postRootId={postRootId}
+        onNodeReply={onNodeReply}
+        isReplyTarget={replyTarget?.id === node?.id}
       />
     </div>
   );
@@ -132,6 +136,8 @@ function VirtualizedStoryList({
   setIsFocused,
   handleSiblingChange,
   fetchNode,
+  onNodeReply,
+  replyTarget,
 }) {
   const containerRef = useRef(null);
   const listRef = useRef();
@@ -188,48 +194,6 @@ function VirtualizedStoryList({
     const node = items[index];
     const isLoading = !isItemLoaded(index);
     
-    if (isLoading) {
-      return (
-        <div 
-          className="loading-row"
-          ref={el => rowRefs.current[index] = el}
-          style={{
-            ...style,
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            height: 'auto',
-            width: '100%',
-            padding: '20px',
-            boxSizing: 'border-box'
-          }}
-        >
-          <div className="loading-placeholder">Loading...</div>
-        </div>
-      );
-    }
-
-    if (!node || typeof node !== 'object') {
-      console.warn(`Invalid or undefined node at index ${index}:`, node);
-      return (
-        <div 
-          ref={el => rowRefs.current[index] = el}
-          style={{
-            ...style,
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            height: 'auto',
-            width: '100%',
-            padding: '20px',
-            boxSizing: 'border-box'
-          }}
-        >
-          <div className="empty-placeholder">No content available</div>
-        </div>
-      );
-    }
-    
     return (
       <Row
         className="row"
@@ -243,6 +207,8 @@ function VirtualizedStoryList({
         fetchNode={fetchNode}
         isLoading={isLoading}
         postRootId={postRootId}
+        onNodeReply={onNodeReply}
+        replyTarget={replyTarget}
       />
     );
   };

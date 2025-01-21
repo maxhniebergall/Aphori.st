@@ -65,3 +65,8 @@ Update `backend/db/DatabaseClientInterface.js`:
 Update `backend/server.js`:
   - Modify the `/api/createReply` endpoint to accept quote metadata in the request body and store it with the reply.
   - Modify the `/api/getStoryTree/:uuid` endpoint to return the quote metadata with the story tree.
+
+Phase 4: Displaying replies
+ - When loading a story tree, replies are displayed, as either children or siblings of each node
+ - When there are replies to a node, the text of the node that has quote replies is highlighted
+ - When the user clicks on the highlighted text, the replies which quoted that text are displayed
