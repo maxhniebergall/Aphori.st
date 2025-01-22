@@ -13,10 +13,10 @@
  * - Mouse state tracking to prevent stuck animations
  * - Selection state should be stored externally in ReplyContext
  */
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { getCurrentOffset, getWordBoundaries } from '../utils/selectionUtils';
 import './TextSelection.css';
-import { throttle, debounce } from 'lodash';
+import { throttle } from 'lodash';
 // Create throttled animation loop outside component to prevent recreation
 const throttledAnimationLoop = throttle((event, containerRef, startOffset, mouseIsDownRef) => {
     // Check if mouse is still down, if not, clean up and return
@@ -25,7 +25,6 @@ const throttledAnimationLoop = throttle((event, containerRef, startOffset, mouse
         return;
     }
 
-    console.log("animationLoop");
     const endOffset = getCurrentOffset(containerRef.current, event);
     // use DOM manupipulation of CSS to highlight the text between the start and end offsets
     highlightText(containerRef.current, startOffset, endOffset);
@@ -42,7 +41,6 @@ function removeExistingHighlights(element) {
 }
 
 function highlightText(element, startOffset, endOffset) {
-    console.log("highlightText", startOffset, endOffset);
     // Use the extracted function
     removeExistingHighlights(element);
 
@@ -50,8 +48,7 @@ function highlightText(element, startOffset, endOffset) {
     const findNodeAndOffset = (offset) => {
         let currentOffset = 0;
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-        console.log("walker", walker);
-        console.log("walker.currentNode", walker.currentNode);
+
         while (walker.nextNode()) {
             const node = walker.currentNode;
             const length = node.textContent.length;
@@ -64,7 +61,6 @@ function highlightText(element, startOffset, endOffset) {
             }
             currentOffset += length;
         }
-        console.log("couldn't find node");
         return null;
     };
 
@@ -102,7 +98,6 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionSta
     let finalOffset = null;
 
     const cleanupEventListeners = () => {
-        console.log("Cleaning up event listeners");
         if (boundThrottledAnimationRef.current) {
             containerRef.current?.removeEventListener('mousemove', boundThrottledAnimationRef.current);
             containerRef.current?.removeEventListener('touchmove', boundThrottledAnimationRef.current, {
@@ -112,9 +107,7 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionSta
         }
     };
 
-    useEffect(() => {
-        console.log("TextSelection useEffect", { selectAll, selectionState });
-        
+    useEffect(() => {        
         // Handle selection state changes
         if (containerRef.current) {
             if (selectAll) {
@@ -166,7 +159,6 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionSta
     };
 
     const animateSelection = (event) => {
-        console.log("animateSelection");
         
         // Only prevent default for mouse events
         if (!event.type.startsWith('touch')) {
@@ -198,7 +190,6 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionSta
     }   
 
     const endAnimationLoop = (event) => {
-        console.log("endAnimationLoop");
         event.preventDefault();
         event.stopPropagation();
         
@@ -209,7 +200,6 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionSta
         cleanupEventListeners();
         
         finalOffset = getCurrentOffset(containerRef.current, event);
-        console.log("finalOffset", finalOffset);
         const selection = {
             start: initialOffset,
             end: finalOffset
@@ -218,11 +208,6 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionSta
     }
 
     const handleSelectionCompleted = (event) => {
-        console.log("handleSelectionCompleted", { 
-            mouseIsDown: mouseIsDownRef.current,
-            isDragging: isDraggingRef.current,
-            initialOffset
-        });
         
         // Only process if mouse was down
         if (!mouseIsDownRef.current) {
@@ -235,13 +220,11 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionSta
 
         // If not dragging, handle as word selection
         if (!isDraggingRef.current && initialOffset !== null) {
-            console.log("Handling as word selection");
             handleWordSelection(initialOffset);
             mouseIsDownRef.current = false;
             return;
         }
 
-        console.log("Handling as drag selection");
         const selection = endAnimationLoop(event);
         if (selection) {
             onSelectionCompleted(selection);
