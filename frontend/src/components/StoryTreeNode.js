@@ -5,11 +5,14 @@ import { storyTreeOperator } from '../operators/StoryTreeOperator';
 import { useStoryTree } from '../context/StoryTreeContext';
 import TextSelection from './TextSelection';
 import { useReplyContext } from '../context/ReplyContext';
+import InfiniteLoader from 'react-window-infinite-loader';
+
 /*
  * Requirements:
  * - @use-gesture/react: For gesture handling
  * - framer-motion: For animations
  * - react: Core React functionality
+ * - react-window-infinite-loader: For efficient sibling loading
  * - Proper null checking for node and node.id
  * - Safe handling of undefined siblings
  * - Proper state management for sibling navigation
@@ -34,7 +37,7 @@ function StoryTreeNode({
     nodeId: node?.id });
 
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
-  const [loadedSiblings, setLoadedSiblings] = useState([node || {}]);
+  const [loadedSiblings, setLoadedSiblings] = useState([]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
   const { state, dispatch } = useStoryTree();
   const [selectAll, setSelectAll] = useState(false);
@@ -42,7 +45,41 @@ function StoryTreeNode({
   const { setReplyTarget, replyTarget, setSelectionState, selectionState } = useReplyContext();
   const isReplyTarget = replyTarget?.id === node?.id;
 
-  // Define currentSibling before using it in hooks
+  // Replace the loadInitialSiblings effect with InfiniteLoader logic
+  const isItemLoaded = useCallback(index => {
+    return loadedSiblings[index] != null;
+  }, [loadedSiblings]);
+
+  const loadMoreItems = useCallback(async (startIndex, stopIndex) => {
+    if (!Array.isArray(siblings)) return;
+    
+    setIsLoadingSibling(true);
+    try {
+      const itemsToLoad = siblings.slice(startIndex, stopIndex + 1);
+      const loadedNodes = await Promise.all(
+        itemsToLoad.map(async (sibling) => {
+          if (sibling.id === node.id) return node;
+          return await storyTreeOperator.fetchNode(sibling.id);
+        })
+      );
+
+      setLoadedSiblings(prev => {
+        const newSiblings = [...prev];
+        loadedNodes.forEach((loadedNode, idx) => {
+          if (loadedNode) {
+            newSiblings[startIndex + idx] = loadedNode;
+          }
+        });
+        return newSiblings;
+      });
+    } catch (error) {
+      console.error('Error loading siblings:', error);
+    } finally {
+      setIsLoadingSibling(false);
+    }
+  }, [siblings, node]);
+
+  // Define currentSibling based on loadedSiblings
   const currentSibling = loadedSiblings[currentSiblingIndex] || node;
 
   // Now we can use currentSibling in our hook
@@ -219,44 +256,55 @@ function StoryTreeNode({
       transition={{ duration: 0.2 }}
       ref={nodeRef}
     >
-      <div 
-        {...bind()} 
-        className={`story-tree-node-content ${hasSiblings ? 'has-siblings' : ''}`}
-        id={currentSibling.id}
+      <InfiniteLoader
+        isItemLoaded={isItemLoaded}
+        itemCount={siblings?.length || 1}
+        loadMoreItems={loadMoreItems}
+        minimumBatchSize={3}
+        threshold={2}
       >
-        {isRootNode && currentSibling?.metadata?.title && (
-          <div className="story-title-section">
-            <h1>{currentSibling.metadata.title}</h1>
-            {currentSibling.metadata.author && <h2 className="story-subtitle">by {currentSibling.metadata.author}</h2>}
-          </div>
-        )}
-        {renderContent()}
-        <div className="story-tree-node-footer">
-          <div className="footer-left">
-            <button 
-              className="reply-button"
-              onClick={handleReplyButtonClick}
-              aria-label="Reply to this message"
-            >
-              {isReplyTarget ? 'Cancel Reply' : 'Reply'}
-            </button>
-          </div>
-          <div className="footer-right">
-            {hasSiblings && (
-              <div className="sibling-indicator">
-                {currentSiblingIndex + 1} / {siblings.length}
-                {(hasNextSibling || hasPreviousSibling) && (
-                  <span className="swipe-hint">
-                    {hasPreviousSibling && <span className="swipe-hint-previous" onClick={loadPreviousSibling}> (Swipe right for previous)</span>}
-                    {hasPreviousSibling && hasNextSibling && ' |'}
-                    {hasNextSibling && <span className="swipe-hint-next" onClick={loadNextSibling}>   (Swipe left for next)</span>}
-                  </span>
-                )}
+        {({ onItemsRendered, ref }) => (
+          <div 
+            {...bind()} 
+            className={`story-tree-node-content ${hasSiblings ? 'has-siblings' : ''}`}
+            id={currentSibling.id}
+            ref={ref}
+          >
+            {isRootNode && currentSibling?.metadata?.title && (
+              <div className="story-title-section">
+                <h1>{currentSibling.metadata.title}</h1>
+                {currentSibling.metadata.author && <h2 className="story-subtitle">by {currentSibling.metadata.author}</h2>}
               </div>
             )}
+            {renderContent()}
+            <div className="story-tree-node-footer">
+              <div className="footer-left">
+                <button 
+                  className="reply-button"
+                  onClick={handleReplyButtonClick}
+                  aria-label="Reply to this message"
+                >
+                  {isReplyTarget ? 'Cancel Reply' : 'Reply'}
+                </button>
+              </div>
+              <div className="footer-right">
+                {hasSiblings && (
+                  <div className="sibling-indicator">
+                    {currentSiblingIndex + 1} / {siblings.length}
+                    {(hasNextSibling || hasPreviousSibling) && (
+                      <span className="swipe-hint">
+                        {hasPreviousSibling && <span className="swipe-hint-previous" onClick={loadPreviousSibling}> (Swipe right for previous)</span>}
+                        {hasPreviousSibling && hasNextSibling && ' |'}
+                        {hasNextSibling && <span className="swipe-hint-next" onClick={loadNextSibling}>   (Swipe left for next)</span>}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        )}
+      </InfiniteLoader>
     </motion.div>
   );
 }
