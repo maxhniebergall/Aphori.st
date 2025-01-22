@@ -33,6 +33,16 @@ const Row = React.memo(({
   isLoading,
   postRootId,
 }) => {
+  const memoizedStyle = React.useMemo(() => ({
+    ...style,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    width: '100%',
+    padding: '20px',
+    boxSizing: 'border-box'
+  }), [style]);
+
   React.useEffect(() => {
     const updateSize = () => {
       if (rowRefs.current[index]) {
@@ -82,15 +92,7 @@ const Row = React.memo(({
       <div 
         className="loading-row"
         ref={el => rowRefs.current[index] = el}
-        style={{
-          ...style,
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          width: '100%',
-          padding: '20px',
-          boxSizing: 'border-box'
-        }}
+        style={memoizedStyle}
       >
         <div className="loading-placeholder">Loading...</div>
       </div>
@@ -102,15 +104,7 @@ const Row = React.memo(({
     return (
       <div 
         ref={el => rowRefs.current[index] = el}
-        style={{
-          ...style,
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          width: '100%',
-          padding: '20px',
-          boxSizing: 'border-box'
-        }}
+        style={memoizedStyle}
       >
         <div className="loading-placeholder">Loading node...</div>
       </div>
@@ -121,7 +115,7 @@ const Row = React.memo(({
     <div 
       ref={el => rowRefs.current[index] = el} 
       className="row-container"
-      style={{...style}}
+      style={memoizedStyle}
     >
       <StoryTreeNode
         key={node?.id}
@@ -135,8 +129,9 @@ const Row = React.memo(({
 }, (prevProps, nextProps) => {
   return (
     prevProps.node?.id === nextProps.node?.id &&
-    prevProps.style === nextProps.style &&
-    prevProps.isLoading === nextProps.isLoading
+    prevProps.isLoading === nextProps.isLoading &&
+    prevProps.index === nextProps.index &&
+    prevProps.style.top === nextProps.style.top
   );
 });
 
@@ -148,9 +143,7 @@ function VirtualizedStoryList({
   loadMoreItems,
   setIsFocused,
   handleSiblingChange,
-  fetchNode,
-  onNodeReply,
-  replyTarget,
+  fetchNode
 }) {
   const containerRef = useRef(null);
   const listRef = useRef();
@@ -169,7 +162,7 @@ function VirtualizedStoryList({
     return Math.max(sizeMap.current[index] || 200, 100);
   }, []);
 
-  const handleLoadMoreItems = useCallback(async (startIndex, stopIndex) => {
+  const memoizedLoadMoreItems = useCallback(async (startIndex, stopIndex) => {
     return loadMoreItems(startIndex, stopIndex);
   }, [loadMoreItems]);
 
@@ -185,7 +178,7 @@ function VirtualizedStoryList({
     return () => window.removeEventListener('resize', handleResize);
   }, [totalContentHeight, setSize]);
 
-  const renderRow = ({ index, style }) => {
+  const renderRow = useCallback(({ index, style }) => {
     const node = items[index];
     const isLoading = !isItemLoaded(index);
     
@@ -204,7 +197,7 @@ function VirtualizedStoryList({
         postRootId={postRootId}
       />
     );
-  };
+  }, [items, isItemLoaded, setIsFocused, setSize, handleSiblingChange, fetchNode, postRootId]);
 
   if (!items?.length && !hasNextPage) {
     return null;
@@ -226,7 +219,7 @@ function VirtualizedStoryList({
           <InfiniteLoader
             isItemLoaded={isItemLoaded}
             itemCount={itemCount}
-            loadMoreItems={handleLoadMoreItems}
+            loadMoreItems={memoizedLoadMoreItems}
             threshold={15}
             minimumBatchSize={10}
           >
