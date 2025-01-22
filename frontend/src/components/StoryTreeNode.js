@@ -42,6 +42,16 @@ function StoryTreeNode({
   const { setReplyTarget, replyTarget, setSelectionState, selectionState } = useReplyContext();
   const isReplyTarget = replyTarget?.id === node?.id;
 
+  // Define currentSibling before using it in hooks
+  const currentSibling = loadedSiblings[currentSiblingIndex] || node;
+
+  // Now we can use currentSibling in our hook
+  const handleTextSelectionCompleted = useCallback((selection) => {
+    setSelectAll(false);
+    setReplyTarget(currentSibling);
+    setSelectionState(selection);
+  }, [currentSibling, setReplyTarget, setSelectionState]);
+
   // Update the operator's context whenever state or dispatch changes
   useEffect(() => {
     storyTreeOperator.updateContext(state, dispatch);
@@ -148,7 +158,6 @@ function StoryTreeNode({
     return null;
   }
 
-  const currentSibling = loadedSiblings[currentSiblingIndex] || node;
   const hasSiblings = siblings && siblings.length > 1;
   const hasNextSibling = siblings && currentSiblingIndex < siblings.length - 1;
   const hasPreviousSibling = currentSiblingIndex > 0;
@@ -183,15 +192,7 @@ function StoryTreeNode({
     }
   };
 
-  const handleTextSelectionCompleted = (selection) => {
-    onSiblingChange?.(currentSibling);
-    setSelectAll(false);
-    setReplyTarget(currentSibling);
-    setSelectionState(selection);
-  };
-
   const renderContent = () => {
-    const currentSibling = loadedSiblings[currentSiblingIndex] || node;
     if (!currentSibling?.text) {
       return null;
     }
