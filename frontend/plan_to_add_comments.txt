@@ -70,3 +70,26 @@ Phase 4: Displaying replies
  - When loading a story tree, replies are displayed, as either children or siblings of each node
  - When there are replies to a node, the text of the node that has quote replies is highlighted
  - When the user clicks on the highlighted text, the replies which quoted that text are displayed
+
+Phase 5: Review backend storage schema
+ - each storytreenode has a hashmap (keeping in mind we are using a nosql database, so everything is a hashmap) of replies:
+   - the hashmap is keyed by the quote and the sorting criteria
+   - the value is a queue/sorted-list of reply-keys
+   - each reply/storytreenode is actually stored in the database as a reply object, keyed with UUID
+ - schema allows for the storyTree/reply to have the quote in the key, therfore allowing us to get all of the replies to a quote
+ - schema allows for multiple replies to a single node
+ - the replies to nodes which are in the story tree are connected to the story tree
+ - replies to replies are connected to the replies they are replying to, and trying to view them will open a new "replies" page
+ - schema allows for multiple sorting criteria
+ - criteria: the number of replies to the reply (recursive total)
+ - criteria: the date the reply was created
+ - criteria: the number of positive replies minus the number of negative replies
+ - criteria: the quote that the reply is replying to
+
+
+Phase 6: create "replies" page to view deep replies
+
+Phase 7: update the UI to show the different levels of the story tree
+ - all the intial posts are linked by a column on the left
+ - the replies to the intitial posts are linked by a column on the left which is indented
+ - attempting to view the replies to the replies will open a new "replies" page
