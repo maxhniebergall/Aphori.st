@@ -81,11 +81,6 @@ jobs:
                         AUTH_TOKEN_SECRET=JWT_SECRET:latest" \
           --allow-unauthenticated
 
-    - name: Seed Default Stories
-      run: |
-        curl -X POST "$BACKEND_URL/api/seed-default-stories" \
-          -H "Content-Type: application/json"
-
     - name: Deploy Frontend to Cloud Run
       run: |
         # Build the frontend image with the backend URL

@@ -25,7 +25,6 @@ import dotenv from 'dotenv';
 import { sendEmail } from './mailer.js';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import { seedDefaultStories } from './prodSeed.js';
 import { seedDevStories } from './seed.js';
 import fs from 'fs';
 
@@ -626,28 +625,6 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
     } catch (err) {
         logger.error('Error creating StoryTree:', err);
         res.status(500).json({ error: 'Server error' });
-    }
-});
-
-app.post('/api/seed-default-stories', async (req, res) => { 
-    try {
-        logger.info('Starting to seed default stories...');
-        // Only allow seeding dev stories in non-production environments
-        if (process.env.NODE_ENV === 'production') {
-            logger.info('Production environment detected, seeding production stories...');
-            await seedDefaultStories(db);
-        } else {
-            logger.info('Development environment detected, seeding dev stories...');
-            await seedDevStories(db);
-        }
-        logger.info('Successfully seeded default stories');
-        res.status(200).json({ message: 'Successfully seeded default stories' });
-    } catch (error) {
-        logger.error('Error during seeding:', error);
-        res.status(500).json({ 
-            error: 'Failed to seed default stories',
-            details: error.message
-        });
     }
 });
 
