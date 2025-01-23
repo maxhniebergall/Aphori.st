@@ -97,31 +97,10 @@ The primary goal is to decouple the storage of original posts (storyTrees) from 
      - Not create any replies.
    - **Action:** Refactor `seedDevStories` and `seedDefaultStories`.
 
-## Phase 5: Testing
-
-1. **Unit Tests:**
-   - Update existing unit tests and create new tests to cover:
-     - The new `createReply` function.
-     - The new reply retrieval functions.
-     - The modified `createStoryTree` and `getStoryTree` functions.
-     - The new API endpoints.
-   - **Action:** Update and create test files as needed.
-
-## Code References
-
-- `frontend/plan_to_add_comments.txt`:
-  - Post schema: lines 97-113
-  - Reply schema: lines 115-128
-- `backend/server.js`:
-  - `createStoryTree` endpoint: lines 565-629
-  - `getStoryTree` endpoint: lines 176-200
-
-## Next Steps
-
-1. Implement the changes outlined in Phase 1 (Data Structure Refactor).
-2. Implement the changes outlined in Phase 2 (Database Interaction Changes).
-3. Implement the changes outlined in Phase 3 (API Endpoint Modifications).
-4. Implement the changes outlined in Phase 4 (Seed Script Updates).
-5. Implement the changes outlined in Phase 5 (Testing).
-
-This plan provides a structured approach to refactoring the backend schema. Remember to commit your changes frequently and test thoroughly at each step.
+## Phase 5: Enhance getReply and getStoryTree to return the existing quotes and counts of replies with that quote
+1. 
+  - the getReplies, getReply, and getStoryTree functions should all be updated to return a map of quotes to counts of replies to that node with that quote
+  - this will allow the frontend to display the existing quotes and counts of replies to that node with that quote
+  - we will need to update the createReply function to update the counts of replies to that node with that quote
+2. 
+ - update the frontend to display the existing quotes and counts of replies to that node with that quote

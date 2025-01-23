@@ -5,6 +5,7 @@
 - Maintains compatibility with both Redis and Firebase implementations
 - Ensures proper type handling for Redis operations
 - Adds debug logging for data types and values
+- Supports atomic increments for hash fields
 */
 
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
@@ -239,5 +240,10 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
     // Helper method to expose compression methods
     getCompression() {
         return this.compression;
+    }
+
+    async hIncrBy(key, field, increment) {
+        // Note: We don't compress increment values as they're numeric
+        return this.db.hIncrBy(key, field, increment);
     }
 } 

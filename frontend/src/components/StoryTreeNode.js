@@ -35,22 +35,13 @@ function StoryTreeNode({
   node, 
   onSiblingChange,
 }) {
-  console.log('StoryTreeNode rendering:', { 
-    nodeId: node?.id });
-
+  // 1. All useState declarations
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState(0);
   const [loadedSiblings, setLoadedSiblings] = useState([]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
-  const { state, dispatch } = useStoryTree();
   const [selectAll, setSelectAll] = useState(false);
-  const nodeRef = useRef(null);
-  const { setReplyTarget, replyTarget, setSelectionState, selectionState } = useReplyContext();
-  const isReplyTarget = replyTarget?.id === node?.id;
-
-  // Update to use replies for siblings when appropriate
   const [replySiblings, setReplySiblings] = useState([]);
   const [isLoadingReplies, setIsLoadingReplies] = useState(false);
-
   const [replyPage, setReplyPage] = useState(1);
   const [replyPagination, setReplyPagination] = useState({
     page: 1,
@@ -60,37 +51,18 @@ function StoryTreeNode({
   });
   const [isLoadingMoreReplies, setIsLoadingMoreReplies] = useState(false);
 
-  // Update reply loading to handle pagination
-  useEffect(() => {
-    const loadReplySiblings = async () => {
-      if (!node?.metadata?.quote) return;
+  // 2. All useContext and useRef
+  const { state, dispatch } = useStoryTree();
+  const { setReplyTarget, replyTarget, setSelectionState, selectionState } = useReplyContext();
+  const nodeRef = useRef(null);
+  const isReplyTarget = replyTarget?.id === node?.id;
 
-      setIsLoadingReplies(true);
-      try {
-        const response = await storyTreeOperator.fetchReplies(
-          node.metadata.quote.sourcePostId,
-          node.metadata.quote.text,
-          'mostRecent',
-          replyPage
-        );
+  // Define currentSibling before using it in hooks
+  const currentSibling = node?.metadata?.quote 
+    ? replySiblings[currentSiblingIndex] || node
+    : loadedSiblings[currentSiblingIndex] || node;
 
-        if (response?.replies && response?.pagination) {
-          setReplySiblings(prev => 
-            replyPage === 1 ? response.replies : [...prev, ...response.replies]
-          );
-          setReplyPagination(response.pagination);
-        }
-      } catch (error) {
-        console.error('Error loading reply siblings:', error);
-      } finally {
-        setIsLoadingReplies(false);
-      }
-    };
-
-    loadReplySiblings();
-  }, [node?.metadata?.quote, replyPage]);
-
-  // Add function to load more replies
+  // 3. First define loadMoreReplies since it's used in loadMoreItems
   const loadMoreReplies = useCallback(async () => {
     if (isLoadingMoreReplies || replyPage >= replyPagination.totalPages) return;
 
@@ -102,15 +74,7 @@ function StoryTreeNode({
     }
   }, [replyPage, replyPagination.totalPages, isLoadingMoreReplies]);
 
-  // Update isItemLoaded for paginated replies
-  const isItemLoaded = useCallback(index => {
-    if (node?.metadata?.quote) {
-      return index < replySiblings.length;
-    }
-    return loadedSiblings[index] != null;
-  }, [loadedSiblings, replySiblings, node?.metadata?.quote]);
-
-  // Update loadMoreItems to handle reply pagination
+  // Now we can define loadMoreItems which uses loadMoreReplies
   const loadMoreItems = useCallback(async (startIndex, stopIndex) => {
     if (node?.metadata?.quote) {
       if (startIndex >= replySiblings.length && replyPage < replyPagination.totalPages) {
@@ -119,7 +83,7 @@ function StoryTreeNode({
       return;
     }
 
-    if (!Array.isArray(node.siblings)) return;
+    if (!Array.isArray(node?.siblings)) return;
     
     setIsLoadingSibling(true);
     try {
@@ -145,32 +109,14 @@ function StoryTreeNode({
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [node.siblings, node, loadMoreReplies, replySiblings.length, replyPage, replyPagination.totalPages]);
+  }, [node?.siblings, node, replyPage, replyPagination.totalPages, replySiblings.length, loadMoreReplies]);
 
-  // Update currentSibling to handle both types
-  const currentSibling = node?.metadata?.quote 
-    ? replySiblings[currentSiblingIndex] || node
-    : loadedSiblings[currentSiblingIndex] || node;
-
-  // Now we can use currentSibling in our hook
-  const handleTextSelectionCompleted = useCallback((selection) => {
-    setSelectAll(false);
-    setReplyTarget(currentSibling);
-    setSelectionState(selection);
-  }, [currentSibling, setReplyTarget, setSelectionState]);
-
-  // Update the operator's context whenever state or dispatch changes
-  useEffect(() => {
-    storyTreeOperator.updateContext(state, dispatch);
-  }, [state, dispatch]);
-
-  // Find the current index in siblings array
-  useEffect(() => {
-    if (Array.isArray(node.siblings) && node?.id) {
-      const index = node.siblings.findIndex(sibling => sibling?.id === node.id);
-      setCurrentSiblingIndex(index !== -1 ? index : 0);
+  const isItemLoaded = useCallback(index => {
+    if (node?.metadata?.quote) {
+      return index < replySiblings.length;
     }
-  }, [node?.id, node.siblings]);
+    return loadedSiblings[index] != null;
+  }, [loadedSiblings, replySiblings, node?.metadata?.quote]);
 
   const loadNextSibling = useCallback(async () => {
     if (isLoadingSibling || isLoadingReplies) return;
@@ -199,7 +145,6 @@ function StoryTreeNode({
     }
   }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, node?.id, replySiblings, onSiblingChange]);
 
-  // Update loadPreviousSibling similarly
   const loadPreviousSibling = useCallback(async () => {
     if (isLoadingSibling || isLoadingReplies) return;
 
@@ -236,7 +181,89 @@ function StoryTreeNode({
     }
   }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, node?.id, replySiblings, onSiblingChange]);
 
-  // Update bind gesture to not rely on siblings prop
+  const handleTextSelectionCompleted = useCallback((selection) => {
+    setSelectAll(false);
+    setReplyTarget(currentSibling);
+    setSelectionState(selection);
+  }, [currentSibling, setReplyTarget, setSelectionState]);
+
+  // 4. All useEffect declarations - BEFORE any conditional returns
+  useEffect(() => {
+    const refreshSiblings = async () => {
+      if (!node?.id) return;
+      
+      if (node?.metadata?.quote) {
+        // Refresh replies
+        const response = await storyTreeOperator.fetchReplies(
+          node.metadata.quote.sourcePostId,
+          node.metadata.quote.text,
+          'mostRecent',
+          1  // Reset to first page
+        );
+        
+        if (response?.replies && response?.pagination) {
+          setReplySiblings(response.replies);
+          setReplyPagination(response.pagination);
+          setReplyPage(1);
+        }
+      } else {
+        // Refresh regular siblings
+        setLoadedSiblings([]);  // Clear existing
+        const startIndex = 0;
+        const stopIndex = 2;  // Load first few siblings
+        await loadMoreItems(startIndex, stopIndex);
+      }
+    };
+
+    const parentId = node?.parentId?.[0] || node?.id;
+    const unsubscribe = storyTreeOperator.subscribeToReplySubmission(parentId, refreshSiblings);
+    
+    return () => unsubscribe();
+  }, [node?.id, node?.parentId, node?.metadata?.quote, loadMoreItems]);
+
+  useEffect(() => {
+    storyTreeOperator.updateContext(state, dispatch);
+  }, [state, dispatch]);
+
+  useEffect(() => {
+    if (Array.isArray(node?.siblings) && node?.id) {
+      const index = node.siblings.findIndex(sibling => sibling?.id === node.id);
+      setCurrentSiblingIndex(index !== -1 ? index : 0);
+    }
+  }, [node?.id, node?.siblings]);
+
+  // Reply loading effect
+  useEffect(() => {
+    const loadReplySiblings = async () => {
+      setIsLoadingReplies(true);
+      try {
+        if (!node?.metadata?.quote) {
+         // some nodes may not have a quote. When that is the case, we load the siblings
+        }
+        const response = await storyTreeOperator.fetchReplies(
+          node.metadata.quote.sourcePostId,
+          node.metadata.quote.text,
+          'mostRecent',
+          replyPage
+        );
+
+        if (response?.replies && response?.pagination) {
+          setReplySiblings(prev => 
+            replyPage === 1 ? response.replies : [...prev, ...response.replies]
+          );
+          setReplyPagination(response.pagination);
+        }
+      } catch (error) {
+        console.error('Error loading reply siblings:', error);
+      } finally {
+        setIsLoadingReplies(false);
+      }
+    };
+
+    loadReplySiblings();
+  }, [node?.metadata?.quote, replyPage]);
+
+  // 5. useGesture declaration
   const bind = useGesture({
     onDrag: ({ down, movement: [mx], cancel, velocity: [vx] }) => {
       if (!down) {
@@ -259,13 +286,12 @@ function StoryTreeNode({
     },
   });
 
-  // Early return if node is not properly defined
+  // Now we can have our validation checks
   if (!node?.id) {
     console.warn('StoryTreeNode received invalid node:', node);
     return null;
   }
 
-  // Early return if operator is not provided
   if (!storyTreeOperator?.fetchNode) {
     console.error('StoryTreeNode requires a valid operator with fetchNode method');
     return null;

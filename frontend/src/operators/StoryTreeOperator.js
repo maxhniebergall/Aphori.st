@@ -13,6 +13,7 @@
  * - Quote metadata handling in replies
  * - Reply creation and fetching support
  * - Reply feed management
+ * - Quote counts tracking and updates
  */
 
 import { ACTIONS } from '../context/StoryTreeContext';
@@ -31,9 +32,11 @@ class StoryTreeOperator extends BaseOperator {
       isEditing: false,
       error: null,
       replies: [],
-      selectedQuote: null
+      selectedQuote: null,
+      quoteMetadata: {}
     };
     this.dispatch = null;
+    this.replySubscribers = new Map();
 
     // Bind existing methods
     this.isItemLoaded = this.isItemLoaded.bind(this);
@@ -46,6 +49,7 @@ class StoryTreeOperator extends BaseOperator {
     this.fetchReply = this.fetchReply.bind(this);
     this.fetchReplies = this.fetchReplies.bind(this);
     this.fetchRepliesFeed = this.fetchRepliesFeed.bind(this);
+    this.updateQuoteMetadata = this.updateQuoteMetadata.bind(this);
   }
 
   updateContext(state, dispatch) {
@@ -59,6 +63,7 @@ class StoryTreeOperator extends BaseOperator {
       error: null,
       replies: [],
       selectedQuote: null,
+      quoteMetadata: {},
       ...state
     };
     this.dispatch = dispatch;
@@ -211,6 +216,29 @@ class StoryTreeOperator extends BaseOperator {
     }
   };
 
+  subscribeToReplySubmission(parentId, callback) {
+    if (!this.replySubscribers.has(parentId)) {
+      this.replySubscribers.set(parentId, new Set());
+    }
+    this.replySubscribers.get(parentId).add(callback);
+    return () => {
+      const subscribers = this.replySubscribers.get(parentId);
+      if (subscribers) {
+        subscribers.delete(callback);
+        if (subscribers.size === 0) {
+          this.replySubscribers.delete(parentId);
+        }
+      }
+    };
+  }
+
+  notifyReplySubmission(parentId) {
+    const subscribers = this.replySubscribers.get(parentId);
+    if (subscribers) {
+      subscribers.forEach(callback => callback());
+    }
+  }
+
   async submitReply(parentId, content, quoteData = null) {
     if (!parentId || !content) {
       console.error('Parent ID and content are required for reply');
@@ -236,16 +264,18 @@ class StoryTreeOperator extends BaseOperator {
       // Add debug logging
       console.log('Create reply response:', response.data);
       
-      // Check if response.data exists
       if (!response.data) {
         console.error('Invalid response from createReply:', response.data);
         return { success: false };
       }
 
-      // Notify that replies should be refreshed
-      if (this.dispatch) {
-        this.dispatch({ type: ACTIONS.CLEAR_REPLIES }); // This will trigger a re-fetch in components
+      // Handle updated quote metadata from response
+      if (response.data.quoteMetadata) {
+        this.updateQuoteMetadata(parentId, response.data.quoteMetadata);
       }
+
+      // Notify only the parent node's subscribers
+      this.notifyReplySubmission(parentId);
 
       return { success: true };
     } catch (error) {
@@ -260,7 +290,14 @@ class StoryTreeOperator extends BaseOperator {
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/getReply/${uuid}`
       );
-      return await this.handleCompressedResponse(response);
+      const data = await this.handleCompressedResponse(response);
+      
+      // Handle quote metadata if present
+      if (data?.quoteMetadata) {
+        this.updateQuoteMetadata(uuid, data.quoteMetadata);
+      }
+      
+      return data;
     } catch (error) {
       console.error('Error fetching reply:', error);
       return null;
@@ -283,6 +320,12 @@ class StoryTreeOperator extends BaseOperator {
       
       if (data?.replies && data?.pagination) {
         this.dispatch({ type: ACTIONS.SET_REPLIES, payload: data.replies });
+        
+        // Handle quote metadata if present
+        if (data.quoteMetadata) {
+          this.updateQuoteMetadata(uuid, data.quoteMetadata);
+        }
+        
         return data;
       }
       return null;
@@ -303,6 +346,16 @@ class StoryTreeOperator extends BaseOperator {
     } catch (error) {
       console.error('Error fetching replies feed:', error);
       return [];
+    }
+  }
+
+  // Add new method to handle quote metadata
+  updateQuoteMetadata(nodeId, metadata) {
+    if (this.dispatch) {
+      this.dispatch({
+        type: ACTIONS.SET_QUOTE_METADATA,
+        payload: { nodeId, metadata }
+      });
     }
   }
 }

@@ -3,6 +3,7 @@
 - Adds isConnected, isReady, encodeKey, hGetAll, zCard, and zRange methods to the DatabaseClientInterface
 - Adds zAdd method for ordered set operations
 - Adds del method for key deletion
+- Adds hIncrBy method for atomic increments of hash fields
 */
 // Abstract base class for database operations
 export class DatabaseClientInterface {
@@ -71,6 +72,10 @@ export class DatabaseClientInterface {
   }
 
   async del(key) {
+    throw new Error('Method not implemented');
+  }
+
+  async hIncrBy(key, field, increment) {
     throw new Error('Method not implemented');
   }
 } 
