@@ -3,6 +3,7 @@
 - Accepts development token in non-production environments
 - Handles quote metadata in story creation and retrieval
 - Stores quote data with source post ID and selection range
+- Creates posts (storyTrees) with new schema structure separating posts from replies
 */
 
 import express, { json } from "express";
@@ -575,26 +576,19 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
         // Format nodes array to match frontend expectations
         const nodes = storyTree.nodes || [];
 
-        // Create the full object for storing in Redis
+        // Create the full object following new schema structure
         const formattedStoryTree = {
             id: uuid,
-            text: storyTree.content || storyTree.text, // Support both content and text fields
+            text: storyTree.content || storyTree.text,
             nodes: nodes,
-            parentId: storyTree.parentId || null,
+            parentId: null, // Root-level posts always have null parentId
             metadata: {
                 title: storyTree.title,
                 author: storyTree.author,
                 authorId: req.user.id,
                 authorEmail: req.user.email,
                 createdAt: new Date().toISOString(),
-                quote: storyTree.quote ? {
-                    text: storyTree.quote.text,
-                    sourcePostId: storyTree.quote.sourcePostId,
-                    selectionRange: {
-                        start: storyTree.quote.selectionRange.start,
-                        end: storyTree.quote.selectionRange.end
-                    }
-                } : null
+                quote: null // Root-level posts don't have quotes
             },
             totalNodes: nodes.length
         };
@@ -603,22 +597,19 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
         await db.hSet(uuid, 'storyTree', JSON.stringify(formattedStoryTree));
         await db.lPush('allStoryTreeIds', uuid);
 
-        // Add to feed items only if it's a root level story
-        if (!storyTree.parentId) {
-            const feedItem = {
-                id: uuid,
-                title: storyTree.title,
-                text: storyTree.content || storyTree.text,
-                author: {
-                    id: req.user.id,
-                    email: req.user.email
-                },
-                createdAt: formattedStoryTree.metadata.createdAt,
-                quote: formattedStoryTree.metadata.quote
-            };
-            await db.lPush('feedItems', JSON.stringify(feedItem));
-            logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
-        }
+        // Add to feed items (only root-level posts go to feed)
+        const feedItem = {
+            id: uuid,
+            title: storyTree.title,
+            text: storyTree.content || storyTree.text,
+            author: {
+                id: req.user.id,
+                email: req.user.email
+            },
+            createdAt: formattedStoryTree.metadata.createdAt
+        };
+        await db.lPush('feedItems', JSON.stringify(feedItem));
+        logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
 
         logger.info(`Created new StoryTree with UUID: ${uuid}`);
         res.json({ id: uuid });
