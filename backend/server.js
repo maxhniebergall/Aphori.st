@@ -14,6 +14,9 @@
 - Returns compressed reply data from Redis
 - Provides API endpoints for getting replies by UUID, quote, and sorting criteria
 - Supports reply feed retrieval sorted by recency
+- Uses zAdd to maintain sorted sets for replies
+- Handles null/empty responses from Firebase for zRange and zCard operations
+- Maintains compatibility with both Redis and Firebase implementations
 */
 
 import express, { json } from "express";
@@ -713,30 +716,35 @@ app.post('/api/createReply', authenticateToken, async (req, res) => {
     try {
         const { parentId, text, quote } = req.body;
         
-        if (!parentId || !text) {
+        // Extract the first parentId if it's an array
+        // TODO: change this to support multiple parents in future
+        const actualParentId = Array.isArray(parentId) ? parentId[0] : parentId;
+        
+        if (!actualParentId || !text) {
             return res.status(400).json({ error: 'Parent ID and text are required' });
         }
 
         // Verify parent story exists
-        const parentStory = await db.hGet(parentId, 'storyTree');
+        const parentStory = await db.hGet(actualParentId, 'storyTree');
         if (!parentStory) {
             return res.status(404).json({ error: 'Parent story not found' });
         }
 
         // Generate a new UUID for the reply
         const replyId = crypto.randomUUID();
+        const timestamp = Number(Date.now());
 
         // Create the reply object following the schema
         const replyObject = {
             id: replyId,
             text: text,
-            parentId: [parentId], // Array of parent IDs, initially just the direct parent
+            parentId: [actualParentId], // Keep as array for consistency
             quote: quote,
             metadata: {
-                author: req.user.id, // Using the user ID as author name for now
+                author: req.user.id,
                 authorId: req.user.id,
                 authorEmail: req.user.email,
-                createdAt: new Date().toISOString()
+                createdAt: timestamp
             }
         };
 
@@ -744,9 +752,16 @@ app.post('/api/createReply', authenticateToken, async (req, res) => {
         await db.hSet(replyId, 'reply', JSON.stringify(replyObject));
 
         // Add reply ID to parent's replies list
-        await db.sAdd(`${parentId}:replies`, replyId);
+        await db.sAdd(`${actualParentId}:replies`, replyId);
 
-        logger.info(`Created new reply with ID: ${replyId} for parent: ${parentId}`);
+        // Add to sorted sets for different access patterns
+        await db.zAdd(`replies:${actualParentId}:${quote?.text}:mostRecent`, timestamp, replyId); // Replies for specific post+quote
+        await db.zAdd('replies:feed:mostRecent', timestamp, replyId); // Global replies feed
+        if (quote?.text) {
+            await db.zAdd(`replies:quote:${quote.text}:mostRecent`, timestamp, replyId); // Replies for specific quote
+        }
+
+        logger.info(`Created new reply with ID: ${replyId} for parent: ${actualParentId}`);
         res.json({ 
             success: true,
             data: { id: replyId }
@@ -799,10 +814,10 @@ app.get('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req, res) => {
         const sortedSetKey = `replies:${uuid}:${quote}:${sortingCriteria}`;
         
         // Get total count for pagination info
-        const totalItems = await db.zCard(sortedSetKey);
+        const totalItems = await db.zCard(sortedSetKey) || 0; // Handle null from Firebase
         
         // Get reply keys from the sorted set with pagination
-        const replyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true });
+        const replyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true }) || []; // Handle empty array from Firebase
         
         // Add compression header
         res.setHeader('X-Data-Compressed', 'true');
@@ -833,10 +848,10 @@ app.get('/api/getRepliesFeed', async (req, res) => {
         const end = start + itemsPerPage - 1;
 
         // Get total count for pagination info
-        const totalItems = await db.zCard('replies:feed:mostRecent');
+        const totalItems = await db.zCard('replies:feed:mostRecent') || 0; // Handle null from Firebase
         
         // Get reply keys from the global feed sorted set with pagination
-        const replyKeys = await db.zRange('replies:feed:mostRecent', start, end, { returnCompressed: true });
+        const replyKeys = await db.zRange('replies:feed:mostRecent', start, end, { returnCompressed: true }) || []; // Handle empty array from Firebase
         
         // Add compression header
         res.setHeader('X-Data-Compressed', 'true');
@@ -875,10 +890,10 @@ app.get('/api/getReplies/:quote/:sortingCriteria', async (req, res) => {
         const sortedSetKey = `replies:quote:${quote}:${sortingCriteria}`;
         
         // Get total count for pagination info
-        const totalItems = await db.zCard(sortedSetKey);
+        const totalItems = await db.zCard(sortedSetKey) || 0; // Handle null from Firebase
         
         // Get reply keys from the sorted set with pagination
-        const replyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true });
+        const replyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true }) || []; // Handle empty array from Firebase
         
         // Add compression header
         res.setHeader('X-Data-Compressed', 'true');
