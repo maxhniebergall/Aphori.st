@@ -33,7 +33,6 @@ import InfiniteLoader from 'react-window-infinite-loader';
 function StoryTreeNode({
   postRootId, 
   node, 
-  siblings, 
   onSiblingChange,
 }) {
   console.log('StoryTreeNode rendering:', { 
@@ -120,11 +119,11 @@ function StoryTreeNode({
       return;
     }
 
-    if (!Array.isArray(siblings)) return;
+    if (!Array.isArray(node.siblings)) return;
     
     setIsLoadingSibling(true);
     try {
-      const itemsToLoad = siblings.slice(startIndex, stopIndex + 1);
+      const itemsToLoad = node.siblings.slice(startIndex, stopIndex + 1);
       const loadedNodes = await Promise.all(
         itemsToLoad.map(async (sibling) => {
           if (sibling.id === node.id) return node;
@@ -146,7 +145,7 @@ function StoryTreeNode({
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [siblings, node, loadMoreReplies, replySiblings.length, replyPage, replyPagination.totalPages]);
+  }, [node.siblings, node, loadMoreReplies, replySiblings.length, replyPage, replyPagination.totalPages]);
 
   // Update currentSibling to handle both types
   const currentSibling = node?.metadata?.quote 
@@ -167,37 +166,28 @@ function StoryTreeNode({
 
   // Find the current index in siblings array
   useEffect(() => {
-    if (Array.isArray(siblings) && node?.id) {
-      const index = siblings.findIndex(sibling => sibling?.id === node.id);
+    if (Array.isArray(node.siblings) && node?.id) {
+      const index = node.siblings.findIndex(sibling => sibling?.id === node.id);
       setCurrentSiblingIndex(index !== -1 ? index : 0);
     }
-  }, [node?.id, siblings]);
+  }, [node?.id, node.siblings]);
 
   const loadNextSibling = useCallback(async () => {
     if (isLoadingSibling || isLoadingReplies) return;
 
-    const currentSiblings = node?.metadata?.quote ? replySiblings : siblings;
-    if (!currentSiblings || currentSiblingIndex >= currentSiblings.length - 1) return;
-    
     if (node?.metadata?.quote) {
-      // For replies, we already have all siblings loaded
+      if (currentSiblingIndex >= replySiblings.length - 1) return;
+      
       setCurrentSiblingIndex(prev => prev + 1);
       onSiblingChange?.(replySiblings[currentSiblingIndex + 1]);
       return;
     }
 
-    // Original sibling loading logic
+    // Load next sibling through operator
     setIsLoadingSibling(true);
     try {
-      const nextSibling = siblings[currentSiblingIndex + 1];
-      if (!nextSibling?.id) {
-        console.warn('Invalid next sibling:', nextSibling);
-        return;
-      }
-      
-      const nextNode = await storyTreeOperator.fetchNode(nextSibling.id);
+      const nextNode = await storyTreeOperator.fetchNextSibling(node.id);
       if (nextNode) {
-        nextNode.siblings = siblings;
         setLoadedSiblings(prev => [...prev, nextNode]);
         setCurrentSiblingIndex(prev => prev + 1);
         onSiblingChange?.(nextNode);
@@ -207,13 +197,13 @@ function StoryTreeNode({
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [siblings, currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, replySiblings, onSiblingChange]);
+  }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, node?.id, replySiblings, onSiblingChange]);
 
+  // Update loadPreviousSibling similarly
   const loadPreviousSibling = useCallback(async () => {
     if (isLoadingSibling || isLoadingReplies) return;
 
-    const currentSiblings = node?.metadata?.quote ? replySiblings : siblings;
-    if (!currentSiblings || currentSiblingIndex <= 0) {
+    if (currentSiblingIndex <= 0) {
       console.log('Cannot go back: at first sibling or loading');
       return;
     }
@@ -225,19 +215,11 @@ function StoryTreeNode({
       return;
     }
 
-    // Original previous sibling loading logic
+    // Load previous sibling through operator
     setIsLoadingSibling(true);
     try {
-      const previousSibling = siblings[currentSiblingIndex - 1];
-      if (!previousSibling?.id) {
-        console.warn('Invalid previous sibling:', previousSibling);
-        return;
-      }
-
-      const previousNode = await storyTreeOperator.fetchNode(previousSibling.id);
+      const previousNode = await storyTreeOperator.fetchPreviousSibling(node.id);
       if (previousNode) {
-        previousNode.siblings = siblings;
-        
         setLoadedSiblings(prev => {
           const newLoadedSiblings = [...prev];
           newLoadedSiblings[currentSiblingIndex - 1] = previousNode;
@@ -252,18 +234,19 @@ function StoryTreeNode({
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [currentSiblingIndex, siblings, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, replySiblings, onSiblingChange]);
+  }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, node?.id, replySiblings, onSiblingChange]);
 
+  // Update bind gesture to not rely on siblings prop
   const bind = useGesture({
     onDrag: ({ down, movement: [mx], cancel, velocity: [vx] }) => {
       if (!down) {
         // Swipe left to see next sibling (negative movement)
-        if ((mx < -100 || (vx < -0.5 && mx < -50)) && siblings && currentSiblingIndex < siblings.length - 1) {
+        if (mx < -100 || (vx < -0.5 && mx < -50)) {
           loadNextSibling();
           cancel();
         }
         // Swipe right to see previous sibling (positive movement)
-        else if ((mx > 100 || (vx > 0.5 && mx > 50)) && currentSiblingIndex > 0) {
+        else if (mx > 100 || (vx > 0.5 && mx > 50)) {
           loadPreviousSibling();
           cancel();
         }
@@ -272,7 +255,7 @@ function StoryTreeNode({
   }, {
     drag: {
       axis: 'x',
-      enabled: siblings && (currentSiblingIndex > 0 || currentSiblingIndex < siblings.length - 1)
+      enabled: currentSiblingIndex > 0 || (node?.metadata?.quote ? currentSiblingIndex < replySiblings.length - 1 : true)
     },
   });
 
@@ -291,11 +274,11 @@ function StoryTreeNode({
   // Update sibling indicators
   const hasSiblings = node?.metadata?.quote 
     ? replyPagination.totalItems > 1 
-    : (siblings && siblings.length > 1);
+    : loadedSiblings.length > 1;
     
   const hasNextSibling = node?.metadata?.quote
     ? currentSiblingIndex < replyPagination.totalItems - 1
-    : (siblings && currentSiblingIndex < siblings.length - 1);
+    : true; // We won't know until we try to fetch the next sibling
     
   const hasPreviousSibling = currentSiblingIndex > 0;
   const isRootNode = node?.id === postRootId;
@@ -358,7 +341,7 @@ function StoryTreeNode({
     >
       <InfiniteLoader
         isItemLoaded={isItemLoaded}
-        itemCount={node?.metadata?.quote ? replyPagination.totalItems : (siblings?.length || 1)}
+        itemCount={node?.metadata?.quote ? replyPagination.totalItems : (node.siblings?.length || 1)}
         loadMoreItems={loadMoreItems}
         minimumBatchSize={3}
         threshold={2}
@@ -390,7 +373,7 @@ function StoryTreeNode({
               <div className="footer-right">
                 {hasSiblings && (
                   <div className="sibling-indicator">
-                    {currentSiblingIndex + 1} / {node?.metadata?.quote ? replyPagination.totalItems : siblings.length}
+                    {currentSiblingIndex + 1} / {node?.metadata?.quote ? replyPagination.totalItems : node.siblings.length}
                     {(hasNextSibling || hasPreviousSibling) && (
                       <span className="swipe-hint">
                         {hasPreviousSibling && (
