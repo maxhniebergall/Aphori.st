@@ -31,6 +31,11 @@ export const ACTIONS = {
   SET_PAGINATION_LOADING: 'SET_PAGINATION_LOADING',
   HANDLE_SIBLING_CHANGE: 'HANDLE_SIBLING_CHANGE',
   SET_LOADING_STATE: 'SET_LOADING_STATE',
+  SET_REPLIES: 'SET_REPLIES',
+  ADD_REPLY: 'ADD_REPLY',
+  SET_REPLIES_FEED: 'SET_REPLIES_FEED',
+  SET_SELECTED_QUOTE: 'SET_SELECTED_QUOTE',
+  CLEAR_REPLIES: 'CLEAR_REPLIES'
 };
 
 // Add these at the top of the file
@@ -54,6 +59,9 @@ const initialState = {
   currentNode: null,
   error: null,
   loadingState: LOADING_STATES.IDLE,
+  replies: [],
+  repliesFeed: [],
+  selectedQuote: null
 };
 
 // Reducer function
@@ -118,6 +126,37 @@ function storyTreeReducer(state, action) {
       return {
         ...state,
         loadingState: action.payload,
+      };
+
+    case ACTIONS.SET_REPLIES:
+      return {
+        ...state,
+        replies: action.payload
+      };
+    
+    case ACTIONS.ADD_REPLY:
+      return {
+        ...state,
+        replies: [...state.replies, action.payload]
+      };
+    
+    case ACTIONS.SET_REPLIES_FEED:
+      return {
+        ...state,
+        repliesFeed: action.payload
+      };
+    
+    case ACTIONS.SET_SELECTED_QUOTE:
+      return {
+        ...state,
+        selectedQuote: action.payload
+      };
+    
+    case ACTIONS.CLEAR_REPLIES:
+      return {
+        ...state,
+        replies: [],
+        selectedQuote: null
       };
 
     default:
