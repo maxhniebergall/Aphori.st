@@ -4,6 +4,7 @@
  * - Selection highlight styling
  * - GPU-accelerated animations
  * - Visual feedback on interaction
+ * - Quote highlight styling
  */
 
 .selection-container {
@@ -29,4 +30,14 @@
 .selection-container *::-moz-selection {
   background-color: rgba(0, 120, 215, 0.2);
   color: inherit;
+}
+
+/* Quote highlight styles */
+.selection-container span[data-quote-range] {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.selection-container span[data-quote-range]:hover {
+  filter: brightness(1.1);
 } 

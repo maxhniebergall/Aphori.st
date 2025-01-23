@@ -205,13 +205,31 @@ function VirtualizedStoryList({
     setTotalContentHeight(newTotalHeight);
   }, []);
 
+  const getQuoteMetadataHeight = useCallback((node) => {
+    if (!node?.id) return 0;
+    
+    const metadata = state.quoteMetadata[node.id];
+    if (!metadata) return 0;
+
+    // Calculate height based on number of quotes and their stats
+    const quotesCount = Object.keys(metadata).length;
+    const baseHeight = 24; // Height for total replies count
+    const quoteHeight = 48; // Height per quote stat
+    return quotesCount > 0 ? baseHeight + (quotesCount * quoteHeight) : 0;
+  }, [state.quoteMetadata]);
+
   const getSize = useCallback((index) => {
     // Return 0 for hidden nodes
     if (replyTargetIndex !== undefined && index > replyTargetIndex) {
       return 0;
     }
-    return Math.max(sizeMap.current[index] || 200, 100);
-  }, [replyTargetIndex]);
+
+    const node = items[index];
+    const baseHeight = Math.max(sizeMap.current[index] || 200, 100);
+    const metadataHeight = getQuoteMetadataHeight(node);
+    
+    return baseHeight + metadataHeight;
+  }, [replyTargetIndex, items, getQuoteMetadataHeight]);
 
   useEffect(() => {
     const handleResize = () => {

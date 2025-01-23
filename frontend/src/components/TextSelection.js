@@ -12,6 +12,8 @@
  * - Custom handles for adjusting selection
  * - Mouse state tracking to prevent stuck animations
  * - Selection state should be stored externally in ReplyContext
+ * - Quote visualization with reply counts
+ * - Quote cycling for overlapping areas
  */
 import React, { useRef, useEffect } from 'react';
 import { getCurrentOffset, getWordBoundaries } from '../utils/selectionUtils';
@@ -32,11 +34,63 @@ const throttledAnimationLoop = throttle((event, containerRef, startOffset, mouse
 }, 16); // 60fps = ~16ms throttle
 
 function removeExistingHighlights(element) {
-    const existingHighlights = element.querySelectorAll('span[style*="background-color: yellow"]');
+    const existingHighlights = element.querySelectorAll('span[style*="background-color"]');
     existingHighlights.forEach(highlight => {
         const parent = highlight.parentNode;
         parent.replaceChild(document.createTextNode(highlight.textContent), highlight);
         parent.normalize(); // Merge adjacent text nodes
+    });
+}
+
+function highlightQuotes(element, quotes) {
+    removeExistingHighlights(element);
+
+    // Sort quotes by reply count in descending order
+    const sortedQuotes = Object.entries(quotes)
+        .sort(([, count1], [, count2]) => count2 - count1)
+        .slice(0, 10); // Only take top 10 quotes
+
+    sortedQuotes.forEach(([quoteRange, count]) => {
+        const { start, end } = JSON.parse(quoteRange);
+        const findNodeAndOffset = (offset) => {
+            let currentOffset = 0;
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+
+            while (walker.nextNode()) {
+                const node = walker.currentNode;
+                const length = node.textContent.length;
+                
+                if (currentOffset + length >= offset) {
+                    return {
+                        node,
+                        offset: offset - currentOffset
+                    };
+                }
+                currentOffset += length;
+            }
+            return null;
+        };
+
+        const startPos = findNodeAndOffset(start);
+        const endPos = findNodeAndOffset(end);
+
+        if (!startPos || !endPos) return;
+
+        const range = document.createRange();
+        range.setStart(startPos.node, startPos.offset);
+        range.setEnd(endPos.node, endPos.offset);
+
+        const span = document.createElement('span');
+        span.style.backgroundColor = `rgba(0, 255, 0, ${Math.min(0.1 + (count * 0.05), 0.5)})`; // Darker green for more replies
+        // TODO validate that we can make the green darker for more replies without making everything look bad
+        span.dataset.quoteRange = quoteRange;
+        span.dataset.replyCount = count;
+
+        try {
+            range.surroundContents(span);
+        } catch (e) {
+            console.warn('Could not highlight quote:', e);
+        }
     });
 }
 
@@ -89,7 +143,7 @@ function highlightText(element, startOffset, endOffset) {
     }
 }
 
-const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionState }) => {
+const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionState, quotes }) => {
     const containerRef = useRef(null);
     const boundThrottledAnimationRef = useRef(null);
     const mouseIsDownRef = useRef(false);
@@ -141,6 +195,12 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionSta
             }
         };
     }, [children, selectAll, containerRef, selectionState]);
+
+    useEffect(() => {
+        if (containerRef.current && quotes) {
+            highlightQuotes(containerRef.current, quotes);
+        }
+    }, [quotes]);
 
     const handleWordSelection = (offset) => {
         if (!containerRef.current) return;
@@ -220,9 +280,18 @@ const TextSelection = ({ children, onSelectionCompleted, selectAll, selectionSta
 
         // If not dragging, handle as word selection
         if (!isDraggingRef.current && initialOffset !== null) {
-            handleWordSelection(initialOffset);
-            mouseIsDownRef.current = false;
-            return;
+
+            // Check if click was on a quote highlight
+            const target = event.target;
+            if (target.dataset.quoteRange) {
+                const quoteRange = JSON.parse(target.dataset.quoteRange);
+                onSelectionCompleted(quoteRange);
+                return;
+            } else {
+                handleWordSelection(initialOffset);
+                mouseIsDownRef.current = false;
+                return;
+            }
         }
 
         const selection = endAnimationLoop(event);
