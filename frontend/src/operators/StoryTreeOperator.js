@@ -11,6 +11,8 @@
  * - Proper sibling state management
  * - Efficient caching of fetched nodes
  * - Quote metadata handling in replies
+ * - Reply creation and fetching support
+ * - Reply feed management
  */
 
 import { ACTIONS } from '../context/StoryTreeContext';
@@ -20,30 +22,6 @@ import { BaseOperator } from './BaseOperator';
 class StoryTreeOperator extends BaseOperator {
   constructor() {
     super();
-    // Initialize with default state to prevent null reference errors
-    this.state = {
-      items: [],
-      hasNextPage: false,
-      isNextPageLoading: false,
-      rootNode: null,
-      currentNode: null,
-      isEditing: false,
-      error: null
-    };
-    this.dispatch = null;
-
-    // Bind class methods to maintain 'this' context
-    this.isItemLoaded = this.isItemLoaded.bind(this);
-    this.loadMoreItems = this.loadMoreItems.bind(this);
-    this.setCurrentFocus = this.setCurrentFocus.bind(this);
-    this.fetchRootNode = this.fetchRootNode.bind(this);
-    this.fetchNode = this.fetchNode.bind(this);
-    this.updateContext = this.updateContext.bind(this);
-    this.submitReply = this.submitReply.bind(this);
-  }
-
-  updateContext(state, dispatch) {
-    // Merge new state with defaults to ensure required properties exist
     this.state = {
       items: [],
       hasNextPage: false,
@@ -52,6 +30,35 @@ class StoryTreeOperator extends BaseOperator {
       currentNode: null,
       isEditing: false,
       error: null,
+      replies: [],
+      selectedQuote: null
+    };
+    this.dispatch = null;
+
+    // Bind existing methods
+    this.isItemLoaded = this.isItemLoaded.bind(this);
+    this.loadMoreItems = this.loadMoreItems.bind(this);
+    this.setCurrentFocus = this.setCurrentFocus.bind(this);
+    this.fetchRootNode = this.fetchRootNode.bind(this);
+    this.fetchNode = this.fetchNode.bind(this);
+    this.updateContext = this.updateContext.bind(this);
+    this.submitReply = this.submitReply.bind(this);
+    this.fetchReply = this.fetchReply.bind(this);
+    this.fetchReplies = this.fetchReplies.bind(this);
+    this.fetchRepliesFeed = this.fetchRepliesFeed.bind(this);
+  }
+
+  updateContext(state, dispatch) {
+    this.state = {
+      items: [],
+      hasNextPage: false,
+      isNextPageLoading: false,
+      rootNode: null,
+      currentNode: null,
+      isEditing: false,
+      error: null,
+      replies: [],
+      selectedQuote: null,
       ...state
     };
     this.dispatch = dispatch;
@@ -212,46 +219,79 @@ class StoryTreeOperator extends BaseOperator {
 
     try {
       const replyData = {
-        storyTree: {
-          parentId,
-          content,
-          nodes: []
-        }
-      };
-
-      // Add quote metadata if provided
-      if (quoteData) {
-        replyData.storyTree.quote = {
+        text: content,
+        parentId: [parentId],
+        quote: quoteData ? {
           text: quoteData.quote,
           sourcePostId: quoteData.sourcePostId,
           selectionRange: quoteData.selectionRange
-        };
-      }
+        } : null
+      };
 
       const response = await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/createStoryTree`,
+        `${process.env.REACT_APP_API_URL}/api/createReply`,
         replyData
       );
 
-      const newNode = await this.fetchNode(response.data.id);
-      if (newNode) {
-        // Update the parent node's children
-        const parentNode = this.state.items.find(item => item.id === parentId);
-        if (parentNode) {
-          parentNode.nodes = [...(parentNode.nodes || []), { id: newNode.id }];
-          this.dispatch({ type: ACTIONS.SET_ITEMS, payload: [...this.state.items] });
-        }
-
-        // If this is a reply to the last visible node, append it
-        if (parentId === this.state.items[this.state.items.length - 1]?.id) {
-          this.dispatch({ type: ACTIONS.APPEND_ITEM, payload: newNode });
-        }
-
-        return newNode;
+      const newReply = await this.fetchReply(response.data.id);
+      if (newReply) {
+        this.dispatch({ type: ACTIONS.ADD_REPLY, payload: newReply });
+        return newReply;
       }
     } catch (error) {
       console.error('Error submitting reply:', error);
       return null;
+    }
+  }
+
+  async fetchReply(uuid) {
+    try {
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/api/getReply/${uuid}`
+      );
+      return await this.handleCompressedResponse(response);
+    } catch (error) {
+      console.error('Error fetching reply:', error);
+      return null;
+    }
+  }
+
+  async fetchReplies(uuid, quote, sortingCriteria = 'mostRecent', page = 1, limit = 10) {
+    try {
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/api/getReplies/${uuid}/${encodeURIComponent(quote)}/${sortingCriteria}`,
+        {
+          params: {
+            page,
+            limit
+          }
+        }
+      );
+      
+      const data = await this.handleCompressedResponse(response);
+      
+      if (data?.replies && data?.pagination) {
+        this.dispatch({ type: ACTIONS.SET_REPLIES, payload: data.replies });
+        return data;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching replies:', error);
+      return null;
+    }
+  }
+
+  async fetchRepliesFeed() {
+    try {
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/api/getRepliesFeed`
+      );
+      const replies = await this.handleCompressedResponse(response);
+      this.dispatch({ type: ACTIONS.SET_REPLIES_FEED, payload: replies });
+      return replies;
+    } catch (error) {
+      console.error('Error fetching replies feed:', error);
+      return [];
     }
   }
 }

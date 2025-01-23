@@ -9,11 +9,16 @@
  * - Memory efficient row rendering with React.memo
  * - Responsive height calculations based on window size
  * - Proper cleanup of resize observers
- * - Hide child nodes when in reply mode
+ * - Hide descendant nodes when in reply mode using row indices
+ * - Dynamic height recalculation for hidden nodes
  * - Implement minimumBatchSize and threshold for InfiniteLoader
  * - Implement overscanCount for react-window List
  * - Use AutoSizer for dynamic list sizing
  * - Display story title and subtitle in the root node
+ * - Handle reply-based navigation
+ * - Support quote-based filtering
+ * - Support pagination for replies
+ * - Auto-scroll to bottom when nodes are hidden during reply
  */
 
 import React, { useCallback, useRef, useEffect, useState } from 'react';
@@ -21,6 +26,8 @@ import { VariableSizeList as List } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import StoryTreeNode from './StoryTreeNode';
+import { useReplyContext } from '../context/ReplyContext';
+import { useStoryTree } from '../context/StoryTreeContext';
 
 const Row = React.memo(({ 
   index, 
@@ -32,7 +39,9 @@ const Row = React.memo(({
   fetchNode,
   isLoading,
   postRootId,
+  replyTargetIndex,
 }) => {
+  const { replyTarget } = useReplyContext();
   const memoizedStyle = React.useMemo(() => ({
     ...style,
     position: 'absolute',
@@ -43,31 +52,41 @@ const Row = React.memo(({
     boxSizing: 'border-box'
   }), [style]);
 
+  const shouldHideNode = React.useMemo(() => {
+    if (!replyTarget || replyTargetIndex === undefined) return false;
+    if (!node) return false;
+    
+    // Show nodes that come before the reply target (ancestors)
+    return index > replyTargetIndex;
+  }, [replyTarget, replyTargetIndex, index, node]);
+
   React.useEffect(() => {
     const updateSize = () => {
       if (rowRefs.current[index]) {
         const element = rowRefs.current[index];
         
+        // If node should be hidden, set height to 0
+        if (shouldHideNode) {
+          setSize(index, 0);
+          return;
+        }
+        
         // Get the actual rendered height including all children
         const titleSection = element.querySelector('.story-title-section');
         const textSection = element.querySelector('.story-tree-node-text');
         const footer = element.querySelector('.story-tree-node-footer');
+        const replySection = element.querySelector('.reply-section');
         
         let totalHeight = 0;
         
         // Add heights of all sections
-        if (titleSection) {
-          totalHeight += titleSection.offsetHeight;
-        }
-        if (textSection) {
-          totalHeight += textSection.offsetHeight;
-        }
-        if (footer) {
-          totalHeight += footer.offsetHeight;
-        }
+        if (titleSection) totalHeight += titleSection.offsetHeight;
+        if (textSection) totalHeight += textSection.offsetHeight;
+        if (footer) totalHeight += footer.offsetHeight;
+        if (replySection) totalHeight += replySection.offsetHeight;
         
         // Add padding
-        totalHeight += 32; // Standard padding
+        totalHeight += 32;
         
         // Set minimum height
         totalHeight = Math.max(totalHeight, 100);
@@ -80,13 +99,24 @@ const Row = React.memo(({
 
     if (rowRefs.current[index]) {
       const resizeObserver = new ResizeObserver(() => {
-        updateSize();
+        if (!shouldHideNode) {
+          updateSize();
+        }
       });
       resizeObserver.observe(rowRefs.current[index]);
       return () => resizeObserver.disconnect();
     }
-  }, [setSize, index, rowRefs, node, postRootId]);
+  }, [setSize, index, rowRefs, node, postRootId, shouldHideNode]);
   
+  if (shouldHideNode) {
+    return (
+      <div
+        ref={el => rowRefs.current[index] = el}
+        style={{ ...memoizedStyle, height: 0, padding: 0, overflow: 'hidden' }}
+      />
+    );
+  }
+
   if (isLoading) {
     return (
       <div 
@@ -150,6 +180,24 @@ function VirtualizedStoryList({
   const sizeMap = useRef({});
   const rowRefs = useRef({});
   const [totalContentHeight, setTotalContentHeight] = useState(0);
+  const { state } = useStoryTree();
+
+  // Add state to track reply target index
+  const [replyTargetIndex, setReplyTargetIndex] = useState(undefined);
+  const { replyTarget } = useReplyContext();
+
+  // Add effect to find reply target index
+  useEffect(() => {
+    if (!replyTarget || !items) {
+      setReplyTargetIndex(undefined);
+      return;
+    }
+
+    const targetIndex = items.findIndex(item => item?.id === replyTarget.id);
+    setReplyTargetIndex(targetIndex >= 0 ? targetIndex : undefined);
+  }, [replyTarget, items]);
+
+  const memoizedLoadMoreItems = useCallback(loadMoreItems, [loadMoreItems]);
 
   const setSize = useCallback((index, size) => {
     sizeMap.current[index] = size;
@@ -159,12 +207,12 @@ function VirtualizedStoryList({
   }, []);
 
   const getSize = useCallback((index) => {
+    // Return 0 for hidden nodes
+    if (replyTargetIndex !== undefined && index > replyTargetIndex) {
+      return 0;
+    }
     return Math.max(sizeMap.current[index] || 200, 100);
-  }, []);
-
-  const memoizedLoadMoreItems = useCallback(async (startIndex, stopIndex) => {
-    return loadMoreItems(startIndex, stopIndex);
-  }, [loadMoreItems]);
+  }, [replyTargetIndex]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -177,6 +225,16 @@ function VirtualizedStoryList({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [totalContentHeight, setSize]);
+
+  // Add effect to scroll to bottom when nodes are hidden
+  useEffect(() => {
+    if (replyTargetIndex !== undefined && listRef.current) {
+      // Wait for next tick to ensure heights are recalculated
+      setTimeout(() => {
+        listRef.current.scrollToItem(replyTargetIndex, 'end');
+      }, 0);
+    }
+  }, [replyTargetIndex, totalContentHeight]);
 
   const renderRow = useCallback(({ index, style }) => {
     const node = items[index];
@@ -195,25 +253,28 @@ function VirtualizedStoryList({
         fetchNode={fetchNode}
         isLoading={isLoading}
         postRootId={postRootId}
+        replyTargetIndex={replyTargetIndex}
       />
     );
-  }, [items, isItemLoaded, setIsFocused, setSize, handleSiblingChange, fetchNode, postRootId]);
+  }, [items, isItemLoaded, setIsFocused, setSize, handleSiblingChange, fetchNode, postRootId, replyTargetIndex]);
 
   if (!items?.length && !hasNextPage) {
     return null;
   }
 
   const rootNode = items[0];
-  const totalPossibleItems = rootNode?.nodes?.length ? rootNode.nodes.length + 1 : items.length || 1;
-  const itemCount = hasNextPage ? Math.max(items.length + 1, totalPossibleItems) : items.length;
+  const totalPossibleItems = rootNode?.nodes?.length 
+    ? rootNode.nodes.length + 1 
+    : (rootNode?.metadata?.quote 
+      ? state?.replyPagination?.totalItems || items.length 
+      : items.length) || 1;
+  
+  const itemCount = hasNextPage 
+    ? Math.max(items.length + 1, totalPossibleItems) 
+    : items.length;
 
   return (
-    <div style={{ 
-      height: '100%',
-      overflow: 'visible'
-    }}
-    ref={containerRef}
-    >
+    <div style={{ height: '100%', overflow: 'visible' }} ref={containerRef}>
       <AutoSizer>
         {({ height, width }) => (
           <InfiniteLoader
