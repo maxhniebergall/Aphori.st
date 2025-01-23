@@ -40,7 +40,6 @@ function StoryTreeNode({
   const [loadedSiblings, setLoadedSiblings] = useState([]);
   const [isLoadingSibling, setIsLoadingSibling] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
-  const [replySiblings, setReplySiblings] = useState([]);
   const [isLoadingReplies, setIsLoadingReplies] = useState(false);
   const [replyPage, setReplyPage] = useState(1);
   const [replyPagination, setReplyPagination] = useState({
@@ -57,10 +56,8 @@ function StoryTreeNode({
   const nodeRef = useRef(null);
   const isReplyTarget = replyTarget?.id === node?.id;
 
-  // Define currentSibling before using it in hooks
-  const currentSibling = node?.metadata?.quote 
-    ? replySiblings[currentSiblingIndex] || node
-    : loadedSiblings[currentSiblingIndex] || node;
+  // Update currentSibling definition to use only loadedSiblings
+  const currentSibling = loadedSiblings[currentSiblingIndex] || node;
 
   // 3. First define loadMoreReplies since it's used in loadMoreItems
   const loadMoreReplies = useCallback(async () => {
@@ -77,7 +74,7 @@ function StoryTreeNode({
   // Now we can define loadMoreItems which uses loadMoreReplies
   const loadMoreItems = useCallback(async (startIndex, stopIndex) => {
     if (node?.metadata?.quote) {
-      if (startIndex >= replySiblings.length && replyPage < replyPagination.totalPages) {
+      if (startIndex >= loadedSiblings.length && replyPage < replyPagination.totalPages) {
         await loadMoreReplies();
       }
       return;
@@ -109,23 +106,20 @@ function StoryTreeNode({
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [node, replyPage, replyPagination.totalPages, replySiblings.length, loadMoreReplies]);
+  }, [node, replyPage, replyPagination.totalPages, loadedSiblings.length, loadMoreReplies]);
 
   const isItemLoaded = useCallback(index => {
-    if (node?.metadata?.quote) {
-      return index < replySiblings.length;
-    }
     return loadedSiblings[index] != null;
-  }, [loadedSiblings, replySiblings, node?.metadata?.quote]);
+  }, [loadedSiblings]);
 
   const loadNextSibling = useCallback(async () => {
     if (isLoadingSibling || isLoadingReplies) return;
 
     if (node?.metadata?.quote) {
-      if (currentSiblingIndex >= replySiblings.length - 1) return;
+      if (currentSiblingIndex >= loadedSiblings.length - 1) return;
       
       setCurrentSiblingIndex(prev => prev + 1);
-      onSiblingChange?.(replySiblings[currentSiblingIndex + 1]);
+      onSiblingChange?.(loadedSiblings[currentSiblingIndex + 1]);
       return;
     }
 
@@ -143,7 +137,7 @@ function StoryTreeNode({
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, node?.id, replySiblings, onSiblingChange]);
+  }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, node?.id, loadedSiblings, onSiblingChange]);
 
   const loadPreviousSibling = useCallback(async () => {
     if (isLoadingSibling || isLoadingReplies) return;
@@ -156,7 +150,7 @@ function StoryTreeNode({
     if (node?.metadata?.quote) {
       // For replies, we already have all siblings loaded
       setCurrentSiblingIndex(prev => prev - 1);
-      onSiblingChange?.(replySiblings[currentSiblingIndex - 1]);
+      onSiblingChange?.(loadedSiblings[currentSiblingIndex - 1]);
       return;
     }
 
@@ -179,7 +173,7 @@ function StoryTreeNode({
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, node?.id, replySiblings, onSiblingChange]);
+  }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, node?.id, loadedSiblings, onSiblingChange]);
 
   const handleTextSelectionCompleted = useCallback((selection) => {
     setSelectAll(false);
@@ -202,7 +196,7 @@ function StoryTreeNode({
         );
         
         if (response?.replies && response?.pagination) {
-          setReplySiblings(response.replies);
+          setLoadedSiblings(response.replies);
           setReplyPagination(response.pagination);
           setReplyPage(1);
         }
@@ -245,7 +239,7 @@ function StoryTreeNode({
             node.text,
             'mostRecent',
             replyPage
-            );
+          );
         } else {
           response = await storyTreeOperator.fetchReplies(
             node.metadata.quote.sourcePostId,
@@ -256,7 +250,7 @@ function StoryTreeNode({
         }
 
         if (response?.replies && response?.pagination) {
-          setReplySiblings(prev => 
+          setLoadedSiblings(prev => 
             replyPage === 1 ? response.replies : [...prev, ...response.replies]
           );
           setReplyPagination(response.pagination);
@@ -290,7 +284,7 @@ function StoryTreeNode({
   }, {
     drag: {
       axis: 'x',
-      enabled: currentSiblingIndex > 0 || (node?.metadata?.quote ? currentSiblingIndex < replySiblings.length - 1 : true)
+      enabled: currentSiblingIndex > 0 || (node?.metadata?.quote ? currentSiblingIndex < loadedSiblings.length - 1 : true)
     },
   });
 
