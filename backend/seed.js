@@ -408,30 +408,97 @@ if (process.env.NODE_ENV !== 'production') {
     // }
   ];
 
+  // Add new sample replies data
+  const sampleReplies = [
+    {
+      text: "This reminds me of a similar story I once heard...",
+      quote: "The waves crashed against the rocky shoreline"
+    },
+    {
+      text: "The imagery here is absolutely stunning!",
+      quote: "Paint-splattered tarps covered the worn wooden floor"
+    },
+    {
+      text: "I wonder what ancient civilization built these ruins...",
+      quote: "The ancient ruins stood silent beneath the scorching desert sun"
+    },
+    {
+      text: "Nature always finds a way to persevere.",
+      quote: "A small seedling pushed through the soil"
+    }
+  ];
+
   async function seedDevStories(db) {
     const logger = newLogger("seed.js");
 
     try {
       logger.info("Attempting to seed data");
 
-      // Clear existing feed items
-      // await client.del('feedItems');
-      logger.info("Existing feed items cleared");
+      // Clear existing feed items and replies
+      await db.del('feedItems');
+      await db.del('replies:feed:mostRecent');
+      logger.info("Existing feed items and replies cleared");
 
       // Add the new stories
-      await addMultipleStories(newStories);
+      const storyIds = await addMultipleStories(newStories);
 
-      logger.info('Successfully seeded stories');
+      // Add sample replies to each story
+      await addSampleReplies(storyIds);
+
+      logger.info('Successfully seeded stories and replies');
     } catch (error) {
       logger.error('Error seeding stories:', error);
       throw error;
     }
   }
 
-  // Move helper functions inside main function to maintain scope
   async function addMultipleStories(stories) {
+    const storyIds = [];
     for (const story of stories) {
-      await createStoryTree(story.uuid, story.text);
+      const uuid = await createStoryTree(story.uuid, story.text);
+      storyIds.push(uuid);
+    }
+    return storyIds;
+  }
+
+  async function addSampleReplies(storyIds) {
+    for (const storyId of storyIds) {
+      // Get the story content
+      const story = await db.hGet(storyId, 'storyTree');
+      if (!story) continue;
+
+      // Add replies to this story
+      for (const reply of sampleReplies) {
+        // Generate a UUID for the reply
+        const replyId = crypto.randomUUID();
+
+        // Create the reply object
+        const replyObject = {
+          id: replyId,
+          text: reply.text,
+          quote: reply.quote,
+          parentId: [storyId],
+          metadata: {
+            author: authors[Math.floor(Math.random() * authors.length)],
+            authorId: 'seed_user',
+            authorEmail: 'seed@aphori.st',
+            createdAt: new Date().toISOString()
+          }
+        };
+
+        // Store the reply
+        await db.hSet(replyId, 'reply', replyObject);
+
+        // Add to the story's replies set
+        await db.sAdd(`${storyId}:replies`, replyId);
+
+        // Add to the sorted sets for different access patterns
+        const score = Date.now();
+        await db.zAdd(`replies:${storyId}:${reply.quote}:mostRecent`, score, replyId);
+        await db.zAdd(`replies:${storyId}:${reply.quote}:leastRecent`, -score, replyId);
+        await db.zAdd('replies:feed:mostRecent', score, replyId);
+        await db.zAdd(`replies:quote:${reply.quote}:mostRecent`, score, replyId);
+      }
     }
   }
 
