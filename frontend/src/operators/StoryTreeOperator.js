@@ -214,33 +214,44 @@ class StoryTreeOperator extends BaseOperator {
   async submitReply(parentId, content, quoteData = null) {
     if (!parentId || !content) {
       console.error('Parent ID and content are required for reply');
-      return null;
+      return { success: false };
     }
 
-    try {
-      const replyData = {
-        text: content,
-        parentId: [parentId],
-        quote: quoteData ? {
-          text: quoteData.quote,
-          sourcePostId: quoteData.sourcePostId,
-          selectionRange: quoteData.selectionRange
-        } : null
-      };
+    const replyData = {
+      text: content,
+      parentId: [parentId],
+      quote: quoteData ? {
+        text: quoteData.quote,
+        sourcePostId: quoteData.sourcePostId,
+        selectionRange: quoteData.selectionRange
+      } : null
+    };
 
+    try {
       const response = await axios.post(
         `${process.env.REACT_APP_API_URL}/api/createReply`,
         replyData
       );
 
-      const newReply = await this.fetchReply(response.data.id);
-      if (newReply) {
-        this.dispatch({ type: ACTIONS.ADD_REPLY, payload: newReply });
-        return newReply;
+      // Add debug logging
+      console.log('Create reply response:', response.data);
+      
+      // Check if response.data exists
+      if (!response.data) {
+        console.error('Invalid response from createReply:', response.data);
+        return { success: false };
       }
+
+      // Notify that replies should be refreshed
+      if (this.dispatch) {
+        this.dispatch({ type: ACTIONS.CLEAR_REPLIES }); // This will trigger a re-fetch in components
+      }
+
+      return { success: true };
     } catch (error) {
       console.error('Error submitting reply:', error);
-      return null;
+      console.error('Request data:', replyData);
+      return { success: false };
     }
   }
 

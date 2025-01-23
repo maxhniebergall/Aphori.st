@@ -73,4 +73,65 @@ export class FirebaseClient extends DatabaseClientInterface {
     const currentSet = snapshot.val() || {};
     return Object.keys(currentSet);
   }
+
+  async isConnected() {
+    // Firebase connects automatically
+    return true;
+  }
+
+  async isReady() {
+    // Firebase is always ready after initialization
+    return true;
+  }
+
+  encodeKey(key, prefix) {
+    return prefix ? `${prefix}:${key}` : key;
+  }
+
+  async hGetAll(key) {
+    const snapshot = await this.db.ref(key).once('value');
+    return snapshot.val();
+  }
+
+  async zAdd(key, score, value) {
+    const ref = this.db.ref(key);
+    const snapshot = await ref.once('value');
+    const currentData = snapshot.val() || {};
+    
+    // Store data with score as key for ordering
+    currentData[score] = {
+      score: score,
+      value: value
+    };
+    
+    await ref.set(currentData);
+    return 1;
+  }
+
+  async zCard(key) {
+    const snapshot = await this.db.ref(key)
+      .orderByChild('score')
+      .once('value');
+    let count = 0;
+    snapshot.forEach(() => count++);
+    return count;
+  }
+
+  async zRange(key, start, end) {
+    const snapshot = await this.db.ref(key)
+      .orderByChild('score')
+      .once('value');
+    
+    const results = [];
+    snapshot.forEach((childSnapshot) => {
+      results.push(childSnapshot.val().value);
+    });
+    
+    return results.slice(start, end + 1);
+  }
+
+  async del(key) {
+    await this.db.ref(key).remove();
+    return 1; // Return 1 to match Redis behavior
+  }
 } 

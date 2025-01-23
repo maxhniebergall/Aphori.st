@@ -439,9 +439,14 @@ if (process.env.NODE_ENV !== 'production') {
       await db.del('replies:feed:mostRecent');
       logger.info("Existing feed items and replies cleared");
 
-      // Add the new stories
+      // Add the new stories and get their IDs
       const storyIds = await addMultipleStories(newStories);
+      
+      if (!storyIds || storyIds.length === 0) {
+          throw new Error('No story IDs returned from addMultipleStories');
+      }
 
+      logger.info(`Adding replies to ${storyIds.length} stories`);
       // Add sample replies to each story
       await addSampleReplies(storyIds);
 
@@ -455,50 +460,82 @@ if (process.env.NODE_ENV !== 'production') {
   async function addMultipleStories(stories) {
     const storyIds = [];
     for (const story of stories) {
-      const uuid = await createStoryTree(story.uuid, story.text);
-      storyIds.push(uuid);
+        try {
+            logger.info(`Creating story with ID: ${story.uuid}`);
+            await createStoryTree(story.uuid, story.text);
+            storyIds.push(story.uuid); // Make sure we're pushing the UUID
+        } catch (err) {
+            logger.error(`Error creating story ${story.uuid}:`, err);
+        }
     }
+    logger.info(`Created ${storyIds.length} stories with IDs:`, storyIds);
     return storyIds;
   }
 
   async function addSampleReplies(storyIds) {
     for (const storyId of storyIds) {
-      // Get the story content
-      const story = await db.hGet(storyId, 'storyTree');
-      if (!story) continue;
+        logger.info(`Processing replies for story: ${storyId}`);
+        
+        try {
+            const story = await db.hGet(storyId, 'storyTree');
+            logger.info(`Retrieved story type: ${typeof story}`, { story });
+            
+            if (!story) {
+                logger.warn(`No story found for ID: ${storyId}`);
+                continue;
+            }
 
-      // Add replies to this story
-      for (const reply of sampleReplies) {
-        // Generate a UUID for the reply
-        const replyId = crypto.randomUUID();
+            // Add replies to this story
+            for (const reply of sampleReplies) {
+                logger.info(`Adding reply with quote: ${reply.quote}`);
+                
+                const replyId = crypto.randomUUID();
+                const replyObject = {
+                    id: replyId,
+                    text: reply.text,
+                    quote: reply.quote,
+                    parentId: [storyId],
+                    metadata: {
+                        author: authors[Math.floor(Math.random() * authors.length)],
+                        authorId: 'seed_user',
+                        authorEmail: 'seed@aphori.st',
+                        createdAt: new Date().toISOString()
+                    }
+                };
 
-        // Create the reply object
-        const replyObject = {
-          id: replyId,
-          text: reply.text,
-          quote: reply.quote,
-          parentId: [storyId],
-          metadata: {
-            author: authors[Math.floor(Math.random() * authors.length)],
-            authorId: 'seed_user',
-            authorEmail: 'seed@aphori.st',
-            createdAt: new Date().toISOString()
-          }
-        };
+                logger.info(`Storing reply object type: ${typeof replyObject}`, { replyObject });
+                
+                // Store the reply
+                await db.hSet(replyId, 'reply', JSON.stringify(replyObject));
+                await db.sAdd(`${storyId}:replies`, replyId);
 
-        // Store the reply
-        await db.hSet(replyId, 'reply', replyObject);
+                // Add to the sorted sets with proper numeric scores
+                const score = Number(Date.now()); // Ensure it's a number
+                logger.info(`Using score: ${score} for reply: ${replyId}`);
 
-        // Add to the story's replies set
-        await db.sAdd(`${storyId}:replies`, replyId);
-
-        // Add to the sorted sets for different access patterns
-        const score = Date.now();
-        await db.zAdd(`replies:${storyId}:${reply.quote}:mostRecent`, score, replyId);
-        await db.zAdd(`replies:${storyId}:${reply.quote}:leastRecent`, -score, replyId);
-        await db.zAdd('replies:feed:mostRecent', score, replyId);
-        await db.zAdd(`replies:quote:${reply.quote}:mostRecent`, score, replyId);
-      }
+                try {
+                    // Add to story-specific sorted set
+                    await db.zAdd(`replies:${storyId}:${reply.quote}:mostRecent`, score, replyId);
+                    await db.zAdd(`replies:${storyId}:${reply.quote}:leastRecent`, -score, replyId);
+                    
+                    // Add to global feed
+                    await db.zAdd('replies:feed:mostRecent', score, replyId);
+                    
+                    // Add to quote-specific sorted set
+                    if (reply.quote) {
+                        await db.zAdd(`replies:quote:${reply.quote}:mostRecent`, score, replyId);
+                    }
+                } catch (err) {
+                    logger.error(`Error adding to sorted set for reply ${replyId}:`, err);
+                    throw err;
+                }
+                
+                logger.info(`Successfully added reply: ${replyId}`);
+            }
+        } catch (err) {
+            logger.error(`Error processing story ${storyId}:`, err);
+            throw err;
+        }
     }
   }
 
@@ -574,8 +611,8 @@ if (process.env.NODE_ENV !== 'production') {
       totalNodes: nodes.length
     };
 
-    // Store in Redis using the database client's compression
-    await db.hSet(nodeId, "storyTree", storyTree);
+    // Store in Redis using the database client's compression - make sure to stringify
+    await db.hSet(nodeId, "storyTree", JSON.stringify(storyTree));
 
     return storyTree;
   }
