@@ -5,6 +5,9 @@
 - Stores quote data with source post ID and selection range
 - Creates posts (storyTrees) with new schema structure separating posts from replies
 - Handles reply creation with quote references and parent tracking
+- Creates formatted story trees with metadata and node structure
+- Manages feed items for root-level posts only
+- Fetches and returns compressed storyTree objects from Redis
 */
 
 import express, { json } from "express";
@@ -184,19 +187,19 @@ app.get('/api/storyTree/:uuid', async (req, res) => {
 
     try {
         logger.info(`Fetching storyTree with UUID: [${uuid}]`);
-        const data = await db.hGet(uuid, 'storyTree', { returnCompressed: true });
-        logger.info(`Raw data from Redis: [${data}]`);
-
-        if (!data) {
+        const storyTree = await db.hGet(uuid, 'storyTree', { returnCompressed: true });
+        
+        if (!storyTree) {
             logger.warn(`StoryTree with UUID ${uuid} not found`);
             return res.status(404).json({ error: 'StoryTree not found' });
         }
 
         // Add compression header to indicate data is compressed
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(data);
+        res.send(storyTree);
+
     } catch (err) {
-        logger.info('Error fetching data from Redis:', err.stack);
+        logger.error('Error fetching storyTree:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
