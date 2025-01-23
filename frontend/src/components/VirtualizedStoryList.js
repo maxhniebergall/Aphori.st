@@ -150,7 +150,6 @@ const Row = React.memo(({
       <StoryTreeNode
         key={node?.id}
         node={node}
-        siblings={Array.isArray(node?.siblings) ? node.siblings : []}
         onSiblingChange={(newNode) => handleSiblingChange(newNode, index, fetchNode)}
         postRootId={postRootId}
       />
