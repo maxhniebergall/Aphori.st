@@ -4,6 +4,7 @@
 - Handles quote metadata in story creation and retrieval
 - Stores quote data with source post ID and selection range
 - Creates posts (storyTrees) with new schema structure separating posts from replies
+- Handles reply creation with quote references and parent tracking
 */
 
 import express, { json } from "express";
@@ -720,6 +721,54 @@ app.post('/api/signup', async (req, res) => {
         message: 'User created successfully',
         data: authToken ? { token: authToken, user: result.data } : undefined
     });
+});
+
+app.post('/api/createReply', authenticateToken, async (req, res) => {
+    try {
+        const { parentId, text, quote } = req.body;
+        
+        if (!parentId || !text) {
+            return res.status(400).json({ error: 'Parent ID and text are required' });
+        }
+
+        // Verify parent story exists
+        const parentStory = await db.hGet(parentId, 'storyTree');
+        if (!parentStory) {
+            return res.status(404).json({ error: 'Parent story not found' });
+        }
+
+        // Generate a new UUID for the reply
+        const replyId = crypto.randomUUID();
+
+        // Create the reply object following the schema
+        const replyObject = {
+            id: replyId,
+            text: text,
+            parentId: [parentId], // Array of parent IDs, initially just the direct parent
+            quote: quote,
+            metadata: {
+                author: req.user.id, // Using the user ID as author name for now
+                authorId: req.user.id,
+                authorEmail: req.user.email,
+                createdAt: new Date().toISOString()
+            }
+        };
+
+        // Store the reply in Redis
+        await db.hSet(replyId, 'reply', JSON.stringify(replyObject));
+
+        // Add reply ID to parent's replies list
+        await db.sAdd(`${parentId}:replies`, replyId);
+
+        logger.info(`Created new reply with ID: ${replyId} for parent: ${parentId}`);
+        res.json({ 
+            success: true,
+            data: { id: replyId }
+        });
+    } catch (err) {
+        logger.error('Error creating reply:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
 });
 
 // Existing routes...
