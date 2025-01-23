@@ -109,7 +109,7 @@ function StoryTreeNode({
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [node?.siblings, node, replyPage, replyPagination.totalPages, replySiblings.length, loadMoreReplies]);
+  }, [node, replyPage, replyPagination.totalPages, replySiblings.length, loadMoreReplies]);
 
   const isItemLoaded = useCallback(index => {
     if (node?.metadata?.quote) {
@@ -237,15 +237,23 @@ function StoryTreeNode({
     const loadReplySiblings = async () => {
       setIsLoadingReplies(true);
       try {
+        let response;
         if (!node?.metadata?.quote) {
-         // some nodes may not have a quote. When that is the case, we load the siblings
+          // some nodes may not have a quote. When that is the case, we load the siblings based on the entire parent node text as the quote
+          response = await storyTreeOperator.fetchReplies(
+            node.parentId[0],
+            node.text,
+            'mostRecent',
+            replyPage
+            );
+        } else {
+          response = await storyTreeOperator.fetchReplies(
+            node.metadata.quote.sourcePostId,
+            node.metadata.quote.text,
+            'mostRecent',
+            replyPage
+          );
         }
-        const response = await storyTreeOperator.fetchReplies(
-          node.metadata.quote.sourcePostId,
-          node.metadata.quote.text,
-          'mostRecent',
-          replyPage
-        );
 
         if (response?.replies && response?.pagination) {
           setReplySiblings(prev => 
@@ -261,7 +269,7 @@ function StoryTreeNode({
     };
 
     loadReplySiblings();
-  }, [node?.metadata?.quote, replyPage]);
+  }, [node, replyPage]);
 
   // 5. useGesture declaration
   const bind = useGesture({
@@ -349,6 +357,7 @@ function StoryTreeNode({
           onSelectionCompleted={handleTextSelectionCompleted}
           selectAll={selectAll}
           selectionState={isReplyTarget ? selectionState : null}
+          quotes={state.quoteMetadata[currentSibling.id] || {}}
         >
           {currentSibling.text}
         </TextSelection>
