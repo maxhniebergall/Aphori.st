@@ -17,6 +17,7 @@
 - Uses zAdd to maintain sorted sets for replies
 - Handles null/empty responses from Firebase for zRange and zCard operations
 - Maintains compatibility with both Redis and Firebase implementations
+- Maintains quote reply counts using hash storage for efficient retrieval
 */
 
 import express, { json } from "express";
@@ -202,9 +203,15 @@ app.get('/api/storyTree/:uuid', async (req, res) => {
             return res.status(404).json({ error: 'StoryTree not found' });
         }
 
+        // Get quote reply counts from the hash
+        const quoteReplyCounts = await db.hGetAll(`${uuid}:quoteCounts`) || {};
+
         // Add compression header to indicate data is compressed
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(storyTree);
+        res.json({
+            storyTree,
+            quoteReplyCounts
+        });
 
     } catch (err) {
         logger.error('Error fetching storyTree:', err);
@@ -738,7 +745,7 @@ app.post('/api/createReply', authenticateToken, async (req, res) => {
         const replyObject = {
             id: replyId,
             text: text,
-            parentId: [actualParentId], // Keep as array for consistency
+            parentId: [actualParentId],
             quote: quote,
             metadata: {
                 author: req.user.id,
@@ -754,11 +761,16 @@ app.post('/api/createReply', authenticateToken, async (req, res) => {
         // Add reply ID to parent's replies list
         await db.sAdd(`${actualParentId}:replies`, replyId);
 
-        // Add to sorted sets for different access patterns
-        await db.zAdd(`replies:${actualParentId}:${quote?.text}:mostRecent`, timestamp, replyId); // Replies for specific post+quote
-        await db.zAdd('replies:feed:mostRecent', timestamp, replyId); // Global replies feed
+        // Increment the quote count in the hash
         if (quote?.text) {
-            await db.zAdd(`replies:quote:${quote.text}:mostRecent`, timestamp, replyId); // Replies for specific quote
+            await db.hIncrBy(`${actualParentId}:quoteCounts`, quote.text, 1);
+        }
+
+        // Add to sorted sets for different access patterns
+        await db.zAdd(`replies:${actualParentId}:${quote?.text}:mostRecent`, timestamp, replyId);
+        await db.zAdd('replies:feed:mostRecent', timestamp, replyId);
+        if (quote?.text) {
+            await db.zAdd(`replies:quote:${quote.text}:mostRecent`, timestamp, replyId);
         }
 
         logger.info(`Created new reply with ID: ${replyId} for parent: ${actualParentId}`);

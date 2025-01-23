@@ -111,4 +111,16 @@ export class RedisClient extends DatabaseClientInterface {
   async del(key) {
     return this.client.del(key);
   }
+
+  async hIncrBy(key, field, increment) {
+    logger.info(`Redis hIncrBy called with key: ${key}, field: ${field}, increment: ${increment}`);
+    try {
+      const result = await this.client.hIncrBy(key, field, increment);
+      logger.info(`Redis hIncrBy result: ${result}`);
+      return result;
+    } catch (err) {
+      logger.error('Redis hIncrBy error:', err);
+      throw err;
+    }
+  }
 } 

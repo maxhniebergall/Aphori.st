@@ -134,4 +134,15 @@ export class FirebaseClient extends DatabaseClientInterface {
     await this.db.ref(key).remove();
     return 1; // Return 1 to match Redis behavior
   }
+
+  async hIncrBy(key, field, increment) {
+    const ref = this.db.ref(`${key}/${field}`);
+    const update = {};
+    update[field] = this.db.ServerValue.increment(increment);
+    await ref.update(update);
+    
+    // Get the new value after increment
+    const snapshot = await ref.once('value');
+    return snapshot.val();
+  }
 } 

@@ -9,6 +9,7 @@
  * - Sibling navigation state handling
  * - Editing state management
  * - Node removal tracking
+ * - Quote metadata and reply counts handling
  */
 
 import React, { createContext, useContext, useReducer } from 'react';
@@ -35,7 +36,8 @@ export const ACTIONS = {
   ADD_REPLY: 'ADD_REPLY',
   SET_REPLIES_FEED: 'SET_REPLIES_FEED',
   SET_SELECTED_QUOTE: 'SET_SELECTED_QUOTE',
-  CLEAR_REPLIES: 'CLEAR_REPLIES'
+  CLEAR_REPLIES: 'CLEAR_REPLIES',
+  SET_QUOTE_METADATA: 'SET_QUOTE_METADATA',
 };
 
 // Add these at the top of the file
@@ -61,7 +63,8 @@ const initialState = {
   loadingState: LOADING_STATES.IDLE,
   replies: [],
   repliesFeed: [],
-  selectedQuote: null
+  selectedQuote: null,
+  quoteMetadata: {}, // Will store quote counts mapped by nodeId
 };
 
 // Reducer function
@@ -157,6 +160,15 @@ function storyTreeReducer(state, action) {
         ...state,
         replies: [],
         selectedQuote: null
+      };
+
+    case ACTIONS.SET_QUOTE_METADATA:
+      return {
+        ...state,
+        quoteMetadata: {
+          ...state.quoteMetadata,
+          [action.payload.nodeId]: action.payload.metadata
+        }
       };
 
     default:

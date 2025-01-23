@@ -143,7 +143,7 @@ function StoryTreeContent() {
 
   const renderReplyEditor = () => {
     if (!replyTarget || !selectionState) {
-      console.log("No reply target or selection state", replyTarget, selectionState);
+      console.log("No reply target or selection state (this is not an issue if you are not replying to a post)", replyTarget, selectionState);
       return null;
     }
 
