@@ -8,6 +8,12 @@
 - Creates formatted story trees with metadata and node structure
 - Manages feed items for root-level posts only
 - Fetches and returns compressed storyTree objects from Redis
+- Supports retrieving individual replies by UUID
+- Fetches replies by post UUID and quote
+- Supports sorting replies by different criteria
+- Returns compressed reply data from Redis
+- Provides API endpoints for getting replies by UUID, quote, and sorting criteria
+- Supports reply feed retrieval sorted by recency
 */
 
 import express, { json } from "express";
@@ -770,6 +776,146 @@ app.post('/api/createReply', authenticateToken, async (req, res) => {
         });
     } catch (err) {
         logger.error('Error creating reply:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Get a single reply by UUID
+app.get('/api/getReply/:uuid', async (req, res) => {
+    try {
+        const { uuid } = req.params;
+        if (!uuid) {
+            return res.status(400).json({ error: 'Reply UUID is required' });
+        }
+
+        const reply = await db.hGet(uuid, 'reply', { returnCompressed: true });
+        if (!reply) {
+            return res.status(404).json({ error: 'Reply not found' });
+        }
+
+        // Add compression header
+        res.setHeader('X-Data-Compressed', 'true');
+        res.send(reply);
+    } catch (err) {
+        logger.error('Error fetching reply:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Get replies for a specific post and quote with sorting
+app.get('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req, res) => {
+    try {
+        const { uuid, quote, sortingCriteria } = req.params;
+        const { page = 1, limit = 10 } = req.query;
+        
+        if (!uuid || !sortingCriteria) {
+            return res.status(400).json({ error: 'Post UUID and sorting criteria are required' });
+        }
+
+        // Validate and sanitize pagination parameters
+        const pageNum = Math.max(1, parseInt(page));
+        const itemsPerPage = Math.min(100, Math.max(1, parseInt(limit)));
+        const start = (pageNum - 1) * itemsPerPage;
+        const end = start + itemsPerPage - 1;
+
+        // Get the sorted set key for this post+quote combination
+        const sortedSetKey = `replies:${uuid}:${quote}:${sortingCriteria}`;
+        
+        // Get total count for pagination info
+        const totalItems = await db.zCard(sortedSetKey);
+        
+        // Get reply keys from the sorted set with pagination
+        const replyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true });
+        
+        // Add compression header
+        res.setHeader('X-Data-Compressed', 'true');
+        res.json({ 
+            replies: replyKeys,
+            pagination: {
+                page: pageNum,
+                limit: itemsPerPage,
+                totalItems,
+                totalPages: Math.ceil(totalItems / itemsPerPage)
+            }
+        });
+    } catch (err) {
+        logger.error('Error fetching replies:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Get global replies feed
+app.get('/api/getRepliesFeed', async (req, res) => {
+    try {
+        const { page = 1, limit = 10 } = req.query;
+
+        // Validate and sanitize pagination parameters
+        const pageNum = Math.max(1, parseInt(page));
+        const itemsPerPage = Math.min(100, Math.max(1, parseInt(limit)));
+        const start = (pageNum - 1) * itemsPerPage;
+        const end = start + itemsPerPage - 1;
+
+        // Get total count for pagination info
+        const totalItems = await db.zCard('replies:feed:mostRecent');
+        
+        // Get reply keys from the global feed sorted set with pagination
+        const replyKeys = await db.zRange('replies:feed:mostRecent', start, end, { returnCompressed: true });
+        
+        // Add compression header
+        res.setHeader('X-Data-Compressed', 'true');
+        res.json({ 
+            replies: replyKeys,
+            pagination: {
+                page: pageNum,
+                limit: itemsPerPage,
+                totalItems,
+                totalPages: Math.ceil(totalItems / itemsPerPage)
+            }
+        });
+    } catch (err) {
+        logger.error('Error fetching replies feed:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Get replies by quote across all posts
+app.get('/api/getReplies/:quote/:sortingCriteria', async (req, res) => {
+    try {
+        const { quote, sortingCriteria } = req.params;
+        const { page = 1, limit = 10 } = req.query;
+        
+        if (!quote || !sortingCriteria) {
+            return res.status(400).json({ error: 'Quote and sorting criteria are required' });
+        }
+
+        // Validate and sanitize pagination parameters
+        const pageNum = Math.max(1, parseInt(page));
+        const itemsPerPage = Math.min(100, Math.max(1, parseInt(limit)));
+        const start = (pageNum - 1) * itemsPerPage;
+        const end = start + itemsPerPage - 1;
+
+        // Get the sorted set key for this quote
+        const sortedSetKey = `replies:quote:${quote}:${sortingCriteria}`;
+        
+        // Get total count for pagination info
+        const totalItems = await db.zCard(sortedSetKey);
+        
+        // Get reply keys from the sorted set with pagination
+        const replyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true });
+        
+        // Add compression header
+        res.setHeader('X-Data-Compressed', 'true');
+        res.json({ 
+            replies: replyKeys,
+            pagination: {
+                page: pageNum,
+                limit: itemsPerPage,
+                totalItems,
+                totalPages: Math.ceil(totalItems / itemsPerPage)
+            }
+        });
+    } catch (err) {
+        logger.error('Error fetching replies by quote:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
