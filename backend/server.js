@@ -172,36 +172,6 @@ app.get('/api/getStatement/:key', async (req, res) => {
     }
 });
 
-app.post("/api/setvalue", authenticateToken, async (req, res) => {
-    if (req.body.key && req.body.value) {
-        try {
-            const setResult = await db.set(req.body.key, req.body.value);
-            logger.info('Set Result: %s', setResult);
-            res.send();
-        } catch (e) {
-            logger.error('Error setting value: %O', e);
-            res.status(500).json(e);
-        }
-    } else {
-        res.status(400).json({ error: 'Wrong input.' });
-    }
-});
-
-app.get('/api/getValue/:key', async (req, res) => {
-    if (!req.params.key) {
-        return res.status(400).json({ error: 'Wrong input.' });
-    }
-
-    try {
-        const value = await db.get(req.params.key);
-        logger.info('Fetched value for key "%s": %s', req.params.key, value);
-        res.json({ value: value });
-    } catch (e) {
-        logger.error('Error getting value: %O', e);
-        res.status(500).json(e);
-    }
-});
-
 // Get story data by UUID
 app.get('/api/storyTree/:uuid', async (req, res) => {
     const uuid = req.params.uuid;
