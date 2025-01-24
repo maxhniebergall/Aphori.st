@@ -10,6 +10,10 @@
  * - Editing state management
  * - Node removal tracking
  * - Quote metadata and reply counts handling
+ * - Support for nested storyTree structure in node objects
+ * - Proper type checking for node structure
+ * - Handle quote metadata
+ * - Support for reply-based navigation
  */
 
 import React, { createContext, useContext, useReducer } from 'react';

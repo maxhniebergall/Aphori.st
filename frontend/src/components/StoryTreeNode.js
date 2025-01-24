@@ -13,7 +13,7 @@ import InfiniteLoader from 'react-window-infinite-loader';
  * - framer-motion: For animations
  * - react: Core React functionality
  * - react-window-infinite-loader: For efficient sibling loading
- * - Proper null checking for node and node.id
+ * - Proper null checking for node and node.storyTree?.id
  * - Safe handling of undefined siblings
  * - Proper state management for sibling navigation
  * - Gesture handling for sibling navigation
@@ -54,10 +54,16 @@ function StoryTreeNode({
   const { state, dispatch } = useStoryTree();
   const { setReplyTarget, replyTarget, setSelectionState, selectionState } = useReplyContext();
   const nodeRef = useRef(null);
-  const isReplyTarget = replyTarget?.id === node?.id;
+  const isReplyTarget = replyTarget?.id === node?.storyTree?.id;
 
   // Update currentSibling definition to use only loadedSiblings
   const currentSibling = loadedSiblings[currentSiblingIndex] || node;
+  console.log('Current sibling:', { 
+    currentSibling, 
+    loadedSiblings,
+    currentSiblingIndex,
+    hasSiblings: node?.storyTree?.nodes?.length > 0 
+  });
 
   // 3. First define loadMoreReplies since it's used in loadMoreItems
   const loadMoreReplies = useCallback(async () => {
@@ -73,28 +79,46 @@ function StoryTreeNode({
 
   // Now we can define loadMoreItems which uses loadMoreReplies
   const loadMoreItems = useCallback(async (startIndex, stopIndex) => {
-    if (node?.metadata?.quote) {
+    console.log('Loading items:', { node, startIndex, stopIndex });
+    
+    if (node?.storyTree?.metadata?.quote) {
       if (startIndex >= loadedSiblings.length && replyPage < replyPagination.totalPages) {
         await loadMoreReplies();
       }
       return;
     }
 
-    if (!Array.isArray(node?.siblings)) return;
+    if (!Array.isArray(node?.storyTree?.nodes)) {
+      console.warn('No nodes array:', node?.storyTree);
+      return;
+    }
     
     setIsLoadingSibling(true);
     try {
-      const itemsToLoad = node.siblings.slice(startIndex, stopIndex + 1);
+      const itemsToLoad = node.storyTree.nodes.slice(startIndex, stopIndex + 1);
+      console.log('Items to load:', itemsToLoad);
+
       const loadedNodes = await Promise.all(
         itemsToLoad.map(async (sibling) => {
-          if (sibling.id === node.id) return node;
-          return await storyTreeOperator.fetchNode(sibling.id);
+          if (!sibling?.id) {
+            console.warn('Invalid sibling node:', sibling);
+            return null;
+          }
+          if (sibling.id === node.storyTree.id) return node;
+          const fetchedNode = await storyTreeOperator.fetchNode(sibling.id);
+          if (fetchedNode) {
+            fetchedNode.storyTree.siblings = node.storyTree.nodes.filter(n => n?.id);
+          }
+          return fetchedNode;
         })
       );
 
+      const validNodes = loadedNodes.filter(node => node !== null);
+      console.log('Loaded valid nodes:', validNodes);
+
       setLoadedSiblings(prev => {
         const newSiblings = [...prev];
-        loadedNodes.forEach((loadedNode, idx) => {
+        validNodes.forEach((loadedNode, idx) => {
           if (loadedNode) {
             newSiblings[startIndex + idx] = loadedNode;
           }
@@ -115,7 +139,7 @@ function StoryTreeNode({
   const loadNextSibling = useCallback(async () => {
     if (isLoadingSibling || isLoadingReplies) return;
 
-    if (node?.metadata?.quote) {
+    if (node?.storyTree?.metadata?.quote) {
       if (currentSiblingIndex >= loadedSiblings.length - 1) return;
       
       setCurrentSiblingIndex(prev => prev + 1);
@@ -126,10 +150,27 @@ function StoryTreeNode({
     // Load next sibling through operator
     setIsLoadingSibling(true);
     try {
-      const nextNode = await storyTreeOperator.fetchNextSibling(node.id);
+      const nextIndex = currentSiblingIndex + 1;
+      if (nextIndex >= node.storyTree.nodes.length) {
+        console.log('No more siblings to load');
+        return;
+      }
+
+      const nextNodeId = node.storyTree.nodes[nextIndex]?.id;
+      if (!nextNodeId) {
+        console.warn('Invalid next node ID');
+        return;
+      }
+
+      const nextNode = await storyTreeOperator.fetchNode(nextNodeId);
       if (nextNode) {
-        setLoadedSiblings(prev => [...prev, nextNode]);
-        setCurrentSiblingIndex(prev => prev + 1);
+        nextNode.storyTree.siblings = node.storyTree.nodes.filter(n => n?.id);
+        setLoadedSiblings(prev => {
+          const newSiblings = [...prev];
+          newSiblings[nextIndex] = nextNode;
+          return newSiblings;
+        });
+        setCurrentSiblingIndex(nextIndex);
         onSiblingChange?.(nextNode);
       }
     } catch (error) {
@@ -137,7 +178,7 @@ function StoryTreeNode({
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, node?.id, loadedSiblings, onSiblingChange]);
+  }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.storyTree?.metadata?.quote, node?.storyTree?.nodes, loadedSiblings, onSiblingChange]);
 
   const loadPreviousSibling = useCallback(async () => {
     if (isLoadingSibling || isLoadingReplies) return;
@@ -147,7 +188,7 @@ function StoryTreeNode({
       return;
     }
 
-    if (node?.metadata?.quote) {
+    if (node?.storyTree?.metadata?.quote) {
       // For replies, we already have all siblings loaded
       setCurrentSiblingIndex(prev => prev - 1);
       onSiblingChange?.(loadedSiblings[currentSiblingIndex - 1]);
@@ -157,7 +198,7 @@ function StoryTreeNode({
     // Load previous sibling through operator
     setIsLoadingSibling(true);
     try {
-      const previousNode = await storyTreeOperator.fetchPreviousSibling(node.id);
+      const previousNode = await storyTreeOperator.fetchPreviousSibling(node.storyTree.id);
       if (previousNode) {
         setLoadedSiblings(prev => {
           const newLoadedSiblings = [...prev];
@@ -173,7 +214,7 @@ function StoryTreeNode({
     } finally {
       setIsLoadingSibling(false);
     }
-  }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.metadata?.quote, node?.id, loadedSiblings, onSiblingChange]);
+  }, [currentSiblingIndex, isLoadingSibling, isLoadingReplies, node?.storyTree?.metadata?.quote, node?.storyTree?.id, loadedSiblings, onSiblingChange]);
 
   const handleTextSelectionCompleted = useCallback((selection) => {
     setSelectAll(false);
@@ -184,13 +225,13 @@ function StoryTreeNode({
   // 4. All useEffect declarations - BEFORE any conditional returns
   useEffect(() => {
     const refreshSiblings = async () => {
-      if (!node?.id) return;
+      if (!node?.storyTree?.id) return;
       
-      if (node?.metadata?.quote) {
+      if (node?.storyTree?.metadata?.quote) {
         // Refresh replies
         const response = await storyTreeOperator.fetchReplies(
-          node.metadata.quote.sourcePostId,
-          node.metadata.quote.text,
+          node.storyTree.metadata.quote.sourcePostId,
+          node.storyTree.metadata.quote.text,
           'mostRecent',
           1  // Reset to first page
         );
@@ -209,22 +250,22 @@ function StoryTreeNode({
       }
     };
 
-    const parentId = node?.parentId?.[0] || node?.id;
+    const parentId = node?.storyTree?.parentId?.[0] || node?.storyTree?.id;
     const unsubscribe = storyTreeOperator.subscribeToReplySubmission(parentId, refreshSiblings);
     
     return () => unsubscribe();
-  }, [node?.id, node?.parentId, node?.metadata?.quote, loadMoreItems]);
+  }, [node?.storyTree?.id, node?.storyTree?.parentId, node?.storyTree?.metadata?.quote, loadMoreItems]);
 
   useEffect(() => {
     storyTreeOperator.updateContext(state, dispatch);
   }, [state, dispatch]);
 
   useEffect(() => {
-    if (Array.isArray(node?.siblings) && node?.id) {
-      const index = node.siblings.findIndex(sibling => sibling?.id === node.id);
+    if (Array.isArray(node?.storyTree?.nodes) && node?.storyTree?.id) {
+      const index = node.storyTree.nodes.findIndex(sibling => sibling?.id === node.storyTree.id);
       setCurrentSiblingIndex(index !== -1 ? index : 0);
     }
-  }, [node?.id, node?.siblings]);
+  }, [node?.storyTree?.id, node?.storyTree?.nodes]);
 
   // Reply loading effect
   useEffect(() => {
@@ -232,18 +273,18 @@ function StoryTreeNode({
       setIsLoadingReplies(true);
       try {
         let response;
-        if (!node?.metadata?.quote) {
+        if (!node?.storyTree?.metadata?.quote) {
           // some nodes may not have a quote. When that is the case, we load the siblings based on the entire parent node text as the quote
           response = await storyTreeOperator.fetchReplies(
-            node.parentId[0],
-            node.text,
+            node.storyTree.parentId[0],
+            node.storyTree.text,
             'mostRecent',
             replyPage
           );
         } else {
           response = await storyTreeOperator.fetchReplies(
-            node.metadata.quote.sourcePostId,
-            node.metadata.quote.text,
+            node.storyTree.metadata.quote.sourcePostId,
+            node.storyTree.metadata.quote.text,
             'mostRecent',
             replyPage
           );
@@ -265,6 +306,15 @@ function StoryTreeNode({
     loadReplySiblings();
   }, [node, replyPage]);
 
+  // Add effect to initialize loadedSiblings
+  useEffect(() => {
+    if (node?.storyTree?.nodes?.length > 0 && loadedSiblings.length === 0) {
+      console.log('Initializing loadedSiblings with first node');
+      setLoadedSiblings([node]);
+      loadMoreItems(0, Math.min(2, node.storyTree.nodes.length - 1));
+    }
+  }, [node, loadedSiblings.length, loadMoreItems]);
+
   // 5. useGesture declaration
   const bind = useGesture({
     onDrag: ({ down, movement: [mx], cancel, velocity: [vx] }) => {
@@ -284,12 +334,12 @@ function StoryTreeNode({
   }, {
     drag: {
       axis: 'x',
-      enabled: currentSiblingIndex > 0 || (node?.metadata?.quote ? currentSiblingIndex < loadedSiblings.length - 1 : true)
+      enabled: currentSiblingIndex > 0 || (node?.storyTree?.metadata?.quote ? currentSiblingIndex < loadedSiblings.length - 1 : true)
     },
   });
 
   // Now we can have our validation checks
-  if (!node?.id) {
+  if (!node?.storyTree?.id) {
     console.warn('StoryTreeNode received invalid node:', node);
     return null;
   }
@@ -300,21 +350,21 @@ function StoryTreeNode({
   }
 
   // Update sibling indicators
-  const hasSiblings = node?.metadata?.quote 
+  const hasSiblings = node?.storyTree?.metadata?.quote 
     ? replyPagination.totalItems > 1 
     : loadedSiblings.length > 1;
     
-  const hasNextSibling = node?.metadata?.quote
+  const hasNextSibling = node?.storyTree?.metadata?.quote
     ? currentSiblingIndex < replyPagination.totalItems - 1
-    : true; // We won't know until we try to fetch the next sibling
+    : true;
     
   const hasPreviousSibling = currentSiblingIndex > 0;
-  const isRootNode = node?.id === postRootId;
+  const isRootNode = node?.storyTree?.id === postRootId;
 
   const renderQuote = () => {
-    if (!currentSibling?.metadata?.quote) return null;
+    if (!currentSibling?.storyTree?.metadata?.quote) return null;
 
-    const { quote } = currentSibling.metadata;
+    const { quote } = currentSibling.storyTree.metadata;
     return (
       <div className="story-tree-node-quote">
         {quote.text}
@@ -334,14 +384,15 @@ function StoryTreeNode({
       setReplyTarget(currentSibling);
       setSelectionState({
         start: 0,
-        end: currentSibling.text.length
+        end: currentSibling.storyTree.text.length
       });
       setSelectAll(true);
     }
   };
 
   const renderContent = () => {
-    if (!currentSibling?.text) {
+    if (!currentSibling?.storyTree?.text) {
+      console.warn('No text in currentSibling:', currentSibling);
       return null;
     }
     return (
@@ -351,9 +402,9 @@ function StoryTreeNode({
           onSelectionCompleted={handleTextSelectionCompleted}
           selectAll={selectAll}
           selectionState={isReplyTarget ? selectionState : null}
-          quotes={state.quoteMetadata[currentSibling.id] || {}}
+          quotes={node?.quoteReplyCounts || {}}
         >
-          {currentSibling.text}
+          {currentSibling.storyTree.text}
         </TextSelection>
       </div>
     );
@@ -370,7 +421,7 @@ function StoryTreeNode({
     >
       <InfiniteLoader
         isItemLoaded={isItemLoaded}
-        itemCount={node?.metadata?.quote ? replyPagination.totalItems : (node.siblings?.length || 1)}
+        itemCount={node?.storyTree?.nodes?.length || 1}
         loadMoreItems={loadMoreItems}
         minimumBatchSize={3}
         threshold={2}
@@ -379,13 +430,15 @@ function StoryTreeNode({
           <div 
             {...bind()} 
             className={`story-tree-node-content ${hasSiblings ? 'has-siblings' : ''}`}
-            id={currentSibling.id}
+            id={currentSibling.storyTree.id}
             ref={ref}
           >
-            {isRootNode && currentSibling?.metadata?.title && (
+            {isRootNode && currentSibling?.storyTree?.metadata?.title && (
               <div className="story-title-section">
-                <h1>{currentSibling.metadata.title}</h1>
-                {currentSibling.metadata.author && <h2 className="story-subtitle">by {currentSibling.metadata.author}</h2>}
+                <h1>{currentSibling.storyTree.metadata.title}</h1>
+                {currentSibling.storyTree.metadata.author && (
+                  <h2 className="story-subtitle">by {currentSibling.storyTree.metadata.author}</h2>
+                )}
               </div>
             )}
             {renderContent()}
@@ -400,9 +453,9 @@ function StoryTreeNode({
                 </button>
               </div>
               <div className="footer-right">
-                {hasSiblings && (
+                {node?.storyTree?.nodes?.length > 0 && (
                   <div className="sibling-indicator">
-                    {currentSiblingIndex + 1} / {node?.metadata?.quote ? replyPagination.totalItems : node.siblings.length}
+                    {currentSiblingIndex + 1} / {node.storyTree.nodes.length}
                     {(hasNextSibling || hasPreviousSibling) && (
                       <span className="swipe-hint">
                         {hasPreviousSibling && (
@@ -423,16 +476,6 @@ function StoryTreeNode({
                           </span>
                         )}
                       </span>
-                    )}
-                    {node?.metadata?.quote && replyPage < replyPagination.totalPages && (
-                      <div className="load-more-replies">
-                        <button 
-                          onClick={loadMoreReplies}
-                          disabled={isLoadingMoreReplies}
-                        >
-                          {isLoadingMoreReplies ? 'Loading...' : 'Load More Replies'}
-                        </button>
-                      </div>
                     )}
                   </div>
                 )}

@@ -27,7 +27,7 @@ export class BaseOperator {
             console.log("BaseOperator: data is encoded as entire response");
             return compression.unencode(response.data.d);  
         } else {
-            console.log("BaseOperator: data is not compressed", response.data);
+            console.log("BaseOperator: data is not compressed",);
             return response.data;
         }
     }

@@ -124,19 +124,41 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
     }
 
     async hGetAll(key, options = { returnCompressed: false }) {
-        const compressedData = await this.db.hGetAll(key);
-        if (!compressedData) return null;
-        
-        if (options.returnCompressed) {
-            return compressedData;
-        }
+        try {
+            const compressedData = await this.db.hGetAll(key);
+            if (!compressedData) return null;
+            
+            if (options.returnCompressed) {
+                return compressedData;
+            }
 
-        // Decompress all values in the hash
-        const decompressedData = {};
-        for (const [field, value] of Object.entries(compressedData)) {
-            decompressedData[field] = await this.compression.decompress(value);
+            // Decompress all values in the hash
+            const decompressedData = {};
+            for (const [field, value] of Object.entries(compressedData)) {
+                try {
+                    // Skip decompression if value is null/undefined
+                    if (!value) {
+                        decompressedData[field] = value;
+                        continue;
+                    }
+                    
+                    // Ensure value is a string before decompressing
+                    const stringValue = typeof value === 'string' ? 
+                        value : 
+                        JSON.stringify(value);
+                    
+                    decompressedData[field] = await this.compression.decompress(stringValue);
+                } catch (err) {
+                    logger.warn(`Failed to decompress field ${field} in hash ${key}:`, err);
+                    // Store the original value if decompression fails
+                    decompressedData[field] = value;
+                }
+            }
+            return decompressedData;
+        } catch (err) {
+            logger.error('Error in hGetAll:', err);
+            throw err;
         }
-        return decompressedData;
     }
 
     async lPush(key, value) {
@@ -235,6 +257,14 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
     // Helper method to encode keys consistently
     encodeKey(key, prefix) {
         return this.db.encodeKey(key, prefix);
+    }
+
+    async decompress(data) {
+        return this.compression.decompress(data);
+    }
+
+    async compress(data) {
+        return this.compression.compress(data);
     }
 
     // Helper method to expose compression methods

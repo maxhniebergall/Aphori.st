@@ -78,7 +78,7 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   validateNode(node) {
-    return node && typeof node === 'object' && typeof node.id === 'string';
+    return node && typeof node === 'object' && ((node.id && typeof node.id === 'string') || (node.storyTree && typeof node.storyTree === 'object' && node.storyTree.id && typeof node.storyTree.id === 'string'));
   }
 
   async fetchRootNode(uuid, fetchedNodes = {}) {
@@ -86,21 +86,68 @@ class StoryTreeOperator extends BaseOperator {
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/storyTree/${uuid}`
       );
-      const node = await this.handleCompressedResponse(response);
+      const data = await this.handleCompressedResponse(response);
+      if (!data || !data.storyTree) {
+        console.error('Invalid response data received:', data);
+        return null;
+      }
+
+      const node = typeof data.storyTree === 'string' ? JSON.parse(data.storyTree) : data.storyTree;
       if (!this.validateNode(node)) {
         console.error('Invalid root node data received:', node);
         return null;
       }
 
-      fetchedNodes[node.id] = node;
+      console.log('Processing root node:', {
+        id: node.id,
+        nodesCount: node.nodes?.length,
+        nodes: node.nodes
+      });
 
-      if (node.nodes && node.nodes.length > 0) {
-        for (const childNode of node.nodes) {
-          if (childNode.id && !fetchedNodes[childNode.id]) {
-            await this.fetchRootNode(childNode.id, fetchedNodes);
-          }
+      // Create a node with storyTree wrapper to maintain compatibility
+      const wrappedNode = {
+        storyTree: {
+          ...node,
+          quoteReplyCounts: data.quoteReplyCounts || {}
         }
+      };
+      fetchedNodes[node.id] = wrappedNode;
+
+      // Fetch first few sibling nodes immediately
+      if (node.nodes && node.nodes.length > 0) {
+        const initialNodesToFetch = node.nodes.slice(0, 3);
+        console.log('Fetching initial sibling nodes:', initialNodesToFetch);
+
+        await Promise.all(
+          initialNodesToFetch.map(async (childNode) => {
+            if (childNode.id && !fetchedNodes[childNode.id]) {
+              const response = await axios.get(
+                `${process.env.REACT_APP_API_URL}/api/storyTree/${childNode.id}`
+              );
+              const childData = await this.handleCompressedResponse(response);
+              if (childData?.storyTree) {
+                const childNodeData = typeof childData.storyTree === 'string' 
+                  ? JSON.parse(childData.storyTree) 
+                  : childData.storyTree;
+
+                fetchedNodes[childNode.id] = {
+                  storyTree: {
+                    ...childNodeData,
+                    quoteReplyCounts: childData.quoteReplyCounts || {},
+                    siblings: node.nodes.filter(n => n?.id)
+                  }
+                };
+              }
+            }
+          })
+        );
       }
+
+      console.log('Fetched nodes:', {
+        count: Object.keys(fetchedNodes).length,
+        nodes: fetchedNodes
+      });
+
       return Object.values(fetchedNodes);
     } catch (error) {
       console.error('Error fetching root node:', error);
@@ -114,12 +161,25 @@ class StoryTreeOperator extends BaseOperator {
         const response = await axios.get(
           `${process.env.REACT_APP_API_URL}/api/storyTree/${id}`
         );
-        const node = await this.handleCompressedResponse(response);
+        const data = await this.handleCompressedResponse(response);
+        if (!data || !data.storyTree) {
+          console.error('Invalid response data received:', data);
+          return null;
+        }
+
+        const node = data.storyTree;
         if (!this.validateNode(node)) {
           console.error('Invalid node data received:', node);
           return null;
         }
-        return node;
+
+        // Create a node with storyTree wrapper to maintain compatibility
+        return {
+          storyTree: {
+            ...node,
+            quoteReplyCounts: data.quoteReplyCounts || {}
+          }
+        };
       } catch (error) {
         if (error.response?.status === 503 && i < retries - 1) {
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -166,28 +226,57 @@ class StoryTreeOperator extends BaseOperator {
       const items = this.state.items ?? [];
       const lastNode = items[items.length - 1];
       
-      if (!lastNode?.nodes?.length) {
+      console.log('Loading more items:', {
+        startIndex,
+        stopIndex,
+        lastNode,
+        nodesLength: lastNode?.storyTree?.nodes?.length
+      });
+
+      if (!lastNode?.storyTree?.nodes?.length) {
+        console.log('No more nodes to load');
         this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
         return;
       }
 
-      const nextNodeId = lastNode.nodes.find(node => node?.id)?.id;
-      if (!nextNodeId) {
+      // Get all node IDs that need to be loaded
+      const nodesToLoad = lastNode.storyTree.nodes
+        .slice(startIndex, stopIndex + 1)
+        .filter(node => node?.id);
+
+      console.log('Nodes to load:', nodesToLoad);
+
+      if (nodesToLoad.length === 0) {
+        console.log('No valid nodes to load');
         this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
         return;
       }
-      
-      const nextNode = await this.fetchNode(nextNodeId);
 
-      if (nextNode && this.validateNode(nextNode)) {
-        nextNode.siblings = lastNode.nodes.filter(node => this.validateNode(node));
-        this.dispatch({ type: ACTIONS.APPEND_ITEM, payload: nextNode });
-        const hasNext = !!(nextNode.nodes?.length && nextNode.nodes.some(node => node?.id));
-        this.dispatch({ 
-          type: ACTIONS.SET_HAS_NEXT_PAGE, 
-          payload: hasNext
-        });
+      // Fetch all nodes in parallel
+      const loadedNodes = await Promise.all(
+        nodesToLoad.map(async (node) => {
+          if (node.id === lastNode.storyTree.id) return lastNode;
+          const fetchedNode = await this.fetchNode(node.id);
+          if (fetchedNode) {
+            fetchedNode.storyTree.siblings = lastNode.storyTree.nodes.filter(n => n?.id);
+          }
+          return fetchedNode;
+        })
+      );
+
+      // Filter out any null results and add to items
+      const validNodes = loadedNodes.filter(node => node !== null);
+      console.log('Loaded valid nodes:', validNodes);
+
+      if (validNodes.length > 0) {
+        this.dispatch({ type: ACTIONS.SET_ITEMS, payload: [...items, ...validNodes] });
+        
+        // Check if there are more nodes to load
+        const lastLoadedNode = validNodes[validNodes.length - 1];
+        const hasMore = lastLoadedNode?.storyTree?.nodes?.some(node => node?.id);
+        this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: hasMore });
       } else {
+        console.log('No valid nodes were loaded');
         this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
       }
     } catch (error) {

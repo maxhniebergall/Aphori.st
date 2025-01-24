@@ -4,14 +4,14 @@ import { BaseOperator } from './BaseOperator';
 class FeedOperator extends BaseOperator {
     async getFeedItems(page) {
         try {
-            const items = await this.retryApiCall(
+            const response = await this.retryApiCall(
                 () => axios.get(`${this.baseURL}/api/feed`, {
                     params: { page }
                 })
             );
-            console.log("FeedOperator: items", items);
+            console.log("FeedOperator: response", response);
             try {
-                return { success: true, items: items };
+                return { success: true, items: response.items.map((item) => JSON.parse(item)), page: response.page };
             } catch (e) {
                 console.error("Error parsing data", e);
                 return { success: false, error: "Error parsing data" };
