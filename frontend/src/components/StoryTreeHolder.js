@@ -78,7 +78,7 @@ function StoryTreeContent() {
           return;
         }
         
-        const rootNode = allNodes.find(node => node.id === rootUUID);
+        const rootNode = allNodes.find(node => node.storyTree?.id === rootUUID);
         if (!rootNode) {
           console.error('Root node not found in fetched nodes:', allNodes);
           return;
@@ -103,20 +103,20 @@ function StoryTreeContent() {
 
     try {
       const quoteData = selectionState ? {
-        quote: replyTarget.text.slice(selectionState.start, selectionState.end),
-        sourcePostId: replyTarget.id,
+        quote: replyTarget.storyTree.text.slice(selectionState.start, selectionState.end),
+        sourcePostId: replyTarget.storyTree.id,
         selectionRange: selectionState
       } : {
-        quote: replyTarget.text,
-        sourcePostId: replyTarget.id,
+        quote: replyTarget.storyTree.text,
+        sourcePostId: replyTarget.storyTree.id,
         selectionRange: {
           start: 0,
-          end: replyTarget.text.length
+          end: replyTarget.storyTree.text.length
         }
       };
 
       const result = await storyTreeOperator.submitReply(
-        replyTarget.id,
+        replyTarget.storyTree.id,
         replyContent,
         quoteData
       );
@@ -146,7 +146,7 @@ function StoryTreeContent() {
       return null;
     }
 
-    const selectedText = replyTarget.text.slice(selectionState.start, selectionState.end);
+    const selectedText = replyTarget.storyTree.text.slice(selectionState.start, selectionState.end);
     console.log("selectedText", selectedText);
     return (
       <div className="reply-editor-container">

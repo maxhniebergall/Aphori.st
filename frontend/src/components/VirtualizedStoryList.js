@@ -41,6 +41,13 @@ const Row = React.memo(({
   postRootId,
   replyTargetIndex,
 }) => {
+  console.log(`Row ${index} rendering:`, {
+    node,
+    storyTree: node?.storyTree,
+    isLoading,
+    replyTargetIndex
+  });
+
   const { replyTarget } = useReplyContext();
   const memoizedStyle = React.useMemo(() => ({
     ...style,
@@ -129,8 +136,12 @@ const Row = React.memo(({
     );
   }
 
-  if (!node || typeof node !== 'object') {
-    console.warn(`Invalid node at index ${index}:`, node);
+  if (!node || typeof node !== 'object' || !node.storyTree || typeof node.storyTree !== 'object') {
+    console.warn(`Invalid node or storyTree at index ${index}:`, {
+      node,
+      storyTreeExists: !!node?.storyTree,
+      storyTreeType: typeof node?.storyTree
+    });
     return (
       <div 
         ref={el => rowRefs.current[index] = el}
@@ -148,7 +159,7 @@ const Row = React.memo(({
       style={memoizedStyle}
     >
       <StoryTreeNode
-        key={node?.id}
+        key={node.storyTree.id}
         node={node}
         onSiblingChange={(newNode) => handleSiblingChange(newNode, index, fetchNode)}
         postRootId={postRootId}
@@ -157,7 +168,7 @@ const Row = React.memo(({
   );
 }, (prevProps, nextProps) => {
   return (
-    prevProps.node?.id === nextProps.node?.id &&
+    prevProps.node?.storyTree?.id === nextProps.node?.storyTree?.id &&
     prevProps.isLoading === nextProps.isLoading &&
     prevProps.index === nextProps.index &&
     prevProps.style.top === nextProps.style.top
@@ -206,9 +217,14 @@ function VirtualizedStoryList({
   }, []);
 
   const getQuoteMetadataHeight = useCallback((node) => {
-    if (!node?.id) return 0;
+    console.log('Getting quote metadata height for node:', {
+      nodeId: node?.storyTree?.id,
+      metadata: state.quoteMetadata[node?.storyTree?.id]
+    });
     
-    const metadata = state.quoteMetadata[node.id];
+    if (!node?.storyTree?.id) return 0;
+    
+    const metadata = state.quoteMetadata[node.storyTree.id];
     if (!metadata) return 0;
 
     // Calculate height based on number of quotes and their stats
@@ -219,12 +235,18 @@ function VirtualizedStoryList({
   }, [state.quoteMetadata]);
 
   const getSize = useCallback((index) => {
+    const node = items[index];
+    console.log(`Getting size for index ${index}:`, {
+      node,
+      storyTree: node?.storyTree,
+      replyTargetIndex
+    });
+    
     // Return 0 for hidden nodes
     if (replyTargetIndex !== undefined && index > replyTargetIndex) {
       return 0;
     }
 
-    const node = items[index];
     const baseHeight = Math.max(sizeMap.current[index] || 200, 100);
     const metadataHeight = getQuoteMetadataHeight(node);
     
@@ -257,6 +279,12 @@ function VirtualizedStoryList({
     const node = items[index];
     const isLoading = !isItemLoaded(index);
     
+    console.log(`Rendering row ${index}:`, {
+      node,
+      storyTree: node?.storyTree,
+      isLoading
+    });
+    
     return (
       <Row
         className="row"
@@ -280,9 +308,9 @@ function VirtualizedStoryList({
   }
 
   const rootNode = items[0];
-  const totalPossibleItems = rootNode?.nodes?.length 
-    ? rootNode.nodes.length + 1 
-    : (rootNode?.metadata?.quote 
+  const totalPossibleItems = rootNode?.storyTree?.nodes?.length 
+    ? rootNode.storyTree.nodes.length + 1 
+    : (rootNode?.storyTree?.metadata?.quote 
       ? state?.replyPagination?.totalItems || items.length 
       : items.length) || 1;
   

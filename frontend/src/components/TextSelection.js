@@ -45,6 +45,8 @@ function removeExistingHighlights(element) {
 function highlightQuotes(element, quotes) {
     removeExistingHighlights(element);
 
+    console.log('Highlighting quotes:', quotes);
+    
     // Sort quotes by reply count in descending order
     const sortedQuotes = Object.entries(quotes)
         .sort(([, count1], [, count2]) => count2 - count1)

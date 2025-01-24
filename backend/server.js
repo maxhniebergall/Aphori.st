@@ -18,6 +18,7 @@
 - Handles null/empty responses from Firebase for zRange and zCard operations
 - Maintains compatibility with both Redis and Firebase implementations
 - Maintains quote reply counts using hash storage for efficient retrieval
+- Reads old format of quote reply counts, migrates to new format, and replaces old format in database
 */
 
 import express, { json } from "express";
@@ -196,22 +197,31 @@ app.get('/api/storyTree/:uuid', async (req, res) => {
 
     try {
         logger.info(`Fetching storyTree with UUID: [${uuid}]`);
-        const storyTree = await db.hGet(uuid, 'storyTree', { returnCompressed: true });
+        // Fetch compressed data
+        const compressedStoryTree = await db.hGet(uuid, 'storyTree', { returnCompressed: true });
         
-        if (!storyTree) {
+        if (!compressedStoryTree) {
             logger.warn(`StoryTree with UUID ${uuid} not found`);
             return res.status(404).json({ error: 'StoryTree not found' });
         }
 
-        // Get quote reply counts from the hash
-        const quoteReplyCounts = await db.hGetAll(`${uuid}:quoteCounts`) || {};
+        // Get quote reply counts from the hash - note these are not compressed
+        const quoteReplyCounts = await db.hGetAll(`${uuid}:quoteCounts`, { returnCompressed: false }) || {};
+
+        // Decompress the story tree
+        const storyTree = await db.decompress(compressedStoryTree);
+
+        // Combine and compress the final response
+        const response = {
+            storyTree,
+            quoteReplyCounts
+        };
+        
+        const compressedResponse = await db.compress(response);
 
         // Add compression header to indicate data is compressed
         res.setHeader('X-Data-Compressed', 'true');
-        res.json({
-            storyTree,
-            quoteReplyCounts
-        });
+        res.send(compressedResponse);
 
     } catch (err) {
         logger.error('Error fetching storyTree:', err);
@@ -219,48 +229,60 @@ app.get('/api/storyTree/:uuid', async (req, res) => {
     }
 });
 
-  // Get feed data with pagination
+// Get feed data with pagination
 app.get('/api/feed', async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const pageSize = 10; // Number of items per page
     logger.info("Handling request for feed at page "+page)
     try {
-      logger.info('Current db connection state: %O', {
-          connected: db.isConnected?.() || 'unknown',
-          ready: db.isReady?.() || 'unknown'
-      });
+        logger.info('Current db connection state: %O', {
+            connected: db.isConnected?.() || 'unknown',
+            ready: db.isReady?.() || 'unknown'
+        });
 
-      // Fetch all feed items from db with pagination
-      const startIndex = (page - 1) * pageSize;
-      const endIndex = startIndex + pageSize;
+        // Fetch all feed items from db with pagination
+        const startIndex = (page - 1) * pageSize;
+        const endIndex = startIndex + pageSize;
 
-      logger.info('Attempting to fetch feed items from db with range: %O', {
-          startIndex,
-          endIndex,
-          key: 'feedItems'
-      });
+        logger.info('Attempting to fetch feed items from db with range: %O', {
+            startIndex,
+            endIndex,
+            key: 'feedItems'
+        });
 
-      let results = await db.lRange('feedItems', startIndex, endIndex, { returnCompressed: true }); 
-      logger.info('Raw db response for feed items: %O', results);
+        let compressedResults = await db.lRange('feedItems', startIndex, endIndex, { returnCompressed: true }); 
+        logger.info('Raw db response for feed items: %O', compressedResults);
 
-        if (results.err) {
-          logger.error('db error when fetching feed: %O', results.err);
-          return res.status(500).json({ error: 'Error fetching data from Redis' });
+        if (compressedResults.err) {
+            logger.error('db error when fetching feed: %O', compressedResults.err);
+            return res.status(500).json({ error: 'Error fetching data from Redis' });
         }
+
+        // Decompress each item in the results array
+        const decompressedItems = await Promise.all(
+            compressedResults.map(item => db.decompress(item))
+        );
+        logger.info('Decompressed feed items: %O', decompressedItems);
+
+        // Create the response object
+        const response = {
+            page,
+            items: decompressedItems,
+        };
+        logger.info('Response object: %O', response);
+        // Compress the final response
+        const compressedResponse = await db.compress(response);
 
         // Add compression header to indicate data is compressed
         res.setHeader('X-Data-Compressed', 'true');
-        res.json({
-          page,
-          items: results,
-        });
+        res.send(compressedResponse);
     } catch (error) {
-      logger.error('Error fetching feed items: %O', {
-          error,
-          stack: error.stack,
-          message: error.message
-      });
-      res.status(500).json({ error: 'Server error' });
+        logger.error('Error fetching feed items: %O', {
+            error,
+            stack: error.stack,
+            message: error.message
+        });
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
@@ -792,14 +814,21 @@ app.get('/api/getReply/:uuid', async (req, res) => {
             return res.status(400).json({ error: 'Reply UUID is required' });
         }
 
-        const reply = await db.hGet(uuid, 'reply', { returnCompressed: true });
-        if (!reply) {
+        // Get the compressed reply data
+        const compressedReply = await db.hGet(uuid, 'reply', { returnCompressed: true });
+        if (!compressedReply) {
             return res.status(404).json({ error: 'Reply not found' });
         }
 
+        // Decompress the reply
+        const reply = await db.decompress(compressedReply);
+
+        // Compress the final response
+        const compressedResponse = await db.compress(reply);
+
         // Add compression header
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(reply);
+        res.send(compressedResponse);
     } catch (err) {
         logger.error('Error fetching reply:', err);
         res.status(500).json({ error: 'Server error' });
@@ -826,14 +855,18 @@ app.get('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req, res) => {
         const sortedSetKey = `replies:${uuid}:${quote}:${sortingCriteria}`;
         
         // Get total count for pagination info
-        const totalItems = await db.zCard(sortedSetKey) || 0; // Handle null from Firebase
+        const totalItems = await db.zCard(sortedSetKey) || 0;
         
         // Get reply keys from the sorted set with pagination
-        const replyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true }) || []; // Handle empty array from Firebase
+        const compressedReplyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true }) || [];
         
-        // Add compression header
-        res.setHeader('X-Data-Compressed', 'true');
-        res.json({ 
+        // Decompress each reply key
+        const replyKeys = await Promise.all(
+            compressedReplyKeys.map(key => db.decompress(key))
+        );
+
+        // Create the response object
+        const response = {
             replies: replyKeys,
             pagination: {
                 page: pageNum,
@@ -841,7 +874,14 @@ app.get('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req, res) => {
                 totalItems,
                 totalPages: Math.ceil(totalItems / itemsPerPage)
             }
-        });
+        };
+
+        // Compress the final response
+        const compressedResponse = await db.compress(response);
+        
+        // Add compression header
+        res.setHeader('X-Data-Compressed', 'true');
+        res.send(compressedResponse);
     } catch (err) {
         logger.error('Error fetching replies:', err);
         res.status(500).json({ error: 'Server error' });
@@ -860,14 +900,18 @@ app.get('/api/getRepliesFeed', async (req, res) => {
         const end = start + itemsPerPage - 1;
 
         // Get total count for pagination info
-        const totalItems = await db.zCard('replies:feed:mostRecent') || 0; // Handle null from Firebase
+        const totalItems = await db.zCard('replies:feed:mostRecent') || 0;
         
-        // Get reply keys from the global feed sorted set with pagination
-        const replyKeys = await db.zRange('replies:feed:mostRecent', start, end, { returnCompressed: true }) || []; // Handle empty array from Firebase
+        // Get compressed reply keys from the global feed sorted set with pagination
+        const compressedReplyKeys = await db.zRange('replies:feed:mostRecent', start, end, { returnCompressed: true }) || [];
         
-        // Add compression header
-        res.setHeader('X-Data-Compressed', 'true');
-        res.json({ 
+        // Decompress each reply key
+        const replyKeys = await Promise.all(
+            compressedReplyKeys.map(key => db.decompress(key))
+        );
+
+        // Create the response object
+        const response = {
             replies: replyKeys,
             pagination: {
                 page: pageNum,
@@ -875,7 +919,14 @@ app.get('/api/getRepliesFeed', async (req, res) => {
                 totalItems,
                 totalPages: Math.ceil(totalItems / itemsPerPage)
             }
-        });
+        };
+
+        // Compress the final response
+        const compressedResponse = await db.compress(response);
+        
+        // Add compression header
+        res.setHeader('X-Data-Compressed', 'true');
+        res.send(compressedResponse);
     } catch (err) {
         logger.error('Error fetching replies feed:', err);
         res.status(500).json({ error: 'Server error' });
@@ -902,14 +953,18 @@ app.get('/api/getReplies/:quote/:sortingCriteria', async (req, res) => {
         const sortedSetKey = `replies:quote:${quote}:${sortingCriteria}`;
         
         // Get total count for pagination info
-        const totalItems = await db.zCard(sortedSetKey) || 0; // Handle null from Firebase
+        const totalItems = await db.zCard(sortedSetKey) || 0;
         
-        // Get reply keys from the sorted set with pagination
-        const replyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true }) || []; // Handle empty array from Firebase
+        // Get compressed reply keys from the sorted set with pagination
+        const compressedReplyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true }) || [];
         
-        // Add compression header
-        res.setHeader('X-Data-Compressed', 'true');
-        res.json({ 
+        // Decompress each reply key
+        const replyKeys = await Promise.all(
+            compressedReplyKeys.map(key => db.decompress(key))
+        );
+
+        // Create the response object
+        const response = {
             replies: replyKeys,
             pagination: {
                 page: pageNum,
@@ -917,7 +972,14 @@ app.get('/api/getReplies/:quote/:sortingCriteria', async (req, res) => {
                 totalItems,
                 totalPages: Math.ceil(totalItems / itemsPerPage)
             }
-        });
+        };
+
+        // Compress the final response
+        const compressedResponse = await db.compress(response);
+        
+        // Add compression header
+        res.setHeader('X-Data-Compressed', 'true');
+        res.send(compressedResponse);
     } catch (err) {
         logger.error('Error fetching replies by quote:', err);
         res.status(500).json({ error: 'Server error' });
