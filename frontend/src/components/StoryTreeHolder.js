@@ -71,7 +71,7 @@ function StoryTreeContent() {
       if (!isOperatorInitialized) return;
 
       try {
-        const allNodes = await storyTreeOperator.fetchRootNode(rootUUID);
+        const allNodes = await storyTreeOperator.fetchRootNodeWithIncludedNodes(rootUUID);
         
         if (!allNodes || allNodes.length === 0) {
           console.error('Invalid data structure received:', allNodes);
