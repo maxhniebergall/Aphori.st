@@ -42,7 +42,7 @@ class StoryTreeOperator extends BaseOperator {
     this.isItemLoaded = this.isItemLoaded.bind(this);
     this.loadMoreItems = this.loadMoreItems.bind(this);
     this.setCurrentFocus = this.setCurrentFocus.bind(this);
-    this.fetchRootNode = this.fetchRootNode.bind(this);
+    this.fetchRootNode = this.fetchRootNodeWithIncludedNodes.bind(this);
     this.fetchNode = this.fetchNode.bind(this);
     this.updateContext = this.updateContext.bind(this);
     this.submitReply = this.submitReply.bind(this);
@@ -81,7 +81,7 @@ class StoryTreeOperator extends BaseOperator {
     return node && typeof node === 'object' && ((node.id && typeof node.id === 'string') || (node.storyTree && typeof node.storyTree === 'object' && node.storyTree.id && typeof node.storyTree.id === 'string'));
   }
 
-  async fetchRootNode(uuid, fetchedNodes = {}) {
+  async fetchRootNodeWithIncludedNodes(uuid, fetchedNodes = {}) {
     try {
       const response = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/storyTree/${uuid}`
