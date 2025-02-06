@@ -14,6 +14,12 @@
  * - Reply creation and fetching support
  * - Reply feed management
  * - Quote counts tracking and updates
+ * - Full page scrolling instead of individual element scrolling
+ * - Header should remain fixed at the top
+ * - Content should flow naturally in the document
+ * - Proper handling of viewport heights
+ * - Support for mobile browsers
+ * - Title and author should scroll with the list
  */
 
 import { ACTIONS } from '../context/StoryTreeContext';
@@ -104,14 +110,33 @@ class StoryTreeOperator extends BaseOperator {
         nodes: node.nodes
       });
 
-      // Create a node with storyTree wrapper to maintain compatibility
-      const wrappedNode = {
+      // Create a title node
+      const titleNode = {
         storyTree: {
-          ...node,
-          quoteReplyCounts: data.quoteReplyCounts || {}
+          id: `${node.id}-title`,
+          metadata: {
+            title: node.metadata?.title,
+            author: node.metadata?.author,
+          },
+          isTitleNode: true,
         }
       };
-      fetchedNodes[node.id] = wrappedNode;
+      fetchedNodes[titleNode.storyTree.id] = titleNode;
+
+      // Create a content node
+      const contentNode = {
+        storyTree: {
+          ...node,
+          quoteReplyCounts: data.quoteReplyCounts || {},
+          siblings: node.nodes?.filter(n => n?.id),
+          metadata: {
+            ...node.metadata,
+            title: null,
+            author: null,
+          }
+        }
+      };
+      fetchedNodes[contentNode.storyTree.id] = contentNode;
 
       // Fetch first few sibling nodes immediately
       if (node.nodes && node.nodes.length > 0) {
