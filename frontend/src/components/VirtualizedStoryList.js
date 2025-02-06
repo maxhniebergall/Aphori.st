@@ -80,20 +80,27 @@ const Row = React.memo(({
         
         // Get the actual rendered height including all children
         const titleSection = element.querySelector('.story-title-section');
-        const textSection = element.querySelector('.story-tree-node-text');
-        const footer = element.querySelector('.story-tree-node-footer');
+        const content = element.querySelector('.story-tree-node-content');
+        const sibling = element.querySelector('story-tree-node-content.has-siblings');
         const replySection = element.querySelector('.reply-section');
+        // const storyTreeNode = element.querySelector('.story-tree-node');
         
         let totalHeight = 0;
         
         // Add heights of all sections
         if (titleSection) totalHeight += titleSection.offsetHeight;
-        if (textSection) totalHeight += textSection.offsetHeight;
-        if (footer) totalHeight += footer.offsetHeight;
+        if (content) totalHeight += content.offsetHeight;
         if (replySection) totalHeight += replySection.offsetHeight;
+        if (sibling) {
+          console.log('sibling', sibling);
+          totalHeight += sibling.offsetHeight + 64;
+        } else {
+          console.log('no sibling', index);
+        }
+        // if (storyTreeNode) totalHeight += storyTreeNode.offsetHeight;
         
         // Add padding
-        totalHeight += 32;
+        totalHeight += 24;
         
         // Set minimum height
         totalHeight = Math.max(totalHeight, 100);
@@ -104,15 +111,33 @@ const Row = React.memo(({
 
     updateSize();
 
+    // Add a delayed second update to catch any post-render changes
+    const timeoutId = setTimeout(updateSize, 100);
+
     if (rowRefs.current[index]) {
-      const resizeObserver = new ResizeObserver(() => {
+      const resizeObserver = new ResizeObserver((entries) => {
+        console.log(`Resize observed for row ${index}:`, {
+          contentRect: entries[0]?.contentRect
+        });
         if (!shouldHideNode) {
-          updateSize();
+          requestAnimationFrame(updateSize);
         }
       });
+      
+      // Observe both the container and its children
       resizeObserver.observe(rowRefs.current[index]);
-      return () => resizeObserver.disconnect();
+      const content = rowRefs.current[index].querySelector('.story-tree-node-content');
+      if (content) {
+        resizeObserver.observe(content);
+      }
+      
+      return () => {
+        resizeObserver.disconnect();
+        clearTimeout(timeoutId);
+      };
     }
+    
+    return () => clearTimeout(timeoutId);
   }, [setSize, index, rowRefs, node, postRootId, shouldHideNode]);
   
   if (shouldHideNode) {
@@ -148,6 +173,26 @@ const Row = React.memo(({
         style={memoizedStyle}
       >
         <div className="loading-placeholder">Loading node...</div>
+      </div>
+    );
+  }
+
+  // Render title node differently
+  if (node.storyTree.isTitleNode) {
+    return (
+      <div 
+        ref={el => rowRefs.current[index] = el} 
+        className="row-container"
+        style={memoizedStyle}
+      >
+        <div className="story-title-section">
+          {node.storyTree.metadata?.title && (
+            <h1>{node.storyTree.metadata.title}</h1>
+          )}
+          {node.storyTree.metadata?.author && (
+            <h2 className="story-subtitle">by {node.storyTree.metadata.author}</h2>
+          )}
+        </div>
       </div>
     );
   }

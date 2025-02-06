@@ -312,6 +312,9 @@ function StoryTreeNode({
       console.log('Initializing loadedSiblings with first node');
       setLoadedSiblings([node]);
       loadMoreItems(0, Math.min(2, node.storyTree.nodes.length - 1));
+      
+      // Force a resize event after siblings are loaded
+      window.dispatchEvent(new Event('resize'));
     }
   }, [node, loadedSiblings.length, loadMoreItems]);
 
@@ -433,14 +436,7 @@ function StoryTreeNode({
             id={currentSibling.storyTree.id}
             ref={ref}
           >
-            {isRootNode && currentSibling?.storyTree?.metadata?.title && (
-              <div className="story-title-section">
-                <h1>{currentSibling.storyTree.metadata.title}</h1>
-                {currentSibling.storyTree.metadata.author && (
-                  <h2 className="story-subtitle">by {currentSibling.storyTree.metadata.author}</h2>
-                )}
-              </div>
-            )}
+
             {renderContent()}
             <div className="story-tree-node-footer">
               <div className="footer-left">
