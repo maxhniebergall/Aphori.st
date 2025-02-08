@@ -6,7 +6,7 @@
  * - Type safety for props using TypeScript interface definitions
  */
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
 
 export interface RowContainerProps {

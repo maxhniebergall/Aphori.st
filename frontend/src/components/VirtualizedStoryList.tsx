@@ -37,8 +37,7 @@
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { 
   ListChildComponentProps, 
-  VariableSizeList, 
-  ListOnItemsRenderedProps 
+  VariableSizeList 
 } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -47,7 +46,6 @@ import Row from './Row';
 import { StoryTreeLevel } from '../context/types';
 import { useReplyContext } from '../context/ReplyContext';
 import { useStoryTree } from '../context/StoryTreeContext';
-import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
 import useAutoScroll from '../hooks/useAutoScroll';
 
 interface VirtualizedStoryListProps {
@@ -89,9 +87,6 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
     items: fetchedItems,
     loadMoreItems: fetchMoreNodes,
     isItemLoaded: checkItemLoaded,
-    error,
-    isLoading,
-    reset,
   } = useInfiniteNodes<StoryTreeLevel>(nodes, loadMoreItems, hasNextPage);
 
   const setSize = useCallback((index: number, size: number) => {

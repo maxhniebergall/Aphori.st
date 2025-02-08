@@ -9,7 +9,7 @@
 
 import axios from 'axios';
 import { ACTIONS } from './StoryTreeContext';
-import { Action, StoryTreeLevel, StoryTree } from './types';
+import { Action, StoryTreeLevel } from './types';
 
 // TODO update the URL when sibling changes, so that the currently viewed siblings are displayed if the user copies the URL
 
@@ -23,13 +23,6 @@ interface LoadMoreItemsParams {
   items: StoryTreeLevel[];
   fetchNode: (id: string) => Promise<StoryTreeLevel | null>;
   removedFromView: string[];
-}
-
-interface SiblingNode {
-  id: string;
-  content: string;
-  parentId: string | null;
-  storyTree: StoryTree;
 }
 
 export const storyTreeActions = {

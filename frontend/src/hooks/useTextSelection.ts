@@ -8,6 +8,7 @@
  * - Perform proper cleanup of added event listeners on unmount
  * - Support integration with a supplied onSelectionCompleted callback
  * - Respond to external state via `selectAll`, `selectionState`, and highlight `quotes`
+ * - Handle null safety for DOM operations
  */
 
 import { useRef, useCallback, useEffect } from 'react';
@@ -140,13 +141,17 @@ const highlightQuotes = (element: HTMLElement, quotes: Record<string, number>): 
 
 // Throttled animation loop used during mouse/touch move
 const throttledAnimationLoop = throttle(
-  (event: Event, container: React.RefObject<HTMLDivElement>, startOffset: number, mouseDownRef: React.MutableRefObject<boolean>) => {
+  (event: Event, container: React.RefObject<HTMLDivElement | null>, startOffset: number, mouseDownRef: React.MutableRefObject<boolean>) => {
     if (!mouseDownRef.current || !container.current) {
-      removeExistingHighlights(container.current!);
+      if (container.current) {
+        removeExistingHighlights(container.current);
+      }
       return;
     }
     const endOffset = getCurrentOffset(container.current, event);
-    highlightText(container.current, startOffset, endOffset);
+    if (endOffset !== null) {
+      highlightText(container.current, startOffset, endOffset);
+    }
   },
   16
 );
@@ -157,7 +162,7 @@ export function useTextSelection({
   selectionState = null,
   quotes,
 }: UseTextSelectionProps): UseTextSelectionReturn {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const boundThrottledAnimationRef = useRef<((e: Event) => void) | null>(null);
   const mouseIsDownRef = useRef(false);
   const isDraggingRef = useRef(false);
@@ -299,7 +304,7 @@ export function useTextSelection({
   };
 
   return {
-    containerRef,
+    containerRef: containerRef as React.RefObject<HTMLDivElement>,
     eventHandlers: {
       onMouseDown: onMouseDownHandler,
       onTouchStart: onTouchStartHandler,
