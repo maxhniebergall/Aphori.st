@@ -18,7 +18,7 @@
  * - Handle reply-based navigation
  * - Support quote-based filtering
  * - Support pagination for replies
- * - Auto-scroll to bottom when nodes are hidden during reply
+ * - Auto-scroll to bottom when nodes are hidden during reply using useAutoScroll hook
  * - TypeScript support
  * - Proper type definitions for all props and state
  * - Type safety for context usage
@@ -49,13 +49,14 @@ import { StoryTreeNode as StoryTreeNodeType } from '../context/types';
 import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
 import useInfiniteNodes, { InfiniteNodesResult } from '../hooks/useInfiniteNodes';
 import Row from './Row';
+import useAutoScroll from '../hooks/useAutoScroll';
 
 interface VirtualizedStoryListProps {
   postRootId: string;
   items: StoryTreeNodeType[];
   hasNextPage: boolean;
   isItemLoaded: (index: number) => boolean;
-  loadMoreItems: (startIndex: number, stopIndex: number) => Promise<void>;
+  loadMoreItems: (startIndex: number, stopIndex: number) => Promise<StoryTreeNodeType[]>;
   setIsFocused: (focused: boolean) => void;
   handleSiblingChange: (
     newNode: StoryTreeNodeType,
@@ -132,19 +133,13 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, [totalContentHeight, setSize]);
 
-  // Auto-scroll to the reply target if set.
-  useEffect(() => {
-    const scrollToReplyTarget = () => {
-      if (replyTargetIndex !== undefined && listRef.current) {
-        // Wait for the next tick to ensure row heights have been recalculated.
-        setTimeout(() => {
-          listRef.current?.scrollToItem(replyTargetIndex, 'end');
-        }, 0);
-      }
-    };
-
-    scrollToReplyTarget();
-  }, [replyTargetIndex, totalContentHeight]);
+  // Apply auto-scroll using the custom hook instead of a manual useEffect.
+  useAutoScroll({
+    listRef,
+    targetIndex: replyTargetIndex,
+    alignment: 'end',
+    dependencies: [totalContentHeight],
+  });
 
   // Calculate additional height from any quote metadata.
   const getQuoteMetadataHeight = useCallback(
