@@ -48,159 +48,7 @@ import { useStoryTree } from '../context/StoryTreeContext';
 import { StoryTreeNode as StoryTreeNodeType } from '../context/types';
 import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
 import useInfiniteNodes, { InfiniteNodesResult } from '../hooks/useInfiniteNodes';
-
-interface RowProps extends Omit<ListChildComponentProps, 'data'> {
-  node: StoryTreeNodeType | null;
-  setSize: (index: number, size: number) => void;
-  rowRefs: React.MutableRefObject<{ [key: number]: HTMLDivElement | null }>;
-  handleSiblingChange: (
-    newNode: StoryTreeNodeType,
-    index: number,
-    fetchNode: (id: string) => Promise<void>
-  ) => void;
-  fetchNode: (id: string) => Promise<void>;
-  isLoading: boolean;
-  postRootId: string;
-  replyTargetIndex?: number;
-  parentId: string;
-  setIsFocused?: (focused: boolean) => void;
-}
-
-const Row: React.FC<RowProps> = React.memo(
-  ({
-    index,
-    style,
-    node,
-    setSize,
-    rowRefs,
-    handleSiblingChange,
-    fetchNode,
-    isLoading,
-    postRootId,
-    replyTargetIndex,
-    parentId,
-    setIsFocused,
-  }) => {
-    const { replyTarget } = useReplyContext();
-
-    const shouldHideNode = React.useMemo((): boolean => {
-      if (!replyTarget || replyTargetIndex === undefined) return false;
-      return index > replyTargetIndex;
-    }, [replyTarget, replyTargetIndex, index]);
-
-    const memoizedStyle = React.useMemo((): React.CSSProperties => ({
-      ...style,
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      width: '100%',
-      padding: '20px',
-      boxSizing: 'border-box',
-    }), [style]);
-
-    // Create a local ref for the row element.
-    const rowRef = useRef<HTMLDivElement>(null);
-    // Use the new custom hook to handle dynamic row height updates.
-    useDynamicRowHeight({
-      index,
-      rowRef,
-      setSize,
-      shouldHide: shouldHideNode,
-    });
-
-    // Optionally update the external rowRefs for backward compatibility.
-    useEffect(() => {
-      rowRefs.current[index] = rowRef.current;
-    }, [index, rowRef, rowRefs]);
-
-    if (shouldHideNode) {
-      return (
-        <div
-          ref={rowRef}
-          style={{
-            ...memoizedStyle,
-            height: 0,
-            padding: 0,
-            overflow: 'hidden',
-            opacity: 0,
-            pointerEvents: 'none'
-          }}
-        />
-      );
-    }
-
-    if (isLoading) {
-      return (
-        <div
-          className="loading-row"
-          ref={rowRef}
-          style={memoizedStyle}
-        >
-          <div className="loading-placeholder">Loading...</div>
-        </div>
-      );
-    }
-
-    if (!node || typeof node !== 'object' || !node.storyTree || typeof node.storyTree !== 'object') {
-      console.warn(`Invalid node or storyTree at index ${index}:`, {
-        node,
-        storyTreeExists: !!node?.storyTree,
-        storyTreeType: typeof node?.storyTree,
-      });
-      return (
-        <div
-          ref={rowRef}
-          style={memoizedStyle}
-        >
-          <div className="loading-placeholder">Loading node...</div>
-        </div>
-      );
-    }
-
-    // Render title node differently
-    if (node.storyTree.isTitleNode) {
-      return (
-        <div
-          ref={rowRef}
-          className="row-container"
-          style={memoizedStyle}
-        >
-          <div className="story-title-section">
-            {node.storyTree.metadata?.title && <h1>{node.storyTree.metadata.title}</h1>}
-            {node.storyTree.metadata?.author && (
-              <h2 className="story-subtitle">by {node.storyTree.metadata.author}</h2>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div
-        ref={rowRef}
-        className="row-container"
-        style={memoizedStyle}
-      >
-        <StoryTreeNode
-          key={node.storyTree.id}
-          node={node}
-          onSiblingChange={(newNode: StoryTreeNodeType) =>
-            handleSiblingChange(newNode, index, fetchNode)
-          }
-          parentId={parentId}
-        />
-      </div>
-    );
-  },
-  (prevProps, nextProps) => {
-    return (
-      prevProps.node?.storyTree?.id === nextProps.node?.storyTree?.id &&
-      prevProps.isLoading === nextProps.isLoading &&
-      prevProps.index === nextProps.index &&
-      prevProps.style.top === nextProps.style.top
-    );
-  }
-);
+import Row from './Row';
 
 interface VirtualizedStoryListProps {
   postRootId: string;
@@ -229,40 +77,35 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<VariableSizeList | null>(null);
-  const sizeMap = useRef<{ [key: number]: number }>({});
-  const rowRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+  const sizeMap = useRef<{ [index: number]: number }>({});
   const [totalContentHeight, setTotalContentHeight] = useState<number>(0);
   const { state } = useStoryTree();
 
   const [replyTargetIndex, setReplyTargetIndex] = useState<number | undefined>(undefined);
   const { replyTarget } = useReplyContext();
 
-  // Use the new infinite node fetching hook
+  // Use the new infinite node fetching hook for node items.
   const {
-      items: fetchedItems,
-      loadMoreItems: fetchMoreNodes,
-      isItemLoaded: checkItemLoaded,
-      error,
-      isLoading,
-      reset,
-  }: InfiniteNodesResult<StoryTreeNodeType> = useInfiniteNodes<StoryTreeNodeType>(items, loadMoreItems, hasNextPage);
+    items: fetchedItems,
+    loadMoreItems: fetchMoreNodes,
+    isItemLoaded: checkItemLoaded,
+    error,
+    isLoading,
+    reset,
+  } = useInfiniteNodes<StoryTreeNodeType>(items, loadMoreItems, hasNextPage);
 
-  const setSize = useCallback(
-    (index: number, size: number) => {
-      sizeMap.current[index] = size;
-      listRef.current?.resetAfterIndex(index);
-      const newTotalHeight = Object.values(sizeMap.current).reduce((sum, height) => sum + height, 0);
-      setTotalContentHeight(newTotalHeight);
-    },
-    []
-  );
+  const setSize = useCallback((index: number, size: number) => {
+    sizeMap.current[index] = size;
+    listRef.current?.resetAfterIndex(index);
+    const newTotalHeight = Object.values(sizeMap.current).reduce((sum, height) => sum + height, 0);
+    setTotalContentHeight(newTotalHeight);
+  }, []);
 
+  // Update reply target index based on the current reply target.
   useEffect(() => {
     if (!replyTarget) {
       setReplyTargetIndex(undefined);
-      if (listRef.current) {
-        listRef.current.resetAfterIndex(0);
-      }
+      listRef.current?.resetAfterIndex(0);
       return;
     }
 
@@ -272,17 +115,15 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
 
     if (targetIndex >= 0) {
       setReplyTargetIndex(targetIndex);
-      if (listRef.current) {
-        listRef.current.resetAfterIndex(targetIndex);
-      }
+      listRef.current?.resetAfterIndex(targetIndex);
     }
   }, [replyTarget, fetchedItems]);
 
+  // Update size on window resize.
   useEffect(() => {
     const handleResize = () => {
       if (!containerRef.current) return;
       const containerHeight = containerRef.current.clientHeight;
-      // Update row 0 size (if used for container sizing)
       setSize(0, containerHeight);
     };
 
@@ -291,21 +132,21 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, [totalContentHeight, setSize]);
 
+  // Auto-scroll to the reply target if set.
   useEffect(() => {
     const scrollToReplyTarget = () => {
       if (replyTargetIndex !== undefined && listRef.current) {
-        // Wait for the next tick to ensure row heights have been recalculated
+        // Wait for the next tick to ensure row heights have been recalculated.
         setTimeout(() => {
-          if (listRef.current) {
-            listRef.current.scrollToItem(replyTargetIndex, 'end');
-          }
+          listRef.current?.scrollToItem(replyTargetIndex, 'end');
         }, 0);
       }
     };
-    
+
     scrollToReplyTarget();
   }, [replyTargetIndex, totalContentHeight]);
 
+  // Calculate additional height from any quote metadata.
   const getQuoteMetadataHeight = useCallback(
     (node: StoryTreeNodeType | null): number => {
       if (!node?.storyTree?.id) return 0;
@@ -319,8 +160,10 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
     [state.quoteMetadata]
   );
 
+  // Determine row height based on dynamic sizing plus potential quote metadata.
   const getSize = useCallback(
     (index: number): number => {
+      // If index is beyond the reply target, return zero height.
       if (replyTargetIndex !== undefined && index > replyTargetIndex) {
         return 0;
       }
@@ -335,31 +178,24 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
 
   const renderRow = useCallback(
     ({ index, style }: ListChildComponentProps) => {
-      if (replyTargetIndex !== undefined && index > replyTargetIndex) {
-        return null;
-      }
-
       const node = fetchedItems[index];
-      // Determine row loading state based on our hook's isItemLoaded
       const isLoadingRow = !checkItemLoaded(index);
       const parentId =
         index <= 0 ? postRootId : fetchedItems[index - 1]?.storyTree?.id || postRootId;
 
       return (
         <Row
-          className={`row ${replyTarget ? 'reply-mode' : ''}`}
           index={index}
           style={style}
           node={node}
-          setIsFocused={setIsFocused}
           setSize={setSize}
-          rowRefs={rowRefs}
           handleSiblingChange={handleSiblingChange}
           fetchNode={fetchNode}
           isLoading={isLoadingRow}
           postRootId={postRootId}
           replyTargetIndex={replyTargetIndex}
           parentId={parentId}
+          setIsFocused={setIsFocused}
         />
       );
     },
@@ -367,26 +203,25 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
       fetchedItems,
       checkItemLoaded,
       postRootId,
-      replyTarget,
-      replyTargetIndex,
-      setIsFocused,
       setSize,
       handleSiblingChange,
       fetchNode,
+      replyTargetIndex,
+      setIsFocused,
     ]
   );
 
+  // When there are no items and no pending page, don't render the list.
   if (!fetchedItems?.length && !hasNextPage) {
     return null;
   }
 
   const rootNode = fetchedItems[0];
-  const totalPossibleItems =
-    rootNode?.storyTree?.nodes?.length
-      ? rootNode.storyTree.nodes.length + 1
-      : rootNode?.storyTree?.metadata?.quote
-      ? state?.replyPagination?.totalItems || fetchedItems.length
-      : fetchedItems.length || 1;
+  const totalPossibleItems = rootNode?.storyTree?.nodes?.length
+    ? rootNode.storyTree.nodes.length + 1
+    : rootNode?.storyTree?.metadata?.quote
+    ? state?.replyPagination?.totalItems || fetchedItems.length
+    : fetchedItems.length || 1;
 
   const itemCount = hasNextPage
     ? Math.max(fetchedItems.length + 1, totalPossibleItems)
@@ -403,13 +238,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
             threshold={15}
             minimumBatchSize={10}
           >
-            {({
-              onItemsRendered,
-              ref,
-            }: {
-              onItemsRendered: (props: ListOnItemsRenderedProps) => void;
-              ref: (list: VariableSizeList | null) => void;
-            }) => (
+            {({ onItemsRendered, ref }) => (
               <VariableSizeList
                 ref={(list) => {
                   ref(list);
