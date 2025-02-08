@@ -42,24 +42,23 @@ import {
 } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import StoryTreeNode from './StoryTreeNode';
+import useInfiniteNodes from '../hooks/useInfiniteNodes';
+import Row from './Row';
+import { StoryTreeLevel } from '../context/types';
 import { useReplyContext } from '../context/ReplyContext';
 import { useStoryTree } from '../context/StoryTreeContext';
-import { StoryTreeNode as StoryTreeNodeType } from '../context/types';
 import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
-import useInfiniteNodes, { InfiniteNodesResult } from '../hooks/useInfiniteNodes';
-import Row from './Row';
 import useAutoScroll from '../hooks/useAutoScroll';
 
 interface VirtualizedStoryListProps {
   postRootId: string;
-  items: StoryTreeNodeType[];
+  nodes: StoryTreeLevel[];
   hasNextPage: boolean;
   isItemLoaded: (index: number) => boolean;
-  loadMoreItems: (startIndex: number, stopIndex: number) => Promise<StoryTreeNodeType[]>;
+  loadMoreItems: (startIndex: number, stopIndex: number) => Promise<StoryTreeLevel[]>;
   setIsFocused: (focused: boolean) => void;
   handleSiblingChange: (
-    newNode: StoryTreeNodeType,
+    newNode: StoryTreeLevel,
     index: number,
     fetchNode: (id: string) => Promise<void>
   ) => void;
@@ -68,7 +67,7 @@ interface VirtualizedStoryListProps {
 
 const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
   postRootId,
-  items,
+  nodes,
   hasNextPage,
   isItemLoaded,
   loadMoreItems,
@@ -93,7 +92,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
     error,
     isLoading,
     reset,
-  } = useInfiniteNodes<StoryTreeNodeType>(items, loadMoreItems, hasNextPage);
+  } = useInfiniteNodes<StoryTreeLevel>(nodes, loadMoreItems, hasNextPage);
 
   const setSize = useCallback((index: number, size: number) => {
     sizeMap.current[index] = size;
@@ -104,19 +103,14 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
 
   // Update reply target index based on the current reply target.
   useEffect(() => {
-    if (!replyTarget) {
-      setReplyTargetIndex(undefined);
-      listRef.current?.resetAfterIndex(0);
-      return;
-    }
-
-    const targetIndex = fetchedItems.findIndex(
-      (item) => item?.storyTree?.id === replyTarget.storyTree.id
-    );
-
-    if (targetIndex >= 0) {
-      setReplyTargetIndex(targetIndex);
-      listRef.current?.resetAfterIndex(targetIndex);
+    if (replyTarget?.storyTree?.id) {
+      const index = fetchedItems.findIndex(
+        (item: StoryTreeLevel | null) => item?.storyTree?.id === replyTarget.storyTree?.id
+      );
+      if (index !== -1) {
+        setReplyTargetIndex(index);
+        listRef.current?.resetAfterIndex(index);
+      }
     }
   }, [replyTarget, fetchedItems]);
 
@@ -143,7 +137,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
 
   // Calculate additional height from any quote metadata.
   const getQuoteMetadataHeight = useCallback(
-    (node: StoryTreeNodeType | null): number => {
+    (node: StoryTreeLevel | null): number => {
       if (!node?.storyTree?.id) return 0;
       const metadata = state.quoteMetadata[node.storyTree.id];
       if (!metadata) return 0;

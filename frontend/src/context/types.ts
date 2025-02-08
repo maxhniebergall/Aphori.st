@@ -41,37 +41,45 @@ export interface StoryTree {
   nodes: { id: string; parentId: string | null; }[];
   parentId: string[];
   metadata?: StoryTreeMetadata;
-  siblings?: StoryTreeNode[];
+  siblings?: StoryTreeLevel[];
   isTitleNode?: boolean;
   quoteReplyCounts?: Record<string, number>;
 }
 
-export interface StoryTreeNode {
+export interface StoryTreeLevel {
   id: string;
-  parentId?: string | null;
-  storyTree: StoryTree;
-  quoteReplyCounts?: Record<string, number>;
-  siblings?: StoryTreeNode[];
+  content: string;
+  metadata?: any;
+  siblings?: StoryTreeLevel[];
+  storyTree?: StoryTree;
 }
 
 export interface StoryTreeState {
-  rootNode: StoryTreeNode | null;
-  items: StoryTreeNode[];
+  rootNode: StoryTreeLevel | null;
+  nodes: StoryTreeLevel[];
   isNextPageLoading: boolean;
   isPaginationLoading: boolean;
   isInitialLoading: boolean;
   hasNextPage: boolean;
   removedFromView: string[];
   isEditing: boolean;
-  currentNode: StoryTreeNode | null;
+  currentNode: StoryTreeLevel | null;
   error: string | null;
   loadingState: LoadingState;
-  replies: StoryTreeNode[];
-  repliesFeed: StoryTreeNode[];
+  replies: StoryTreeLevel[];
+  repliesFeed: StoryTreeLevel[];
   selectedQuote: Quote | null;
   quoteMetadata: Record<string, any>;
   replyPagination?: {
     totalItems: number;
+  };
+  replyContext: {
+    isOpen: boolean;
+    replies: StoryTreeLevel[];
+    repliesFeed: StoryTreeLevel[];
+    hasNextPage: boolean;
+    loading: boolean;
+    error: string | null;
   };
 }
 
@@ -105,8 +113,8 @@ export interface SelectionState {
 
 export type Action = 
   | { type: 'SET_ROOT_NODE'; payload: any }
-  | { type: 'SET_ITEMS'; payload: any[] }
-  | { type: 'APPEND_ITEM'; payload: any }
+  | { type: 'SET_NODES'; payload: any[] }
+  | { type: 'APPEND_NODE'; payload: any }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_HAS_NEXT_PAGE'; payload: boolean }
   | { type: 'SET_REMOVED_FROM_VIEW'; payload: string }
@@ -124,7 +132,7 @@ export type Action =
   | { type: 'CLEAR_ERROR'; payload: void }
   | { type: 'SET_INITIAL_LOADING'; payload: boolean }
   | { type: 'SET_PAGINATION_LOADING'; payload: boolean }
-  | { type: 'HANDLE_SIBLING_CHANGE'; payload: { newNode: StoryTreeNode; index: number } }
+  | { type: 'HANDLE_SIBLING_CHANGE'; payload: { newNode: StoryTreeLevel; index: number } }
   | ReplyAction
   | { type: 'SET_REPLY_ERROR'; payload: ReplyError | null }
   | { type: 'CLEAR_REPLY_STATE' };

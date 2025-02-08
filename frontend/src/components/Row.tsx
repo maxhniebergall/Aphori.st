@@ -13,13 +13,13 @@ import RowLoading from './RowLoading';
 import RowFallback from './RowFallback';
 import TitleRow from './TitleRow';
 import NormalRowContent from './NormalRowContent';
-import { StoryTreeNode as StoryTreeNodeType } from '../context/types';
+import { StoryTreeLevel } from '../context/types';
 
 interface RowProps extends Omit<ListChildComponentProps, 'data'> {
-  node: StoryTreeNodeType | null;
+  node: StoryTreeLevel | null;
   setSize: (index: number, size: number) => void;
   handleSiblingChange: (
-    newNode: StoryTreeNodeType,
+    newNode: StoryTreeLevel,
     index: number,
     fetchNode: (id: string) => Promise<void>
   ) => void;

@@ -23,8 +23,8 @@ import { StoryTreeState, Action, LoadingState } from './types';
 
 export const ACTIONS = {
   SET_ROOT_NODE: 'SET_ROOT_NODE',
-  SET_ITEMS: 'SET_ITEMS',
-  APPEND_ITEM: 'APPEND_ITEM',
+  SET_NODES: 'SET_NODES',
+  APPEND_NODE: 'APPEND_NODE',
   SET_LOADING: 'SET_LOADING',
   SET_HAS_NEXT_PAGE: 'SET_HAS_NEXT_PAGE',
   SET_REMOVED_FROM_VIEW: 'SET_REMOVED_FROM_VIEW',
@@ -54,7 +54,7 @@ export const LOADING_STATES: Record<LoadingState, LoadingState> = {
 
 const initialState: StoryTreeState = {
   rootNode: null,
-  items: [],
+  nodes: [],
   isNextPageLoading: false,
   isPaginationLoading: false,
   isInitialLoading: true,
@@ -76,25 +76,25 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
       return {
         ...state,
         rootNode: action.payload,
-        items: [action.payload],
+        nodes: [action.payload],
       };
     
-    case ACTIONS.SET_ITEMS:
+    case ACTIONS.SET_NODES:
       return {
         ...state,
-        items: action.payload,
+        nodes: action.payload,
       };
     
-    case ACTIONS.APPEND_ITEM:
+    case ACTIONS.APPEND_NODE:
       return {
         ...state,
-        items: [...state.items, action.payload],
+        nodes: [...state.nodes, action.payload],
       };
     
     case ACTIONS.TRUNCATE_ITEMS:
       return {
         ...state,
-        items: state.items.slice(0, action.payload + 1),
+        nodes: state.nodes.slice(0, action.payload + 1),
       };
     
     case ACTIONS.SET_LOADING:

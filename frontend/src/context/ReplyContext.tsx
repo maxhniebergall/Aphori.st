@@ -14,23 +14,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { StoryTreeMetadata as MainStoryTreeMetadata } from './types';
-
-// Define the structure of a story tree node
-interface StoryTreeMetadata extends MainStoryTreeMetadata {}
-
-interface StoryTree {
-  id: string;
-  text: string;
-  nodes?: Array<{ id: string; parentId: string | null }>;
-  metadata?: StoryTreeMetadata;
-}
-
-interface StoryTreeNode {
-  storyTree: StoryTree;
-  id?: string;
-  siblings?: StoryTreeNode[];
-}
+import { StoryTreeLevel } from './types';
 
 interface SelectionState {
   start: number;
@@ -38,8 +22,8 @@ interface SelectionState {
 }
 
 interface ReplyContextType {
-  replyTarget: StoryTreeNode | null;
-  setReplyTarget: (target: StoryTreeNode | null) => void;
+  replyTarget: StoryTreeLevel | null;
+  setReplyTarget: (target: StoryTreeLevel | null) => void;
   replyContent: string;
   setReplyContent: (content: string) => void;
   selectionState: SelectionState | null;
@@ -48,6 +32,8 @@ interface ReplyContextType {
   clearReplyState: () => void;
   replyError: string | null;
   setReplyError: (error: string | null) => void;
+  isReplyOpen: boolean;
+  setIsReplyOpen: (isOpen: boolean) => void;
 }
 
 // Create context with an initial undefined value
@@ -58,16 +44,18 @@ interface ReplyProviderProps {
 }
 
 export function ReplyProvider({ children }: ReplyProviderProps) {
-  const [replyTarget, setReplyTarget] = useState<StoryTreeNode | null>(null);
+  const [replyTarget, setReplyTarget] = useState<StoryTreeLevel | null>(null);
   const [replyContent, setReplyContent] = useState<string>('');
   const [selectionState, setSelectionState] = useState<SelectionState | null>(null);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [isReplyOpen, setIsReplyOpen] = useState<boolean>(false);
 
   const clearReplyState = useCallback(() => {
     setReplyTarget(null);
     setReplyContent('');
     setSelectionState(null);
     setReplyError(null);
+    setIsReplyOpen(false);
   }, []);
 
   const value = useMemo(() => ({
@@ -80,8 +68,10 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
     isReplyActive: replyTarget !== null,
     clearReplyState,
     replyError,
-    setReplyError
-  }), [replyTarget, replyContent, selectionState, clearReplyState, replyError]);
+    setReplyError,
+    isReplyOpen,
+    setIsReplyOpen
+  }), [replyTarget, replyContent, selectionState, clearReplyState, replyError, isReplyOpen]);
 
   useEffect(() => {
     return () => {
