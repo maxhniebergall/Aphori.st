@@ -583,7 +583,7 @@ if (process.env.NODE_ENV !== 'production') {
         nodes: childIds.map(id => ({ id, parentId: nodeId })),
         parentId,
         metadata,
-        totalNodes: childIds.length
+        totalChildren: childIds.length
       };
       await db.hSet(nodeId, "storyTree", updatedNode);
     }
@@ -608,7 +608,7 @@ if (process.env.NODE_ENV !== 'production') {
         title: metadata.title,
         author: metadata.author
       },
-      totalNodes: nodes.length
+      totalChildren: nodes.length
     };
 
     // Store in Redis using the database client's compression - make sure to stringify

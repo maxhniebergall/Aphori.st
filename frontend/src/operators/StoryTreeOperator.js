@@ -84,7 +84,14 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   validateNode(node) {
-    return node && typeof node === 'object' && ((node.id && typeof node.id === 'string') || (node.storyTree && typeof node.storyTree === 'object' && node.storyTree.id && typeof node.storyTree.id === 'string'));
+    return node && 
+           typeof node === 'object' && 
+           ((node.id && typeof node.id === 'string') || 
+            (node.storyTree && 
+             typeof node.storyTree === 'object' && 
+             node.storyTree.id && 
+             typeof node.storyTree.id === 'string' &&
+             Array.isArray(node.storyTree.nodes)));
   }
 
   async fetchRootNodeWithIncludedNodes(uuid, fetchedNodes = {}) {
@@ -119,6 +126,7 @@ class StoryTreeOperator extends BaseOperator {
             author: node.metadata?.author,
           },
           isTitleNode: true,
+          nodes: []
         }
       };
       fetchedNodes[titleNode.storyTree.id] = titleNode;
