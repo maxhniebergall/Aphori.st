@@ -6,7 +6,7 @@
  * - Delegate dynamic height and ref handling to RowContainer
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { ListChildComponentProps } from 'react-window';
 import RowContainer from './RowContainer';
 import RowLoading from './RowLoading';
