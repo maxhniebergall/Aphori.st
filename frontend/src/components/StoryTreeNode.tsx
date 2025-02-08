@@ -45,13 +45,7 @@ function StoryTreeNode({ parentId, node, onSiblingChange }: StoryTreeNodeProps) 
   // ─── HOOKS & STATE ─────────────────────────────────────────────
   const isQuoteMode = Boolean(node?.storyTree?.metadata?.quote);
 
-  const {
-    items: siblings,
-    loadMoreItems: fetchMoreSiblings,
-    isItemLoaded: siblingIsLoaded,
-    isLoading: siblingsLoading,
-    reset: resetSiblings,
-  } = !isQuoteMode
+  const infiniteNodes = !isQuoteMode
     ? useInfiniteNodes<IStoryTreeNode>(
         [node],
         async (startIndex: number, stopIndex: number): Promise<IStoryTreeNode[]> => {
@@ -72,6 +66,13 @@ function StoryTreeNode({ parentId, node, onSiblingChange }: StoryTreeNodeProps) 
         node?.storyTree?.nodes ? (node.storyTree.nodes.length > 1) : false
       )
     : undefined;
+
+  const siblings = infiniteNodes?.items ?? [];
+  const fetchMoreSiblings = infiniteNodes?.loadMoreItems 
+    ?? (async (_startIndex: number, _stopIndex: number): Promise<void> => {});
+  const siblingIsLoaded = infiniteNodes?.isItemLoaded ?? (() => true);
+  const siblingsLoading = infiniteNodes?.isLoading ?? false;
+  const resetSiblings = infiniteNodes?.reset ?? (() => {});
 
   // For quote mode handling
   const [loadedSiblings, setLoadedSiblings] = useState<IStoryTreeNode[]>([]);
@@ -208,6 +209,10 @@ function StoryTreeNode({ parentId, node, onSiblingChange }: StoryTreeNodeProps) 
     if (!node?.storyTree?.id) return;
     const refreshSiblings = async () => {
       if (isQuoteMode) {
+        if (!node?.storyTree?.metadata?.quote) {
+          console.error('Missing quote metadata for node:', node);
+          return;
+        }
         const response = await storyTreeOperator.fetchReplies(
           node.storyTree.metadata.quote.sourcePostId,
           node.storyTree.metadata.quote.text,
@@ -229,8 +234,13 @@ function StoryTreeNode({ parentId, node, onSiblingChange }: StoryTreeNodeProps) 
   }, [node?.storyTree?.id, node?.storyTree?.parentId, isQuoteMode, resetSiblings]);
 
   useEffect(() => {
-    if (!node?.storyTree?.id || !isQuoteMode) return;
-    const loadReplySiblings = async () => {
+    if (!node?.storyTree?.id) return;
+    const loadReplySiblings = async (): Promise<void> => {
+      // Guard: return early if metadata or quote is missing.
+      if (!node.storyTree.metadata || !node.storyTree.metadata.quote) {
+        console.error('Missing metadata or quote data for node:', node);
+        return;
+      }
       setIsLoadingReplies(true);
       try {
         const response = await storyTreeOperator.fetchReplies(
