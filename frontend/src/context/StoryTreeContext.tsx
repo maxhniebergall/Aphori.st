@@ -67,7 +67,7 @@ const initialState: StoryTreeState = {
   replies: [],
   repliesFeed: [],
   selectedQuote: null,
-  quoteMetadata: {},
+  quoteMetadata: {}
 };
 
 function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {

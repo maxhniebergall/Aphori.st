@@ -73,14 +73,6 @@ export interface StoryTreeState {
   replyPagination?: {
     totalItems: number;
   };
-  replyContext: {
-    isOpen: boolean;
-    replies: StoryTreeLevel[];
-    repliesFeed: StoryTreeLevel[];
-    hasNextPage: boolean;
-    loading: boolean;
-    error: string | null;
-  };
 }
 
 export type LoadingState = 'IDLE' | 'LOADING' | 'ERROR' | 'SUCCESS';
