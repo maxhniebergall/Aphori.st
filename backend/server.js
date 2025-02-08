@@ -157,35 +157,6 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-app.post("/api/createStatement", authenticateToken, async (req, res) => {
-    if (req.body.uuid && req.body.value) {
-        try {
-            const setResult = await db.set(req.body.uuid, req.body.value);
-            logger.info('Set Result: %s', setResult);
-            res.send();
-        } catch (e) {
-            logger.error('Error setting value: %O', e);
-            res.status(500).json(e);
-        }
-    } else {
-        res.status(400).json({ error: 'Wrong input.' });
-    }
-});
-
-app.get('/api/getStatement/:key', async (req, res) => {
-    if (!req.params.key) {
-        return res.status(400).json({ error: 'Wrong input.' });
-    }
-
-    try {
-        const value = await db.get(req.params.key);
-        logger.info('Fetched value for key "%s": %s', req.params.key, value);
-        res.json({ value: value });
-    } catch (e) {
-        logger.error('Error getting value: %O', e);
-        res.status(500).json(e);
-    }
-});
 
 // Get story data by UUID
 app.get('/api/storyTree/:uuid', async (req, res) => {
@@ -231,6 +202,7 @@ app.get('/api/storyTree/:uuid', async (req, res) => {
 
 // Get feed data with pagination
 app.get('/api/feed', async (req, res) => {
+    // TODO fix pagination
     const page = parseInt(req.query.page) || 1;
     const pageSize = 10; // Number of items per page
     logger.info("Handling request for feed at page "+page)
@@ -268,6 +240,8 @@ app.get('/api/feed', async (req, res) => {
         const response = {
             page,
             items: decompressedItems,
+            // totalItems,
+            // totalPages: Math.ceil(totalItems / itemsPerPage)
         };
         logger.info('Response object: %O', response);
         // Compress the final response
@@ -614,14 +588,11 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
         // Generate a new UUID for the story tree
         const uuid = crypto.randomUUID();
         
-        // Format nodes array to match frontend expectations
-        const nodes = storyTree.nodes || [];
-
         // Create the full object following new schema structure
         const formattedStoryTree = {
             id: uuid,
             text: storyTree.content || storyTree.text,
-            nodes: nodes,
+            children: null,
             parentId: null, // Root-level posts always have null parentId
             metadata: {
                 title: storyTree.title,
@@ -631,7 +602,7 @@ app.post('/api/createStoryTree', authenticateToken, async (req, res) => {
                 createdAt: new Date().toISOString(),
                 quote: null // Root-level posts don't have quotes
             },
-            totalNodes: nodes.length
+            countOfChildren: 0
         };
 
         // Store in Redis
@@ -855,7 +826,8 @@ app.get('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req, res) => {
         const sortedSetKey = `replies:${uuid}:${quote}:${sortingCriteria}`;
         
         // Get total count for pagination info
-        const totalItems = await db.zCard(sortedSetKey) || 0;
+        // TODO verify this is the corerct access pattern
+        const numberOfRepliesToQuoteOfNode = await db.hGet(uuid, 'quoteCounts', quote) || 0;
         
         // Get reply keys from the sorted set with pagination
         const compressedReplyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true }) || [];
@@ -871,8 +843,8 @@ app.get('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req, res) => {
             pagination: {
                 page: pageNum,
                 limit: itemsPerPage,
-                totalItems,
-                totalPages: Math.ceil(totalItems / itemsPerPage)
+                numberOfRepliesToQuoteOfNode,
+                totalPages: Math.ceil(numberOfRepliesToQuoteOfNode / itemsPerPage)
             }
         };
 
@@ -900,7 +872,7 @@ app.get('/api/getRepliesFeed', async (req, res) => {
         const end = start + itemsPerPage - 1;
 
         // Get total count for pagination info
-        const totalItems = await db.zCard('replies:feed:mostRecent') || 0;
+        const repliesCount = await db.zCard('replies:feed:mostRecent') || 0;
         
         // Get compressed reply keys from the global feed sorted set with pagination
         const compressedReplyKeys = await db.zRange('replies:feed:mostRecent', start, end, { returnCompressed: true }) || [];
@@ -916,8 +888,8 @@ app.get('/api/getRepliesFeed', async (req, res) => {
             pagination: {
                 page: pageNum,
                 limit: itemsPerPage,
-                totalItems,
-                totalPages: Math.ceil(totalItems / itemsPerPage)
+                repliesCount,
+                totalPages: Math.ceil(repliesCount / itemsPerPage)
             }
         };
 
@@ -953,7 +925,7 @@ app.get('/api/getReplies/:quote/:sortingCriteria', async (req, res) => {
         const sortedSetKey = `replies:quote:${quote}:${sortingCriteria}`;
         
         // Get total count for pagination info
-        const totalItems = await db.zCard(sortedSetKey) || 0;
+        const countOfRepliesToQuoteOfNode = await db.zCard(sortedSetKey) || 0;
         
         // Get compressed reply keys from the sorted set with pagination
         const compressedReplyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true }) || [];
@@ -969,8 +941,8 @@ app.get('/api/getReplies/:quote/:sortingCriteria', async (req, res) => {
             pagination: {
                 page: pageNum,
                 limit: itemsPerPage,
-                totalItems,
-                totalPages: Math.ceil(totalItems / itemsPerPage)
+                countOfRepliesToQuoteOfNode,
+                totalPages: Math.ceil(countOfRepliesToQuoteOfNode / itemsPerPage)
             }
         };
 

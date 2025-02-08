@@ -1,3 +1,7 @@
+import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import { storyTreeActions } from './StoryTreeActions';
+import { StoryTreeState, Action, LoadingState } from './types';
+
 /*
  * Requirements:
  * - Global state management using React Context
@@ -14,12 +18,9 @@
  * - Proper type checking for node structure
  * - Handle quote metadata
  * - Support for reply-based navigation
+ * - TypeScript type safety and interfaces
  */
 
-import React, { createContext, useContext, useReducer } from 'react';
-import { storyTreeActions } from './StoryTreeActions';
-
-// Define action types
 export const ACTIONS = {
   SET_ROOT_NODE: 'SET_ROOT_NODE',
   SET_ITEMS: 'SET_ITEMS',
@@ -42,24 +43,22 @@ export const ACTIONS = {
   SET_SELECTED_QUOTE: 'SET_SELECTED_QUOTE',
   CLEAR_REPLIES: 'CLEAR_REPLIES',
   SET_QUOTE_METADATA: 'SET_QUOTE_METADATA',
-};
+} as const;
 
-// Add these at the top of the file
-export const LOADING_STATES = {
+export const LOADING_STATES: Record<LoadingState, LoadingState> = {
   IDLE: 'IDLE',
   LOADING: 'LOADING',
   ERROR: 'ERROR',
   SUCCESS: 'SUCCESS'
 };
 
-// Initial state
-const initialState = {
+const initialState: StoryTreeState = {
   rootNode: null,
   items: [],
   isNextPageLoading: false,
   isPaginationLoading: false,
   isInitialLoading: true,
-  hasNextPage: true,
+  hasNextPage: false,
   removedFromView: [],
   isEditing: false,
   currentNode: null,
@@ -68,17 +67,16 @@ const initialState = {
   replies: [],
   repliesFeed: [],
   selectedQuote: null,
-  quoteMetadata: {}, // Will store quote counts mapped by nodeId
+  quoteMetadata: {},
 };
 
-// Reducer function
-function storyTreeReducer(state, action) {
+function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {
   switch (action.type) {
     case ACTIONS.SET_ROOT_NODE:
       return {
         ...state,
         rootNode: action.payload,
-        items: [action.payload], // Initialize items with root node
+        items: [action.payload],
       };
     
     case ACTIONS.SET_ITEMS:
@@ -180,25 +178,40 @@ function storyTreeReducer(state, action) {
   }
 }
 
-// Create context
-const StoryTreeContext = createContext();
+interface StoryTreeContextType {
+  state: StoryTreeState;
+  dispatch: React.Dispatch<Action>;
+  actions: typeof storyTreeActions;
+}
 
-// Add error boundary component
-class StoryTreeErrorBoundary extends React.Component {
-  constructor(props) {
+const StoryTreeContext = createContext<StoryTreeContextType | undefined>(undefined);
+
+interface StoryTreeErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface StoryTreeErrorBoundaryState {
+  hasError: boolean;
+}
+
+class StoryTreeErrorBoundary extends React.Component<
+  StoryTreeErrorBoundaryProps,
+  StoryTreeErrorBoundaryState
+> {
+  constructor(props: StoryTreeErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: Error): StoryTreeErrorBoundaryState {
     return { hasError: true };
   }
 
-  componentDidCatch(error, errorInfo) {
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     console.error('StoryTree Error:', error, errorInfo);
   }
 
-  render() {
+  render(): React.ReactElement {
     if (this.state.hasError) {
       return (
         <div className="story-tree-error">
@@ -210,12 +223,15 @@ class StoryTreeErrorBoundary extends React.Component {
       );
     }
 
-    return this.props.children;
+    return <>{this.props.children}</>;
   }
 }
 
-// Update provider to include error boundary and loading states
-export function StoryTreeProvider({ children }) {
+interface StoryTreeProviderProps {
+  children: ReactNode;
+}
+
+export function StoryTreeProvider({ children }: StoryTreeProviderProps) {
   const [state, dispatch] = useReducer(storyTreeReducer, initialState);
   const value = {
     state,
@@ -232,8 +248,7 @@ export function StoryTreeProvider({ children }) {
   );
 }
 
-// Add loading component
-export function StoryTreeLoading() {
+export function StoryTreeLoading(): React.ReactElement {
   return (
     <div className="story-tree-loading">
       <div className="loading-spinner"></div>
@@ -242,8 +257,7 @@ export function StoryTreeLoading() {
   );
 }
 
-// Custom hook for using the context
-export function useStoryTree() {
+export function useStoryTree(): StoryTreeContextType {
   const context = useContext(StoryTreeContext);
   if (!context) {
     throw new Error('useStoryTree must be used within a StoryTreeProvider');
