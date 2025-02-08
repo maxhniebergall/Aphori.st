@@ -31,6 +31,7 @@
  * - Proper memory management for large datasets
  * - Support for dynamic content updates
  * - Error boundary implementation
+ * - Use useInfiniteNodes hook for infinite node fetching
  */
 
 import React, { useCallback, useRef, useEffect, useState } from 'react';
@@ -46,6 +47,7 @@ import { useReplyContext } from '../context/ReplyContext';
 import { useStoryTree } from '../context/StoryTreeContext';
 import { StoryTreeNode as StoryTreeNodeType } from '../context/types';
 import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
+import useInfiniteNodes, { InfiniteNodesResult } from '../hooks/useInfiniteNodes';
 
 interface RowProps extends Omit<ListChildComponentProps, 'data'> {
   node: StoryTreeNodeType | null;
@@ -235,7 +237,15 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
   const [replyTargetIndex, setReplyTargetIndex] = useState<number | undefined>(undefined);
   const { replyTarget } = useReplyContext();
 
-  const memoizedLoadMoreItems = useCallback(loadMoreItems, [loadMoreItems]);
+  // Use the new infinite node fetching hook
+  const {
+      items: fetchedItems,
+      loadMoreItems: fetchMoreNodes,
+      isItemLoaded: checkItemLoaded,
+      error,
+      isLoading,
+      reset,
+  }: InfiniteNodesResult<StoryTreeNodeType> = useInfiniteNodes<StoryTreeNodeType>(items, loadMoreItems, hasNextPage);
 
   const setSize = useCallback(
     (index: number, size: number) => {
@@ -256,7 +266,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
       return;
     }
 
-    const targetIndex = items.findIndex(
+    const targetIndex = fetchedItems.findIndex(
       (item) => item?.storyTree?.id === replyTarget.storyTree.id
     );
 
@@ -266,7 +276,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
         listRef.current.resetAfterIndex(targetIndex);
       }
     }
-  }, [replyTarget, items]);
+  }, [replyTarget, fetchedItems]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -315,12 +325,12 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
         return 0;
       }
 
-      const node = items[index];
+      const node = fetchedItems[index];
       const baseHeight = Math.max(sizeMap.current[index] || 200, 100);
       const metadataHeight = getQuoteMetadataHeight(node);
       return baseHeight + metadataHeight;
     },
-    [replyTargetIndex, items, getQuoteMetadataHeight]
+    [replyTargetIndex, fetchedItems, getQuoteMetadataHeight]
   );
 
   const renderRow = useCallback(
@@ -329,10 +339,11 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
         return null;
       }
 
-      const node = items[index];
-      const isLoading = !isItemLoaded(index);
+      const node = fetchedItems[index];
+      // Determine row loading state based on our hook's isItemLoaded
+      const isLoadingRow = !checkItemLoaded(index);
       const parentId =
-        index <= 0 ? postRootId : items[index - 1]?.storyTree?.id || postRootId;
+        index <= 0 ? postRootId : fetchedItems[index - 1]?.storyTree?.id || postRootId;
 
       return (
         <Row
@@ -345,7 +356,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
           rowRefs={rowRefs}
           handleSiblingChange={handleSiblingChange}
           fetchNode={fetchNode}
-          isLoading={isLoading}
+          isLoading={isLoadingRow}
           postRootId={postRootId}
           replyTargetIndex={replyTargetIndex}
           parentId={parentId}
@@ -353,42 +364,42 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
       );
     },
     [
-      items,
-      isItemLoaded,
+      fetchedItems,
+      checkItemLoaded,
+      postRootId,
+      replyTarget,
+      replyTargetIndex,
       setIsFocused,
       setSize,
       handleSiblingChange,
       fetchNode,
-      postRootId,
-      replyTargetIndex,
-      replyTarget
     ]
   );
 
-  if (!items?.length && !hasNextPage) {
+  if (!fetchedItems?.length && !hasNextPage) {
     return null;
   }
 
-  const rootNode = items[0];
+  const rootNode = fetchedItems[0];
   const totalPossibleItems =
     rootNode?.storyTree?.nodes?.length
       ? rootNode.storyTree.nodes.length + 1
       : rootNode?.storyTree?.metadata?.quote
-      ? state?.replyPagination?.totalItems || items.length
-      : items.length || 1;
+      ? state?.replyPagination?.totalItems || fetchedItems.length
+      : fetchedItems.length || 1;
 
   const itemCount = hasNextPage
-    ? Math.max(items.length + 1, totalPossibleItems)
-    : items.length;
+    ? Math.max(fetchedItems.length + 1, totalPossibleItems)
+    : fetchedItems.length;
 
   return (
     <div style={{ height: '100%', overflow: 'visible' }} ref={containerRef}>
       <AutoSizer>
         {({ height, width }: { height: number; width: number }) => (
           <InfiniteLoader
-            isItemLoaded={isItemLoaded}
+            isItemLoaded={checkItemLoaded}
             itemCount={itemCount}
-            loadMoreItems={memoizedLoadMoreItems}
+            loadMoreItems={fetchMoreNodes}
             threshold={15}
             minimumBatchSize={10}
           >
