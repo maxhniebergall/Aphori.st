@@ -4,32 +4,39 @@
  * - Handles story tree node fetching and pagination
  * - Manages loading states and error handling
  * - Supports sibling navigation
- * - Properly transforms node data into StoryTreeNode objects
+ * - Properly transforms node data into StoryTreeLevel objects
  */
 
 import axios from 'axios';
 import { ACTIONS } from './StoryTreeContext';
-import { Action, StoryTreeNode } from './types';
+import { Action, StoryTreeLevel, StoryTree } from './types';
 
 // TODO update the URL when sibling changes, so that the currently viewed siblings are displayed if the user copies the URL
 
 interface SiblingChangeParams {
-  newNode: StoryTreeNode;
+  newNode: StoryTreeLevel;
   index: number;
-  fetchNode: (id: string) => Promise<StoryTreeNode | null>;
+  fetchNode: (id: string) => Promise<StoryTreeLevel | null>;
 }
 
 interface LoadMoreItemsParams {
-  items: StoryTreeNode[];
-  fetchNode: (id: string) => Promise<StoryTreeNode | null>;
+  items: StoryTreeLevel[];
+  fetchNode: (id: string) => Promise<StoryTreeLevel | null>;
   removedFromView: string[];
+}
+
+interface SiblingNode {
+  id: string;
+  content: string;
+  parentId: string | null;
+  storyTree: StoryTree;
 }
 
 export const storyTreeActions = {
   fetchRootNode: async (dispatch: React.Dispatch<Action>, uuid: string) => {
     dispatch({ type: ACTIONS.SET_INITIAL_LOADING, payload: true });
     try {
-      const response = await axios.get<StoryTreeNode>(
+      const response = await axios.get<StoryTreeLevel>(
         `${process.env.REACT_APP_API_URL}/api/storyTree/${uuid}`
       );
       const data = response.data;
@@ -45,35 +52,40 @@ export const storyTreeActions = {
   },
 
   handleSiblingChange: async (
-    dispatch: React.Dispatch<Action>, 
+    dispatch: React.Dispatch<Action>,
     { newNode, index, fetchNode }: SiblingChangeParams
   ) => {
     dispatch({ type: ACTIONS.SET_PAGINATION_LOADING, payload: true });
     try {
-      dispatch({ 
-        type: ACTIONS.HANDLE_SIBLING_CHANGE, 
-        payload: { newNode, index } 
+      dispatch({
+        type: ACTIONS.HANDLE_SIBLING_CHANGE,
+        payload: { newNode, index }
       });
 
-      if (newNode.storyTree.nodes?.length > 0) {
-        const firstChild = await fetchNode(newNode.storyTree.nodes[0].id);
-        if (firstChild) {
-          firstChild.siblings = newNode.storyTree.nodes.map(node => ({
-            id: node.id,
-            parentId: node.parentId,
-            storyTree: newNode.storyTree
-          }));
-          dispatch({ type: ACTIONS.APPEND_ITEM, payload: firstChild });
-          dispatch({ 
-            type: ACTIONS.SET_HAS_NEXT_PAGE, 
-            payload: !!firstChild.storyTree.nodes?.length 
-          });
-        }
+      const storyTree = newNode.storyTree;
+      if (!storyTree || !storyTree.nodes || storyTree.nodes.length === 0) {
+        return;
+      }
+
+      const firstChild = await fetchNode(storyTree.nodes[0].id);
+      if (firstChild) {
+        const siblings: StoryTreeLevel[] = storyTree.nodes.map(node => ({
+          id: node.id,
+          content: '',
+          parentId: node.parentId,
+          storyTree
+        }));
+        firstChild.siblings = siblings;
+        dispatch({ type: ACTIONS.APPEND_NODE, payload: firstChild });
+        dispatch({
+          type: ACTIONS.SET_HAS_NEXT_PAGE,
+          payload: !!firstChild.storyTree?.nodes?.length
+        });
       }
     } catch (error) {
-      dispatch({ 
-        type: ACTIONS.SET_ERROR, 
-        payload: 'Failed to handle sibling change' 
+      dispatch({
+        type: ACTIONS.SET_ERROR,
+        payload: 'Failed to handle sibling change'
       });
     } finally {
       dispatch({ type: ACTIONS.SET_PAGINATION_LOADING, payload: false });
@@ -81,39 +93,64 @@ export const storyTreeActions = {
   },
 
   loadMoreItems: async (
-    dispatch: React.Dispatch<Action>, 
+    dispatch: React.Dispatch<Action>,
     { items, fetchNode, removedFromView }: LoadMoreItemsParams
   ) => {
     dispatch({ type: ACTIONS.SET_PAGINATION_LOADING, payload: true });
     try {
       const lastNode = items[items.length - 1];
-      if (!lastNode?.storyTree.nodes?.length) {
+      const storyTree = lastNode?.storyTree;
+      
+      if (!storyTree || !storyTree.nodes || storyTree.nodes.length === 0) {
         dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
         return;
       }
 
-      if (lastNode?.storyTree.nodes?.[0]?.id && !removedFromView.includes(lastNode.storyTree.nodes[0].id)) {
-        const nextNode = await fetchNode(lastNode.storyTree.nodes[0].id);
+      const firstNodeId = storyTree.nodes[0]?.id;
+      if (firstNodeId && !removedFromView.includes(firstNodeId)) {
+        const nextNode = await fetchNode(firstNodeId);
         if (nextNode) {
-          nextNode.siblings = lastNode.storyTree.nodes.map(node => ({
+          const siblings: StoryTreeLevel[] = storyTree.nodes.map(node => ({
             id: node.id,
+            content: '',
             parentId: node.parentId,
-            storyTree: lastNode.storyTree
+            storyTree
           }));
-          dispatch({ type: ACTIONS.APPEND_ITEM, payload: nextNode });
-          dispatch({ 
-            type: ACTIONS.SET_HAS_NEXT_PAGE, 
-            payload: !!nextNode.storyTree.nodes?.length 
+          nextNode.siblings = siblings;
+          dispatch({ type: ACTIONS.APPEND_NODE, payload: nextNode });
+          dispatch({
+            type: ACTIONS.SET_HAS_NEXT_PAGE,
+            payload: !!nextNode.storyTree?.nodes?.length
           });
         }
       }
     } catch (error) {
-      dispatch({ 
-        type: ACTIONS.SET_ERROR, 
-        payload: 'Failed to load more items' 
+      dispatch({
+        type: ACTIONS.SET_ERROR,
+        payload: 'Failed to load more items'
       });
     } finally {
       dispatch({ type: ACTIONS.SET_PAGINATION_LOADING, payload: false });
+    }
+  },
+
+  fetchNodes: async (
+    items: StoryTreeLevel[],
+    fetchNode: (id: string) => Promise<StoryTreeLevel | null>
+  ) => {
+    const promises = items.map((item) => fetchNode(item.id));
+    return Promise.all(promises);
+  },
+
+  fetchNodeById: async (id: string) => {
+    try {
+      const response = await axios.get<StoryTreeLevel>(
+        `/api/story-tree/nodes/${id}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching node:', error);
+      return null;
     }
   }
 }; 

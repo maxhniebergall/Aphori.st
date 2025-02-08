@@ -1,17 +1,17 @@
 /**
  * Requirements:
- * - Render a StoryTreeNode to display regular node content
+ * - Render a StoryTreeLevel to display regular node content
  * - Pass down proper props such as onSiblingChange and fetchNode
  * - Ensure consistency with parent's state for reply handling
  */
 
 import React from 'react';
-import StoryTreeNode from './StoryTreeNode';
-import { StoryTreeNode as StoryTreeNodeType } from '../context/types';
+import { StoryTreeLevel } from '../context/types';
+import StoryTreeLevelComponent from './StoryTreeLevel';
 
 interface NormalRowContentProps {
-  node: StoryTreeNodeType;
-  onSiblingChange: (newNode: StoryTreeNodeType, index: number, fetchNode: (id: string) => Promise<void>) => void;
+  node: StoryTreeLevel;
+  onSiblingChange: (newNode: StoryTreeLevel, index: number, fetchNode: (id: string) => Promise<void>) => void;
   index: number;
   fetchNode: (id: string) => Promise<void>;
   postRootId: string;
@@ -29,14 +29,14 @@ const NormalRowContent: React.FC<NormalRowContentProps> = ({
   setIsFocused,
 }) => {
   return (
-    <StoryTreeNode
-      key={node.storyTree.id}
-      node={node}
-      onSiblingChange={(newNode: StoryTreeNodeType) =>
-        onSiblingChange(newNode, index, fetchNode)
-      }
-      parentId={parentId}
-    />
+    <div className="normal-row-content">
+      <StoryTreeLevelComponent
+        node={node}
+        onSiblingChange={(newNode: StoryTreeLevel) =>
+          onSiblingChange(newNode, index, fetchNode)
+        }
+      />
+    </div>
   );
 };
 

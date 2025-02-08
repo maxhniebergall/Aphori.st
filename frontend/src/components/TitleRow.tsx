@@ -5,20 +5,25 @@
  */
 
 import React from 'react';
-import { StoryTreeNode as StoryTreeNodeType } from '../context/types';
+import { StoryTreeLevel } from '../context/types';
 
 interface TitleRowProps {
-  node: StoryTreeNodeType;
+  node: StoryTreeLevel;
 }
 
 const TitleRow: React.FC<TitleRowProps> = ({ node }) => {
   return (
     <div className="title-row">
-      <div className="story-title-section">
-        {node.storyTree.metadata?.title && <h1>{node.storyTree.metadata.title}</h1>}
-        {node.storyTree.metadata?.author && (
-          <h2 className="story-subtitle">by {node.storyTree.metadata.author}</h2>
-        )}
+      <h1 className="title">
+        {node?.storyTree?.metadata?.title || node?.storyTree?.text || 'Untitled'}
+      </h1>
+      <div className="metadata">
+        <span className="author">{node?.storyTree?.metadata?.author || 'Anonymous'}</span>
+        <span className="date">
+          {node?.storyTree?.metadata?.createdAt
+            ? new Date(node.storyTree.metadata.createdAt).toLocaleDateString()
+            : 'Unknown date'}
+        </span>
       </div>
     </div>
   );

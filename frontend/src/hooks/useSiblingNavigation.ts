@@ -6,9 +6,10 @@
  * - Execute onSiblingChange callback when the active sibling changes.
  */
 import { useState, useCallback } from 'react';
+import { StoryTreeLevel } from '../context/types';
 
-interface SiblingNavigationParams<T> {
-  node: any; // Ideally, type this with your IStoryTreeNode type.
+interface SiblingNavigationParams<T extends StoryTreeLevel> {
+  node: T;
   siblings: T[];
   isQuoteMode: boolean;
   siblingsLoading: boolean;
@@ -18,7 +19,14 @@ interface SiblingNavigationParams<T> {
   initialIndex?: number;
 }
 
-export default function useSiblingNavigation<T>({
+interface SiblingNavigationResult<T extends StoryTreeLevel> {
+  currentSiblingIndex: number;
+  setCurrentSiblingIndex: React.Dispatch<React.SetStateAction<number>>;
+  loadNextSibling: () => void;
+  loadPreviousSibling: () => void;
+}
+
+export function useSiblingNavigation<T extends StoryTreeLevel>({
   node,
   siblings,
   isQuoteMode,
@@ -27,7 +35,7 @@ export default function useSiblingNavigation<T>({
   fetchMoreSiblings,
   onSiblingChange,
   initialIndex = 0,
-}: SiblingNavigationParams<T>) {
+}: SiblingNavigationParams<T>): SiblingNavigationResult<T> {
   const [currentSiblingIndex, setCurrentSiblingIndex] = useState<number>(initialIndex);
 
   const loadNextSibling = useCallback(async () => {
