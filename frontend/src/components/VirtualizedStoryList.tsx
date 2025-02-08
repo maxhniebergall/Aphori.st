@@ -2,15 +2,15 @@
  * Requirements:
  * - React-window for virtualized list rendering
  * - useRef for container reference management
- * - Dynamic height calculations for variable-sized rows
+ * - Dynamic height calculations for variable-sized rows using useDynamicRowHeight hook
  * - Infinite loading support with InfiniteLoader
- * - ResizeObserver for dynamic content updates
+ * - ResizeObserver for dynamic content updates encapsulated in useDynamicRowHeight
  * - Proper error handling for invalid nodes
  * - Memory efficient row rendering with React.memo
  * - Responsive height calculations based on window size
- * - Proper cleanup of resize observers
+ * - Proper cleanup of resize observers done in useDynamicRowHeight hook
  * - Hide descendant nodes when in reply mode using row indices
- * - Dynamic height recalculation for hidden nodes
+ * - Dynamic height recalculation for hidden nodes via useDynamicRowHeight hook
  * - Implement minimumBatchSize and threshold for InfiniteLoader
  * - Implement overscanCount for react-window List
  * - Use AutoSizer for dynamic list sizing
@@ -45,6 +45,7 @@ import StoryTreeNode from './StoryTreeNode';
 import { useReplyContext } from '../context/ReplyContext';
 import { useStoryTree } from '../context/StoryTreeContext';
 import { StoryTreeNode as StoryTreeNodeType } from '../context/types';
+import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
 
 interface RowProps extends Omit<ListChildComponentProps, 'data'> {
   node: StoryTreeNodeType | null;
@@ -61,7 +62,6 @@ interface RowProps extends Omit<ListChildComponentProps, 'data'> {
   replyTargetIndex?: number;
   parentId: string;
   setIsFocused?: (focused: boolean) => void;
-  className?: string;
 }
 
 const Row: React.FC<RowProps> = React.memo(
@@ -96,63 +96,25 @@ const Row: React.FC<RowProps> = React.memo(
       boxSizing: 'border-box',
     }), [style]);
 
-    React.useEffect(() => {
-      const updateSize = () => {
-        const element = rowRefs.current[index];
-        if (!element) return;
-        if (shouldHideNode) {
-          setSize(index, 0);
-          return;
-        }
+    // Create a local ref for the row element.
+    const rowRef = useRef<HTMLDivElement>(null);
+    // Use the new custom hook to handle dynamic row height updates.
+    useDynamicRowHeight({
+      index,
+      rowRef,
+      setSize,
+      shouldHide: shouldHideNode,
+    });
 
-        const titleSection = element.querySelector('.story-title-section') as HTMLElement | null;
-        const content = element.querySelector('.story-tree-node-content') as HTMLElement | null;
-        const sibling = element.querySelector('.story-tree-node-content.has-siblings') as HTMLElement | null;
-        const replySection = element.querySelector('.reply-section') as HTMLElement | null;
-
-        let totalHeight = 0;
-        if (titleSection) totalHeight += titleSection.offsetHeight;
-        if (content) totalHeight += content.offsetHeight;
-        if (replySection) totalHeight += replySection.offsetHeight;
-        if (sibling) {
-          totalHeight += sibling.offsetHeight + 64;
-        }
-        totalHeight += 24;
-        totalHeight = Math.max(totalHeight, 100);
-
-        setSize(index, totalHeight);
-      };
-
-      updateSize();
-
-      const timeoutId = setTimeout(updateSize, 100);
-
-      const element = rowRefs.current[index];
-      if (element) {
-        const resizeObserver = new ResizeObserver(() => {
-          if (!shouldHideNode) {
-            requestAnimationFrame(updateSize);
-          }
-        });
-        resizeObserver.observe(element);
-        const contentElement = element.querySelector('.story-tree-node-content');
-        if (contentElement) {
-          resizeObserver.observe(contentElement);
-        }
-        return () => {
-          resizeObserver.disconnect();
-          clearTimeout(timeoutId);
-        };
-      }
-      return () => clearTimeout(timeoutId);
-    }, [setSize, index, rowRefs, node, postRootId, shouldHideNode]);
+    // Optionally update the external rowRefs for backward compatibility.
+    useEffect(() => {
+      rowRefs.current[index] = rowRef.current;
+    }, [index, rowRef, rowRefs]);
 
     if (shouldHideNode) {
       return (
         <div
-          ref={(el) => {
-            rowRefs.current[index] = el;
-          }}
+          ref={rowRef}
           style={{
             ...memoizedStyle,
             height: 0,
@@ -169,9 +131,7 @@ const Row: React.FC<RowProps> = React.memo(
       return (
         <div
           className="loading-row"
-          ref={el => {
-            rowRefs.current[index] = el;
-          }}
+          ref={rowRef}
           style={memoizedStyle}
         >
           <div className="loading-placeholder">Loading...</div>
@@ -187,9 +147,7 @@ const Row: React.FC<RowProps> = React.memo(
       });
       return (
         <div
-          ref={el => {
-            rowRefs.current[index] = el;
-          }}
+          ref={rowRef}
           style={memoizedStyle}
         >
           <div className="loading-placeholder">Loading node...</div>
@@ -201,9 +159,7 @@ const Row: React.FC<RowProps> = React.memo(
     if (node.storyTree.isTitleNode) {
       return (
         <div
-          ref={el => {
-            rowRefs.current[index] = el;
-          }}
+          ref={rowRef}
           className="row-container"
           style={memoizedStyle}
         >
@@ -219,9 +175,7 @@ const Row: React.FC<RowProps> = React.memo(
 
     return (
       <div
-        ref={el => {
-          rowRefs.current[index] = el;
-        }}
+        ref={rowRef}
         className="row-container"
         style={memoizedStyle}
       >
