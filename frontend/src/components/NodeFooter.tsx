@@ -26,7 +26,11 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
   onNextSibling,
   onPreviousSibling,
 }) => {
-  const hasSiblings = totalSiblings > 1;
+  // Ensure currentIndex and totalSiblings are valid numbers
+  const validCurrentIndex = Number.isFinite(currentIndex) ? currentIndex : 0;
+  const validTotalSiblings = Number.isFinite(totalSiblings) ? totalSiblings : 1;
+  const hasSiblings = validTotalSiblings > 1;
+
   return (
     <div className="story-tree-node-footer">
       <div className="footer-left">
@@ -37,17 +41,19 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
       <div className="footer-right"></div>
       {hasSiblings && (
         <div className="sibling-indicator">
-          {currentIndex + 1} / {totalSiblings}
+          {validCurrentIndex + 1} / {validTotalSiblings}
           <span className="swipe-hint">
-            {currentIndex > 0 && (
+            {validCurrentIndex > 0 && (
               <span className="swipe-hint-previous" onClick={onPreviousSibling}>
                 (Swipe right for previous)
               </span>
             )}
-            {currentIndex > 0 && ' |'}
-            <span className="swipe-hint-next" onClick={onNextSibling}>
-              (Swipe left for next)
-            </span>
+            {validCurrentIndex > 0 && validCurrentIndex < validTotalSiblings - 1 && ' | '}
+            {validCurrentIndex < validTotalSiblings - 1 && (
+              <span className="swipe-hint-next" onClick={onNextSibling}>
+                (Swipe left for next)
+              </span>
+            )}
           </span>
         </div>
       )}

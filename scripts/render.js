@@ -162,7 +162,7 @@ import puppeteer from 'puppeteer';
     }
 
     // Keep browser open for manual inspection
-    console.log('Browser will stay open for 3 seconds for manual inspection...');
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    console.log('Browser will stay open for 10 seconds for manual inspection...');
+    await new Promise(resolve => setTimeout(resolve, 10000));
     await browser.close();
 })();
