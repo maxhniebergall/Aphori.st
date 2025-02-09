@@ -49,5 +49,5 @@ export default function useAutoScroll({
         cancelAnimationFrame(rafId);
       };
     }
-  }, [targetIndex, alignment, ...dependencies]);
+  }, [targetIndex, alignment, listRef, ...dependencies]);
 } 

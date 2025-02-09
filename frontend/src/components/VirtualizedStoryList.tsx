@@ -5,70 +5,53 @@
  * - Support for infinite loading
  * - Support for reply mode
  * - TypeScript support
+ * - Utilize StoryTreeContext for state management (removes redundant props)
  */
 
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect, useMemo } from 'react';
 import { ListChildComponentProps, VariableSizeList } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import Row from './Row';
-import { StoryTreeLevel } from '../context/types';
 import { useReplyContext } from '../context/ReplyContext';
 import { useStoryTree } from '../context/StoryTreeContext';
+import storyTreeOperator from '../operators/StoryTreeOperator';
+import { storyTreeActions } from '../context/StoryTreeActions';
+import { StoryTreeLevel } from '../context/types'; // Make sure this is imported if needed
 
 interface VirtualizedStoryListProps {
   postRootId: string;
-  nodes: StoryTreeLevel[];
-  hasNextPage: boolean;
-  isItemLoaded: (index: number) => boolean;
-  loadMoreItems: (startIndex: number, stopIndex: number) => Promise<StoryTreeLevel[]>;
   setIsFocused: (focused: boolean) => void;
-  handleSiblingChange: (
-    newNode: StoryTreeLevel,
-    index: number,
-    fetchNode: (id: string) => Promise<void>
-  ) => void;
-  fetchNode: (id: string) => Promise<void>;
 }
 
-const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
-  postRootId,
-  nodes,
-  hasNextPage,
-  isItemLoaded,
-  loadMoreItems,
-  setIsFocused,
-  handleSiblingChange,
-  fetchNode,
-}) => {
+const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId, setIsFocused }) => {
   const listRef = useRef<VariableSizeList | null>(null);
   const sizeMap = useRef<{ [index: number]: number }>({});
-  const { state } = useStoryTree();
+  const { state, dispatch } = useStoryTree();
   const { replyTarget } = useReplyContext();
+  const nodes = state.nodes;
+  const hasNextPage = state.hasNextPage;
+  
+  // Memoize replyTargetIndex calculation
+  const replyTargetIndex = useMemo(() => 
+    replyTarget?.storyTree?.id 
+      ? nodes.findIndex(node => node?.storyTree?.id === replyTarget.storyTree?.id)
+      : undefined,
+    [replyTarget?.storyTree?.id, nodes]
+  );
 
-  // Find reply target index
-  const replyTargetIndex = replyTarget?.storyTree?.id 
-    ? nodes.findIndex(node => node?.storyTree?.id === replyTarget.storyTree?.id)
-    : undefined;
-
-  // Simple size management
   const setSize = useCallback((index: number, size: number) => {
     if (sizeMap.current[index] === size) return;
     sizeMap.current[index] = size;
     listRef.current?.resetAfterIndex(index);
   }, []);
 
-  // Calculate row height including metadata
   const getSize = useCallback((index: number): number => {
-    // Hide nodes after reply target
     if (replyTargetIndex !== undefined && index > replyTargetIndex) {
       return 0;
     }
-
     const node = nodes[index];
     const baseHeight = Math.max(sizeMap.current[index] || 200, 100);
-    
-    // Add height for quote metadata if present
     if (node?.storyTree?.id) {
       const metadata = state.quoteMetadata[node.storyTree.id];
       if (metadata) {
@@ -76,7 +59,6 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
         return baseHeight + (quotesCount > 0 ? 24 + quotesCount * 48 : 0);
       }
     }
-    
     return baseHeight;
   }, [replyTargetIndex, nodes, state.quoteMetadata]);
 
@@ -101,29 +83,83 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
     }
   }, [replyTargetIndex]);
 
+  // Create a wrapper for fetchNode that returns StoryTreeLevel | null
+  const fetchNodeForSiblingChange = useCallback(async (id: string): Promise<StoryTreeLevel | null> => {
+    const result = await storyTreeOperator.fetchNode(id);
+    if (!result) return null;
+    return {
+      id: result.storyTree.id,
+      content: result.storyTree.text || '',
+      storyTree: result.storyTree,
+      metadata: result.storyTree.metadata
+    };
+  }, []);
+
+  // Update handleSiblingChangeWrapper to use the correct fetchNode type
+  const handleSiblingChangeWrapper = useCallback(
+    (newNode: StoryTreeLevel, index: number, _fetchNode: (id: string) => Promise<void>) => {
+      storyTreeActions.handleSiblingChange(dispatch, { 
+        newNode, 
+        index, 
+        fetchNode: fetchNodeForSiblingChange 
+      });
+    },
+    [dispatch, fetchNodeForSiblingChange]
+  );
+
+  // Create a wrapper for fetchNode that returns void
+  const fetchNodeWrapper = useCallback(async (id: string): Promise<void> => {
+    await storyTreeOperator.fetchNode(id);
+  }, []);
+
+  // Memoize row rendering function
   const renderRow = useCallback(
     ({ index, style }: ListChildComponentProps) => {
       const node = nodes[index];
       const parentId = index <= 0 ? postRootId : nodes[index - 1]?.storyTree?.id || postRootId;
-
+      
       return (
         <Row
           index={index}
           style={style}
           node={node}
           setSize={setSize}
-          handleSiblingChange={handleSiblingChange}
-          fetchNode={fetchNode}
-          isLoading={!isItemLoaded(index)}
+          isLoading={!storyTreeOperator.isItemLoaded(index)}
           postRootId={postRootId}
           replyTargetIndex={replyTargetIndex}
           parentId={parentId}
           setIsFocused={setIsFocused}
+          handleSiblingChange={handleSiblingChangeWrapper}
+          fetchNode={fetchNodeWrapper}
         />
       );
     },
-    [nodes, postRootId, setSize, handleSiblingChange, fetchNode, isItemLoaded, replyTargetIndex, setIsFocused]
+    [nodes, postRootId, setSize, replyTargetIndex, setIsFocused, handleSiblingChangeWrapper, fetchNodeWrapper]
   );
+
+  // Memoize InfiniteLoader props
+  const infiniteLoaderProps = useMemo(() => ({
+    isItemLoaded: (index: number) => storyTreeOperator.isItemLoaded(index),
+    itemCount: hasNextPage ? nodes.length + 1 : nodes.length,
+    loadMoreItems: async (startIndex: number, stopIndex: number) => {
+      await storyTreeOperator.loadMoreItems(startIndex, stopIndex);
+    },
+    threshold: 15,
+    minimumBatchSize: 10
+  }), [hasNextPage, nodes.length]);
+
+  // Memoize list props
+  const getListProps = useCallback((height: number, width: number) => ({
+    ref: (list: VariableSizeList | null) => {
+      listRef.current = list;
+    },
+    height,
+    itemCount: hasNextPage ? nodes.length + 1 : nodes.length,
+    itemSize: getSize,
+    width,
+    className: "story-list",
+    overscanCount: 3
+  }), [hasNextPage, nodes.length, getSize]);
 
   if (!nodes.length && !hasNextPage) {
     return null;
@@ -132,29 +168,12 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({
   return (
     <div style={{ height: '100%', overflow: 'visible' }}>
       <AutoSizer>
-        {({ height, width }: { height: number; width: number }) => (
-          <InfiniteLoader
-            isItemLoaded={isItemLoaded}
-            itemCount={hasNextPage ? nodes.length + 1 : nodes.length}
-            loadMoreItems={async (startIndex: number, stopIndex: number) => {
-              await loadMoreItems(startIndex, stopIndex);
-            }}
-            threshold={15}
-            minimumBatchSize={10}
-          >
+        {({ height, width }) => (
+          <InfiniteLoader {...infiniteLoaderProps}>
             {({ onItemsRendered, ref }) => (
               <VariableSizeList
-                ref={(list) => {
-                  ref(list);
-                  listRef.current = list;
-                }}
-                height={height}
-                itemCount={hasNextPage ? nodes.length + 1 : nodes.length}
-                itemSize={getSize}
+                {...getListProps(height, width)}
                 onItemsRendered={onItemsRendered}
-                width={width}
-                className="story-list"
-                overscanCount={3}
               >
                 {renderRow}
               </VariableSizeList>

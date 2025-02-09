@@ -60,14 +60,18 @@ function StoryTreeContent() {
     setSelectionState 
   } = useReplyContext();
   
+  // Initialize story tree and fetch data
   useEffect(() => {
     let mounted = true;
     
     const initialize = async () => {
-      if (!state || !dispatch) return;
+      if (!dispatch) return;
       
-      storyTreeOperator.updateContext(state, dispatch);
-      setIsOperatorInitialized(true);
+      // Only update operator context once at initialization
+      if (!isOperatorInitialized) {
+        storyTreeOperator.updateContext(state, dispatch);
+        setIsOperatorInitialized(true);
+      }
       
       if (!rootUUID) {
         console.warn('No rootUUID provided');
@@ -118,7 +122,7 @@ function StoryTreeContent() {
     return () => {
       mounted = false;
     };
-  }, [rootUUID, state, dispatch]);
+  }, [rootUUID, dispatch, isOperatorInitialized]); // Removed state from dependencies
 
   const handleReplySubmit = useCallback(async () => {
     if (!replyTarget || !selectionState) return;
@@ -168,8 +172,6 @@ function StoryTreeContent() {
       return null;
     }
 
-    const selectedText = replyTarget.storyTree.text.slice(selectionState.start, selectionState.end);
-    console.log("selectedText", selectedText);
     return (
       <div className="reply-editor-container">
         <div data-color-mode="light">
@@ -216,13 +218,7 @@ function StoryTreeContent() {
       <div className="story-tree-content">
         <VirtualizedStoryList
           postRootId={rootUUID}
-          nodes={state?.nodes ?? []}
-          hasNextPage={state?.hasNextPage ?? false}
-          isItemLoaded={storyTreeOperator.isItemLoaded}
-          loadMoreItems={storyTreeOperator.loadMoreItems}
-          fetchNode={storyTreeOperator.fetchNode}
           setIsFocused={storyTreeOperator.setCurrentFocus}
-          handleSiblingChange={handleSiblingChange}
         />
         {renderReplyEditor()}
       </div>

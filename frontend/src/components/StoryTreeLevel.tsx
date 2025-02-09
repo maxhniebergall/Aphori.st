@@ -21,6 +21,8 @@ import { useSiblingNavigation } from '../hooks/useSiblingNavigation';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
 import { StoryTreeLevel as IStoryTreeLevel } from '../context/types';
+import { useStoryTree } from '../context/StoryTreeContext';
+import { ACTIONS } from '../context/StoryTreeContext';
 
 interface ReplyPagination {
   page: number;
@@ -44,8 +46,11 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
   const storyTree = node?.storyTree;
   const isQuoteMode = Boolean(storyTree?.metadata?.quote);
 
-  // Move all hooks to the top level
-  const [loadedSiblings, setLoadedSiblings] = useState<IStoryTreeLevel[]>([]);
+  // Removed duplicate local state for loadedSiblings.
+  // Instead, we'll use reply state from the global StoryTreeContext.
+  // const [loadedSiblings, setLoadedSiblings] = useState<IStoryTreeLevel[]>([]);
+
+  // Other local states still needed
   const [isLoadingReplies, setIsLoadingReplies] = useState<boolean>(false);
   const [replyPage, setReplyPage] = useState<number>(1);
   const [replyPagination, setReplyPagination] = useState<ReplyPagination>({
@@ -58,6 +63,9 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
   const [replyError, setReplyError] = useState<string | null>(null);
 
   const { setReplyTarget, replyTarget, setSelectionState, selectionState, clearReplyState } = useReplyContext();
+
+  // Access the global state for replies from StoryTreeContext
+  const { state: storyTreeState, dispatch } = useStoryTree();
 
   const infiniteNodes = useInfiniteNodes<IStoryTreeLevel>(
     async (startIndex: number, stopIndex: number): Promise<IStoryTreeLevel[]> => {
@@ -79,8 +87,11 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
     storyTree?.nodes ? storyTree.nodes.length > 1 : false
   );
 
-  const siblings = infiniteNodes?.nodes ?? [];
-  const siblingsToUse = isQuoteMode ? loadedSiblings : siblings;
+  // Use global "replies" as the siblings when in quote mode.
+  const siblingsToUse = useMemo(
+    () => isQuoteMode ? storyTreeState.replies : (infiniteNodes?.nodes ?? []),
+    [isQuoteMode, storyTreeState.replies, infiniteNodes?.nodes]
+  );
 
   const { currentSiblingIndex, loadNextSibling, loadPreviousSibling } = useSiblingNavigation<IStoryTreeLevel>({
     node,
@@ -111,11 +122,11 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
   const loadMoreItemsOld = useCallback(
     async (startIndex: number, stopIndex: number): Promise<void> => {
       if (!storyTree?.id || !storyTree?.metadata?.quote) return;
-      if (startIndex >= loadedSiblings.length && replyPage < replyPagination.totalPages) {
+      if (startIndex >= siblingsToUse.length && replyPage < replyPagination.totalPages) {
         await loadMoreReplies();
       }
     },
-    [storyTree?.id, storyTree?.metadata?.quote, loadedSiblings.length, replyPage, replyPagination.totalPages, loadMoreReplies]
+    [storyTree?.id, storyTree?.metadata?.quote, siblingsToUse.length, replyPage, replyPagination.totalPages, loadMoreReplies]
   );
 
   const handleTextSelectionCompleted = useCallback(
@@ -181,20 +192,44 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
         }
       },
     },
-    {
+    useMemo(() => ({
       drag: {
         axis: 'x',
-        enabled:
-          Boolean(storyTree?.id) &&
-          (currentSiblingIndex > 0 ||
-            (isQuoteMode
-              ? currentSiblingIndex < replyPagination.numberOfRepliesToQuoteOfNode - 1
-              : true)),
+        enabled: Boolean(storyTree?.id) && (
+          currentSiblingIndex > 0 || 
+          (isQuoteMode ? currentSiblingIndex < replyPagination.numberOfRepliesToQuoteOfNode - 1 : true)
+        ),
       },
-    }
+    }), [storyTree?.id, currentSiblingIndex, isQuoteMode, replyPagination.numberOfRepliesToQuoteOfNode])
   );
 
   const resetSiblings = useMemo(() => infiniteNodes?.reset ?? (() => {}), [infiniteNodes?.reset]);
+
+  const totalSiblingsCount = useMemo(() => 
+    isQuoteMode
+      ? replyPagination.numberOfRepliesToQuoteOfNode || 1
+      : node?.storyTree?.nodes?.length || 1,
+    [isQuoteMode, replyPagination.numberOfRepliesToQuoteOfNode, node?.storyTree?.nodes?.length]
+  );
+
+  const infiniteLoaderProps = useMemo(() => 
+    isQuoteMode
+      ? {
+          itemCount: totalSiblingsCount,
+          loadMoreItems: loadMoreItemsOld,
+          isItemLoaded: (index: number) => Boolean(siblingsToUse[index]),
+          minimumBatchSize: 3,
+          threshold: 2,
+        }
+      : {
+          itemCount: node?.storyTree?.nodes?.length || 1,
+          loadMoreItems: infiniteNodes?.loadMoreItems ?? (async () => {}),
+          isItemLoaded: infiniteNodes?.isItemLoaded ?? (() => true),
+          minimumBatchSize: 3,
+          threshold: 2,
+        },
+    [isQuoteMode, totalSiblingsCount, loadMoreItemsOld, siblingsToUse, node?.storyTree?.nodes?.length, infiniteNodes]
+  );
 
   useEffect(() => {
     const refreshSiblings = async () => {
@@ -210,7 +245,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
           1
         );
         if (response?.replies && response?.pagination) {
-          setLoadedSiblings(response.replies);
+          // Instead of using setLoadedSiblings, dispatch to update the global state
+          dispatch({ type: ACTIONS.SET_REPLIES, payload: response.replies });
           setReplyPagination(response.pagination);
           setReplyPage(1);
         }
@@ -223,7 +259,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
       const unsubscribe = storyTreeOperator.subscribeToReplySubmission(parentIdentifier, refreshSiblings);
       return () => unsubscribe();
     }
-  }, [storyTree?.id, storyTree?.parentId, storyTree?.metadata?.quote, isQuoteMode, resetSiblings, node]);
+  }, [storyTree?.id, storyTree?.parentId, storyTree?.metadata?.quote, isQuoteMode, resetSiblings, node, dispatch]);
 
   useEffect(() => {
     const loadReplySiblings = async (): Promise<void> => {
@@ -237,9 +273,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
       try {
         const response = await storyTreeOperator.fetchReplies(sourcePostId, text, 'mostRecent', replyPage);
         if (response?.replies && response?.pagination) {
-          setLoadedSiblings((prev) =>
-            replyPage === 1 ? response.replies : [...prev, ...response.replies]
-          );
+          // Dispatch the fetched replies to the global state
+          dispatch({ type: ACTIONS.SET_REPLIES, payload: replyPage === 1 ? response.replies : [...storyTreeState.replies, ...response.replies] });
           setReplyPagination(response.pagination);
         }
       } catch (error) {
@@ -253,33 +288,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
     if (isQuoteMode) {
       loadReplySiblings();
     }
-  }, [isQuoteMode, replyPage, storyTree, node]);
+  }, [isQuoteMode, replyPage, storyTree, node, dispatch, storyTreeState.replies]);
 
-  // Early return after all hooks
+  // Now we can do the early return
   if (!storyTree?.id) {
     console.warn('StoryTreeLevel received invalid node:', node);
     return null;
   }
-
-  const totalSiblingsCount = isQuoteMode
-    ? replyPagination.numberOfRepliesToQuoteOfNode || 1
-    : node?.storyTree?.nodes?.length || 1;
-
-  const infiniteLoaderProps = isQuoteMode
-    ? {
-        itemCount: totalSiblingsCount,
-        loadMoreItems: loadMoreItemsOld,
-        isItemLoaded: (index: number) => Boolean(loadedSiblings[index]),
-        minimumBatchSize: 3,
-        threshold: 2,
-      }
-    : {
-        itemCount: node?.storyTree?.nodes?.length || 1,
-        loadMoreItems: infiniteNodes?.loadMoreItems ?? (async () => {}),
-        isItemLoaded: infiniteNodes?.isItemLoaded ?? (() => true),
-        minimumBatchSize: 3,
-        threshold: 2,
-      };
 
   const renderError = () => {
     if (!replyError) return null;
