@@ -52,6 +52,7 @@ export interface StoryTreeLevel {
   metadata?: any;
   siblings?: StoryTreeLevel[];
   storyTree?: StoryTree;
+  isTitleNode?: boolean;
 }
 
 export interface StoryTreeState {
@@ -127,6 +128,12 @@ export type Action =
   | { type: 'HANDLE_SIBLING_CHANGE'; payload: { newNode: StoryTreeLevel; index: number } }
   | ReplyAction
   | { type: 'SET_REPLY_ERROR'; payload: ReplyError | null }
-  | { type: 'CLEAR_REPLY_STATE' };
+  | { type: 'CLEAR_REPLY_STATE' }
+  | { type: 'INITIALIZE_STORY_TREE'; payload: { 
+      rootNode: StoryTreeLevel; 
+      nodes: StoryTreeLevel[]; 
+      loadingState: LoadingState; 
+      hasNextPage: boolean; 
+    } };
 
 export type ActionType = keyof typeof ACTIONS;

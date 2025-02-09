@@ -30,7 +30,7 @@ class StoryTreeOperator extends BaseOperator {
   constructor() {
     super();
     this.state = {
-      items: [],
+      nodes: [],
       hasNextPage: false,
       isNextPageLoading: false,
       rootNode: null,
@@ -60,7 +60,7 @@ class StoryTreeOperator extends BaseOperator {
 
   updateContext(state, dispatch) {
     this.state = {
-      items: [],
+      nodes: [],
       hasNextPage: false,
       isNextPageLoading: false,
       rootNode: null,
@@ -73,6 +73,7 @@ class StoryTreeOperator extends BaseOperator {
       ...state
     };
     this.dispatch = dispatch;
+    console.log('StoryTreeOperator state updated:', this.state);
   }
 
   updateLoadingState(loadingState) {
@@ -114,37 +115,47 @@ class StoryTreeOperator extends BaseOperator {
       console.log('Processing root node:', {
         id: node.id,
         nodesCount: node.nodes?.length,
-        nodes: node.nodes
+        nodes: node.nodes,
+        metadata: node.metadata
       });
 
-      // Create a title node
-      const titleNode = {
-        storyTree: {
+      // Create a title node if metadata exists
+      if (node.metadata?.title || node.metadata?.author) {
+        const titleNode = {
           id: `${node.id}-title`,
-          metadata: {
-            title: node.metadata?.title,
-            author: node.metadata?.author,
-          },
-          isTitleNode: true,
-          nodes: []
-        }
-      };
-      fetchedNodes[titleNode.storyTree.id] = titleNode;
+          content: '',
+          storyTree: {
+            id: `${node.id}-title`,
+            text: node.metadata.title || 'Untitled',
+            metadata: {
+              title: node.metadata.title,
+              author: node.metadata.author,
+              createdAt: node.metadata.createdAt
+            },
+            isTitleNode: true,
+            nodes: []
+          }
+        };
+        fetchedNodes[titleNode.id] = titleNode;
+      }
 
       // Create a content node
       const contentNode = {
+        id: node.id,
+        content: node.text || '',
         storyTree: {
           ...node,
           quoteReplyCounts: data.quoteReplyCounts || {},
           siblings: node.nodes?.filter(n => n?.id),
           metadata: {
             ...node.metadata,
-            title: null,
-            author: null,
+            // Remove title and author from content node metadata
+            title: undefined,
+            author: undefined
           }
         }
       };
-      fetchedNodes[contentNode.storyTree.id] = contentNode;
+      fetchedNodes[contentNode.id] = contentNode;
 
       // Fetch first few sibling nodes immediately
       if (node.nodes && node.nodes.length > 0) {
@@ -164,6 +175,8 @@ class StoryTreeOperator extends BaseOperator {
                   : childData.storyTree;
 
                 fetchedNodes[childNode.id] = {
+                  id: childNode.id,
+                  content: childNodeData.text || '',
                   storyTree: {
                     ...childNodeData,
                     quoteReplyCounts: childData.quoteReplyCounts || {},
@@ -181,7 +194,20 @@ class StoryTreeOperator extends BaseOperator {
         nodes: fetchedNodes
       });
 
-      return Object.values(fetchedNodes);
+      // Return nodes in the correct order (title node first if it exists)
+      const titleNodeId = `${node.id}-title`;
+      const orderedNodes = [];
+      if (fetchedNodes[titleNodeId]) {
+        orderedNodes.push(fetchedNodes[titleNodeId]);
+      }
+      orderedNodes.push(fetchedNodes[node.id]);
+      Object.values(fetchedNodes).forEach(node => {
+        if (node.id !== titleNodeId && node.id !== contentNode.id) {
+          orderedNodes.push(node);
+        }
+      });
+
+      return orderedNodes;
     } catch (error) {
       console.error('Error fetching root node:', error);
       return null;
@@ -228,14 +254,14 @@ class StoryTreeOperator extends BaseOperator {
   isItemLoaded = (index) => {
     // Add null checks and default values
     const hasNextPage = this.state?.hasNextPage ?? false;
-    const items = this.state?.items ?? [];
+    const nodes = this.state?.nodes ?? [];
     const isLoading = this.state?.isNextPageLoading ?? false;
     
     // If we're loading, consider items not loaded
     if (isLoading) return false;
     
     // If we have the item at this index, it's loaded
-    if (index < items.length) return true;
+    if (index < nodes.length) return true;
     
     // If we don't have the item and there's no next page, consider it loaded (end of list)
     if (!hasNextPage) return true;
@@ -247,29 +273,30 @@ class StoryTreeOperator extends BaseOperator {
   loadMoreItems = async (startIndex, stopIndex) => {
     if (!this.state || !this.dispatch) {
       console.warn('StoryTreeOperator: state or dispatch not initialized');
-      return;
+      return [];
     }
 
     if (this.state.isNextPageLoading) {
-      return;
+      return [];
     }
 
     this.dispatch({ type: ACTIONS.SET_LOADING, payload: true });
     try {
-      const items = this.state.items ?? [];
-      const lastNode = items[items.length - 1];
+      const nodes = this.state.nodes ?? [];
+      const lastNode = nodes[nodes.length - 1];
       
       console.log('Loading more items:', {
         startIndex,
         stopIndex,
         lastNode,
-        nodesLength: lastNode?.storyTree?.nodes?.length
+        nodesLength: lastNode?.storyTree?.nodes?.length,
+        currentNodes: nodes
       });
 
       if (!lastNode?.storyTree?.nodes?.length) {
         console.log('No more nodes to load');
         this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
-        return;
+        return [];
       }
 
       // Get all node IDs that need to be loaded
@@ -282,7 +309,7 @@ class StoryTreeOperator extends BaseOperator {
       if (nodesToLoad.length === 0) {
         console.log('No valid nodes to load');
         this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
-        return;
+        return [];
       }
 
       // Fetch all nodes in parallel
@@ -297,24 +324,27 @@ class StoryTreeOperator extends BaseOperator {
         })
       );
 
-      // Filter out any null results and add to items
+      // Filter out any null results and add to nodes
       const validNodes = loadedNodes.filter(node => node !== null);
       console.log('Loaded valid nodes:', validNodes);
 
       if (validNodes.length > 0) {
-        this.dispatch({ type: ACTIONS.SET_ITEMS, payload: [...items, ...validNodes] });
+        this.dispatch({ type: ACTIONS.SET_NODES, payload: [...nodes, ...validNodes] });
         
         // Check if there are more nodes to load
         const lastLoadedNode = validNodes[validNodes.length - 1];
         const hasMore = lastLoadedNode?.storyTree?.nodes?.some(node => node?.id);
         this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: hasMore });
+        return validNodes;
       } else {
         console.log('No valid nodes were loaded');
         this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
+        return [];
       }
     } catch (error) {
       console.error('Error loading more items:', error);
       this.dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
+      return [];
     } finally {
       this.dispatch({ type: ACTIONS.SET_LOADING, payload: false });
     }
@@ -326,8 +356,8 @@ class StoryTreeOperator extends BaseOperator {
       return;
     }
 
-    const items = this.state.items ?? [];
-    const item = items[index];
+    const nodes = this.state.nodes ?? [];
+    const item = nodes[index];
     if (item && this.validateNode(item)) {
       this.dispatch({ 
         type: ACTIONS.SET_CURRENT_NODE, 

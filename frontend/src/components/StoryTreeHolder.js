@@ -14,6 +14,7 @@
  * - @uiw/react-md-editor: For markdown editing and preview
  * - @uiw/react-md-editor/markdown-editor.css: Required CSS for markdown editor
  * - rehype-sanitize: For markdown sanitization
+ * - lodash/debounce: For performance optimization
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -60,43 +61,64 @@ function StoryTreeContent() {
   } = useReplyContext();
   
   useEffect(() => {
-    if (state && dispatch) {
+    let mounted = true;
+    
+    const initialize = async () => {
+      if (!state || !dispatch) return;
+      
       storyTreeOperator.updateContext(state, dispatch);
       setIsOperatorInitialized(true);
-    }
-  }, [state, dispatch]);
-
-  useEffect(() => {
-    const initializeRootNode = async () => {
-      if (!isOperatorInitialized) return;
-
+      
+      if (!rootUUID) {
+        console.warn('No rootUUID provided');
+        return;
+      }
+      
+      dispatch({ type: ACTIONS.SET_LOADING_STATE, payload: 'LOADING' });
+      
       try {
         const allNodes = await storyTreeOperator.fetchRootNodeWithIncludedNodes(rootUUID);
         
+        if (!mounted) return;
+        
         if (!allNodes || allNodes.length === 0) {
           console.error('Invalid data structure received:', allNodes);
+          dispatch({ type: ACTIONS.SET_LOADING_STATE, payload: 'ERROR' });
           return;
         }
         
         const rootNode = allNodes.find(node => node.storyTree?.id === rootUUID);
         if (!rootNode) {
           console.error('Root node not found in fetched nodes:', allNodes);
+          dispatch({ type: ACTIONS.SET_LOADING_STATE, payload: 'ERROR' });
           return;
         }
 
-        dispatch({ type: ACTIONS.SET_ROOT_NODE, payload: rootNode });
-        dispatch({ type: ACTIONS.SET_ITEMS, payload: allNodes });
+        // Batch state updates
+        dispatch({
+          type: ACTIONS.INITIALIZE_STORY_TREE,
+          payload: {
+            rootNode,
+            nodes: allNodes,
+            loadingState: 'SUCCESS',
+            hasNextPage: rootNode.storyTree?.nodes?.some(node => node?.id)
+          }
+        });
+        
       } catch (error) {
-        console.error('Error fetching story data:', error);
+        if (mounted) {
+          console.error('Error fetching story data:', error);
+          dispatch({ type: ACTIONS.SET_LOADING_STATE, payload: 'ERROR' });
+        }
       }
     };
 
-    if (rootUUID) {
-      initializeRootNode();
-    } else {
-      console.warn('No rootUUID provided');
-    }
-  }, [rootUUID, dispatch, isOperatorInitialized]);
+    initialize();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [rootUUID, state, dispatch]);
 
   const handleReplySubmit = useCallback(async () => {
     if (!replyTarget || !selectionState) return;
@@ -194,7 +216,7 @@ function StoryTreeContent() {
       <div className="story-tree-content">
         <VirtualizedStoryList
           postRootId={rootUUID}
-          items={state?.items ?? []}
+          nodes={state?.nodes ?? []}
           hasNextPage={state?.hasNextPage ?? false}
           isItemLoaded={storyTreeOperator.isItemLoaded}
           loadMoreItems={storyTreeOperator.loadMoreItems}

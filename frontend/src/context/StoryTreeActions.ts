@@ -33,8 +33,28 @@ export const storyTreeActions = {
         `${process.env.REACT_APP_API_URL}/api/storyTree/${uuid}`
       );
       const data = response.data;
+
+      // Ensure the root node has a nodes array
+      if (data.storyTree && !data.storyTree.nodes) {
+        data.storyTree.nodes = [];
+      }
+
+      console.log('Fetched root node:', {
+        data,
+        hasStoryTree: !!data.storyTree,
+        hasNodes: !!data.storyTree?.nodes,
+        nodesLength: data.storyTree?.nodes?.length,
+        metadata: data.storyTree?.metadata
+      });
+
+      // Add title node flag if metadata exists
+      if (data.storyTree?.metadata?.title || data.storyTree?.metadata?.author) {
+        data.isTitleNode = true;
+      }
+
       dispatch({ type: ACTIONS.SET_ROOT_NODE, payload: data });
     } catch (error) {
+      console.error('Error fetching root node:', error);
       dispatch({ 
         type: ACTIONS.SET_ERROR, 
         payload: 'Failed to fetch root node' 
@@ -94,15 +114,27 @@ export const storyTreeActions = {
       const lastNode = items[items.length - 1];
       const storyTree = lastNode?.storyTree;
       
+      console.log('Loading more items:', {
+        lastNodeId: lastNode?.id,
+        availableNodes: storyTree?.nodes?.map(n => n.id),
+        removedFromView
+      });
+      
       if (!storyTree || !storyTree.nodes || storyTree.nodes.length === 0) {
+        console.log('No more nodes available in story tree');
         dispatch({ type: ACTIONS.SET_HAS_NEXT_PAGE, payload: false });
         return;
       }
 
       const firstNodeId = storyTree.nodes[0]?.id;
       if (firstNodeId && !removedFromView.includes(firstNodeId)) {
+        console.log('Fetching next node:', firstNodeId);
         const nextNode = await fetchNode(firstNodeId);
         if (nextNode) {
+          console.log('Successfully fetched node:', {
+            nodeId: nextNode.id,
+            hasChildren: !!nextNode.storyTree?.nodes?.length
+          });
           const siblings: StoryTreeLevel[] = storyTree.nodes.map(node => ({
             id: node.id,
             content: '',
@@ -115,9 +147,14 @@ export const storyTreeActions = {
             type: ACTIONS.SET_HAS_NEXT_PAGE,
             payload: !!nextNode.storyTree?.nodes?.length
           });
+        } else {
+          console.log('Failed to fetch node:', firstNodeId);
         }
+      } else {
+        console.log('Node already removed or invalid:', firstNodeId);
       }
     } catch (error) {
+      console.error('Error in loadMoreItems:', error);
       dispatch({
         type: ACTIONS.SET_ERROR,
         payload: 'Failed to load more items'

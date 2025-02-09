@@ -43,6 +43,7 @@ export const ACTIONS = {
   SET_SELECTED_QUOTE: 'SET_SELECTED_QUOTE',
   CLEAR_REPLIES: 'CLEAR_REPLIES',
   SET_QUOTE_METADATA: 'SET_QUOTE_METADATA',
+  INITIALIZE_STORY_TREE: 'INITIALIZE_STORY_TREE'
 } as const;
 
 export const LOADING_STATES: Record<LoadingState, LoadingState> = {
@@ -72,6 +73,17 @@ const initialState: StoryTreeState = {
 
 function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {
   switch (action.type) {
+    case ACTIONS.INITIALIZE_STORY_TREE:
+      return {
+        ...state,
+        rootNode: action.payload.rootNode,
+        nodes: action.payload.nodes,
+        loadingState: action.payload.loadingState,
+        hasNextPage: action.payload.hasNextPage,
+        isInitialLoading: false,
+        error: null
+      };
+    
     case ACTIONS.SET_ROOT_NODE:
       return {
         ...state,
