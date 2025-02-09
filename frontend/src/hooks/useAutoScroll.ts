@@ -4,11 +4,12 @@
  * - Accept a target index and a ref to a react-window list.
  * - Automatically scroll to the target index whenever it changes.
  * - Allow configurable scroll alignment (e.g., 'auto', 'start', 'center', 'end').
- * - Use a timeout to defer the scroll action until after layout recalculations.
- * - Ensure proper cleanup of the timeout.
+ * - Use RAF for smooth scrolling.
+ * - Ensure proper cleanup of any pending animations.
+ * - Prevent unnecessary re-renders.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { VariableSizeList } from 'react-window';
 
 interface UseAutoScrollProps {
@@ -28,15 +29,25 @@ export default function useAutoScroll({
   alignment = 'end',
   dependencies = [],
 }: UseAutoScrollProps) {
+  // Keep track of the last scrolled index to prevent unnecessary scrolls
+  const lastScrolledIndexRef = useRef<number | undefined>(undefined);
+  
   useEffect(() => {
-    if (targetIndex !== undefined && listRef.current) {
-      const timer = setTimeout(() => {
-        listRef.current?.scrollToItem(targetIndex, alignment);
-      }, 0);
-
-      return () => clearTimeout(timer);
+    // Skip if target index hasn't changed or is undefined
+    if (targetIndex === undefined || targetIndex === lastScrolledIndexRef.current) {
+      return;
     }
-  // Include targetIndex, alignment, and additional dependencies.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    if (listRef.current) {
+      // Use requestAnimationFrame for smooth scrolling
+      const rafId = requestAnimationFrame(() => {
+        listRef.current?.scrollToItem(targetIndex, alignment);
+        lastScrolledIndexRef.current = targetIndex;
+      });
+
+      return () => {
+        cancelAnimationFrame(rafId);
+      };
+    }
   }, [targetIndex, alignment, ...dependencies]);
 } 

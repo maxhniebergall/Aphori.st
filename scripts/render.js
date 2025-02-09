@@ -1,33 +1,168 @@
 import puppeteer from 'puppeteer';
-import fs from 'fs';
 
 (async () => {
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+        headless: false,  // Make browser visible for debugging
+        defaultViewport: null,  // Use default viewport
+        args: ['--start-maximized']  // Start maximized
+    });
     const page = await browser.newPage();
 
-    // Capture console logs
-    page.on('console', msg => console.log('Browser console:', msg.text()));
+    // Enable request/response interception
+    await page.setRequestInterception(true);
+
+    // Track API requests and responses
+    page.on('request', request => {
+        if (request.url().includes('/api/')) {
+            console.log('\nAPI Request:', {
+                url: request.url(),
+                method: request.method(),
+                headers: request.headers(),
+            });
+        }
+        request.continue();
+    });
+
+    page.on('response', async response => {
+        if (response.url().includes('/api/')) {
+            try {
+                const responseBody = await response.json();
+                console.log('\nAPI Response:', {
+                    url: response.url(),
+                    status: response.status(),
+                    body: responseBody,
+                });
+            } catch (e) {
+                console.log('Could not parse response body:', e);
+            }
+        }
+    });
+
+    // Capture console logs with types and better formatting
+    page.on('console', msg => {
+        const type = msg.type();
+        if (msg.text().includes('StoryTreeOperator state updated:')) {
+            msg.args().forEach(async (arg) => {
+                try {
+                    const val = await arg.jsonValue();
+                    console.log('\nStoryTree State Update:', JSON.stringify(val, null, 2));
+                } catch (e) {
+                    console.log('Could not stringify state:', e);
+                }
+            });
+        } else if (msg.text().includes('BaseOperator:')) {
+            msg.args().forEach(async (arg) => {
+                try {
+                    const val = await arg.jsonValue();
+                    console.log('\nBaseOperator:', JSON.stringify(val, null, 2));
+                } catch (e) {
+                    console.log('Could not stringify operator data:', e);
+                }
+            });
+        } else {
+            console.log(`Browser ${type}:`, msg.text());
+        }
+    });
+
+    // Capture network errors
+    page.on('pageerror', err => {
+        console.error('Page error:', err.message);
+    });
+
+    // Capture response errors
+    page.on('response', response => {
+        if (!response.ok()) {
+            console.error(`Failed response (${response.status()}): ${response.url()}`);
+        }
+    });
 
     console.log("Loading website...");
-    await page.goto('http://localhost:3000/storyTree/story-22fff4aa-3e2b-4f9e-8ad7-bec6afc15c93', { waitUntil: 'networkidle0' });
+    await page.goto('http://localhost:3000/storyTree/story-22fff4aa-3e2b-4f9e-8ad7-bec6afc15c93', { 
+        waitUntil: ['networkidle0', 'domcontentloaded', 'load']
+    });
 
-    // Wait for content to be loaded
+    // First check if #root exists
     try {
-        await page.waitForSelector('#root > div > div > div.story-tree-content', { timeout: 5000 });
-        // Wait a bit more to ensure React has rendered the content
-        await page.waitForTimeout(2000);
+        await page.waitForSelector('#root', { timeout: 5000 });
+        console.log('Found #root element');
     } catch (error) {
-        console.error('Error waiting for content:', error);
+        console.error('Could not find #root element:', error);
+        await browser.close();
+        return;
     }
 
-    // Get rendered HTML
-    const storyTreeContent = await page.$('#root > div > div > div.story-tree-content');
-    if (storyTreeContent) {
-        const html = await storyTreeContent.evaluate(el => el.outerHTML);
-        console.log("Rendered HTML:", html);
-    } else {
-        console.error("Could not find story-tree-content element");
+    // Then check for the story-tree-content
+    try {
+        const contentSelector = '.story-tree-content';
+        await page.waitForSelector(contentSelector, { timeout: 5000 });
+        console.log('Found story-tree-content element');
+
+        // Get all elements in the hierarchy
+        const elements = await page.evaluate(() => {
+            const result = {
+                root: document.querySelector('#root')?.outerHTML,
+                rootChildren: document.querySelector('#root > div')?.outerHTML,
+                storyTreeContent: document.querySelector('.story-tree-content')?.outerHTML,
+                virtualizedList: document.querySelector('.story-list')?.outerHTML
+            };
+            return result;
+        });
+
+        console.log('\nDOM Structure:', JSON.stringify(elements, null, 2));
+
+        // Get React component tree with more details
+        const reactTree = await page.evaluate(() => {
+            const getReactInstance = (element) => {
+                for (const key in element) {
+                    if (key.startsWith('__reactFiber$')) {
+                        return element[key];
+                    }
+                }
+                return null;
+            };
+
+            const content = document.querySelector('.story-tree-content');
+            if (!content) return null;
+
+            const instance = getReactInstance(content);
+            if (!instance) return 'No React instance found';
+
+            const getComponentName = (fiber) => {
+                if (!fiber) return null;
+                const type = fiber.type;
+                if (typeof type === 'string') return type;
+                if (typeof type === 'function') return type.name;
+                return null;
+            };
+
+            const getProps = (fiber) => {
+                if (!fiber || !fiber.memoizedProps) return null;
+                const { children, ...props } = fiber.memoizedProps;
+                return props;
+            };
+
+            const walkFiber = (fiber, depth = 0) => {
+                if (!fiber) return null;
+                return {
+                    component: getComponentName(fiber),
+                    props: getProps(fiber),
+                    state: fiber.memoizedState,
+                    children: fiber.child ? walkFiber(fiber.child, depth + 1) : null,
+                    sibling: fiber.sibling ? walkFiber(fiber.sibling, depth) : null
+                };
+            };
+
+            return walkFiber(instance);
+        });
+
+        console.log('\nReact Component Tree:', JSON.stringify(reactTree, null, 2));
+
+    } catch (error) {
+        console.error('Error inspecting content:', error);
     }
 
+    // Keep browser open for manual inspection
+    console.log('Browser will stay open for 3 seconds for manual inspection...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
     await browser.close();
 })();

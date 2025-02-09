@@ -60,7 +60,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
   const { setReplyTarget, replyTarget, setSelectionState, selectionState, clearReplyState } = useReplyContext();
 
   const infiniteNodes = useInfiniteNodes<IStoryTreeLevel>(
-    node ? [node] : [],
     async (startIndex: number, stopIndex: number): Promise<IStoryTreeLevel[]> => {
       if (!storyTree?.id || isQuoteMode) return [];
       const itemsToLoad = storyTree.nodes.slice(startIndex, stopIndex + 1);
@@ -80,7 +79,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ parentI
     storyTree?.nodes ? storyTree.nodes.length > 1 : false
   );
 
-  const siblings = infiniteNodes?.items ?? [];
+  const siblings = infiniteNodes?.nodes ?? [];
   const siblingsToUse = isQuoteMode ? loadedSiblings : siblings;
 
   const { currentSiblingIndex, loadNextSibling, loadPreviousSibling } = useSiblingNavigation<IStoryTreeLevel>({
