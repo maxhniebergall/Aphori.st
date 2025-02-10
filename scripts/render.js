@@ -39,28 +39,51 @@ import puppeteer from 'puppeteer';
     });
 
     // Capture console logs with types and better formatting
-    page.on('console', msg => {
+    page.on('console', async msg => {
         const type = msg.type();
+        
+        // Get all arguments and properly serialize them
+        const args = await Promise.all(msg.args().map(async arg => {
+            try {
+                // Try to get the JSON value of the argument
+                const val = await arg.jsonValue();
+                return val;
+            } catch (e) {
+                // If we can't get JSON, try to get the string representation
+                try {
+                    const text = await arg.evaluate(obj => {
+                        if (obj === null) return 'null';
+                        if (obj === undefined) return 'undefined';
+                        if (typeof obj === 'function') return obj.toString();
+                        if (typeof obj === 'object') {
+                            try {
+                                return JSON.stringify(obj, null, 2);
+                            } catch (e) {
+                                return String(obj);
+                            }
+                        }
+                        return String(obj);
+                    });
+                    return text;
+                } catch (e2) {
+                    return `[Unable to serialize: ${e2.message}]`;
+                }
+            }
+        }));
+
+        // Format the log based on the message type
         if (msg.text().includes('StoryTreeOperator state updated:')) {
-            msg.args().forEach(async (arg) => {
-                try {
-                    const val = await arg.jsonValue();
-                    console.log('\nStoryTree State Update:', JSON.stringify(val, null, 2));
-                } catch (e) {
-                    console.log('Could not stringify state:', e);
-                }
-            });
+            console.log('\nStoryTree State Update:', ...args);
         } else if (msg.text().includes('BaseOperator:')) {
-            msg.args().forEach(async (arg) => {
-                try {
-                    const val = await arg.jsonValue();
-                    console.log('\nBaseOperator:', JSON.stringify(val, null, 2));
-                } catch (e) {
-                    console.log('Could not stringify operator data:', e);
-                }
-            });
+            console.log('\nBaseOperator:', ...args);
+        } else if (msg.text().includes('Drag event details:') || 
+                  msg.text().includes('Gesture enabled state:') ||
+                  msg.text().includes('Sibling navigation state:')) {
+            // Special handling for our debug logs
+            console.log(`\nBrowser ${type} (${msg.text()}):`, ...args);
         } else {
-            console.log(`Browser ${type}:`, msg.text());
+            // General console logs
+            console.log(`Browser ${type}:`, ...args);
         }
     });
 
