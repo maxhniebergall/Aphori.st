@@ -1,11 +1,13 @@
 {
   "name": "back-end",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "dist/server.js",
   "scripts": {
     "test": "node --experimental-vm-modules --experimental-specifier-resolution=node $(yarn bin jest)",
     "test:watch": "node --experimental-vm-modules --experimental-specifier-resolution=node $(yarn bin jest) --watch",
-    "start": "node server.js",
+    "start": "node dist/server.js",
+    "dev": "ts-node-dev --respawn --transpile-only server.ts",
+    "build": "tsc",
     "test-firebase": "node scripts/test-firebase.js"
   },
   "keywords": [],
@@ -26,6 +28,13 @@
   },
   "type": "module",
   "devDependencies": {
-    "jest": "^29.7.0"
+    "@types/cors": "^2.8.17",
+    "@types/dotenv": "^8.2.3",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.8",
+    "@types/node": "^22.13.1",
+    "jest": "^29.7.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.7.3"
   }
 }
