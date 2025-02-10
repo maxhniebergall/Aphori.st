@@ -5,5 +5,5 @@ if [ -f .env ]; then
   export $(cat .env | sed 's/#.*//g' | xargs)
 fi
 
-# Start the backend server
-node server.js
+# Start the TypeScript compiler in watch mode for development
+yarn dev
