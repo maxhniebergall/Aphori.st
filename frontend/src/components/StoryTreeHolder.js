@@ -48,7 +48,6 @@ function StoryTreeContent() {
   const navigate = useNavigate();
   const pathParams = useParams();
   const rootUUID = pathParams.uuid;
-  const { handleSiblingChange } = useSiblingNavigation();
   const { state, dispatch } = useStoryTree();
   const [isOperatorInitialized, setIsOperatorInitialized] = useState(false);
   const { 
@@ -122,7 +121,7 @@ function StoryTreeContent() {
     return () => {
       mounted = false;
     };
-  }, [rootUUID, dispatch, isOperatorInitialized]); // Removed state from dependencies
+  }, [rootUUID, dispatch, isOperatorInitialized]);
 
   const handleReplySubmit = useCallback(async () => {
     if (!replyTarget || !selectionState) return;
