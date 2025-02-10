@@ -21,10 +21,9 @@ import { StoryTreeLevel } from '../context/types'; // Make sure this is imported
 
 interface VirtualizedStoryListProps {
   postRootId: string;
-  setIsFocused: (focused: boolean) => void;
 }
 
-const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId, setIsFocused }) => {
+const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId }) => {
   const listRef = useRef<VariableSizeList | null>(null);
   const sizeMap = useRef<{ [index: number]: number }>({});
   const { state, dispatch } = useStoryTree();
@@ -128,13 +127,12 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId,
           postRootId={postRootId}
           replyTargetIndex={replyTargetIndex}
           parentId={parentId}
-          setIsFocused={setIsFocused}
           handleSiblingChange={handleSiblingChangeWrapper}
           fetchNode={fetchNodeWrapper}
         />
       );
     },
-    [nodes, postRootId, setSize, replyTargetIndex, setIsFocused, handleSiblingChangeWrapper, fetchNodeWrapper]
+    [nodes, postRootId, setSize, replyTargetIndex, handleSiblingChangeWrapper, fetchNodeWrapper]
   );
 
   // Memoize InfiniteLoader props
