@@ -1,0 +1,129 @@
+import { Request } from 'express';
+
+// Database Types
+export interface DatabaseClient {
+    connect: () => Promise<void>;
+    isConnected?: () => boolean;
+    isReady?: () => boolean;
+    hGet: (key: string, field: string, options?: { returnCompressed: boolean }) => Promise<any>;
+    hGetAll: (key: string, options?: { returnCompressed: boolean }) => Promise<Record<string, any>>;
+    hSet: (key: string, field: string, value: any) => Promise<void>;
+    hIncrBy: (key: string, field: string, increment: number) => Promise<number>;
+    get: (key: string) => Promise<any>;
+    set: (key: string, value: any) => Promise<void>;
+    lPush: (key: string, value: any) => Promise<void>;
+    lRange: (key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<any[]>;
+    sAdd: (key: string, value: string) => Promise<void>;
+    zAdd: (key: string, score: number, value: string) => Promise<void>;
+    zRange: (key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<any[]>;
+    zCard: (key: string) => Promise<number>;
+    encodeKey: (id: string, prefix: string) => string;
+    compress: (data: any) => Promise<any>;
+    decompress: (data: any) => Promise<any>;
+}
+
+// User Types
+export interface User {
+    id: string;
+    email: string;
+}
+
+export interface ExistingUser extends User {
+    id: string;
+    email: string;
+    createdAt: string;
+}
+
+export interface UserResult {
+    success: boolean;
+    error?: string;
+    data?: ExistingUser;
+}
+
+// Story Types
+export interface StoryTree {
+    id: string;
+    text: string;
+    children: null | StoryTree[];
+    parentId: string[] | null;
+    metadata: StoryMetadata;
+    countOfChildren: number;
+}
+
+export interface StoryMetadata {
+    title?: string;
+    author?: string;
+    authorId: string;
+    authorEmail: string;
+    createdAt: string;
+    quote: Quote | null;
+}
+
+export interface Quote {
+    text: string;
+    sourcePostId?: string;
+    selectionRange?: {
+        start: number;
+        end: number;
+    };
+}
+
+// Reply Types
+export interface Reply {
+    id: string;
+    text: string;
+    parentId: string[];
+    quote?: Quote;
+    metadata: {
+        author: string;
+        authorId: string;
+        authorEmail: string;
+        createdAt: number;
+    };
+}
+
+// Feed Types
+export interface FeedItem {
+    id: string;
+    title?: string;
+    text: string;
+    author: {
+        id: string;
+        email: string;
+    };
+    createdAt: string;
+}
+
+// Express Request Types
+export interface AuthenticatedRequest extends Request {
+    user: User;
+}
+
+// API Response Types
+export interface ApiResponse<T = any> {
+    success: boolean;
+    error?: string;
+    message?: string;
+    data?: T;
+}
+
+export interface PaginationInfo {
+    page: number;
+    limit: number;
+    totalPages: number;
+}
+
+export interface PaginatedResponse<T> extends ApiResponse {
+    data: T[];
+    pagination: PaginationInfo;
+}
+
+// Token Types
+export interface TokenPayload {
+    email: string;
+}
+
+export interface AuthTokenPayload extends User {
+    iat?: number;
+    exp?: number;
+} 
