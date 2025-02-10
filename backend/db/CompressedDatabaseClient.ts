@@ -6,15 +6,24 @@
 - Ensures proper type handling for Redis operations
 - Adds debug logging for data types and values
 - Supports atomic increments for hash fields
+- Properly typed TypeScript implementation
 */
 
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 import { DatabaseCompression } from './DatabaseCompression.js';
 import newLogger from '../logger.js';
+
 const logger = newLogger("CompressedDatabaseClient.js");
 
+interface CompressionOptions {
+    returnCompressed: boolean;
+}
+
 export class CompressedDatabaseClient extends DatabaseClientInterface {
-    constructor(dbClient, compression = new DatabaseCompression()) {
+    private db: DatabaseClientInterface;
+    private compression: DatabaseCompression;
+
+    constructor(dbClient: DatabaseClientInterface, compression: DatabaseCompression = new DatabaseCompression()) {
         super();
         this.db = dbClient;
         this.compression = compression;
@@ -32,18 +41,18 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         return this.db.isReady();
     }
 
-    async get(key, options = { returnCompressed: false }) {
+    async get(key: string, options: CompressionOptions = { returnCompressed: false }): Promise<any> {
         const compressedData = await this.db.get(key);
         if (!compressedData) return null;
         return options.returnCompressed ? compressedData : this.compression.decompress(compressedData);
     }
 
-    async set(key, value) {
+    async set(key: string, value: any): Promise<any> {
         const compressed = await this.compression.compress(value);
         return this.db.set(key, compressed);
     }
 
-    async hGet(key, field, options = { returnCompressed: false }) {
+    async hGet(key: string, field: string | string[], options: CompressionOptions = { returnCompressed: false }): Promise<any> {
         logger.info(`hGet called with key: ${key}, field: ${field}`);
         
         // Validation
@@ -68,7 +77,6 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
                 return null;
             }
             
-            // Ensure we're working with string data
             const stringData = typeof compressedData === 'string' ? 
                 compressedData : 
                 JSON.stringify(compressedData);
@@ -87,7 +95,7 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         }
     }
 
-    async hSet(key, field, value) {
+    async hSet(key: string, field: string, value: any): Promise<any> {
         logger.info(`hSet called with:`, {
             key: key,
             field: field,
@@ -123,7 +131,7 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         }
     }
 
-    async hGetAll(key, options = { returnCompressed: false }) {
+    async hGetAll(key: string, options: CompressionOptions = { returnCompressed: false }): Promise<Record<string, any> | null> {
         try {
             const compressedData = await this.db.hGetAll(key);
             if (!compressedData) return null;
@@ -132,17 +140,15 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
                 return compressedData;
             }
 
-            // Decompress all values in the hash
-            const decompressedData = {};
+            const decompressedData: Record<string, any> = {};
+            
             for (const [field, value] of Object.entries(compressedData)) {
                 try {
-                    // Skip decompression if value is null/undefined
                     if (!value) {
                         decompressedData[field] = value;
                         continue;
                     }
                     
-                    // Ensure value is a string before decompressing
                     const stringValue = typeof value === 'string' ? 
                         value : 
                         JSON.stringify(value);
@@ -150,7 +156,6 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
                     decompressedData[field] = await this.compression.decompress(stringValue);
                 } catch (err) {
                     logger.warn(`Failed to decompress field ${field} in hash ${key}:`, err);
-                    // Store the original value if decompression fails
                     decompressedData[field] = value;
                 }
             }
@@ -161,12 +166,12 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         }
     }
 
-    async lPush(key, value) {
+    async lPush(key: string, value: any): Promise<any> {
         const compressed = await this.compression.compress(value);
         return this.db.lPush(key, compressed);
     }
 
-    async lRange(key, start, end, options = { returnCompressed: false }) {
+    async lRange(key: string, start: number, end: number, options: CompressionOptions = { returnCompressed: false }): Promise<any[]> {
         const compressedItems = await this.db.lRange(key, start, end);
         if (!compressedItems) return [];
         
@@ -174,24 +179,23 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             return compressedItems;
         }
         
-        // Decompress all items in parallel
         const decompressedItems = await Promise.all(
-            compressedItems.map(item => this.compression.decompress(item))
+            compressedItems.map((item: string) => this.compression.decompress(item))
         );
         return decompressedItems;
     }
 
-    async sAdd(key, value) {
+    async sAdd(key: string, value: string): Promise<any> {
         // For sets, we don't compress the values as they're often used as lookup keys
         return this.db.sAdd(key, value);
     }
 
-    async sMembers(key) {
+    async sMembers(key: string): Promise<string[]> {
         // Set members are not compressed
         return this.db.sMembers(key);
     }
 
-    async zAdd(key, score, value) {
+    async zAdd(key: string, score: number, value: any): Promise<any> {
         logger.info(`CompressedDatabaseClient zAdd called with:`, {
             key: key,
             score: score,
@@ -231,11 +235,11 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         }
     }
 
-    async zCard(key) {
+    async zCard(key: string): Promise<number> {
         return this.db.zCard(key);
     }
 
-    async zRange(key, start, end, options = { returnCompressed: false }) {
+    async zRange(key: string, start: number, end: number, options: CompressionOptions = { returnCompressed: false }): Promise<any[]> {
         const compressedItems = await this.db.zRange(key, start, end);
         if (!compressedItems) return [];
         
@@ -243,36 +247,35 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             return compressedItems;
         }
         
-        // Decompress all items in parallel
         const decompressedItems = await Promise.all(
-            compressedItems.map(item => this.compression.decompress(item))
+            compressedItems.map((item: string) => this.compression.decompress(item))
         );
         return decompressedItems;
     }
 
-    async del(key) {
+    async del(key: string): Promise<any> {
         return this.db.del(key);
     }
 
     // Helper method to encode keys consistently
-    encodeKey(key, prefix) {
+    encodeKey(key: string, prefix?: string): string {
         return this.db.encodeKey(key, prefix);
     }
 
-    async decompress(data) {
+    async decompress(data: string): Promise<any> {
         return this.compression.decompress(data);
     }
 
-    async compress(data) {
+    async compress(data: any): Promise<string> {
         return this.compression.compress(data);
     }
 
     // Helper method to expose compression methods
-    getCompression() {
+    getCompression(): DatabaseCompression {
         return this.compression;
     }
 
-    async hIncrBy(key, field, increment) {
+    async hIncrBy(key: string, field: string, increment: number): Promise<number> {
         // Note: We don't compress increment values as they're numeric
         return this.db.hIncrBy(key, field, increment);
     }
