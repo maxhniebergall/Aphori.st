@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { storyTreeActions } from './StoryTreeActions';
-import { StoryTreeState, Action, LoadingState } from './types';
+import { StoryTreeState, Action, LoadingState, StoryTreeLevel, IdToIndexPair } from './types';
 
 /*
  * Requirements:
@@ -21,30 +21,7 @@ import { StoryTreeState, Action, LoadingState } from './types';
  * - TypeScript type safety and interfaces
  */
 
-export const ACTIONS = {
-  SET_ROOT_NODE: 'SET_ROOT_NODE',
-  SET_NODES: 'SET_NODES',
-  APPEND_NODE: 'APPEND_NODE',
-  SET_LOADING: 'SET_LOADING',
-  SET_HAS_NEXT_PAGE: 'SET_HAS_NEXT_PAGE',
-  SET_REMOVED_FROM_VIEW: 'SET_REMOVED_FROM_VIEW',
-  SET_EDITING: 'SET_EDITING',
-  SET_CURRENT_NODE: 'SET_CURRENT_NODE',
-  TRUNCATE_ITEMS: 'TRUNCATE_ITEMS',
-  SET_ERROR: 'SET_ERROR',
-  CLEAR_ERROR: 'CLEAR_ERROR',
-  SET_INITIAL_LOADING: 'SET_INITIAL_LOADING',
-  SET_PAGINATION_LOADING: 'SET_PAGINATION_LOADING',
-  HANDLE_SIBLING_CHANGE: 'HANDLE_SIBLING_CHANGE',
-  SET_LOADING_STATE: 'SET_LOADING_STATE',
-  SET_REPLIES: 'SET_REPLIES',
-  ADD_REPLY: 'ADD_REPLY',
-  SET_REPLIES_FEED: 'SET_REPLIES_FEED',
-  SET_SELECTED_QUOTE: 'SET_SELECTED_QUOTE',
-  CLEAR_REPLIES: 'CLEAR_REPLIES',
-  SET_QUOTE_METADATA: 'SET_QUOTE_METADATA',
-  INITIALIZE_STORY_TREE: 'INITIALIZE_STORY_TREE'
-} as const;
+import { ACTIONS } from './types';
 
 export const LOADING_STATES: Record<LoadingState, LoadingState> = {
   IDLE: 'IDLE',
@@ -54,113 +31,130 @@ export const LOADING_STATES: Record<LoadingState, LoadingState> = {
 };
 
 const initialState: StoryTreeState = {
-  rootNode: null,
-  nodes: [],
-  isNextPageLoading: false,
-  isPaginationLoading: false,
-  isInitialLoading: true,
-  hasNextPage: false,
-  removedFromView: [],
-  isEditing: false,
-  currentNode: null,
-  error: null,
-  loadingState: LOADING_STATES.IDLE,
-  replies: [],
-  repliesFeed: [],
+  isLoading: false,
+  isInitialized: false,
+  rootNodeId: '',
   selectedQuote: null,
-  quoteMetadata: {}
+  levels: [],
+  idToIndexPair: { indexMap: new Map() },
+  error: null,
 };
+
+// Add loading delay threshold
+const LOADING_DELAY_MS = 150;  // Only show loading state if operation takes longer than 150ms
+
+function getLevelIndex(existingLevels: StoryTreeLevel[], level: StoryTreeLevel): number {
+  return existingLevels.findIndex(existingLevel => existingLevel.rootNodeId === level.rootNodeId && existingLevel.levelNumber === level.levelNumber);
+}
+
+function mergeLevels(existingLevels: StoryTreeLevel[], existingIdToIndexPair: IdToIndexPair, newLevels: StoryTreeLevel[]): { updatedLevels: StoryTreeLevel[], updatedIdToIndexPair: IdToIndexPair } {
+  // idToIndexPair: Record<string, { levelIndex: number, siblingIndex: number }>;
+  // stores the index of the node in the levels array for fast lookup
+
+  const returnableLevels = [...existingLevels];
+  const returnableIdToIndexPair = { ...existingIdToIndexPair };
+
+  for (const levelWithNewItems of newLevels) { 
+    const levelIndex = getLevelIndex(existingLevels, levelWithNewItems);
+    
+    if (levelIndex === -1) {
+       // if the level is not in the existing levels, append it to returnableLevels
+      returnableLevels.push(levelWithNewItems);
+      // Use the new level's index after appending.
+      addNewLevelToIndex(levelWithNewItems, returnableLevels.length - 1);
+    } else {
+      // merge the new level with the existing level
+      for (const [quote, newNodesAtLevel] of levelWithNewItems.siblings?.levelsMap) {
+        const returnableSiblings = returnableLevels[levelIndex].siblings.levelsMap.get(quote);
+        if (returnableSiblings) {
+          returnableSiblings.push(...newNodesAtLevel);
+        } else {
+          returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...newNodesAtLevel]);
+        }
+      } 
+      // Use the existing level's index when merging.
+      addNewLevelToIndex(levelWithNewItems, levelIndex);
+    }
+  }
+
+  return { updatedLevels: returnableLevels, updatedIdToIndexPair: returnableIdToIndexPair };
+
+  // Updated helper: now accepts the correct level index as a parameter.
+  function addNewLevelToIndex(levelWithNewItems: StoryTreeLevel, levelIndex: number) {
+    const countOfNodesUsingQuote = new Map<string, number>();
+    for (const [quote, newNodesAtLevel] of levelWithNewItems.siblings?.levelsMap) {
+      for (const newNodeAtLevel of newNodesAtLevel) {
+        const currentCount = countOfNodesUsingQuote.get(quote.quoteLiteral) || 0;
+        returnableIdToIndexPair.indexMap.set(newNodeAtLevel.id,
+          { levelIndex: levelIndex, siblingIndex: currentCount });
+        countOfNodesUsingQuote.set(quote.quoteLiteral, currentCount + 1);
+      }
+    }
+  }
+}
 
 function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {
   switch (action.type) {
-    case ACTIONS.INITIALIZE_STORY_TREE:
+    case ACTIONS.START_STORY_TREE_LOAD:
       return {
         ...state,
-        rootNode: action.payload.rootNode,
-        nodes: action.payload.nodes,
-        loadingState: action.payload.loadingState,
-        hasNextPage: action.payload.hasNextPage,
-        isInitialLoading: false,
+        rootNodeId: action.payload.rootNodeId,
         error: null
       };
     
-    case ACTIONS.SET_ROOT_NODE:
+    case ACTIONS.SHOW_LOADING_INDICATOR:
       return {
         ...state,
-        rootNode: action.payload,
-        nodes: [action.payload],
+        isLoading: action.payload
       };
     
-    case ACTIONS.SET_NODES:
+    case ACTIONS.SET_STORY_TREE_DATA:
       return {
         ...state,
-        nodes: action.payload,
+        levels: action.payload.levels,
+        idToIndexPair: action.payload.idToIndexPair,
+        isLoading: false,
+        isInitialized: true,
+        error: null
       };
     
-    case ACTIONS.APPEND_NODE:
+    case ACTIONS.INCLUDE_NODES_IN_LEVELS:
+      const { updatedLevels, updatedIdToIndexPair } = mergeLevels(state.levels, state.idToIndexPair, action.payload)
       return {
         ...state,
-        nodes: [...state.nodes, action.payload],
+        levels: updatedLevels,
+        idToIndexPair: updatedIdToIndexPair
       };
     
-    case ACTIONS.TRUNCATE_ITEMS:
-      return {
-        ...state,
-        nodes: state.nodes.slice(0, action.payload + 1),
+    case ACTIONS.NEW_REPLY_FROM_USER:
+      // Create a new StoryTreeLevel from the reply
+      const newReplyLevel: StoryTreeLevel = {
+        rootNodeId: state.rootNodeId,
+        levelNumber: state.levels.length, // New reply goes to next level
+        textContent: action.payload.content,
+        siblings: {
+          levelsMap: new Map([[
+            action.payload.quote || {
+              quoteLiteral: action.payload.content,
+              sourcePostId: action.payload.targetId
+            },
+            [{
+              id: crypto.randomUUID(),
+              parentId: [action.payload.targetId],
+              Quote: action.payload.content,
+              textContent: action.payload.content
+            }]
+          ]])
+        }
       };
-    
-    case ACTIONS.SET_LOADING:
+      
+      const { updatedLevels: levelsWithNewReply, updatedIdToIndexPair: idToIndexPairWithNewReply } = 
+        mergeLevels(state.levels, state.idToIndexPair, [newReplyLevel]);
+      
       return {
         ...state,
-        isNextPageLoading: action.payload,
-      };
-    
-    case ACTIONS.SET_HAS_NEXT_PAGE:
-      return {
-        ...state,
-        hasNextPage: action.payload,
-      };
-    
-    case ACTIONS.SET_REMOVED_FROM_VIEW:
-      return {
-        ...state,
-        removedFromView: [...state.removedFromView, action.payload],
-      };
-    
-    case ACTIONS.SET_EDITING:
-      return {
-        ...state,
-        isEditing: action.payload,
-      };
-    
-    case ACTIONS.SET_CURRENT_NODE:
-      return {
-        ...state,
-        currentNode: action.payload,
-      };
-
-    case ACTIONS.SET_LOADING_STATE:
-      return {
-        ...state,
-        loadingState: action.payload,
-      };
-
-    case ACTIONS.SET_REPLIES:
-      return {
-        ...state,
-        replies: action.payload
-      };
-    
-    case ACTIONS.ADD_REPLY:
-      return {
-        ...state,
-        replies: [...state.replies, action.payload]
-      };
-    
-    case ACTIONS.SET_REPLIES_FEED:
-      return {
-        ...state,
-        repliesFeed: action.payload
+        levels: levelsWithNewReply,
+        idToIndexPair: idToIndexPairWithNewReply
       };
     
     case ACTIONS.SET_SELECTED_QUOTE:
@@ -168,23 +162,20 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         ...state,
         selectedQuote: action.payload
       };
+
+    case ACTIONS.SET_ERROR:
+      return {
+        ...state,
+        error: action.payload,
+        isLoading: false
+      };
+
+    case ACTIONS.CLEAR_ERROR:
+      return {
+        ...state,
+        error: null
+      };
     
-    case ACTIONS.CLEAR_REPLIES:
-      return {
-        ...state,
-        replies: [],
-        selectedQuote: null
-      };
-
-    case ACTIONS.SET_QUOTE_METADATA:
-      return {
-        ...state,
-        quoteMetadata: {
-          ...state.quoteMetadata,
-          [action.payload.nodeId]: action.payload.metadata
-        }
-      };
-
     default:
       return state;
   }
