@@ -6,13 +6,14 @@
  * - Manage loading states and error handling
  * - TypeScript support with proper types
  * - Yarn for package management
+ * - Debug logging for sibling navigation
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { StoryTreeLevel } from '../context/types';
+import { useCallback, useRef, useEffect, useState } from 'react';
+import { StoryTreeLevel, StoryTreeNode } from '../context/types';
 import { storyTreeOperator } from '../operators/StoryTreeOperator';
 
-interface SiblingNavigationState<T> {
+interface SiblingState<T extends StoryTreeLevel> {
   siblings: T[];
   currentIndex: number;
   isLoading: boolean;
@@ -20,7 +21,7 @@ interface SiblingNavigationState<T> {
   totalCount: number;
 }
 
-interface SiblingNavigationResult<T> {
+interface SiblingNavigationResult<T extends StoryTreeLevel> {
   currentNode: T | null;
   siblings: T[];
   currentIndex: number;
@@ -28,12 +29,12 @@ interface SiblingNavigationResult<T> {
   error: Error | null;
   hasNextSibling: boolean;
   hasPreviousSibling: boolean;
-  loadNextSibling: () => Promise<void>;
-  loadPreviousSibling: () => Promise<void>;
+  navigateToNextSibling: () => Promise<void>;
+  navigateToPreviousSibling: () => Promise<void>;
   reset: () => void;
 }
 
-interface SiblingNavigationOptions<T> {
+interface SiblingNavigationOptions<T extends StoryTreeLevel> {
   node: T;
   isQuoteMode?: boolean;
   initialIndex?: number;
@@ -45,7 +46,7 @@ interface SiblingNavigationOptions<T> {
   fetchMoreSiblings?: (startIndex: number, stopIndex: number) => Promise<void>;
 }
 
-export function useSiblingNavigation<T extends StoryTreeLevel>({
+export function useSiblingNavigation<T extends StoryTreeLevel = StoryTreeLevel>({
   node,
   isQuoteMode = false,
   initialIndex = 0,
@@ -56,71 +57,85 @@ export function useSiblingNavigation<T extends StoryTreeLevel>({
   isLoadingReplies = false,
   fetchMoreSiblings = async () => {}
 }: SiblingNavigationOptions<T>): SiblingNavigationResult<T> {
-  // State to track loaded siblings and navigation
-  const [state, setState] = useState<SiblingNavigationState<T>>({
-    siblings: siblings,
+  // State management
+  const [state, setState] = useState<SiblingState<T>>({
+    siblings: [],
     currentIndex: initialIndex,
-    isLoading: siblingsLoading || isLoadingReplies,
+    isLoading: false,
     error: null,
-    totalCount: node.storyTree?.nodes?.length || 1
+    totalCount: 1
   });
 
   // Cache for loaded siblings to prevent unnecessary fetches
   const loadedSiblingsCache = useRef<Map<string, T>>(new Map());
 
+  // Helper function to convert StoryTreeNode to StoryTreeLevel
+  const convertNodeToLevel = (node: StoryTreeNode, parentLevel: StoryTreeLevel): StoryTreeLevel => ({
+    rootNodeId: parentLevel.rootNodeId,
+    levelNumber: parentLevel.levelNumber + 1,
+    textContent: node.textContent,
+    siblings: { levelsMap: new Map() }
+  });
+
   // Helper function to load a batch of siblings
   const loadSiblingBatch = async (siblingNodes: Array<{ id: string }>) => {
-    const loadedNodes = await Promise.all(
-      siblingNodes.map(async (sibling) => {
-        if (!sibling?.id) return null;
+    const loadedNodes = new Array<T>();
 
-        // Check cache first
-        const cachedNode = loadedSiblingsCache.current.get(sibling.id);
-        if (cachedNode) return cachedNode;
+    for (const sibling of siblingNodes) {
+      if (!sibling?.id) continue;
 
-        // If it's the current node, use it directly
-        if (sibling.id === node.storyTree?.id) {
-          loadedSiblingsCache.current.set(sibling.id, node);
-          return node;
+      // Check cache first
+      const cachedNode = loadedSiblingsCache.current.get(sibling.id);
+      if (cachedNode) {
+        loadedNodes.push(cachedNode);
+        continue;
+      }
+
+      // Otherwise fetch the node
+      try {
+        const fetchedNode = await storyTreeOperator.fetchNode(sibling.id);
+        if (fetchedNode) {
+          const typedNode = {
+            ...fetchedNode,
+            rootNodeId: fetchedNode.rootNodeId,
+            levelNumber: node.levelNumber + 1,
+            siblings: { levelsMap: new Map() }
+          } as T;
+          loadedSiblingsCache.current.set(sibling.id, typedNode);
+          loadedNodes.push(typedNode);
         }
+      } catch (error) {
+        console.error(`Failed to fetch sibling node ${sibling.id}:`, error);
+      }
+    }
 
-        // Otherwise fetch the node
-        try {
-          const fetchedNode = await storyTreeOperator.fetchNode(sibling.id);
-          if (fetchedNode) {
-            const typedNode = fetchedNode as T;
-            loadedSiblingsCache.current.set(sibling.id, typedNode);
-            return typedNode;
-          }
-        } catch (error) {
-          console.error(`Failed to fetch sibling node ${sibling.id}:`, error);
-        }
-        return null;
-      })
-    );
-
-    // Filter out null values and ensure type safety
-    const validNodes = loadedNodes.filter((node): node is NonNullable<Awaited<T>> => node !== null);
-    return validNodes;
+    return loadedNodes;
   };
 
   // Load initial siblings
   useEffect(() => {
     const loadInitialSiblings = async () => {
-      if (!node.storyTree?.id || isQuoteMode) return;
+      if (!node.rootNodeId || isQuoteMode) return;
 
       setState(prev => ({ ...prev, isLoading: true, error: null }));
 
       try {
-        // Load initial batch of siblings
-        const initialBatch = node.storyTree.nodes.slice(0, batchSize);
-        const loadedSiblings = await loadSiblingBatch(initialBatch);
+        // Get initial batch of siblings from the node's siblings map
+        const initialSiblings: StoryTreeLevel[] = [];
+        node.siblings.levelsMap.forEach((siblings, quote) => {
+          initialSiblings.push(...siblings.map(s => convertNodeToLevel(s, node)));
+        });
+
+        const loadedSiblings = await loadSiblingBatch(
+          initialSiblings.map(s => ({ id: s.rootNodeId }))
+        );
         
         setState(prev => ({
           ...prev,
-          siblings: loadedSiblings as T[],
+          siblings: loadedSiblings,
           isLoading: false,
-          error: null
+          error: null,
+          totalCount: node.siblings.levelsMap.size
         }));
       } catch (error) {
         setState(prev => ({
@@ -132,31 +147,43 @@ export function useSiblingNavigation<T extends StoryTreeLevel>({
     };
 
     loadInitialSiblings();
-  }, [node.storyTree?.id, isQuoteMode, batchSize]);
+  }, [node.rootNodeId, isQuoteMode, batchSize]);
 
   const loadNextSibling = useCallback(async () => {
-    if (state.isLoading || !node.storyTree?.nodes) return;
-    
-    const nextIndex = state.currentIndex + 1;
-    if (nextIndex >= state.totalCount) return;
+    if (state.isLoading || state.currentIndex >= state.totalCount - 1) return;
 
+    const nextIndex = state.currentIndex + 1;
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
       // Ensure the next sibling is loaded
       if (nextIndex >= state.siblings.length) {
-        const nextBatch = node.storyTree.nodes.slice(
-          state.siblings.length,
-          state.siblings.length + batchSize
+        // Get next batch from siblings map
+        const nextSiblings: StoryTreeLevel[] = [];
+        node.siblings.levelsMap.forEach((siblings, quote) => {
+          nextSiblings.push(
+            ...siblings
+              .slice(state.siblings.length, state.siblings.length + batchSize)
+              .map(s => convertNodeToLevel(s, node))
+          );
+        });
+
+        const newSiblings = await loadSiblingBatch(
+          nextSiblings.map(s => ({ id: s.rootNodeId }))
         );
-        const newSiblings = await loadSiblingBatch(nextBatch);
         
-        setState(prev => ({
-          ...prev,
-          siblings: [...prev.siblings, ...(newSiblings as T[])],
-          currentIndex: nextIndex,
-          isLoading: false
-        }));
+        setState(prev => {
+          const updatedSiblings = [...prev.siblings];
+          newSiblings.forEach((sibling, i) => {
+            updatedSiblings[nextIndex + i] = sibling;
+          });
+          return {
+            ...prev,
+            siblings: updatedSiblings,
+            currentIndex: nextIndex,
+            isLoading: false
+          };
+        });
       } else {
         setState(prev => ({
           ...prev,
@@ -176,7 +203,7 @@ export function useSiblingNavigation<T extends StoryTreeLevel>({
         error: error instanceof Error ? error : new Error('Failed to load next sibling')
       }));
     }
-  }, [state, node.storyTree?.nodes, batchSize, onSiblingChange]);
+  }, [state, node.siblings, batchSize, onSiblingChange]);
 
   const loadPreviousSibling = useCallback(async () => {
     if (state.isLoading || state.currentIndex <= 0) return;
@@ -199,10 +226,10 @@ export function useSiblingNavigation<T extends StoryTreeLevel>({
       currentIndex: initialIndex,
       isLoading: false,
       error: null,
-      totalCount: node.storyTree?.nodes?.length || 1
+      totalCount: node.siblings.levelsMap.size
     });
     loadedSiblingsCache.current.clear();
-  }, [initialIndex, node.storyTree?.nodes?.length]);
+  }, [initialIndex, node.siblings.levelsMap.size]);
 
   return {
     currentNode: state.siblings[state.currentIndex] || null,
@@ -212,8 +239,8 @@ export function useSiblingNavigation<T extends StoryTreeLevel>({
     error: state.error,
     hasNextSibling: state.currentIndex < state.totalCount - 1,
     hasPreviousSibling: state.currentIndex > 0,
-    loadNextSibling,
-    loadPreviousSibling,
+    navigateToNextSibling: loadNextSibling,
+    navigateToPreviousSibling: loadPreviousSibling,
     reset
   };
 } 

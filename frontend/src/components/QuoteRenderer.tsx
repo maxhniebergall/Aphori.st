@@ -1,28 +1,34 @@
 /**
  * Requirements:
- * - Render quote text and source information from the given quote prop
- * - Provide a link to the original post based on the quote sourcePostId
- * - TypeScript support for props
+ * - Render quote text and source information
+ * - Support TypeScript props
+ * - Handle null checks
+ * - Support accessibility
+ * - Use quoteLiteral for quote text
+ * - Link to source post
+ * - Proper styling
+ * - Error handling
+ * - Performance optimization
+ * - Yarn for package management
  */
 
 import React from 'react';
+import { Link } from 'react-router-dom';
+import { Quote } from '../context/types';
 
 interface QuoteRendererProps {
-  quote: {
-    text: string;
-    sourcePostId: string;
-  };
+  quote: Quote;
 }
 
 const QuoteRenderer: React.FC<QuoteRendererProps> = ({ quote }) => {
   return (
-    <div className="story-tree-node-quote">
-      {quote.text}
-      <div className="story-tree-node-quote-source">
-        Quoted from <a href={`/storyTree/${quote.sourcePostId}`}>original post</a>
-      </div>
+    <div className="quote-container" role="blockquote">
+      <p className="quote-text">{quote.quoteLiteral}</p>
+      <Link to={`/post/${quote.sourcePostId}`} className="quote-source">
+        View source post
+      </Link>
     </div>
   );
 };
 
-export default QuoteRenderer; 
+export default React.memo(QuoteRenderer); 

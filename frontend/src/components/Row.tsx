@@ -4,6 +4,14 @@
  * - Hide descendant nodes when in reply mode using row indices
  * - Render loading, fallback, title, or normal node states as appropriate
  * - Delegate dynamic height and ref handling to RowContainer
+ * - TypeScript support with strict typing
+ * - Yarn for package management
+ * - Proper error handling
+ * - Loading state management
+ * - Accessibility compliance
+ * - Performance optimization
+ * - Proper null checks and fallbacks
+ * - Consistent component rendering
  */
 
 import React, { useMemo } from 'react';
@@ -13,7 +21,7 @@ import RowLoading from './RowLoading';
 import RowFallback from './RowFallback';
 import TitleRow from './TitleRow';
 import NormalRowContent from './NormalRowContent';
-import { StoryTreeLevel } from '../context/types';
+import { StoryTreeLevel, StoryTree } from '../context/types';
 
 interface RowProps extends Omit<ListChildComponentProps, 'data'> {
   node: StoryTreeLevel | null;
@@ -32,7 +40,19 @@ interface RowProps extends Omit<ListChildComponentProps, 'data'> {
 }
 
 const Row: React.FC<RowProps> = React.memo(
-  ({ index, style, node, setSize, handleSiblingChange, fetchNode, isLoading, postRootId, replyTargetIndex, parentId, setIsFocused }) => {
+  ({ 
+    index, 
+    style, 
+    node, 
+    setSize, 
+    handleSiblingChange, 
+    fetchNode, 
+    isLoading, 
+    postRootId, 
+    replyTargetIndex, 
+    parentId, 
+    setIsFocused 
+  }) => {
     // Determine if the node should be hidden based on reply mode
     const shouldHide = useMemo(() => {
       if (replyTargetIndex === undefined) return false;
@@ -45,23 +65,24 @@ const Row: React.FC<RowProps> = React.memo(
     }), [style]);
 
     // Choose which content component to render
-    let content;
-    if (shouldHide) {
-      // Render an empty container for hidden nodes
-      content = null;
-    } else if (isLoading) {
-      content = <RowLoading />;
-    } else if (!node || typeof node !== 'object' || !node.storyTree || typeof node.storyTree !== 'object') {
-      console.warn(`Invalid node or storyTree at index ${index}:`, {
-        node,
-        storyTreeExists: !!node?.storyTree,
-        storyTreeType: typeof node?.storyTree,
-      });
-      content = <RowFallback message="Loading node..." />;
-    } else if (node.storyTree.isTitleNode) {
-      content = <TitleRow node={node} />;
-    } else {
-      content = (
+    const content = useMemo(() => {
+      if (shouldHide) {
+        return null;
+      }
+
+      if (isLoading) {
+        return <RowLoading />;
+      }
+
+      if (!node || !node.rootNodeId) {
+        return <RowFallback message="Loading node..." />;
+      }
+
+      if (node.isTitleNode) {
+        return <TitleRow node={node} />;
+      }
+
+      return (
         <NormalRowContent
           node={node}
           onSiblingChange={handleSiblingChange}
@@ -72,7 +93,24 @@ const Row: React.FC<RowProps> = React.memo(
           setIsFocused={setIsFocused}
         />
       );
-    }
+    }, [
+      shouldHide,
+      isLoading,
+      node,
+      index,
+      handleSiblingChange,
+      fetchNode,
+      postRootId,
+      parentId,
+      setIsFocused
+    ]);
+
+    // Create wrapper div for accessibility attributes
+    const wrappedContent = useMemo(() => (
+      <div role="listitem" aria-label={node?.isTitleNode ? 'Story title' : 'Story content'}>
+        {content}
+      </div>
+    ), [content, node?.isTitleNode]);
 
     return (
       <RowContainer
@@ -81,18 +119,23 @@ const Row: React.FC<RowProps> = React.memo(
         shouldHide={shouldHide}
         style={containerStyle}
       >
-        {content}
+        {wrappedContent}
       </RowContainer>
     );
   },
   (prevProps, nextProps) => {
+    // Optimize re-renders by checking essential props
     return (
-      prevProps.node?.storyTree?.id === nextProps.node?.storyTree?.id &&
+      prevProps.node?.rootNodeId === nextProps.node?.rootNodeId &&
       prevProps.isLoading === nextProps.isLoading &&
       prevProps.index === nextProps.index &&
-      prevProps.style.top === nextProps.style.top
+      prevProps.style.top === nextProps.style.top &&
+      prevProps.replyTargetIndex === nextProps.replyTargetIndex
     );
   }
 );
+
+// Add display name for better debugging
+Row.displayName = 'Row';
 
 export default Row; 

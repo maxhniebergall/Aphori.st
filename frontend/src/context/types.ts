@@ -1,5 +1,3 @@
-import { ACTIONS } from "./StoryTreeContext";
-
 /**
  * Requirements:
  * - Complete type coverage for all components
@@ -19,61 +17,69 @@ import { ACTIONS } from "./StoryTreeContext";
  * - Version compatibility with TypeScript
  */
 
-// First, let's define our types in a separate file
 export interface Quote {
-  text: string;
+  quoteLiteral: string;
   sourcePostId: string;
   selectionRange?: { start: number; end: number };
 }
 
 export interface StoryTreeMetadata {
-  quote?: Quote;
   title?: string;
   author?: string;
-  authorId?: string;
-  authorEmail?: string;
-  createdAt?: number;
+  authorId: string;
+  authorEmail: string;
+  createdAt: string;
+  quote: Quote | null;
 }
 
-export interface StoryTree {
-  id: string;
+// This needs to be updated to be a superset of the value returned from the server
+export interface StoryTree { // this is the root of the story tree
+  id: string; // probably a UUID, appears in the URL; same as the rootNodeId
   text: string;
-  nodes: { id: string; parentId: string | null; }[];
-  parentId: string[];
-  metadata?: StoryTreeMetadata;
-  siblings?: StoryTreeLevel[];
+  children: null | StoryTree[];
+  parentId: string[] | null;
+  metadata: StoryTreeMetadata;
+  countOfChildren: number;
+}
+
+export interface StoryTreeNode {
+  parentId: string[]; // the id of the parent node
+  id: string; // probably a UUID
+  Quote: string; // the string literal of the quote selected by the user; by default it is the entire textContent of the node
   isTitleNode?: boolean;
-  quoteReplyCounts?: Record<string, number>;
+  textContent: string; // the text content of the node
+}
+
+export interface Siblings {
+  levelsMap: Map<Quote, Readonly<StoryTreeNode>[]>; 
+  // Quote is the quote selected by the user; 
+  // StoryTreeNodes is the list of sibling nodes; 
+  // the Quote is the key for performance reasons, but is also in the StoryTreeNode
+}
+
+export interface IdToIndexPair {
+  indexMap: Map<string, { levelIndex: number, siblingIndex: number }>;
 }
 
 export interface StoryTreeLevel {
-  id: string;
-  content: string;
-  metadata?: any;
-  siblings?: StoryTreeLevel[];
-  storyTree?: StoryTree;
+  rootNodeId: string; // the id of the root node, to keep everything grounded
+  levelNumber: number; // the index of the level; the depth (root is 0)
+  textContent: string; // the text content of the node
+  siblings: Siblings; 
   isTitleNode?: boolean;
 }
 
 export interface StoryTreeState {
-  rootNode: StoryTreeLevel | null;
-  nodes: StoryTreeLevel[];
-  isNextPageLoading: boolean;
-  isPaginationLoading: boolean;
-  isInitialLoading: boolean;
-  hasNextPage: boolean;
-  removedFromView: string[];
-  isEditing: boolean;
-  currentNode: StoryTreeLevel | null;
-  error: string | null;
-  loadingState: LoadingState;
-  replies: StoryTreeLevel[];
-  repliesFeed: StoryTreeLevel[];
-  selectedQuote: Quote | null;
-  quoteMetadata: Record<string, any>;
-  replyPagination?: {
-    totalItems: number;
-  };
+  isLoading: boolean; // signals to the UI that we should show a loading indicator
+  isInitialized: boolean; // whether the story tree has been initialized with its first data
+  rootNodeId: string; // the id of the root node, to keep everything grounded
+
+  selectedQuote: Quote | null; // the currently selected quote
+
+  levels: StoryTreeLevel[]; // stores the actual nodes
+  idToIndexPair: IdToIndexPair; // stores the index of the node in the levels array for fast lookup
+
+  error: string | null; // the error message, if one occurs
 }
 
 export type LoadingState = 'IDLE' | 'LOADING' | 'ERROR' | 'SUCCESS';
@@ -81,16 +87,6 @@ export type LoadingState = 'IDLE' | 'LOADING' | 'ERROR' | 'SUCCESS';
 export interface QuoteMetadata {
   replyCount: number;
   lastReplyTimestamp?: number;
-}
-
-export interface ReplyAction {
-  type: 'CREATE_REPLY';
-  payload: {
-    targetId: string;
-    content: string;
-    selection: SelectionState;
-    quote?: Quote;
-  };
 }
 
 export interface ReplyError {
@@ -104,36 +100,48 @@ export interface SelectionState {
   end: number;
 }
 
-export type Action = 
-  | { type: 'SET_ROOT_NODE'; payload: any }
-  | { type: 'SET_NODES'; payload: any[] }
-  | { type: 'APPEND_NODE'; payload: any }
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_HAS_NEXT_PAGE'; payload: boolean }
-  | { type: 'SET_REMOVED_FROM_VIEW'; payload: string }
-  | { type: 'SET_EDITING'; payload: boolean }
-  | { type: 'SET_CURRENT_NODE'; payload: any }
-  | { type: 'TRUNCATE_ITEMS'; payload: number }
-  | { type: 'SET_LOADING_STATE'; payload: LoadingState }
-  | { type: 'SET_REPLIES'; payload: any[] }
-  | { type: 'ADD_REPLY'; payload: any }
-  | { type: 'SET_REPLIES_FEED'; payload: any[] }
-  | { type: 'SET_SELECTED_QUOTE'; payload: any }
-  | { type: 'CLEAR_REPLIES' }
-  | { type: 'SET_QUOTE_METADATA'; payload: { nodeId: string; metadata: QuoteMetadata } }
-  | { type: 'SET_ERROR'; payload: string }
-  | { type: 'CLEAR_ERROR'; payload: void }
-  | { type: 'SET_INITIAL_LOADING'; payload: boolean }
-  | { type: 'SET_PAGINATION_LOADING'; payload: boolean }
-  | { type: 'HANDLE_SIBLING_CHANGE'; payload: { newNode: StoryTreeLevel; index: number } }
-  | ReplyAction
-  | { type: 'SET_REPLY_ERROR'; payload: ReplyError | null }
-  | { type: 'CLEAR_REPLY_STATE' }
-  | { type: 'INITIALIZE_STORY_TREE'; payload: { 
-      rootNode: StoryTreeLevel; 
-      nodes: StoryTreeLevel[]; 
-      loadingState: LoadingState; 
-      hasNextPage: boolean; 
-    } };
+// Define the ACTIONS constant as documented:
+export const ACTIONS = {
+  START_STORY_TREE_LOAD: 'START_STORY_TREE_LOAD', // called when the user navigates to a story page
+  SHOW_LOADING_INDICATOR: 'SHOW_LOADING_INDICATOR', // called after delay if still loading
+  SET_STORY_TREE_DATA: 'SET_STORY_TREE_DATA', // called when initial story tree data is loaded
+  INCLUDE_NODES_IN_LEVELS: 'INCLUDE_NODES_IN_LEVELS', // called by the operator when a new node is fetched
+  NEW_REPLY_FROM_USER: 'NEW_REPLY_FROM_USER', // called when a new reply is submitted by the user
+  SET_SELECTED_QUOTE: 'SET_SELECTED_QUOTE', // called when a quote is selected by the user
+  SET_ERROR: 'SET_ERROR', // called when an error occurs
+  CLEAR_ERROR: 'CLEAR_ERROR', // called when an error is cleared
+  SET_PAGINATION_LOADING: 'SET_PAGINATION_LOADING', // called when pagination is loading
+  SET_HAS_NEXT_PAGE: 'SET_HAS_NEXT_PAGE' // called when checking if there are more pages
+} as const;
 
+// Update the Action union type to match the ACTIONS constant:
+export type Action =
+  | {
+      type: typeof ACTIONS.START_STORY_TREE_LOAD;
+      payload: {
+        rootNodeId: string;
+      };
+    }
+  | { type: typeof ACTIONS.SHOW_LOADING_INDICATOR; payload: boolean }
+  | { type: typeof ACTIONS.SET_STORY_TREE_DATA; payload: {
+        levels: StoryTreeLevel[];
+        idToIndexPair: IdToIndexPair;
+      } }
+  | { type: typeof ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: StoryTreeLevel[] }
+  | {
+      type: typeof ACTIONS.NEW_REPLY_FROM_USER;
+      payload: {
+        targetId: string;
+        content: string;
+        selection: SelectionState;
+        quote?: Quote;
+      };
+    }
+  | { type: typeof ACTIONS.SET_SELECTED_QUOTE; payload: Quote | null }
+  | { type: typeof ACTIONS.SET_ERROR; payload: string }
+  | { type: typeof ACTIONS.CLEAR_ERROR }
+  | { type: typeof ACTIONS.SET_PAGINATION_LOADING; payload: boolean }
+  | { type: typeof ACTIONS.SET_HAS_NEXT_PAGE; payload: boolean };
+
+// ActionType is derived directly from the ACTIONS constant:
 export type ActionType = keyof typeof ACTIONS;
