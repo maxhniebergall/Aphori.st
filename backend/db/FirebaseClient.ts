@@ -150,4 +150,27 @@ export class FirebaseClient extends DatabaseClientInterface {
     const snapshot = await ref.once('value');
     return snapshot.val();
   }
+
+  async zRevRangeByScore(key: string, max: number, min: number, options?: { limit?: number }): Promise<any[]> {
+    // Query the database using orderByChild on 'score'
+    const snapshot = await this.db.ref(key)
+      .orderByChild('score')
+      .startAt(min)
+      .endAt(max)
+      .once('value');
+
+    const results: any[] = [];
+    snapshot.forEach((childSnapshot) => {
+      results.push(childSnapshot.val());
+    });
+
+    // Reverse the results to simulate descending order
+    results.reverse();
+
+    // Apply limit if provided
+    if (options?.limit) {
+      return results.slice(0, options.limit);
+    }
+    return results;
+  }
 } 

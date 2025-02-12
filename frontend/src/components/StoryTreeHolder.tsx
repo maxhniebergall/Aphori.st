@@ -1,12 +1,12 @@
 /**
  * Requirements:
  * - React, useCallback - For component rendering and memoization
- * - Display story tree with virtualized list
- * - Handle root node initialization and data fetching
+ * - Display story tree with virtualized list via VirtualizedStoryList (which now handles progressive loading)
+ * - Handle root node initialization and data fetching (delegated to context and storyTreeOperator)
  * - Properly size content accounting for header height
  * - Support sibling navigation
  * - Error handling for invalid root nodes
- * - Component-level loading state management
+ * - **Simplified loading state management:** rely on VirtualizedStoryList for progressive loading (global loading indicator removed)
  * - Proper cleanup on unmount
  * - Navigation handling
  * - Title and subtitle display
@@ -14,15 +14,11 @@
  * - Markdown editing and preview
  * - TypeScript support with strict typing
  * - Yarn for package management
- * - Proper error handling
- * - Loading state management
- * - Accessibility compliance
- * - Performance optimization
- * - Proper null checks and fallbacks
- * - Clear loading state after data is loaded
+ * - Proper error handling and accessibility compliance
+ * - Performance optimization and proper null checks/fallbacks
  */
 
-import React, { useRef, useEffect, useState, useCallback, useMemo, ChangeEvent } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, ChangeEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import './StoryTree.css';
 import Header from './Header';
@@ -40,8 +36,6 @@ function StoryTreeContent() {
   const navigate = useNavigate();
   const { state, dispatch } = useStoryTree();
   const [isOperatorInitialized, setIsOperatorInitialized] = useState(false);
-  const [isLocalLoading, setIsLocalLoading] = useState(false);
-
   // Get the UUID from the URL
   const { uuid: rootUUID } = useParams<{ uuid: string }>();
 
@@ -83,7 +77,6 @@ function StoryTreeContent() {
   useEffect(() => {
     if (!isOperatorInitialized && rootUUID) {
       const initializeStoryTree = async () => {
-        setIsLocalLoading(true);
         try {
           // Start loading the story tree
           storyTreeOperator.updateContext(state, dispatch);
@@ -103,8 +96,6 @@ function StoryTreeContent() {
         } catch (error) {
           console.error('Error fetching story data:', error);
           dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load story tree' });
-        } finally {
-          setIsLocalLoading(false);
         }
       };
 
@@ -153,16 +144,7 @@ function StoryTreeContent() {
     setSelectionState(null);
   }, [setReplyContent, setReplyTarget, setSelectionState]);
 
-  // Show loading state
-  if (isLocalLoading) {
-    return (
-      <div className="loading-container" role="alert" aria-busy="true">
-        <div className="loading-spinner"></div>
-        <span>Loading story tree...</span>
-      </div>
-    );
-  }
-
+  // Instead of returning a global loading spinner, we let VirtualizedStoryList handle progressive loading.
   // Show error state if present
   if (state.error) {
     return (
