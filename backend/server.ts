@@ -20,6 +20,10 @@
 - Maintains quote reply counts using hash storage for efficient retrieval
 - Reads old format of quote reply counts, migrates to new format, and replaces old format in database
 - Implements combined node endpoint for unified node structure with backward compatibility and updated compression handling
+
+- TODO:
+  - Seperate user + email functions into a seperate file
+  - Seperate post + reply functions into a seperate file
 */
 
 import express, { Request, Response, NextFunction, RequestHandler } from "express";
@@ -177,50 +181,6 @@ const authenticateToken = (req: Request, res: Response, next: NextFunction): voi
         next();
     });
 };
-
-// Get story data by UUID
-app.get('/api/storyTree/:uuid', async (req: Request<{ uuid: string }>, res: Response): Promise<void> => {
-    const { uuid } = req.params;
-
-    if (!uuid) {
-        res.status(400).json({ error: 'UUID is required' });
-        return;
-    }
-
-    try {
-        logger.info(`Fetching storyTree with UUID: [${uuid}]`);
-        // Fetch compressed data
-        const compressedStoryTree = await db.hGet(uuid, 'storyTree', { returnCompressed: true });
-        
-        if (!compressedStoryTree) {
-            logger.warn(`StoryTree with UUID ${uuid} not found`);
-            res.status(404).json({ error: 'StoryTree not found' });
-            return;
-        }
-
-        // Get quote reply counts from the hash - note these are not compressed
-        const quoteReplyCounts = await db.hGetAll(`${uuid}:quoteCounts`, { returnCompressed: false }) || {};
-
-        // Decompress the story tree
-        const storyTree = await db.decompress(compressedStoryTree);
-
-        // Combine and compress the final response
-        const response = {
-            storyTree,
-            quoteReplyCounts
-        };
-        
-        const compressedResponse = await db.compress(response);
-
-        // Add compression header to indicate data is compressed
-        res.setHeader('X-Data-Compressed', 'true');
-        res.send(compressedResponse);
-
-    } catch (error) {
-        logger.error('Error fetching storyTree:', error);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
 
 // Get feed data with pagination
 app.get('/api/feed', async (req: Request, res: Response): Promise<void> => {
@@ -844,37 +804,6 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         res.status(500).json({ error: 'Server error' });
     }
 }) as unknown as RequestHandler));
-
-// Get a single reply by UUID
-app.get('/api/getReply/:uuid', async (req: Request<{ uuid: string }>, res: Response): Promise<void> => {
-    try {
-        const { uuid } = req.params;
-        if (!uuid) {
-            res.status(400).json({ error: 'Reply UUID is required' });
-            return;
-        }
-
-        // Get the compressed reply data
-        const compressedReply = await db.hGet(uuid, 'reply', { returnCompressed: true });
-        if (!compressedReply) {
-            res.status(404).json({ error: 'Reply not found' });
-            return;
-        }
-
-        // Decompress the reply
-        const reply = await db.decompress(compressedReply);
-
-        // Compress the final response
-        const compressedResponse = await db.compress(reply);
-
-        // Add compression header
-        res.setHeader('X-Data-Compressed', 'true');
-        res.send(compressedResponse);
-    } catch (err) {
-        logger.error('Error fetching reply:', err);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
 
 // Updated GET endpoint for reply fetching using cursor-based pagination:
 // Expects a URL-encoded JSON string representing a full quote object
