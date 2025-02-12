@@ -6,7 +6,7 @@
  * - Properly size content accounting for header height
  * - Support sibling navigation
  * - Error handling for invalid root nodes
- * - Loading state management
+ * - Component-level loading state management
  * - Proper cleanup on unmount
  * - Navigation handling
  * - Title and subtitle display
@@ -35,23 +35,12 @@ import '@uiw/react-md-editor/markdown-editor.css';
 import rehypeSanitize from 'rehype-sanitize';
 import { ReplyProvider, useReplyContext } from '../context/ReplyContext';
 
-// Wrapper component for context providers
-function StoryTreeHolder() {
-  return (
-    <StoryTreeProvider>
-      <ReplyProvider>
-        <StoryTreeContent />
-      </ReplyProvider>
-    </StoryTreeProvider>
-  );
-}
-
 // Main content component
 function StoryTreeContent() {
   const navigate = useNavigate();
   const { state, dispatch } = useStoryTree();
   const [isOperatorInitialized, setIsOperatorInitialized] = useState(false);
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const [isLocalLoading, setIsLocalLoading] = useState(false);
 
   // Get the UUID from the URL
   const { uuid: rootUUID } = useParams<{ uuid: string }>();
@@ -93,18 +82,15 @@ function StoryTreeContent() {
   // Initialize story tree and fetch data
   useEffect(() => {
     if (!isOperatorInitialized && rootUUID) {
-      // Start loading the story tree
-      storyTreeOperator.updateContext(state, dispatch);
-      dispatch({ type: ACTIONS.START_STORY_TREE_LOAD, payload: { rootNodeId: rootUUID } });
-      
-      // Set loading indicator after delay if still loading
-      loadingTimeoutRef.current = setTimeout(() => {
-        dispatch({ type: ACTIONS.SHOW_LOADING_INDICATOR, payload: true });
-      }, 150);
-
-      // Fetch root node and initialize
-      storyTreeOperator.fetchRootNode(rootUUID)
-        .then(nodes => {
+      const initializeStoryTree = async () => {
+        setIsLocalLoading(true);
+        try {
+          // Start loading the story tree
+          storyTreeOperator.updateContext(state, dispatch);
+          dispatch({ type: ACTIONS.START_STORY_TREE_LOAD, payload: { rootNodeId: rootUUID } });
+          
+          // Fetch root node and initialize
+          const nodes = await storyTreeOperator.fetchRootNode(rootUUID);
           if (nodes?.length) {
             dispatch({ 
               type: ACTIONS.SET_STORY_TREE_DATA, 
@@ -114,19 +100,16 @@ function StoryTreeContent() {
               }
             });
           }
-        })
-        .catch(error => {
+        } catch (error) {
           console.error('Error fetching story data:', error);
           dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load story tree' });
-        });
-
-      setIsOperatorInitialized(true);
-
-      return () => {
-        if (loadingTimeoutRef.current) {
-          clearTimeout(loadingTimeoutRef.current);
+        } finally {
+          setIsLocalLoading(false);
         }
       };
+
+      initializeStoryTree();
+      setIsOperatorInitialized(true);
     }
   }, [isOperatorInitialized, rootUUID, dispatch, state]);
 
@@ -170,12 +153,28 @@ function StoryTreeContent() {
     setSelectionState(null);
   }, [setReplyContent, setReplyTarget, setSelectionState]);
 
-  // Render loading state
-  if (state.isLoading) {
+  // Show loading state
+  if (isLocalLoading) {
     return (
       <div className="loading-container" role="alert" aria-busy="true">
         <div className="loading-spinner"></div>
         <span>Loading story tree...</span>
+      </div>
+    );
+  }
+
+  // Show error state if present
+  if (state.error) {
+    return (
+      <div className="error-container" role="alert">
+        <div className="error-message">{state.error}</div>
+        <button 
+          onClick={() => navigate('/feed')}
+          className="error-action"
+          aria-label="Return to feed"
+        >
+          Return to Feed
+        </button>
       </div>
     );
   }
@@ -220,22 +219,6 @@ function StoryTreeContent() {
     );
   };
 
-  // Show error state if present
-  if (state.error) {
-    return (
-      <div className="error-container" role="alert">
-        <div className="error-message">{state.error}</div>
-        <button 
-          onClick={() => navigate('/feed')}
-          className="error-action"
-          aria-label="Return to feed"
-        >
-          Return to Feed
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="story-tree-container">
       <div className="story-tree-header">
@@ -252,6 +235,17 @@ function StoryTreeContent() {
         {renderReplyEditor()}
       </main>
     </div>
+  );
+}
+
+// Wrapper component with provider
+function StoryTreeHolder() {
+  return (
+    <StoryTreeProvider>
+      <ReplyProvider>
+        <StoryTreeContent />
+      </ReplyProvider>
+    </StoryTreeProvider>
   );
 }
 

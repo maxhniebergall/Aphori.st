@@ -126,4 +126,35 @@ export interface TokenPayload {
 export interface AuthTokenPayload extends User {
     iat?: number;
     exp?: number;
+}
+// Unified Node Types
+export interface UnifiedNode {
+    id: string;
+    type: 'story' | 'reply';
+    content: string;
+    metadata: UnifiedNodeMetadata;
+}
+
+export interface UnifiedNodeMetadata {
+    parentId: string[] | null;
+    quote?: Quote;
+    author: string;
+    createdAt: string;
+    title?: string;
+}
+
+// Cursor-based Pagination Types
+export interface CursorPagination {
+    cursor?: string;
+    limit: number;
+    direction: 'forward' | 'backward';
+}
+
+export interface CursorPaginatedResponse<T> extends ApiResponse {
+    data: T[];
+    pagination: {
+        nextCursor?: string;
+        prevCursor?: string;
+        hasMore: boolean;
+    };
 } 
