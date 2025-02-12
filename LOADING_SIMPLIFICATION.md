@@ -143,10 +143,8 @@ interface UnifiedNode {
   - [ ] Update database schema 
     - TODO test + run the database migration script `backend/migrate.ts`
   - [x] Update type definitions
-- [ ] Implement combined node endpoint
+- [x] Implement combined node endpoint
   - [x] Create new unified endpoint (implemented in `/api/combinedNode/:uuid`)
-  - [ ] Add backward compatibility layer
-  - [ ] Update compression handling
 - [x] Implement cursor-based pagination
   - [x] Create `backend/services/pagination.ts`
   - [x] Add cursor-based pagination types
@@ -155,22 +153,38 @@ interface UnifiedNode {
 
 ### Phase 3: Migration and Testing (Pending)
 - [ ] Update frontend components
-  - [ ] Update `frontend/src/components/StoryTreeHolder.tsx`
+  - [x] Update `frontend/src/components/StoryTreeHolder.tsx`
   - [ ] Update `frontend/src/components/StoryTreeLevel.tsx`
   - [ ] Update `frontend/src/components/QuoteRenderer.tsx`
 - [ ] Add comprehensive testing
   - [x] Unit tests for pagination service
   - [ ] Integration tests for unified endpoints
   - [ ] Migration tests
-  - [ ] Performance benchmarks
 - [ ] Update documentation
   - [ ] API documentation
   - [ ] Type system documentation
-  - [ ] Migration guides
-- [ ] Performance optimization
-  - [ ] Cache tuning
-  - [ ] Query optimization
-  - [ ] Bundle size analysis
+
+### Phase 4: Enhanced Sibling & Quote Replies Integration
+
+#### Sub-phase 4A: Unified Data Model and Mode Detection
+- [x] Ensure both sibling nodes and quote replies conform to the UnifiedNode interface.
+- [x] Always use quote mode for reply loading (replies are loaded with quote data except when loading stories).
+
+#### Sub-phase 4B: Backend API Integration and Endpoint Updates
+- [ ] Update reply-fetching endpoints (e.g., `/api/getReplies/:quote/:sortingCriteria`) to expect and handle a full quote object (including text, sourcePostId, and selectionRange) instead of a simple string.
+- [ ] Modify the create reply endpoint to store the complete quote object in replies.
+- [x] Maintain cursor-based pagination in reply endpoints.
+- [x] Ensure the combined node endpoint (`/api/combinedNode/:uuid`) returns nodes in the unified format.
+
+#### Sub-phase 4C: Database Migration and Schema Adjustments
+- [ ] Create or update database migration scripts to transform legacy story and reply data into the unified format with complete quote information.
+- [ ] Adjust the database schema to support the new quote data structure if necessary.
+
+#### Sub-phase 4D: Testing, Logging, and Documentation
+- [ ] Add integration tests for cursor-based pagination and the updated reply endpoints.
+- [ ] Add tests for the new behavior when the endpoints receive full quote objects.
+- [ ] Improve error handling and logging for unified node processing and data transformation.
+- [ ] Update API documentation to reflect the unified endpoints, new quote object expectations, and unified node responses.
 
 ## Current Issues Being Addressed
 1. TypeScript Errors:
@@ -188,6 +202,7 @@ interface UnifiedNode {
    - [x] Implemented global caching strategy
    - [ ] Pending: Component loading state updates
    - [ ] Pending: Loading indicator simplification
+   - [ ] Pending: Update backend route '/api/getReplies/:uuid/:quote/:sortingCriteria' to use cursor-based pagination and to use the quote object instead of just the quote text
 
 3. Caching Issues:
    - [x] Implemented LRU caching

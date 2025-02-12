@@ -781,49 +781,46 @@ app.post('/api/signup', async (req: Request, res: Response): Promise<void> => {
     });
 });
 
-app.post('/api/createReply', authenticateToken, ((async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/createReply', authenticateToken, async (req: Request, res: Response): Promise<void> => {
     try {
-        const { parentId, text, quote } = req.body;
-        
-        // Extract the first parentId if it's an array
-        // TODO: change this to support multiple parents in future
-        const actualParentId = Array.isArray(parentId) ? parentId[0] : parentId;
-        
-        if (!actualParentId || !text) {
-            res.status(400).json({ error: 'Parent ID and text are required' });
+        // Destructure required fields from the request body.
+        const { text, parentId, quote, metadata } = req.body;
+
+        // Validate that required fields are provided.
+        if (!text || !parentId || !quote || !quote.text) {
+             res.status(400).json({ error: 'Missing required fields. Ensure text, parentId, and a full quote (with text) are provided.' });
+             return;
+        }
+        if (!metadata || !metadata.author || !metadata.authorId || !metadata.authorEmail) {
+            res.status(400).json({ error: 'Missing metadata: author, authorId, or authorEmail are required.' });
             return;
         }
 
-        // Verify parent story exists
-        const parentStory = await db.hGet(actualParentId, 'storyTree');
-        if (!parentStory) {
-            res.status(404).json({ error: 'Parent story not found' });
-            return;
-        }
-
-        // Generate a new UUID for the reply
-        const replyId = crypto.randomUUID();
-        const timestamp = Number(Date.now());
-
-        // Create the reply object following the schema
-        const replyObject = {
-            id: replyId,
-            text: text,
-            parentId: [actualParentId],
-            quote: quote,
+        // Create the new reply object adhering to the unified node structure.
+        const newReply = {
+            id: crypto.randomUUID(), // Using crypto for unique ID generation
+            text,
+            parentId, // Expecting an array of parent IDs
+            quote,    // Store the complete quote object (includes text, sourcePostId, selectionRange)
             metadata: {
-                author: req.user.id,
-                authorId: req.user.id,
-                authorEmail: req.user.email,
-                createdAt: timestamp
+                author: metadata.author,
+                authorId: metadata.authorId,
+                authorEmail: metadata.authorEmail,
+                createdAt: new Date().toISOString()
             }
         };
 
-        // Store the reply in Redis
-        await db.hSet(replyId, 'reply', JSON.stringify(replyObject));
+        // Save the new reply in the database under a Redis hash field 'reply'.
+        await db.hSet(newReply.id, 'reply', newReply);
 
-        // Add reply ID to parent's replies list
-        await db.sAdd(`${actualParentId}:replies`, replyId);
+        // Update the corresponding sorted set for replies based on the quote.
+        // Generate a key using the full quote object.
+        const quoteKey = `${quote.text}|${quote.sourcePostId || ''}|${quote.selectionRange ? `${quote.selectionRange.start}-${quote.selectionRange.end}` : ''}`;
+        // Use the current timestamp as the score (suitable for a "mostRecent" sort).
+        const score = Date.now();
+        // Sorted set key for this quote using a default sorting criteria (e.g., "mostRecent").
+        const sortedSetKey = `replies:quote:${quoteKey}:mostRecent`;
+        await db.zAdd(sortedSetKey, score, newReply.id);
 
         // Increment the quote count in the hash
         if (quote?.text) {
@@ -879,57 +876,74 @@ app.get('/api/getReply/:uuid', async (req: Request<{ uuid: string }>, res: Respo
     }
 });
 
-// Get replies for a specific post and quote with sorting
-app.get('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req: Request<{ uuid: string, quote: string, sortingCriteria: string }, any, any, any, any>, res: Response): Promise<void> => {
+// Updated GET endpoint for reply fetching using cursor-based pagination:
+// Expects a URL-encoded JSON string representing a full quote object
+// (with fields: text, sourcePostId, and selectionRange) instead of a simple string.
+app.get('/api/getReplies/:quote/:sortingCriteria', async (req: Request<{ quote: string, sortingCriteria: string }>, res: Response): Promise<void> => {
     try {
-        const { uuid, quote, sortingCriteria } = req.params;
-        const { page = 1, limit = 10 } = req.query;
-        
-        if (!uuid || !sortingCriteria) {
-            res.status(400).json({ error: 'Post UUID and sorting criteria are required' });
+        const { sortingCriteria } = req.params;
+        let quoteObj: Quote;
+        try {
+            // Decode and parse the JSON from the URL parameter.
+            const decodedQuote = decodeURIComponent(req.params.quote);
+            quoteObj = JSON.parse(decodedQuote);
+        } catch (error) {
+            res.status(400).json({ error: 'Invalid quote object provided in URL parameter' });
             return;
         }
 
-        // Validate and sanitize pagination parameters
-        const pageNum = Math.max(1, parseInt(page));
-        const itemsPerPage = Math.min(100, Math.max(1, parseInt(limit)));
-        const start = (pageNum - 1) * itemsPerPage;
-        const end = start + itemsPerPage - 1;
+        // Validate that the quote object includes the required 'text' field.
+        if (!quoteObj.text) {
+            res.status(400).json({ error: 'Quote object must include a "text" field' });
+            return;
+        }
 
-        // Get the sorted set key for this post+quote combination
-        const sortedSetKey = `replies:${uuid}:${quote}:${sortingCriteria}`;
+        // Generate a unique key for the quote using its properties.
+        const quoteKey = `${quoteObj.text}|${quoteObj.sourcePostId || ''}|${quoteObj.selectionRange ? `${quoteObj.selectionRange.start}-${quoteObj.selectionRange.end}` : ''}`;
+
+        // Cursor-based pagination handling via query parameters.
+        const limit = parseInt(req.query.limit as string) || 10;
+        // If no cursor is provided, use a high value to start from the newest score.
+        const cursor = req.query.cursor ? Number(req.query.cursor) : Number.POSITIVE_INFINITY;
         
-        // Get total count for pagination info
-        // TODO verify this is the corerct access pattern
-        const numberOfRepliesToQuoteOfNode = await db.hGet(uuid+':quoteCounts', quote, { returnCompressed: false }) || 0;
+        // Build the sorted set key for replies based on the full quote object and sorting criteria.
+        const sortedSetKey = `replies:quote:${quoteKey}:${sortingCriteria}`;
         
-        // Get reply keys from the sorted set with pagination
-        const compressedReplyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true }) || [];
-        
-        // Decompress each reply key
-        const replyKeys = await Promise.all(
-            compressedReplyKeys.map(key => db.decompress(key))
+        // Use zRevRangeByScore to fetch reply score pairs using cursor-based pagination.
+        const replyScorePairs: Array<{ replyId: string, score: number }> = await db.zRevRangeByScore(
+            sortedSetKey, 
+            cursor, 
+            Number.NEGATIVE_INFINITY, 
+            { limit }
         );
-
-        // Create the response object
+        
+        let nextCursor: number | null = null;
+        if (replyScorePairs.length === limit) {
+            nextCursor = replyScorePairs[replyScorePairs.length - 1].score;
+        }
+        const replyIds = replyScorePairs.map(pair => pair.replyId);
+        
+        // For each reply ID, fetch and decompress the reply data.
+        const replyKeys = await Promise.all(
+            replyIds.map(id => db.hGet(id, 'reply', { returnCompressed: true }).then(data => db.decompress(data)))
+        );
+        
+        // Prepare the response object with cursor pagination info.
         const response = {
             replies: replyKeys,
             pagination: {
-                page: pageNum,
-                limit: itemsPerPage,
-                numberOfRepliesToQuoteOfNode,
-                totalPages: Math.ceil(numberOfRepliesToQuoteOfNode / itemsPerPage)
+                limit,
+                nextCursor,
+                hasMore: nextCursor !== null
             }
         };
 
-        // Compress the final response
+        // Compress and send the response.
         const compressedResponse = await db.compress(response);
-        
-        // Add compression header
         res.setHeader('X-Data-Compressed', 'true');
         res.send(compressedResponse);
     } catch (err) {
-        logger.error('Error fetching replies:', err);
+        logger.error('Error fetching replies by quote:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -983,6 +997,8 @@ app.get('/api/getRepliesFeed', async (req: Request, res: Response): Promise<void
 app.get('/api/getReplies/:quote/:sortingCriteria', async (req: Request<{ quote: string, sortingCriteria: string }, any, any, any, any>, res: Response): Promise<void> => {
     try {
         const { quote, sortingCriteria } = req.params;
+        // TODO, improve this quote to be a quote object, including ID, text, and selection start and end, as in the frontend type. 
+        // We will also need to update the create reply endpoint to support this new quote type.
         const { page = 1, limit = 10 } = req.query;
         
         if (!quote || !sortingCriteria) {

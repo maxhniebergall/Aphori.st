@@ -20,6 +20,7 @@ export interface DatabaseClient {
     encodeKey: (id: string, prefix: string) => string;
     compress: (data: any) => Promise<any>;
     decompress: (data: any) => Promise<any>;
+    zRevRangeByScore: (key: string, max: number, min: number, options?: { limit?: number }) => Promise<any[]>;
 }
 
 // User Types
