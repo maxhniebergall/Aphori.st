@@ -139,12 +139,12 @@ interface UnifiedNode {
 ### Phase 2: Backend API Updates (In Progress)
 - [x] Create unified node structure
   - [x] Update `backend/types/index.ts`
-  - [ ] Add migration scripts
-  - [ ] Update database schema
-  - [ ] Add migration scripts
-  - [ ] Update type definitions
+  - [x] Add migration scripts `backend/migrate.ts`
+  - [ ] Update database schema 
+    - TODO test + run the database migration script `backend/migrate.ts`
+  - [x] Update type definitions
 - [ ] Implement combined node endpoint
-  - [ ] Create new unified endpoint
+  - [x] Create new unified endpoint (implemented in `/api/combinedNode/:uuid`)
   - [ ] Add backward compatibility layer
   - [ ] Update compression handling
 - [x] Implement cursor-based pagination
@@ -202,6 +202,7 @@ interface UnifiedNode {
 4. Create API documentation
 5. Add integration tests
 6. Performance testing and optimization
+7. Update combined node endpoint with backward compatibility layer and improved compression handling
 
 ## Success Metrics
 - Reduced code complexity
