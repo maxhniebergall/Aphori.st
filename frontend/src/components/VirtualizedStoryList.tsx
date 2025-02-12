@@ -16,170 +16,134 @@
  * - Clear loading state after data is loaded
  */
 
-import React, { useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useCallback, useRef, useEffect, useMemo, useState } from 'react';
 import { ListChildComponentProps, VariableSizeList } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
-import Row from './Row';
-import { useReplyContext } from '../context/ReplyContext';
 import { useStoryTree } from '../context/StoryTreeContext';
-import { storyTreeOperator } from '../operators/StoryTreeOperator';
-import { storyTreeActions } from '../context/StoryTreeActions';
+import { useReplyContext } from '../context/ReplyContext';
 import { StoryTreeLevel } from '../context/types';
+import storyTreeOperator from '../operators/StoryTreeOperator';
+
+interface RowProps {
+  style: React.CSSProperties;
+  level: StoryTreeLevel;
+  onHeightChange: (height: number) => void;
+}
+
+const Row: React.FC<RowProps> = ({ style, level, onHeightChange }) => (
+  <div style={style}>
+    <div 
+      className="story-tree-level"
+      ref={(el) => {
+        if (el) {
+          onHeightChange(el.getBoundingClientRect().height);
+        }
+      }}
+    >
+      {level.textContent}
+    </div>
+  </div>
+);
 
 interface VirtualizedStoryListProps {
   postRootId: string;
 }
 
 const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId }) => {
-  const listRef = useRef<VariableSizeList | null>(null);
-  const sizeMap = useRef<{ [index: number]: number }>({});
-  const { state, dispatch } = useStoryTree();
+  const { state } = useStoryTree();
+  const [isLocalLoading, setIsLocalLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const listRef = useRef<VariableSizeList>(null);
+  const sizeMap = useRef<{ [key: number]: number }>({});
+  const [levels, setLevels] = useState<StoryTreeLevel[]>([]);
+  const [hasNextPage, setHasNextPage] = useState(true);
   const { replyTarget } = useReplyContext();
 
   // Extract relevant state
-  const { levels, error, isLoading, isInitialized } = state;
-  const hasNextPage = levels.length > 0 && levels[levels.length - 1].siblings.levelsMap.size > 0;
+  const { levels: globalLevels } = state;
+  const hasNextPageGlobal = globalLevels.length > 0 && globalLevels[globalLevels.length - 1].siblings.levelsMap.size > 0;
 
   // Memoize replyTargetIndex calculation
   const replyTargetIndex = useMemo(() => 
     replyTarget?.rootNodeId 
-      ? levels.findIndex(level => level?.rootNodeId === replyTarget.rootNodeId)
+      ? globalLevels.findIndex(level => level?.rootNodeId === replyTarget.rootNodeId)
       : undefined,
-    [replyTarget?.rootNodeId, levels]
+    [replyTarget?.rootNodeId, globalLevels]
   );
 
-  const setSize = useCallback((index: number, size: number) => {
-    if (sizeMap.current[index] === size) return;
-    sizeMap.current[index] = size;
-    listRef.current?.resetAfterIndex(index);
-  }, []);
-
-  const getSize = useCallback((index: number): number => {
-    if (replyTargetIndex !== undefined && index > replyTargetIndex) {
-      return 0;
-    }
-    const level = levels[index];
-    const baseHeight = Math.max(sizeMap.current[index] || 200, 100);
-    
-    // Add extra height for quotes and metadata
-    if (level?.siblings.levelsMap.size) {
-      const quotesCount = Array.from(level.siblings.levelsMap.keys()).length;
-      return baseHeight + (quotesCount > 0 ? 24 + quotesCount * 48 : 0);
-    }
-    
-    return baseHeight;
-  }, [replyTargetIndex, levels]);
-
-  // Reset sizes on window resize
+  // Load initial data
   useEffect(() => {
-    const handleResize = () => {
-      Object.keys(sizeMap.current).forEach(index => {
-        listRef.current?.resetAfterIndex(Number(index));
-      });
+    const loadInitialData = async () => {
+      if (!postRootId || levels.length > 0) return;
+      
+      setIsLocalLoading(true);
+      try {
+        const initialNodes = await storyTreeOperator.fetchRootNode(postRootId);
+        if (initialNodes) {
+          setLevels(initialNodes);
+          setHasNextPage(initialNodes.length > 0);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load story tree');
+      } finally {
+        setIsLocalLoading(false);
+      }
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    loadInitialData();
+  }, [postRootId, levels.length]);
 
-  // Scroll to reply target when it changes
-  useEffect(() => {
-    if (replyTargetIndex !== undefined && listRef.current) {
-      requestAnimationFrame(() => {
-        listRef.current?.scrollToItem(replyTargetIndex, 'end');
-      });
+  const loadMoreItems = useCallback(async (startIndex: number, stopIndex: number) => {
+    if (!hasNextPage || isLocalLoading || !postRootId) return;
+
+    setIsLocalLoading(true);
+    try {
+      const newLevels = await storyTreeOperator.loadMoreItems(startIndex, stopIndex);
+      if (newLevels.length) {
+        setLevels(prev => [...prev, ...newLevels]);
+      } else {
+        setHasNextPage(false);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load more items');
+    } finally {
+      setIsLocalLoading(false);
     }
-  }, [replyTargetIndex]);
+  }, [hasNextPage, isLocalLoading, postRootId]);
 
-  // Create a wrapper for fetchNode that returns StoryTreeLevel | null
-  const fetchNodeForSiblingChange = useCallback(async (id: string): Promise<StoryTreeLevel | null> => {
-    return await storyTreeOperator.fetchNode(id);
-  }, []);
-
-  // Create a wrapper for fetchNode that returns void
-  const fetchNodeWrapper = useCallback(async (id: string): Promise<void> => {
-    await storyTreeOperator.fetchNode(id);
-  }, []);
-
-  // Update handleSiblingChangeWrapper to use the correct fetchNode type
-  const handleSiblingChangeWrapper = useCallback(
-    (newNode: StoryTreeLevel, index: number) => {
-      storyTreeActions.handleSiblingChange(dispatch, { 
-        newNode, 
-        index, 
-        fetchNode: fetchNodeForSiblingChange 
-      });
-    },
-    [dispatch, fetchNodeForSiblingChange]
-  );
-
-  // Memoize row rendering function
-  const renderRow = useCallback(
-    ({ index, style }: ListChildComponentProps) => {
-      const level = levels[index];
-      const parentId = index <= 0 ? postRootId : levels[index - 1]?.rootNodeId || postRootId;
-      
-      return (
-        <Row
-          index={index}
-          style={style}
-          node={level}
-          setSize={setSize}
-          isLoading={!storyTreeOperator.isItemLoaded(index)}
-          postRootId={postRootId}
-          replyTargetIndex={replyTargetIndex}
-          parentId={parentId}
-          handleSiblingChange={handleSiblingChangeWrapper}
-          fetchNode={fetchNodeWrapper}
-        />
-      );
-    },
-    [levels, postRootId, setSize, replyTargetIndex, handleSiblingChangeWrapper, fetchNodeWrapper]
-  );
-
-  // Memoize list props
-  const getListProps = useCallback((height: number, width: number) => ({
-    height,
-    itemCount: hasNextPage ? levels.length + 1 : levels.length,
-    itemSize: getSize,
-    width,
-    className: "story-list",
-    overscanCount: 3
-  }), [hasNextPage, levels.length, getSize]);
-
-  // Memoize InfiniteLoader props
-  const infiniteLoaderProps = useMemo(() => ({
-    isItemLoaded: (index: number) => storyTreeOperator.isItemLoaded(index),
-    itemCount: hasNextPage ? levels.length + 1 : levels.length,
-    loadMoreItems: async (startIndex: number, stopIndex: number) => {
-      await storyTreeActions.loadMoreItems(dispatch, {
-        items: levels,
-        fetchNode: fetchNodeForSiblingChange,
-        removedFromView: []
-      });
-    },
-    threshold: 15,
-    minimumBatchSize: 10
-  }), [hasNextPage, levels, dispatch, fetchNodeForSiblingChange]);
-
-  if (isLoading) {
-    return <div className="loading" role="alert" aria-busy="true">Loading story tree...</div>;
+  // Show initial loading state
+  if (isLocalLoading && !levels.length) {
+    return (
+      <div className="loading" role="alert" aria-busy="true">
+        <div className="loading-spinner"></div>
+        Loading story tree...
+      </div>
+    );
   }
 
+  // Show error state
   if (error) {
     return <div className="error" role="alert">Error: {error}</div>;
   }
 
+  // Show empty state
   if (!levels.length && !hasNextPage) {
     return <div className="empty" role="status">No content available</div>;
   }
 
+  // Show content with potential loading more indicator
   return (
     <div style={{ height: '100%', overflow: 'visible' }} role="list" aria-label="Story tree content">
       <AutoSizer>
         {({ height, width }) => (
-          <InfiniteLoader {...infiniteLoaderProps}>
+          <InfiniteLoader
+            isItemLoaded={(index) => index < levels.length}
+            itemCount={hasNextPage ? levels.length + 1 : levels.length}
+            loadMoreItems={loadMoreItems}
+            minimumBatchSize={10}
+            threshold={5}
+          >
             {({ onItemsRendered, ref }) => {
               const refSetter = (list: VariableSizeList | null) => {
                 listRef.current = list;
@@ -190,17 +154,43 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
 
               return (
                 <VariableSizeList
-                  {...getListProps(height, width)}
+                  height={height}
+                  width={width}
+                  itemCount={levels.length}
+                  itemSize={(index) => sizeMap.current[index] || 50}
+                  overscanCount={5}
                   ref={refSetter}
                   onItemsRendered={onItemsRendered}
                 >
-                  {renderRow}
+                  {({ index, style }) => {
+                    const level = levels[index];
+                    if (!level) return null;
+
+                    return (
+                      <Row
+                        style={style}
+                        level={level}
+                        onHeightChange={(height) => {
+                          sizeMap.current[index] = height;
+                          if (listRef.current) {
+                            listRef.current.resetAfterIndex(index);
+                          }
+                        }}
+                      />
+                    );
+                  }}
                 </VariableSizeList>
               );
             }}
           </InfiniteLoader>
         )}
       </AutoSizer>
+      {isLocalLoading && levels.length > 0 && (
+        <div className="loading-more" role="alert" aria-busy="true">
+          <div className="loading-spinner"></div>
+          Loading more...
+        </div>
+      )}
     </div>
   );
 };

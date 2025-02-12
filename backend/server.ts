@@ -19,6 +19,7 @@
 - Maintains compatibility with both Redis and Firebase implementations
 - Maintains quote reply counts using hash storage for efficient retrieval
 - Reads old format of quote reply counts, migrates to new format, and replaces old format in database
+- Implements combined node endpoint for unified node structure with backward compatibility and updated compression handling
 */
 
 import express, { Request, Response, NextFunction, RequestHandler } from "express";
@@ -1028,6 +1029,65 @@ app.get('/api/getReplies/:quote/:sortingCriteria', async (req: Request<{ quote: 
         res.send(compressedResponse);
     } catch (err) {
         logger.error('Error fetching replies by quote:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// New Combined Node Endpoint
+app.get('/api/combinedNode/:uuid', async (req: Request<{ uuid: string }>, res: Response): Promise<void> => {
+    const { uuid } = req.params;
+    if (!uuid) {
+        res.status(400).json({ error: 'UUID is required' });
+        return;
+    }
+    try {
+        // Try fetching as a story node first
+        let compressedData = await db.hGet(uuid, 'storyTree', { returnCompressed: true });
+        let nodeType: 'story' | 'reply' = 'story';
+        if (!compressedData) {
+            // If not found, try fetching as a reply
+            compressedData = await db.hGet(uuid, 'reply', { returnCompressed: true });
+            nodeType = 'reply';
+        }
+        if (!compressedData) {
+            res.status(404).json({ error: 'Node not found' });
+            return;
+        }
+        const rawData = await db.decompress(compressedData);
+
+        let unifiedNode;
+        if (nodeType === 'story') {
+            unifiedNode = {
+                id: rawData.id,
+                type: 'story',
+                content: rawData.text,
+                metadata: {
+                    parentId: rawData.parentId, // expected to be null for story nodes
+                    author: rawData.metadata.author,
+                    createdAt: rawData.metadata.createdAt,
+                    title: rawData.metadata.title,
+                    quote: rawData.metadata.quote || undefined
+                }
+            };
+        } else {
+            unifiedNode = {
+                id: rawData.id,
+                type: 'reply',
+                content: rawData.text,
+                metadata: {
+                    parentId: rawData.parentId, // array of parent IDs for replies
+                    author: rawData.metadata.author,
+                    createdAt: rawData.metadata.createdAt,
+                    quote: rawData.quote || undefined
+                }
+            };
+        }
+
+        const compressedResponse = await db.compress(unifiedNode);
+        res.setHeader('X-Data-Compressed', 'true');
+        res.send(compressedResponse);
+    } catch (error) {
+        logger.error('Error in combinedNode endpoint:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
