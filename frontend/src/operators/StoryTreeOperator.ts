@@ -20,7 +20,8 @@
  */
 
 import React from 'react';
-import { ACTIONS, StoryTreeNode, StoryTreeState, UnifiedNode, StoryTreeLevel, Quote, Action, IdToIndexPair, StoryTree, CursorPaginatedResponse, Reply } from '../types/types';
+import { ACTIONS, StoryTreeNode, StoryTreeState, UnifiedNode, StoryTreeLevel, Action, IdToIndexPair, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts } from '../types/types';
+import { Quote } from '../types/quote';
 import axios, { AxiosResponse, AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
 import { compareQuotes } from '../types/quote';
@@ -166,6 +167,17 @@ class StoryTreeOperator extends BaseOperator {
     return null;
   }
 
+  async fetchQuoteCounts(id: string): Promise<QuoteCounts> {
+    const response = await axios.get<{ compressedData: QuoteCounts }>(`${process.env.REACT_APP_API_URL}/api/getReplies/${id}/${quote}/${sortingCriteria}?limit=${limit}&cursor=${cursor}`);
+    const data = await this.handleCompressedResponse(response);
+    if (!data || !data.compressedData) {
+      console.error('Invalid unified node data received:', data);
+      return {quoteCounts: new Map()};
+    }
+    const quoteCounts = JSON.parse(data.compressedData) as QuoteCounts;
+    return quoteCounts;
+  }
+
   // Loads nodes as a side effect via the StoryTreeContext
   // TODO: verify that loadMoreItems requests can arrive out of order
   public async loadMoreItems(parentId: string, levelNumber: number, quote: Quote, startIndex: number, stopIndex: number): Promise<void> {
@@ -181,7 +193,7 @@ class StoryTreeOperator extends BaseOperator {
           level.levelNumber === levelNumber && compareQuotes(level.selectedQuote, quote)
         );
 
-        if (!targetLevel) {
+        if (!targetLevel) { 
           console.warn(`No level found for levelNumber ${levelNumber} with the provided quote`);
           reject(new Error(`No level found for levelNumber ${levelNumber} with the provided quote`));
         }
@@ -200,21 +212,27 @@ class StoryTreeOperator extends BaseOperator {
 
         const paginatedResponse = JSON.parse(data.data) as CursorPaginatedResponse<Reply>;
         const replies = paginatedResponse.data;
-
+        const pagination = paginatedResponse.pagination;
         const nodes: StoryTreeNode[] = replies.map((reply) => ({
           id: reply.id,
           rootNodeId: this.state.storyTree?.id || 'undefinedRootNodeId',
           parentId: reply.parentId,
           textContent: reply.text,
-          quote: reply.quote
+          quote: reply.quote,
+          quoteCounts: null
         }));
+
+        nodes.forEach((node) => {
+          node.quoteCounts = fetchQuoteCounts(node.id);
+        });
 
         const level: StoryTreeLevel = {
           parentId: [this.state.storyTree?.id || 'undefinedRootNodeId'],
           rootNodeId: this.state.storyTree?.id || 'undefinedRootNodeId',
           levelNumber: levelNumber,
           selectedQuote: quote,
-          siblings: { levelsMap: new Map([[quote, nodes]]) }
+          siblings: { levelsMap: new Map([[quote, nodes]]) },
+          pagination: pagination,
         };
 
         if (nodes.length > 0) {

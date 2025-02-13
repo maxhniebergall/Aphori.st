@@ -11,17 +11,14 @@ import StoryTreeLevelComponent from './StoryTreeLevel';
 
 interface NormalRowContentProps {
   levelData: StoryTreeLevel;
-  parentId: string;
 }
 
 const NormalRowContent: React.FC<NormalRowContentProps> = ({
   levelData,
-  parentId,
 }) => {
   return (
     <div className="normal-row-content">
       <StoryTreeLevelComponent
-        parentId={parentId}
         levelData={levelData}
       />
     </div>

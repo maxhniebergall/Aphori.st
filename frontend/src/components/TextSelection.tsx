@@ -9,6 +9,7 @@
 import React from 'react';
 import { useTextSelection } from '../hooks/useTextSelection';
 import './TextSelection.css';
+import { Quote } from '../types/quote';
 
 interface Selection {
   start: number;
@@ -17,24 +18,24 @@ interface Selection {
 
 interface TextSelectionProps {
   children: React.ReactNode;
-  onSelectionCompleted: (selection: Selection) => void;
+  onSelectionCompleted: (quote: Quote) => void;
   selectAll?: boolean;
-  selectionState?: Selection | null;
-  quotes?: Record<string, number>;
+  selectedQuote?: Quote;
+  existingSelectableQuotes?: Record<string, number>;
 }
 
 const TextSelection: React.FC<TextSelectionProps> = ({
   children,
   onSelectionCompleted,
   selectAll = false,
-  selectionState = null,
-  quotes,
+  selectedQuote,
+  existingSelectableQuotes,
 }) => {
   const { containerRef, eventHandlers } = useTextSelection({
     onSelectionCompleted,
     selectAll,
-    selectionState,
-    quotes,
+    selectedQuote,
+    existingSelectableQuotes,
   });
 
   return (

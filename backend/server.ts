@@ -56,7 +56,9 @@ import {
     AuthTokenPayload,
     Quote,
     UnifiedNode,
-    Replies
+    Replies,
+    ExistingSelectableQuotes,
+    UnifiedNodeMetadata
 } from './types/index.js';
 
 dotenv.config();
@@ -615,7 +617,6 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         const formattedStoryTree = {
             id: uuid,
             text: storyTree.content || storyTree.text,
-            children: null,
             parentId: null, // Root-level posts always have null parentId
             metadata: {
                 title: storyTree.title,
@@ -625,7 +626,6 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
                 createdAt: new Date().toISOString(),
                 quote: null // Root-level posts don't have quotes
             },
-            countOfChildren: 0
         };
 
         // Store in Redis
@@ -749,15 +749,18 @@ app.post('/api/signup', async (req: Request, res: Response): Promise<void> => {
 app.post('/api/createReply', authenticateToken, async (req: Request, res: Response): Promise<void> => {
     try {
         // Destructure required fields from the request body.
-        const { text, parentId, quote, metadata } = req.body;
+        const text : string = req.body.text;
+        const parentId : string[] = req.body.parentId;
+        const metadata : UnifiedNodeMetadata = req.body.metadata;
+        const quote : Quote = req.body.quote;
 
         // Validate that required fields are provided.
-        if (!text || !parentId || !quote || !quote.text) {
+        if (!text || !parentId || !quote || !quote.text || !quote.sourcePostId || !quote.selectionRange) {
              res.status(400).json({ error: 'Missing required fields. Ensure text, parentId, and a full quote (with text) are provided.' });
              return;
         }
-        if (!metadata || !metadata.author || !metadata.authorId || !metadata.authorEmail) {
-            res.status(400).json({ error: 'Missing metadata: author, authorId, or authorEmail are required.' });
+        if (!metadata || !metadata.author) {
+            res.status(400).json({ error: 'Missing metadata: author is required.' });
             return;
         }
 
@@ -769,8 +772,6 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             quote,    // Store the complete quote object (includes text, sourcePostId, selectionRange)
             metadata: {
                 author: metadata.author,
-                authorId: metadata.authorId,
-                authorEmail: metadata.authorEmail,
                 createdAt: new Date().toISOString()
             }
         };
@@ -791,9 +792,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         await db.zAdd(sortedSetWithUuidKey, score, newReply.id);
 
         // Increment the quote count in the hash
-        if (quote?.text) {
-            await db.hIncrBy(`${actualParentId}:quoteCounts`, quote.text, 1);
-        }
+        await db.hIncrBy(`${newReply.parentId}:quoteCounts`, JSON.stringify(quote), 1);
 
         // Add to sorted sets for different access patterns
         await db.zAdd(`replies:${actualParentId}:${quote?.text}:mostRecent`, timestamp, replyId);
@@ -857,7 +856,7 @@ app.get('/api/getRepliesFeed', async (req: Request, res: Response): Promise<void
         logger.error('Error fetching replies feed:', err);
         res.status(500).json({ error: 'Server error' });
     }
-});
+}); 
 
 // Updated GET endpoint with generics for route params and response type.
 app.get<{ 
@@ -950,6 +949,17 @@ app.get<{
         };
         res.status(500).json(errorReponse);
     }
+});
+
+// Get existing selectable quotes for a given node
+app.get<{ uuid: string }, ApiResponse<ExistingSelectableQuotes>>('/api/getExistingSelectableQuotes/:uuid', async (req, res) => {
+    const { uuid } = req.params;
+    const existingSelectableQuotesAndCounts = await db.hGetAll(`${uuid}:`, { returnCompressed: true }) as ExistingSelectableQuotes;
+    const apiResponse: ApiResponse<ExistingSelectableQuotes> = {
+        success: true,
+        compressedData: existingSelectableQuotesAndCounts
+    };
+    res.json(apiResponse);
 });
 
 /**

@@ -34,8 +34,9 @@ import { VariableSizeList } from 'react-window';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
-import {StoryTreeLevel as LevelData, StoryTreeNode, Quote, SelectionState } from '../types/types';
+import {StoryTreeLevel as LevelData, StoryTreeNode } from '../types/types';
 import  StoryTreeOperator  from '../operators/StoryTreeOperator';
+import { Quote } from '../types/quote';
 interface StoryTreeLevelProps {
   levelData: LevelData; 
 }
@@ -48,9 +49,10 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   const [currentNode, setCurrentNode] = useState<StoryTreeNode | null>(null);
   // Keeping sizeMap as a ref for performance reasons (frequent updates do not trigger re-renders)
   const sizeMap = useRef<{ [key: number]: number }>({});
-  const { setReplyTarget, replyTarget, setSelectionState, selectionState, clearReplyState } = useReplyContext();
+  const { setReplyTarget, replyTarget, setReplyQuote, replyQuote, clearReplyState } = useReplyContext();
 
   // useEffects to update state based on props
+  // TODO verify that this works correctly with respect to rerenders
   useEffect(() => {
     setSiblings(levelData.siblings.levelsMap.get(levelData.selectedQuote) || []);
   }, [levelData]);
@@ -66,21 +68,25 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
 
   // Handle text selection for replies
   const handleTextSelectionCompleted = useCallback(
-    (selection: SelectionState): void => {
+    (quote: Quote): void => {
       try {
         setReplyError(null);
         setReplyTarget(levelData);
-        setSelectionState(selection);
+        setReplyQuote(quote);
       } catch (error) {
         setReplyError('Failed to set reply target');
         console.error('Selection error:', error);
       }
     },
-    [setReplyTarget, setSelectionState, levelData]
+    [setReplyTarget, setReplyQuote, levelData]
   );
 
   // Handle reply button click
   const handleReplyButtonClick = useCallback((): void => {
+    if (!currentNode) {
+      console.warn('clicked reply button on StoryTreeLevel with null currentNode');
+      return;
+    }
     try {
       if (isReplyTarget(levelData.rootNodeId)) {
         // if already in reply mode, exit reply mode
@@ -88,10 +94,15 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
       } else {
         // if not in reply mode, enter reply mode
         setReplyTarget(levelData);
-        setSelectionState({
-          start: 0,
-          end: currentNode.textContent.length,
-        });
+        const quote: Quote = {
+          quoteLiteral: currentNode.textContent, // if the reply button is clicked, the quote is the whole text content of the current node
+          sourcePostId: currentNode.rootNodeId,
+          selectionRange: {
+            start: 0,
+            end: currentNode.textContent.length
+          }
+        };
+        setReplyQuote(quote);
         setReplyError(null);
         window.dispatchEvent(new Event('resize'));
       }
@@ -102,7 +113,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   }, [
     clearReplyState,
     setReplyTarget,
-    setSelectionState,
+    setReplyQuote,
     isReplyTarget,
     levelData
   ]);
@@ -139,7 +150,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
       if (!down) {
         try {
           if (mx < -100 || (vx < -0.5 && mx < -50)) {
-            if (navigateToNextSibling && currentIndex < totalSiblings - 1) {
+            if (navigateToNextSibling && currentIndex < (levelData.siblings.levelsMap.get(levelData.selectedQuote)?.length || 0) - 1) {
               navigateToNextSibling();
             }
             cancel();
@@ -157,8 +168,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   }, {
     drag: {
       axis: 'x',
-      enabled: Boolean(currentNode.rootNodeId) && (
-        (Boolean(navigateToNextSibling) && currentIndex < totalSiblings - 1) ||
+      enabled: Boolean(currentNode?.rootNodeId) && (
+        (Boolean(navigateToNextSibling) && currentIndex < (levelData.siblings.levelsMap.get(levelData.selectedQuote)?.length || 0) - 1) ||
         (Boolean(navigateToPreviousSibling) && currentIndex > 0)
       ),
       threshold: 5,
@@ -174,8 +185,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     <AnimatePresence mode="wait">
       <motion.div
         className={`story-tree-node ${
-          isReplyTarget(siblingsToUse[currentIndex]?.rootNodeId || '') ? 'reply-target' : ''
-        } ${(infiniteNodes?.isLoading) ? 'loading' : ''}`}
+          isReplyTarget(currentNode.rootNodeId) ? 'reply-target' : ''
+        }}`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -187,36 +198,35 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
             <VariableSizeList
               height={200}
               width={200}
-              itemCount={totalSiblings}
+              itemCount={levelData.pagination.matchingRepliesCount}
               itemSize={(index) => sizeMap.current[index] || 50}
               overscanCount={5}
               onItemsRendered={onItemsRendered}
               ref={ref}
             >
               {({ index, style }) => {
-                const currentNode = siblingsToUse[index] || currentNode;
                 return (
                   <div
                     style={style}
                     {...bind()}
-                    className={`story-tree-node-content ${totalSiblings > 1 ? 'has-siblings' : ''} ${
-                      currentIndex > 0 || currentIndex < totalSiblings - 1 ? 'swipeable' : ''
+                    className={`story-tree-node-content ${levelData.pagination.matchingRepliesCount > 1 ? 'has-siblings' : ''} ${
+                      currentIndex > 0 || currentIndex < levelData.pagination.matchingRepliesCount - 1 ? 'swipeable' : ''
                     }`}
                     id={currentNode.rootNodeId}
                     role="region"
-                    aria-label={`Story content ${index + 1} of ${totalSiblings}`}
+                    aria-label={`Story content ${index + 1} of ${levelData.pagination.matchingRepliesCount}`}
                   >
                     <NodeContent
                       node={currentNode}
-                      replyTargetId={replyTarget?.rootNodeId}
-                      selectionState={
-                        isReplyTarget(currentNode.rootNodeId) ? selectionState : null
+                      quote={
+                        (isReplyTarget(currentNode.id) && replyQuote) ? replyQuote : undefined
                       }
+                      existingSelectableQuotes={levelData.existingSelectableQuotes}
                       onSelectionComplete={handleTextSelectionCompleted}
                     />
                     <NodeFooter
                       currentIndex={index}
-                      totalSiblings={totalSiblings}
+                      totalSiblings={levelData.pagination.matchingRepliesCount}
                       onReplyClick={handleReplyButtonClick}
                       isReplyTarget={isReplyTarget(currentNode.rootNodeId)}
                       onNextSibling={navigateToNextSibling}

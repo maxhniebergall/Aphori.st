@@ -14,17 +14,13 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { throttle } from 'lodash';
 import { getCurrentOffset, getWordBoundaries } from '../utils/selectionUtils';
-
-interface Selection {
-  start: number;
-  end: number;
-}
+import { Quote } from '../types/quote';
 
 interface UseTextSelectionProps {
-  onSelectionCompleted: (selection: Selection) => void;
+  onSelectionCompleted: (quote: Quote) => void;
   selectAll?: boolean;
-  selectionState?: Selection | null;
-  quotes?: Record<string, number>;
+  selectedQuote?: Quote;
+  existingSelectableQuotes?: Record<string, number>;
 }
 
 interface UseTextSelectionReturn {
@@ -156,11 +152,11 @@ const throttledAnimationLoop = throttle(
   16
 );
 
-export function useTextSelection({
+export function useTextSelection({  
   onSelectionCompleted,
   selectAll = false,
-  selectionState = null,
-  quotes,
+  selectedQuote,
+  existingSelectableQuotes: quotes,
 }: UseTextSelectionProps): UseTextSelectionReturn {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const boundThrottledAnimationRef = useRef<((e: Event) => void) | null>(null);
@@ -200,7 +196,7 @@ export function useTextSelection({
   }, []);
 
   const endAnimationLoop = useCallback(
-    (event: MouseEvent | TouchEvent): Selection | null => {
+    (event: MouseEvent | TouchEvent): Quote | null => {
       event.preventDefault();
       event.stopPropagation();
       mouseIsDownRef.current = false;
@@ -208,10 +204,15 @@ export function useTextSelection({
       cleanupEventListeners();
       if (!containerRef.current) return null;
       finalOffsetRef.current = getCurrentOffset(containerRef.current, event);
-      return {
-        start: initialOffsetRef.current ?? 0,
-        end: finalOffsetRef.current ?? 0,
+      const quote: Quote = {
+        quoteLiteral: containerRef.current.textContent?.slice(initialOffsetRef.current ?? 0, finalOffsetRef.current ?? 0) || '',
+        sourcePostId: containerRef.current.id,
+        selectionRange: {
+          start: initialOffsetRef.current ?? 0,
+          end: finalOffsetRef.current ?? 0,
+        },
       };
+      return quote;
     },
     [cleanupEventListeners]
   );
@@ -240,14 +241,18 @@ export function useTextSelection({
           const { start, end } = getWordBoundaries(text, offset);
           removeExistingHighlights(containerRef.current);
           highlightText(containerRef.current, start, end);
-          onSelectionCompleted({ start, end });
+          onSelectionCompleted({
+            quoteLiteral: text.slice(start, end),
+            sourcePostId: containerRef.current.id,
+            selectionRange: { start, end },
+          });
           mouseIsDownRef.current = false;
           return;
         }
       }
-      const selection = endAnimationLoop(event);
-      if (selection) {
-        onSelectionCompleted(selection);
+      const quote = endAnimationLoop(event);
+      if (quote) {
+        onSelectionCompleted(quote);
       }
     },
     [endAnimationLoop, onSelectionCompleted]
@@ -274,13 +279,13 @@ export function useTextSelection({
     if (containerRef.current) {
       if (selectAll) {
         highlightText(containerRef.current, 0, containerRef.current.textContent?.length || 0);
-      } else if (selectionState) {
-        highlightText(containerRef.current, selectionState.start, selectionState.end);
+      } else if (selectedQuote) {
+        highlightText(containerRef.current, selectedQuote.selectionRange.start, selectedQuote.selectionRange.end);
       } else {
         removeExistingHighlights(containerRef.current);
       }
     }
-  }, [selectAll, selectionState]);
+  }, [selectAll, selectedQuote]);
 
   // Effect: highlight quotes if provided (e.g. based on reply counts)
   useEffect(() => {

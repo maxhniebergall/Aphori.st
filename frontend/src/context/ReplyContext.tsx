@@ -1,7 +1,7 @@
 /*
  * Requirements:
  * - Type safety for reply target node structure
- * - Type safety for selection state
+ * - Type safety for reply quote (including selectionRange)
  * - Type safety for reply content
  * - Proper null handling for optional values
  * - React Context typing
@@ -14,20 +14,16 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { StoryTreeLevel } from '../types/types';
-
-interface SelectionState {
-  start: number;
-  end: number;
-}
+import { StoryTreeLevel } from '../types/types';      
+import { Quote } from '../types/quote';
 
 interface ReplyContextType {
   replyTarget: StoryTreeLevel | null;
   setReplyTarget: (target: StoryTreeLevel | null) => void;
   replyContent: string;
   setReplyContent: (content: string) => void;
-  selectionState: SelectionState | null;
-  setSelectionState: (state: SelectionState | null) => void;
+  replyQuote: Quote | null;
+  setReplyQuote: (quote: Quote | null) => void;
   isReplyActive: boolean;
   clearReplyState: () => void;
   replyError: string | null;
@@ -46,14 +42,14 @@ interface ReplyProviderProps {
 export function ReplyProvider({ children }: ReplyProviderProps) {
   const [replyTarget, setReplyTarget] = useState<StoryTreeLevel | null>(null);
   const [replyContent, setReplyContent] = useState<string>('');
-  const [selectionState, setSelectionState] = useState<SelectionState | null>(null);
+  const [replyQuote, setReplyQuote] = useState<Quote | null>(null);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [isReplyOpen, setIsReplyOpen] = useState<boolean>(false);
 
   const clearReplyState = useCallback(() => {
     setReplyTarget(null);
     setReplyContent('');
-    setSelectionState(null);
+    setReplyQuote(null);
     setReplyError(null);
     setIsReplyOpen(false);
   }, []);
@@ -63,15 +59,15 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
     setReplyTarget,
     replyContent,
     setReplyContent,
-    selectionState,
-    setSelectionState,
+    replyQuote,
+    setReplyQuote,
     isReplyActive: replyTarget !== null,
     clearReplyState,
     replyError,
     setReplyError,
     isReplyOpen,
     setIsReplyOpen
-  }), [replyTarget, replyContent, selectionState, clearReplyState, replyError, isReplyOpen]);
+  }), [replyTarget, replyContent, replyQuote, clearReplyState, replyError, isReplyOpen]);
 
   useEffect(() => {
     return () => {

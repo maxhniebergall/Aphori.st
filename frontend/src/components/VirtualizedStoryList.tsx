@@ -38,24 +38,12 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
   const sizeMap = useRef<{ [key: number]: number }>({});
   const [levels, setLevels] = useState<StoryTreeLevel[]>([]);
   const [hasNextPage, setHasNextPage] = useState(true);
-  const { replyTarget } = useReplyContext();
 
-  // Extract relevant state
-  const globalLevels = state?.storyTree?.levels;
-  const hasNextPageGlobal = globalLevels && globalLevels.length > 0 && globalLevels[globalLevels.length - 1].siblings.levelsMap.size > 0;
-
-  // Memoize replyTargetIndex calculation
-  const replyTargetIndex = useMemo(() => 
-    replyTarget?.rootNodeId 
-      ? globalLevels?.findIndex(level => level?.rootNodeId === replyTarget.rootNodeId)
-      : undefined,
-    [replyTarget?.rootNodeId, globalLevels]
-  );
-
-  // Load initial data
+  // useEffects
+    // Load initial data
   useEffect(() => {
     const loadInitialData = async () => {
-      if (!postRootId || levels.length > 0) return;
+      if (!postRootId) return;
       
       setIsLocalLoading(true);
       try {
@@ -72,29 +60,12 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
     };
 
     loadInitialData();
-  }, [postRootId, levels.length]);
-
-  const loadMoreLevels = useCallback(async (startLevelNumber: number, endLevelNumber: number) => {
-    if (!hasNextPage || isLocalLoading || !postRootId) return;
-
-    setIsLocalLoading(true);
-    try {
-      const newLevels = await storyTreeOperator.loadMoreLevels(startLevelNumber, endLevelNumber);
-      // TODO the loadMoreItems referenced above is semantically a bit different from the implementation
-      // the implementation above is for loading more items from the same level
-      // the implementation below is for loading more levels, after the ones that come with the initial load
-      
-      if (newLevels.length) {
-        setLevels(prev => [...prev, ...newLevels]);
-      } else {
-        setHasNextPage(false);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load more items');
-    } finally {
-      setIsLocalLoading(false);
-    }
-  }, [hasNextPage, isLocalLoading, postRootId]);
+  }, [postRootId]);
+    // Load more levels
+  useEffect(() => {
+    if (!postRootId) return;
+    setLevels(state?.storyTree?.levels || []);
+  }, [postRootId, state?.storyTree?.levels]);
 
   // Show initial loading state
   if (isLocalLoading && !levels.length) {
@@ -124,7 +95,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
           <InfiniteLoader
             isItemLoaded={(index) => index < levels.length}
             itemCount={hasNextPage ? levels.length + 1 : levels.length}
-            loadMoreItems={loadMoreLevels}
+            loadMoreItems={storyTreeOperator.loadMoreLevels}
             minimumBatchSize={10}
             threshold={5}
           >

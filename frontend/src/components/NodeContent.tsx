@@ -17,29 +17,21 @@
 import React, { useMemo } from 'react';
 import TextSelection from './TextSelection';
 import QuoteRenderer from './QuoteRenderer';
-import { StoryTreeLevel, SelectionState } from '../types/types';
-
+import { StoryTreeNode } from '../types/types';
+import { SelectionState, Quote } from '../types/quote';
 interface NodeContentProps {
-  node: StoryTreeLevel;
-  replyTargetId?: string;
-  selectionState: SelectionState | null;
-  onSelectionComplete?: (selection: SelectionState) => void;
+  node: StoryTreeNode;
+  onSelectionComplete?: (quote: Quote) => void;
+  quote?: Quote;
+  existingSelectableQuotes?: Record<string, number>;
 }
 
 const NodeContent: React.FC<NodeContentProps> = ({
   node,
-  replyTargetId,
-  selectionState,
   onSelectionComplete = () => {},
+  quote,
+  existingSelectableQuotes,
 }) => {
-  // Get the first quote from the node's siblings map
-  const quote = useMemo(() => {
-    const firstQuote = Array.from(node.siblings.levelsMap.keys())[0];
-    return firstQuote || null;
-  }, [node.siblings.levelsMap]);
-
-  // Check if this node is the target of a reply
-  const isQuoteTarget = replyTargetId === node.rootNodeId;
 
   // Memoize the text content to prevent unnecessary re-renders
   const textContent = useMemo(() => {
@@ -50,7 +42,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
     <div 
       className="node-content"
       role="article"
-      aria-label={isQuoteTarget ? 'Selected content for reply' : 'Story content'}
+      aria-label={quote ? 'Selected content for reply' : 'Story content'}
     >
       {quote && (
         <div className="quote-container" role="region" aria-label="Quoted content">
@@ -60,8 +52,9 @@ const NodeContent: React.FC<NodeContentProps> = ({
       <div className="text-content" role="region" aria-label="Main content">
         <TextSelection
           onSelectionCompleted={onSelectionComplete}
-          selectionState={isQuoteTarget ? selectionState : null}
-          aria-label={isQuoteTarget ? 'Selectable text for reply' : 'Story text'}
+          selectedQuote={quote}
+          existingSelectableQuotes={existingSelectableQuotes}
+          aria-label={quote ? 'Selectable text for reply' : 'Story text'}
         >
           {textContent}
         </TextSelection>
