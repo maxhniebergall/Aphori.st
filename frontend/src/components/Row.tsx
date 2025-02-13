@@ -21,43 +21,30 @@ import RowLoading from './RowLoading';
 import RowFallback from './RowFallback';
 import TitleRow from './TitleRow';
 import NormalRowContent from './NormalRowContent';
-import { StoryTreeLevel, StoryTree } from '../context/types';
+import { StoryTreeLevel, StoryTree } from '../types/types';
 
 interface RowProps extends Omit<ListChildComponentProps, 'data'> {
-  node: StoryTreeLevel | null;
-  setSize: (index: number, size: number) => void;
-  handleSiblingChange: (
-    newNode: StoryTreeLevel,
-    index: number,
-    fetchNode: (id: string) => Promise<void>
-  ) => void;
-  fetchNode: (id: string) => Promise<void>;
-  isLoading: boolean;
-  postRootId: string;
-  replyTargetIndex?: number;
   parentId: string;
-  setIsFocused?: (focused: boolean) => void;
+  levelData: StoryTreeLevel;
+  setSize: (visualHeight: number) => void;
+  postRootId: string;
+  isReplyTarget?: boolean;
 }
 
 const Row: React.FC<RowProps> = React.memo(
-  ({ 
-    index, 
-    style, 
-    node, 
-    setSize, 
-    handleSiblingChange, 
-    fetchNode, 
-    isLoading, 
-    postRootId, 
-    replyTargetIndex, 
+  ({
     parentId, 
-    setIsFocused 
+    style, 
+    levelData, 
+    setSize, 
+    postRootId,
+    isReplyTarget 
   }) => {
     // Determine if the node should be hidden based on reply mode
     const shouldHide = useMemo(() => {
-      if (replyTargetIndex === undefined) return false;
-      return index > replyTargetIndex;
-    }, [replyTargetIndex, index]);
+      if (isReplyTarget === undefined) return false;
+      return isReplyTarget;
+    }, [isReplyTarget]);
 
     // Memoize the user's style and merge necessary absolute positioning
     const containerStyle = useMemo(() => ({
@@ -66,38 +53,22 @@ const Row: React.FC<RowProps> = React.memo(
 
     // Choose which content component to render
     const content = useMemo(() => {
-      if (shouldHide) {
-        return null;
-      }
-
-      if (isLoading) {
-        return <RowLoading />;
-      }
-
-      if (!node || !node.rootNodeId) {
-        return <RowFallback message="Loading node..." />;
-      }
-
-      if (node.isTitleNode) {
-        return <TitleRow node={node} />;
+      if (levelData?.isTitleNode) {
+        return <TitleRow node={levelData} />;
       }
 
       return (
         <NormalRowContent
-          node={node}
-          onSiblingChange={handleSiblingChange}
-          index={index}
-          fetchNode={fetchNode}
-          postRootId={postRootId}
           parentId={parentId}
-          setIsFocused={setIsFocused}
+          levelData={levelData}
+          postRootId={postRootId}
         />
       );
     }, [
       shouldHide,
       isLoading,
-      node,
-      index,
+      levelData,
+      levelNumber,
       handleSiblingChange,
       fetchNode,
       postRootId,
@@ -107,14 +78,13 @@ const Row: React.FC<RowProps> = React.memo(
 
     // Create wrapper div for accessibility attributes
     const wrappedContent = useMemo(() => (
-      <div role="listitem" aria-label={node?.isTitleNode ? 'Story title' : 'Story content'}>
+      <div role="listitem" aria-label={levelData?.isTitleNode ? 'Story title' : 'Story content'}>
         {content}
       </div>
-    ), [content, node?.isTitleNode]);
+    ), [content, levelData?.isTitleNode]);
 
     return (
       <RowContainer
-        index={index}
         setSize={setSize}
         shouldHide={shouldHide}
         style={containerStyle}
@@ -126,7 +96,7 @@ const Row: React.FC<RowProps> = React.memo(
   (prevProps, nextProps) => {
     // Optimize re-renders by checking essential props
     return (
-      prevProps.node?.rootNodeId === nextProps.node?.rootNodeId &&
+      prevProps.levelData?.rootNodeId === nextProps.levelData?.rootNodeId &&
       prevProps.isLoading === nextProps.isLoading &&
       prevProps.index === nextProps.index &&
       prevProps.style.top === nextProps.style.top &&

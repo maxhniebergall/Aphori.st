@@ -23,7 +23,9 @@
 
 - TODO:
   - Seperate user + email functions into a seperate file
-  - Seperate post + reply functions into a seperate file
+  - Seperate post + reply functions into a seperate files
+    - seperate create and get files
+  - Seperate feed (post + reply) functions into a seperate file
 */
 
 import express, { Request, Response, NextFunction, RequestHandler } from "express";
@@ -49,9 +51,12 @@ import {
     FeedItem,
     AuthenticatedRequest,
     ApiResponse,
-    PaginatedResponse,
+    CursorPaginatedResponse,
     TokenPayload,
-    AuthTokenPayload
+    AuthTokenPayload,
+    Quote,
+    UnifiedNode,
+    Replies
 } from './types/index.js';
 
 dotenv.config();
@@ -782,6 +787,9 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         const sortedSetKey = `replies:quote:${quoteKey}:mostRecent`;
         await db.zAdd(sortedSetKey, score, newReply.id);
 
+        const sortedSetWithUuidKey = `replies:uuid:${newReply.parentId}:quote:${quoteKey}:mostRecent`;
+        await db.zAdd(sortedSetWithUuidKey, score, newReply.id);
+
         // Increment the quote count in the hash
         if (quote?.text) {
             await db.hIncrBy(`${actualParentId}:quoteCounts`, quote.text, 1);
@@ -805,77 +813,6 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
     }
 }) as unknown as RequestHandler));
 
-// Updated GET endpoint for reply fetching using cursor-based pagination:
-// Expects a URL-encoded JSON string representing a full quote object
-// (with fields: text, sourcePostId, and selectionRange) instead of a simple string.
-app.get('/api/getReplies/:quote/:sortingCriteria', async (req: Request<{ quote: string, sortingCriteria: string }>, res: Response): Promise<void> => {
-    try {
-        const { sortingCriteria } = req.params;
-        let quoteObj: Quote;
-        try {
-            // Decode and parse the JSON from the URL parameter.
-            const decodedQuote = decodeURIComponent(req.params.quote);
-            quoteObj = JSON.parse(decodedQuote);
-        } catch (error) {
-            res.status(400).json({ error: 'Invalid quote object provided in URL parameter' });
-            return;
-        }
-
-        // Validate that the quote object includes the required 'text' field.
-        if (!quoteObj.text) {
-            res.status(400).json({ error: 'Quote object must include a "text" field' });
-            return;
-        }
-
-        // Generate a unique key for the quote using its properties.
-        const quoteKey = `${quoteObj.text}|${quoteObj.sourcePostId || ''}|${quoteObj.selectionRange ? `${quoteObj.selectionRange.start}-${quoteObj.selectionRange.end}` : ''}`;
-
-        // Cursor-based pagination handling via query parameters.
-        const limit = parseInt(req.query.limit as string) || 10;
-        // If no cursor is provided, use a high value to start from the newest score.
-        const cursor = req.query.cursor ? Number(req.query.cursor) : Number.POSITIVE_INFINITY;
-        
-        // Build the sorted set key for replies based on the full quote object and sorting criteria.
-        const sortedSetKey = `replies:quote:${quoteKey}:${sortingCriteria}`;
-        
-        // Use zRevRangeByScore to fetch reply score pairs using cursor-based pagination.
-        const replyScorePairs: Array<{ replyId: string, score: number }> = await db.zRevRangeByScore(
-            sortedSetKey, 
-            cursor, 
-            Number.NEGATIVE_INFINITY, 
-            { limit }
-        );
-        
-        let nextCursor: number | null = null;
-        if (replyScorePairs.length === limit) {
-            nextCursor = replyScorePairs[replyScorePairs.length - 1].score;
-        }
-        const replyIds = replyScorePairs.map(pair => pair.replyId);
-        
-        // For each reply ID, fetch and decompress the reply data.
-        const replyKeys = await Promise.all(
-            replyIds.map(id => db.hGet(id, 'reply', { returnCompressed: true }).then(data => db.decompress(data)))
-        );
-        
-        // Prepare the response object with cursor pagination info.
-        const response = {
-            replies: replyKeys,
-            pagination: {
-                limit,
-                nextCursor,
-                hasMore: nextCursor !== null
-            }
-        };
-
-        // Compress and send the response.
-        const compressedResponse = await db.compress(response);
-        res.setHeader('X-Data-Compressed', 'true');
-        res.send(compressedResponse);
-    } catch (err) {
-        logger.error('Error fetching replies by quote:', err);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
 
 // Get global replies feed
 app.get('/api/getRepliesFeed', async (req: Request, res: Response): Promise<void> => {
@@ -922,67 +859,108 @@ app.get('/api/getRepliesFeed', async (req: Request, res: Response): Promise<void
     }
 });
 
-// Get replies by quote across all posts
-app.get('/api/getReplies/:quote/:sortingCriteria', async (req: Request<{ quote: string, sortingCriteria: string }, any, any, any, any>, res: Response): Promise<void> => {
+// Updated GET endpoint with generics for route params and response type.
+app.get<{ 
+    uuid: string;
+    quote: string; 
+    sortingCriteria: string 
+}, ApiResponse<CursorPaginatedResponse<Reply>>>('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req, res) => {
     try {
-        const { quote, sortingCriteria } = req.params;
-        // TODO, improve this quote to be a quote object, including ID, text, and selection start and end, as in the frontend type. 
-        // We will also need to update the create reply endpoint to support this new quote type.
-        const { page = 1, limit = 10 } = req.query;
-        
-        if (!quote || !sortingCriteria) {
-            res.status(400).json({ error: 'Quote and sorting criteria are required' });
+        const { uuid, quote, sortingCriteria } = req.params;
+        let quoteObj: Quote;
+        try {
+            // Decode and parse the JSON from the URL parameter.
+            const decodedQuote = decodeURIComponent(quote);
+            quoteObj = JSON.parse(decodedQuote);
+        } catch (error) {
+            const errorReponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+                success: false,
+                error: 'Invalid quote object provided in URL parameter'
+            };
+            res.status(400).json(errorReponse);
             return;
         }
 
-        // Validate and sanitize pagination parameters
-        const pageNum = Math.max(1, parseInt(page));
-        const itemsPerPage = Math.min(100, Math.max(1, parseInt(limit)));
-        const start = (pageNum - 1) * itemsPerPage;
-        const end = start + itemsPerPage - 1;
+        // Validate that the quote object includes the required 'text' field.
+        if (!quoteObj.text || !quoteObj.sourcePostId || !quoteObj.selectionRange) {
+            const errorReponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+                success: false,
+                error: 'Quote object must include a "text" field'
+            };
+            res.status(400).json(errorReponse);
+            return;
+        }
 
-        // Get the sorted set key for this quote
-        const sortedSetKey = `replies:quote:${quote}:${sortingCriteria}`;
+        // Generate a unique key for the quote using its properties.
+        const quoteKey = `${quoteObj.text}|${quoteObj.sourcePostId}|${quoteObj.selectionRange.start}|${quoteObj.selectionRange.end}`;
+
+        // Cursor-based pagination handling via query parameters.
+        const limit = parseInt(req.query.limit as string) || 10;
+        // If no cursor is provided, use a high value to start from the newest score.
+        const cursor = req.query.cursor ? Number(req.query.cursor) : Number.POSITIVE_INFINITY;
         
-        // Get total count for pagination info
-        const countOfRepliesToQuoteOfNode = await db.zCard(sortedSetKey) || 0;
+        // Build the sorted set key for replies based on the full quote object and sorting criteria.
+        const sortedSetKey = `replies:uuid:${uuid}:quote:${quoteKey}:${sortingCriteria}`;
         
-        // Get compressed reply keys from the sorted set with pagination
-        const compressedReplyKeys = await db.zRange(sortedSetKey, start, end, { returnCompressed: true }) || [];
-        
-        // Decompress each reply key
-        const replyKeys = await Promise.all(
-            compressedReplyKeys.map(key => db.decompress(key))
+        // Use zRevRangeByScore to fetch reply score pairs using cursor-based pagination.
+        const replyScorePairs: Array<{ replyId: string, score: number }> = await db.zRevRangeByScore(
+            sortedSetKey, 
+            cursor, 
+            Number.NEGATIVE_INFINITY, 
+            { limit }
         );
 
-        // Create the response object
+        const matchingRepliesCount = await db.zCard(sortedSetKey);
+        
+        let nextCursor: number | null = null;
+        if (replyScorePairs.length === limit) {
+            nextCursor = replyScorePairs[replyScorePairs.length - 1].score;
+        }
+        const replyIds = replyScorePairs.map(pair => pair.replyId);
+        
+        // For each reply ID, fetch and decompress the reply data.
+        const replyKeys = await Promise.all(
+            replyIds.map(id => db.hGet(id, 'reply', { returnCompressed: true }).then(data => db.decompress(data)))
+        ) as Reply[];
+        
+        // Prepare the response object with cursor pagination info.
         const response = {
             replies: replyKeys,
             pagination: {
-                page: pageNum,
-                limit: itemsPerPage,
-                countOfRepliesToQuoteOfNode,
-                totalPages: Math.ceil(countOfRepliesToQuoteOfNode / itemsPerPage)
+                limit,
+                nextCursor,
+                hasMore: nextCursor !== null,
+                matchingRepliesCount: matchingRepliesCount || 0
             }
         };
 
-        // Compress the final response
-        const compressedResponse = await db.compress(response);
-        
-        // Add compression header
+        // Compress and send the response.
+        const compressedResponse = await db.compress(response) as CursorPaginatedResponse<Reply>;
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(compressedResponse);
+        const apiResponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+            success: true,
+            compressedData: compressedResponse
+        };
+        res.send(apiResponse);
     } catch (err) {
         logger.error('Error fetching replies by quote:', err);
-        res.status(500).json({ error: 'Server error' });
+        const errorReponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+            success: false,
+            error: 'Server error'
+        };
+        res.status(500).json(errorReponse);
     }
 });
 
-// New Combined Node Endpoint
-app.get('/api/combinedNode/:uuid', async (req: Request<{ uuid: string }>, res: Response): Promise<void> => {
+/**
+ * @route   GET /api/combinedNode/:uuid
+ * @desc    Retrieves a combined node (story or reply) with unified node structure
+ * @access  Public
+ */
+app.get<{ uuid: string }, ApiResponse<UnifiedNode>>('/api/combinedNode/:uuid', async (req, res) => {
     const { uuid } = req.params;
     if (!uuid) {
-        res.status(400).json({ error: 'UUID is required' });
+        res.status(400).json({ success: false, error: 'UUID is required' });
         return;
     }
     try {
@@ -995,12 +973,12 @@ app.get('/api/combinedNode/:uuid', async (req: Request<{ uuid: string }>, res: R
             nodeType = 'reply';
         }
         if (!compressedData) {
-            res.status(404).json({ error: 'Node not found' });
+            res.status(404).json({ success: false, error: 'Node not found' });
             return;
         }
         const rawData = await db.decompress(compressedData);
 
-        let unifiedNode;
+        let unifiedNode: UnifiedNode;
         if (nodeType === 'story') {
             unifiedNode = {
                 id: rawData.id,
@@ -1020,7 +998,7 @@ app.get('/api/combinedNode/:uuid', async (req: Request<{ uuid: string }>, res: R
                 type: 'reply',
                 content: rawData.text,
                 metadata: {
-                    parentId: rawData.parentId, // array of parent IDs for replies
+                    parentId: rawData.parentId, // expected to be an array for reply nodes
                     author: rawData.metadata.author,
                     createdAt: rawData.metadata.createdAt,
                     quote: rawData.quote || undefined
@@ -1028,12 +1006,16 @@ app.get('/api/combinedNode/:uuid', async (req: Request<{ uuid: string }>, res: R
             };
         }
 
-        const compressedResponse = await db.compress(unifiedNode);
+        const apiResponse: ApiResponse<UnifiedNode> = {
+            success: true,
+            data: unifiedNode
+        };
+        const compressedResponse = await db.compress(apiResponse);
         res.setHeader('X-Data-Compressed', 'true');
         res.send(compressedResponse);
     } catch (error) {
         logger.error('Error in combinedNode endpoint:', error);
-        res.status(500).json({ error: 'Server error' });
+        res.status(500).json({ success: false, error: 'Server error' });
     }
 });
 

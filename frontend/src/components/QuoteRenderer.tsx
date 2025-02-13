@@ -14,7 +14,7 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Quote } from '../context/types';
+import { Quote } from '../types/types';
 
 interface QuoteRendererProps {
   quote: Quote;

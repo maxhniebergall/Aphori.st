@@ -10,19 +10,17 @@ import React, { useRef } from 'react';
 import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
 
 export interface RowContainerProps {
-  index: number;
-  setSize: (index: number, size: number) => void;
+  setSize: (visualHeight: number) => void;
   shouldHide?: boolean;
   children: React.ReactNode;
   style: React.CSSProperties;
 }
 
-function RowContainer({ index, setSize, shouldHide = false, children, style }: RowContainerProps) {
+function RowContainer({ setSize, shouldHide = false, children, style }: RowContainerProps) {
   const rowRef = useRef<HTMLDivElement>(null);
 
   // Use the hook to update height and cleanup
   useDynamicRowHeight({
-    index,
     rowRef,
     setSize,
     shouldHide,

@@ -6,7 +6,7 @@
  * - Type safety for all operations
  */
 
-import { DatabaseClient, CursorPagination, UnifiedNode } from '../types';
+import { DatabaseClient, CursorPaginationRequest, UnifiedNode } from '../types';
 
 export class PaginationService {
     private db: DatabaseClient;
@@ -15,7 +15,7 @@ export class PaginationService {
         this.db = db;
     }
 
-    async getNodes(options: CursorPagination): Promise<{
+    async getNodes(options: CursorPaginationRequest): Promise<{
         nodes: UnifiedNode[];
         nextCursor?: string;
         prevCursor?: string;

@@ -14,7 +14,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { StoryTreeLevel } from './types';
+import { StoryTreeLevel } from '../types/types';
 
 interface SelectionState {
   start: number;
