@@ -64,14 +64,14 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   validateNode(node: any): node is StoryTreeLevel {
-    return node && 
-           typeof node === 'object' &&
-           typeof node.rootNodeId === 'string' &&
-           typeof node.levelNumber === 'number' &&
-           typeof node.textContent === 'string' &&
-           node.siblings &&
-           typeof node.siblings === 'object' &&
-           node.siblings.levelsMap instanceof Map;
+    return node &&
+      typeof node === 'object' &&
+      typeof node.rootNodeId === 'string' &&
+      typeof node.levelNumber === 'number' &&
+      typeof node.textContent === 'string' &&
+      node.siblings &&
+      typeof node.siblings === 'object' &&
+      node.siblings.levelsMap instanceof Map;
   }
 
   async handleCompressedResponse(response: AxiosResponse): Promise<any> {
@@ -90,9 +90,9 @@ class StoryTreeOperator extends BaseOperator {
       }
 
       const storyTree: StoryTree = typeof data.storyTree === 'string' ? JSON.parse(data.storyTree) : data.storyTree;
-      
+
       const levels: StoryTreeLevel[] = [];
-      
+
       // Create a title node if metadata exists
       if (storyTree.metadata?.title || storyTree.metadata?.author) {
         const titleNode: StoryTreeNode = {
@@ -110,7 +110,7 @@ class StoryTreeOperator extends BaseOperator {
           selectedQuote: this.rootQuote,
           siblings: { levelsMap: new Map([[this.rootQuote, [titleNode]]]) }
         };
-        
+
         levels.push(titleLevel);
       }
 
@@ -138,14 +138,14 @@ class StoryTreeOperator extends BaseOperator {
       try {
         const response = await axios.get<{ data: UnifiedNode }>(`${process.env.REACT_APP_API_URL}/api/combinedNode/${id}`);
         const data = await this.handleCompressedResponse(response);
-        
+
         if (!data || !data.data) {
           console.error('Invalid unified node data received:', data);
           return null;
         }
 
         const unifiedNode: UnifiedNode = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
-        
+
         return {
           rootNodeId: unifiedNode.id,
           parentId: unifiedNode.metadata.parentId ? unifiedNode.metadata.parentId : [],
@@ -173,60 +173,60 @@ class StoryTreeOperator extends BaseOperator {
         console.warn('StoryTreeOperator: state or dispatch not initialized');
         reject(new Error('StoryTreeOperator: state or dispatch not initialized'));
       }
-    try {
-      const levels: StoryTreeLevel[] = this.state.storyTree?.levels ?? [];
-      // Find the target level that matches the provided level number and quote.
-      const targetLevel = levels.find((level) => 
-        level.levelNumber === levelNumber && compareQuotes(level.selectedQuote, quote)
-      );
+      try {
+        const levels: StoryTreeLevel[] = this.state.storyTree?.levels ?? [];
+        // Find the target level that matches the provided level number and quote.
+        const targetLevel = levels.find((level) =>
+          level.levelNumber === levelNumber && compareQuotes(level.selectedQuote, quote)
+        );
 
-      if (!targetLevel) {
-        console.warn(`No level found for levelNumber ${levelNumber} with the provided quote`);
-        reject(new Error(`No level found for levelNumber ${levelNumber} with the provided quote`));
-      }
-
-      const limit = stopIndex - startIndex + 1;
-      const cursor = startIndex;
-      const uuid = parentId;
-      const sortingCriteria = 'mostRecent';
-
-      const response = await axios.get<{ compressedData: CursorPaginatedResponse<Reply> }>(`${process.env.REACT_APP_API_URL}/api/getReplies/${uuid}/${quote}/${sortingCriteria}?limit=${limit}&cursor=${cursor}`);
-      const data = await this.handleCompressedResponse(response);
-      if (!data || !data.compressedData) {
-        console.error('Invalid unified node data received:', data);
-        return [];
-      }
-
-      const paginatedResponse = JSON.parse(data.data) as CursorPaginatedResponse<Reply>;
-      const replies = paginatedResponse.data;
-
-      const nodes: StoryTreeNode[] = replies.map((reply) => ({
-        id: reply.id,
-        rootNodeId: this.state.storyTree?.id || 'undefinedRootNodeId',
-        parentId: reply.parentId,
-        textContent: reply.text,
-        quote: reply.quote
-      }));
-
-      const level: StoryTreeLevel = {
-        parentId: [this.state.storyTree?.id || 'undefinedRootNodeId'],
-        rootNodeId: this.state.storyTree?.id || 'undefinedRootNodeId',
-        levelNumber: levelNumber,
-        selectedQuote: quote,
-        siblings: { levelsMap: new Map([[quote, nodes]]) }
-      };
-
-      if (nodes.length > 0) {
-        if (this.dispatch) {
-          this.dispatch({ 
-            type: ACTIONS.INCLUDE_NODES_IN_LEVELS, 
-            payload: [level]
-          });
-        resolve();
-        } else {
-          reject(new Error('StoryTreeOperator: dispatch not initialized'));
+        if (!targetLevel) {
+          console.warn(`No level found for levelNumber ${levelNumber} with the provided quote`);
+          reject(new Error(`No level found for levelNumber ${levelNumber} with the provided quote`));
         }
-      }
+
+        const limit = stopIndex - startIndex + 1;
+        const cursor = startIndex;
+        const uuid = parentId;
+        const sortingCriteria = 'mostRecent';
+
+        const response = await axios.get<{ compressedData: CursorPaginatedResponse<Reply> }>(`${process.env.REACT_APP_API_URL}/api/getReplies/${uuid}/${quote}/${sortingCriteria}?limit=${limit}&cursor=${cursor}`);
+        const data = await this.handleCompressedResponse(response);
+        if (!data || !data.compressedData) {
+          console.error('Invalid unified node data received:', data);
+          return [];
+        }
+
+        const paginatedResponse = JSON.parse(data.data) as CursorPaginatedResponse<Reply>;
+        const replies = paginatedResponse.data;
+
+        const nodes: StoryTreeNode[] = replies.map((reply) => ({
+          id: reply.id,
+          rootNodeId: this.state.storyTree?.id || 'undefinedRootNodeId',
+          parentId: reply.parentId,
+          textContent: reply.text,
+          quote: reply.quote
+        }));
+
+        const level: StoryTreeLevel = {
+          parentId: [this.state.storyTree?.id || 'undefinedRootNodeId'],
+          rootNodeId: this.state.storyTree?.id || 'undefinedRootNodeId',
+          levelNumber: levelNumber,
+          selectedQuote: quote,
+          siblings: { levelsMap: new Map([[quote, nodes]]) }
+        };
+
+        if (nodes.length > 0) {
+          if (this.dispatch) {
+            this.dispatch({
+              type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
+              payload: [level]
+            });
+            resolve();
+          } else {
+            reject(new Error('StoryTreeOperator: dispatch not initialized'));
+          }
+        }
 
       } catch (error) {
         console.error('Error loading more items:', error);
@@ -236,7 +236,7 @@ class StoryTreeOperator extends BaseOperator {
   }
 
 
-  public async loadMoreLevels( startLevelNumber: number, endLevelNumber: number): Promise<StoryTreeNode[]> {
+  public async loadMoreLevels(startLevelNumber: number, endLevelNumber: number): Promise<StoryTreeNode[]> {
     if (!this.state || !this.dispatch) {
       console.warn('StoryTreeOperator: state or dispatch not initialized');
       return [];
@@ -285,8 +285,8 @@ class StoryTreeOperator extends BaseOperator {
       };
 
       if (nodes.length > 0) {
-        this.dispatch({ 
-          type: ACTIONS.INCLUDE_NODES_IN_LEVELS, 
+        this.dispatch({
+          type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
           payload: [level]
         });
       }
@@ -301,13 +301,13 @@ class StoryTreeOperator extends BaseOperator {
   async submitReply(rootNodeId: string, replyContent: string, quote: Quote): Promise<{ success: boolean }> {
     try {
       const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/reply`, {
-         rootNodeId,
-         replyContent,
-         quote
+        rootNodeId,
+        replyContent,
+        quote
       });
       const data = await this.handleCompressedResponse(response);
       if (data && data.success) {
-         return { success: true };
+        return { success: true };
       }
     } catch (error) {
       console.error('Error submitting reply:', error);
