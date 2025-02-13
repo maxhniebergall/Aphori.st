@@ -7,7 +7,7 @@
  * - Type safety for all operations
  */
 
-import { UnifiedNode } from '../context/types';
+import { UnifiedNode } from '../types/types';
 
 class LRUCache<T> {
     private capacity: number;

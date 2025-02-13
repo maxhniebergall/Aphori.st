@@ -171,8 +171,8 @@ interface UnifiedNode {
 - [x] Always use quote mode for reply loading (replies are loaded with quote data except when loading stories).
 
 #### Sub-phase 4B: Backend API Integration and Endpoint Updates
-- [ ] Update reply-fetching endpoints (e.g., `/api/getReplies/:quote/:sortingCriteria`) to expect and handle a full quote object (including text, sourcePostId, and selectionRange) instead of a simple string.
-- [ ] Modify the create reply endpoint to store the complete quote object in replies.
+- [x] Update reply-fetching endpoints (e.g., `/api/getReplies/:quote/:sortingCriteria`) to expect and handle a full quote object (including text, sourcePostId, and selectionRange) instead of a simple string.
+- [x] Modify the create reply endpoint to store the complete quote object in replies.
 - [x] Maintain cursor-based pagination in reply endpoints.
 - [x] Ensure the combined node endpoint (`/api/combinedNode/:uuid`) returns nodes in the unified format.
 

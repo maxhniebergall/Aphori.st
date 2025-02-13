@@ -9,14 +9,12 @@
 import { useEffect } from 'react';
 
 interface UseDynamicRowHeightProps {
-  index: number;
   rowRef: React.MutableRefObject<HTMLElement | null>;
-  setSize: (index: number, size: number) => void;
+  setSize: (visualHeight: number) => void;
   shouldHide?: boolean;
 }
 
 const useDynamicRowHeight = ({
-  index,
   rowRef,
   setSize,
   shouldHide = false,
@@ -27,7 +25,7 @@ const useDynamicRowHeight = ({
 
     const updateSize = () => {
       if (shouldHide) {
-        setSize(index, 0);
+        setSize(0);  
         return;
       }
 
@@ -45,7 +43,7 @@ const useDynamicRowHeight = ({
       totalHeight += 24;
       totalHeight = Math.max(totalHeight, 100);
 
-      setSize(index, totalHeight);
+      setSize(totalHeight);
     };
 
     // Initial calculation and a delayed update to ensure proper measurement.
@@ -68,7 +66,7 @@ const useDynamicRowHeight = ({
       resizeObserver.disconnect();
       clearTimeout(timeoutId);
     };
-  }, [index, rowRef, setSize, shouldHide]);
+  }, [rowRef, setSize, shouldHide]);
 };
 
 export default useDynamicRowHeight; 

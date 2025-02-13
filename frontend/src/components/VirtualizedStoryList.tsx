@@ -17,34 +17,14 @@
  */
 
 import React, { useCallback, useRef, useEffect, useMemo, useState } from 'react';
-import { ListChildComponentProps, VariableSizeList } from 'react-window';
+import { VariableSizeList } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { useStoryTree } from '../context/StoryTreeContext';
 import { useReplyContext } from '../context/ReplyContext';
-import { StoryTreeLevel } from '../context/types';
+import { StoryTreeLevel } from '../types/types';
 import storyTreeOperator from '../operators/StoryTreeOperator';
-
-interface RowProps {
-  style: React.CSSProperties;
-  level: StoryTreeLevel;
-  onHeightChange: (height: number) => void;
-}
-
-const Row: React.FC<RowProps> = ({ style, level, onHeightChange }) => (
-  <div style={style}>
-    <div 
-      className="story-tree-level"
-      ref={(el) => {
-        if (el) {
-          onHeightChange(el.getBoundingClientRect().height);
-        }
-      }}
-    >
-      {level.textContent}
-    </div>
-  </div>
-);
+import Row from './Row';
 
 interface VirtualizedStoryListProps {
   postRootId: string;
@@ -61,13 +41,13 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
   const { replyTarget } = useReplyContext();
 
   // Extract relevant state
-  const { levels: globalLevels } = state;
-  const hasNextPageGlobal = globalLevels.length > 0 && globalLevels[globalLevels.length - 1].siblings.levelsMap.size > 0;
+  const globalLevels = state?.storyTree?.levels;
+  const hasNextPageGlobal = globalLevels && globalLevels.length > 0 && globalLevels[globalLevels.length - 1].siblings.levelsMap.size > 0;
 
   // Memoize replyTargetIndex calculation
   const replyTargetIndex = useMemo(() => 
     replyTarget?.rootNodeId 
-      ? globalLevels.findIndex(level => level?.rootNodeId === replyTarget.rootNodeId)
+      ? globalLevels?.findIndex(level => level?.rootNodeId === replyTarget.rootNodeId)
       : undefined,
     [replyTarget?.rootNodeId, globalLevels]
   );
@@ -100,6 +80,10 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
     setIsLocalLoading(true);
     try {
       const newLevels = await storyTreeOperator.loadMoreItems(startIndex, stopIndex);
+      // TODO the loadMoreItems referenced above is semantically a bit different from the implementation
+      // the implementation above is for loading more items from the same level
+      // the implementation below is for loading more levels, after the ones that come with the initial load
+      
       if (newLevels.length) {
         setLevels(prev => [...prev, ...newLevels]);
       } else {

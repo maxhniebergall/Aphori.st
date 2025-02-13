@@ -15,63 +15,70 @@
 export interface Quote {
   quoteLiteral: string;
   sourcePostId: string;
+  selectionRange: SelectionState;
 }
 
 export interface StoryTreeMetadata {
-  title?: string;
-  author?: string;
+  title: string;
+  author: string;
   authorId: string;
   authorEmail: string;
   createdAt: string;
   quote: Quote | null;
 }
 
+export interface StoryTreeState {
+  storyTree: StoryTree | null;
+  error: string | null;
+}
+
 // This needs to be updated to be a superset of the value returned from the server
 export interface StoryTree { // this is the root of the story tree
   id: string; // probably a UUID, appears in the URL; same as the rootNodeId
   text: string;
-  children: null | StoryTree[];
+  children: StoryTreeLevel;
   parentId: string[] | null;
   metadata: StoryTreeMetadata;
   countOfChildren: number;
+  levels: StoryTreeLevel[];
+  idToIndexPair: IdToIndexPair;
+  error: string | null;
 }
 
 export interface StoryTreeNode {
   parentId: string[]; // the id of the parent node
   id: string; // probably a UUID
-  Quote: string; // the string literal of the quote selected by the user; by default it is the entire textContent of the node
+  quote: Quote; // the string literal of the quote selected by the user; by default it is the entire textContent of the node
   isTitleNode?: boolean;
   textContent: string; // the text content of the node
 }
 
 export interface Siblings {
-  levelsMap: Map<Quote, StoryTreeLevel[]>;
+  levelsMap: Map<Quote, StoryTreeNode[]>;
 }
 
 export interface IdToIndexPair {
   indexMap: Map<string, { levelIndex: number; siblingIndex: number }>;
 }
 
-export interface StoryTreeLevel {
+export interface StoryTreeNode {
   rootNodeId: string;
-  levelNumber: number;
+  parentId: string[];
   textContent: string;
-  siblings: Siblings;
   metadata?: QuoteMetadata;
   isTitleNode?: boolean;
 }
 
-export interface StoryTreeState {
+export interface StoryTreeLevel {
   rootNodeId: string;
-  selectedQuote: Quote | null;
-  levels: StoryTreeLevel[];
-  idToIndexPair: IdToIndexPair;
-  error: string | null;
+  parentId: string[];
+  levelNumber: number;
+  selectedQuote: Quote;
+  siblings: Siblings;
 }
 
 export interface QuoteMetadata {
-  replyCount: number;
-  lastReplyTimestamp: string;
+  replyCounts: Map<Quote, number>
 }
 
 export interface ReplyError {
@@ -80,7 +87,7 @@ export interface ReplyError {
   details?: unknown;
 }
 
-export interface SelectionState {
+  export interface SelectionState {
   start: number;
   end: number;
 }
@@ -120,4 +127,38 @@ export interface UnifiedNodeMetadata {
 export interface CacheKey {
     type: 'story' | 'reply' | 'batch';
     id: string;
+}
+
+
+// API Response Types
+export interface ApiResponse<T = any> {
+  success: boolean;
+  error?: string;
+  message?: string;
+  compressedData?: T;
+}
+
+export interface CursorPaginatedResponse<T> extends ApiResponse {
+  data: T[];
+  pagination: {
+      nextCursor?: string;
+      prevCursor?: string;
+      hasMore: boolean;
+      matchingRepliesCount: number;
+  };
+}
+
+
+// Reply Types (from backend)
+export interface Reply {
+  id: string;
+  text: string;
+  parentId: string[];
+  quote: Quote;
+  metadata: {
+      author: string;
+      authorId: string;
+      authorEmail: string;
+      createdAt: number;
+  };
 }

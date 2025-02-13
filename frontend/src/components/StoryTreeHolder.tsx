@@ -23,7 +23,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import './StoryTree.css';
 import Header from './Header';
 import { StoryTreeProvider, useStoryTree } from '../context/StoryTreeContext';
-import { ACTIONS, Quote } from '../context/types';
+import { ACTIONS, Quote } from '../types/types';
 import VirtualizedStoryList from './VirtualizedStoryList';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import MDEditor, { ContextStore } from '@uiw/react-md-editor';

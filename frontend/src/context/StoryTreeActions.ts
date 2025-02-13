@@ -10,7 +10,7 @@
 
 import React from 'react';
 import axios from 'axios';
-import { Action, ACTIONS, StoryTreeLevel, StoryTree, Quote, Siblings } from './types';
+import { Action, ACTIONS, StoryTreeLevel, StoryTree, Quote, Siblings } from '../types/types';
 import { DatabaseCompression } from '../utils/compression';
 
 const compression = new DatabaseCompression();

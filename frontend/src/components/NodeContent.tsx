@@ -17,7 +17,7 @@
 import React, { useMemo } from 'react';
 import TextSelection from './TextSelection';
 import QuoteRenderer from './QuoteRenderer';
-import { StoryTreeLevel, SelectionState } from '../context/types';
+import { StoryTreeLevel, SelectionState } from '../types/types';
 
 interface NodeContentProps {
   node: StoryTreeLevel;

@@ -13,7 +13,7 @@
  */
 
 import React from 'react';
-import { StoryTreeLevel, StoryTree } from '../context/types';
+import { StoryTreeLevel, StoryTree } from '../types/types';
 
 interface TitleRowProps {
   node: StoryTreeLevel;

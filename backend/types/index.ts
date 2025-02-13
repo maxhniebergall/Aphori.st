@@ -74,13 +74,17 @@ export interface Reply {
     id: string;
     text: string;
     parentId: string[];
-    quote?: Quote;
+    quote: Quote;
     metadata: {
         author: string;
         authorId: string;
         authorEmail: string;
         createdAt: number;
     };
+}
+
+export interface Replies {
+    replies: Reply[];
 }
 
 // Feed Types
@@ -105,18 +109,7 @@ export interface ApiResponse<T = any> {
     success: boolean;
     error?: string;
     message?: string;
-    data?: T;
-}
-
-export interface PaginationInfo {
-    page: number;
-    limit: number;
-    totalPages: number;
-}
-
-export interface PaginatedResponse<T> extends ApiResponse {
-    data: T[];
-    pagination: PaginationInfo;
+    compressedData?: T;
 }
 
 // Token Types
@@ -145,7 +138,7 @@ export interface UnifiedNodeMetadata {
 }
 
 // Cursor-based Pagination Types
-export interface CursorPagination {
+export interface CursorPaginationRequest {
     cursor?: string;
     limit: number;
     direction: 'forward' | 'backward';
@@ -157,5 +150,6 @@ export interface CursorPaginatedResponse<T> extends ApiResponse {
         nextCursor?: string;
         prevCursor?: string;
         hasMore: boolean;
+        matchingRepliesCount: number;
     };
-} 
+}

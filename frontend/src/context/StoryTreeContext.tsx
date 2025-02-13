@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { storyTreeActions } from './StoryTreeActions';
-import { StoryTreeState, Action, StoryTreeLevel, IdToIndexPair } from './types';
-import { ACTIONS } from './types';
+import { StoryTreeState, Action, StoryTreeLevel, IdToIndexPair } from '../types/types';
+import { ACTIONS } from '../types/types';
 
 /*
  * Requirements:

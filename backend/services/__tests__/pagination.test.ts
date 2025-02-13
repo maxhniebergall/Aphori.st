@@ -9,7 +9,7 @@
 
 import '@types/jest';
 import { PaginationService } from '../pagination';
-import { DatabaseClient, UnifiedNode, CursorPagination } from '../../types';
+import { DatabaseClient, UnifiedNode, CursorPaginationRequest } from '../../types';
 
 describe('PaginationService', () => {
     let paginationService: PaginationService;
@@ -69,7 +69,7 @@ describe('PaginationService', () => {
 
     describe('getNodes', () => {
         it('should return nodes with forward pagination', async () => {
-            const options: CursorPagination = {
+            const options: CursorPaginationRequest = {
                 limit: 1,
                 direction: 'forward'
             };
@@ -83,7 +83,7 @@ describe('PaginationService', () => {
         });
 
         it('should return nodes with backward pagination', async () => {
-            const options: CursorPagination = {
+            const options: CursorPaginationRequest = {
                 limit: 1,
                 direction: 'backward'
             };
@@ -104,7 +104,7 @@ describe('PaginationService', () => {
                 type: node.type
             })).toString('base64');
 
-            const options: CursorPagination = {
+            const options: CursorPaginationRequest = {
                 cursor,
                 limit: 1,
                 direction: 'forward'
@@ -119,7 +119,7 @@ describe('PaginationService', () => {
         });
 
         it('should handle empty results', async () => {
-            const options: CursorPagination = {
+            const options: CursorPaginationRequest = {
                 limit: 1,
                 direction: 'forward'
             };
