@@ -26,7 +26,7 @@
  * - Kept sizeMap as useRef to minimize re-renders.
  */
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import InfiniteLoader from 'react-window-infinite-loader';
@@ -43,20 +43,20 @@ interface StoryTreeLevelProps {
 export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelData }) => {
   // State declarations
   const [replyError, setReplyError] = useState<string | null>(null);
-  const [siblingsToUse, setSiblingsToUse] = useState<StoryTreeNode[]>(
-    levelData.siblings.levelsMap.get(levelData.selectedQuote) || []
-  );
   const [currentIndex, setCurrentIndex] = useState<number>(0);
-  const [totalSiblings, setTotalSiblings] = useState<number>(0);
-  const node = siblingsToUse[currentIndex] || levelData;
-  const [infiniteNodes, setInfiniteNodes] = useState<{ isLoading: boolean; reset: () => void }>({
-    isLoading: false,
-    reset: () => {}
-  });
+  const [siblings, setSiblings] = useState<StoryTreeNode[]>([]);
+  const [currentNode, setCurrentNode] = useState<StoryTreeNode | null>(null);
   // Keeping sizeMap as a ref for performance reasons (frequent updates do not trigger re-renders)
   const sizeMap = useRef<{ [key: number]: number }>({});
-
   const { setReplyTarget, replyTarget, setSelectionState, selectionState, clearReplyState } = useReplyContext();
+
+  // useEffects to update state based on props
+  useEffect(() => {
+    setSiblings(levelData.siblings.levelsMap.get(levelData.selectedQuote) || []);
+  }, [levelData]);
+  useEffect(() => {
+    setCurrentNode(siblings[currentIndex] ||  null);
+  }, [siblings, currentIndex]);
 
   // Check if a node is the reply target
   const isReplyTarget = useCallback(
@@ -90,7 +90,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
         setReplyTarget(levelData);
         setSelectionState({
           start: 0,
-          end: node.textContent.length,
+          end: currentNode.textContent.length,
         });
         setReplyError(null);
         window.dispatchEvent(new Event('resize'));
@@ -108,7 +108,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   ]);
 
   const navigateToNextSibling = () => { 
-    if (currentIndex < totalSiblings - 1) {
+    if (currentIndex < (levelData.siblings.levelsMap.get(levelData.selectedQuote)?.length || 1) - 1) {
       setCurrentIndex(currentIndex + 1);
     }
   };
@@ -120,19 +120,18 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   
   const loadMoreItems = async (startIndex: number, stopIndex: number): Promise<void> => {
     // TODO account for multiple parentIds
-    const loadedNodes = await StoryTreeOperator.loadMoreItems(levelData.parentId[0], levelData.levelNumber, levelData.selectedQuote, startIndex, stopIndex);
-    setSiblingsToUse(loadedNodes);
-    return Promise.resolve();
+    const promise = StoryTreeOperator.loadMoreItems(levelData.parentId[0], levelData.levelNumber, levelData.selectedQuote, startIndex, stopIndex);
+    return promise;
   };
 
   // Setup InfiniteLoader properties
   const infiniteLoaderProps = useMemo(() => ({
-    itemCount: totalSiblings,
+    itemCount: levelData.siblings.levelsMap.get(levelData.selectedQuote)?.length || 1,
     loadMoreItems, 
-    isItemLoaded: (index: number): boolean => Boolean(siblingsToUse[index]),
+    isItemLoaded: (index: number): boolean => Boolean(levelData.siblings.levelsMap.get(levelData.selectedQuote)?.[index]),
     minimumBatchSize: 3,
     threshold: 2,
-  }), [totalSiblings, loadMoreItems, siblingsToUse]);
+  }), [levelData]);
 
   // Setup gesture handling for swipe navigation
   const bind = useGesture({
@@ -158,7 +157,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   }, {
     drag: {
       axis: 'x',
-      enabled: Boolean(node.rootNodeId) && (
+      enabled: Boolean(currentNode.rootNodeId) && (
         (Boolean(navigateToNextSibling) && currentIndex < totalSiblings - 1) ||
         (Boolean(navigateToPreviousSibling) && currentIndex > 0)
       ),
@@ -166,8 +165,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     },
   });
 
-  if (!node.rootNodeId) {
-    console.warn('StoryTreeLevel received invalid node:', node);
+  if (!currentNode?.rootNodeId) {
+    console.warn('StoryTreeLevel received invalid node:', currentNode);
     return null;
   }
 
@@ -195,7 +194,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
               ref={ref}
             >
               {({ index, style }) => {
-                const currentNode = siblingsToUse[index] || node;
+                const currentNode = siblingsToUse[index] || currentNode;
                 return (
                   <div
                     style={style}
