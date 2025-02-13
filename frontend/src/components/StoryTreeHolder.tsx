@@ -23,7 +23,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import './StoryTree.css';
 import Header from './Header';
 import { StoryTreeProvider, useStoryTree } from '../context/StoryTreeContext';
-import { ACTIONS, Quote } from '../types/types';
+import { ACTIONS } from '../types/types';
+import { Quote } from '../types/quote';
 import VirtualizedStoryList from './VirtualizedStoryList';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import MDEditor, { ContextStore } from '@uiw/react-md-editor';
@@ -44,8 +45,8 @@ function StoryTreeContent() {
     setReplyTarget,
     replyContent,
     setReplyContent,
-    selectionState,
-    setSelectionState 
+    replyQuote,
+    setReplyQuote 
   } = useReplyContext();
 
   // Memoize editor options
@@ -106,28 +107,22 @@ function StoryTreeContent() {
 
   // Handle reply submission
   const handleReplySubmit = useCallback(async () => {
-    if (!replyTarget || !selectionState || !replyContent.trim()) {
+    if (!replyTarget || !replyQuote || !replyContent.trim()) {
       console.warn('Missing required data for reply submission');
       return;
     }
 
     try {
-      const quote: Quote = {
-        quoteLiteral: replyTarget.textContent.slice(selectionState.start, selectionState.end),
-        sourcePostId: replyTarget.rootNodeId,
-        selectionRange: selectionState
-      };
-
       const result = await storyTreeOperator.submitReply(
         replyTarget.rootNodeId,
         replyContent,
-        quote
+        replyQuote
       );
       
       if (result.success) {
         setReplyContent('');
         setReplyTarget(null);
-        setSelectionState(null);
+        setReplyQuote(null);
       } else {
         throw new Error('Failed to submit reply');
       }
@@ -135,14 +130,14 @@ function StoryTreeContent() {
       console.error('Error submitting reply:', error);
       dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to submit reply' });
     }
-  }, [replyTarget, selectionState, replyContent, setReplyContent, setReplyTarget, setSelectionState, dispatch]);
+  }, [replyTarget, replyQuote, replyContent, setReplyContent, setReplyTarget, setReplyQuote, dispatch]);
 
   // Handle reply cancellation
   const handleReplyCancel = useCallback(() => {
     setReplyContent('');
     setReplyTarget(null);
-    setSelectionState(null);
-  }, [setReplyContent, setReplyTarget, setSelectionState]);
+    setReplyQuote(null);
+  }, [setReplyContent, setReplyTarget, setReplyQuote]);
 
   // Instead of returning a global loading spinner, we let VirtualizedStoryList handle progressive loading.
   // Show error state if present
@@ -163,7 +158,7 @@ function StoryTreeContent() {
 
   // Render reply editor
   const renderReplyEditor = () => {
-    if (!replyTarget || !selectionState) {
+    if (!replyTarget || !replyQuote) {
       return null;
     }
 

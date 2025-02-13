@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { storyTreeActions } from './StoryTreeActions';
 import { StoryTreeState, Action, StoryTreeLevel, IdToIndexPair } from '../types/types';
 import { ACTIONS } from '../types/types';
 
@@ -81,24 +80,39 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
     case ACTIONS.START_STORY_TREE_LOAD:
       return {
         ...state,
-        rootNodeId: action.payload.rootNodeId,
-        error: null
+        storyTree: {
+          ...state.storyTree,
+          id: action.payload.rootNodeId,
+          parentId: null,
+          metadata: {
+            title: '',
+            author: '',
+            authorId: '',
+            authorEmail: '',
+            createdAt: '',
+            quote: null
+          },
+          levels: [],
+          idToIndexPair: { indexMap: new Map() },
+          error: null
+        }
       };
     
     case ACTIONS.SET_STORY_TREE_DATA:
       return {
         ...state,
-        levels: action.payload.levels,
-        idToIndexPair: action.payload.idToIndexPair,
-        error: null
+        storyTree: action.payload.storyTree
       };
     
     case ACTIONS.INCLUDE_NODES_IN_LEVELS:
-      const { updatedLevels, updatedIdToIndexPair } = mergeLevels(state.levels, state.idToIndexPair, action.payload)
+      const { updatedLevels, updatedIdToIndexPair } = mergeLevels(state.storyTree?.levels ?? [], state.storyTree?.idToIndexPair ?? { indexMap: new Map() }, action.payload)
       return {
         ...state,
-        levels: updatedLevels,
-        idToIndexPair: updatedIdToIndexPair
+        storyTree: {
+          ...state.storyTree,
+          levels: updatedLevels,
+          idToIndexPair: updatedIdToIndexPair
+        }
       };
     
     case ACTIONS.SET_ERROR:
@@ -121,7 +135,6 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
 interface StoryTreeContextType {
   state: StoryTreeState;
   dispatch: React.Dispatch<Action>;
-  actions: typeof storyTreeActions;
 }
 
 const StoryTreeContext = createContext<StoryTreeContextType | undefined>(undefined);
@@ -171,9 +184,7 @@ export function StoryTreeProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(storyTreeReducer, initialState);
   const value = {
     state,
-    dispatch,
-    actions: storyTreeActions
-  };
+    dispatch  };
 
   return (
     <StoryTreeErrorBoundary>

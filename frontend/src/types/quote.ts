@@ -6,14 +6,21 @@
  * - Contains a helper method, compareQuotes, to compare two Quote objects for equality.
  */
 
+export interface SelectionState {
+  start: number;
+  end: number;
+}
+
 export interface Quote {
   quoteLiteral: string;
   sourcePostId: string;
-  selectionRange: {
-    start: number;
-    end: number;
-  };
+  selectionRange: SelectionState;
 }
+
+export interface QuoteMetadata {
+  replyCounts: Map<Quote, number>
+}
+
 
 export function compareQuotes(q1: Quote, q2: Quote): boolean {
   return (

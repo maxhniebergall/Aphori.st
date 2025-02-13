@@ -6,41 +6,41 @@
  * - Simple boolean loading state
  * - Error handling types
  * - Node and tree structure types
- * - Quote and metadata types
  * - Reply and navigation types
  * - Type safety for all operations
  * - Yarn for package management
  */
 
-export interface SelectionState {
-  start: number;
-  end: number;
-}
 
-export interface Quote {
-  quoteLiteral: string;
-  sourcePostId: string;
-  selectionRange: SelectionState;
-}
-
-export interface QuoteMetadata {
-  replyCounts: Map<Quote, number>
-}
+import { Quote, QuoteMetadata } from "./quote";
 
 export interface IdToIndexPair {
   indexMap: Map<string, { levelIndex: number; siblingIndex: number }>;
 }
 
+export interface QuoteCounts {
+  quoteCounts: Map<Quote, number>;
+}
+
 export interface StoryTreeNode {
+  id: string;
   rootNodeId: string;
   parentId: string[];
   textContent: string;
   metadata?: QuoteMetadata;
   isTitleNode?: boolean;
+  quoteCounts: QuoteCounts | null;
 }
 
 export interface Siblings {
   levelsMap: Map<Quote, StoryTreeNode[]>;
+}
+
+export interface Pagination {
+  nextCursor?: string;
+  prevCursor?: string;
+  hasMore: boolean;
+  matchingRepliesCount: number;
 }
 
 export interface StoryTreeLevel {
@@ -49,6 +49,7 @@ export interface StoryTreeLevel {
   levelNumber: number;
   selectedQuote: Quote;
   siblings: Siblings;
+  pagination: Pagination;
 }
 
 export interface StoryTreeMetadata {
@@ -62,11 +63,8 @@ export interface StoryTreeMetadata {
 
 export interface StoryTree { // this is the root of the story tree
   id: string; // probably a UUID, appears in the URL; same as the rootNodeId
-  text: string;
-  children: StoryTreeLevel;
   parentId: string[] | null;
   metadata: StoryTreeMetadata;
-  countOfChildren: number;
   levels: StoryTreeLevel[];
   idToIndexPair: IdToIndexPair;
   error: string | null;
@@ -108,12 +106,7 @@ export interface ApiResponse<T = any> {
 
 export interface CursorPaginatedResponse<T> extends ApiResponse {
   data: T[];
-  pagination: {
-      nextCursor?: string;
-      prevCursor?: string;
-      hasMore: boolean;
-      matchingRepliesCount: number;
-  };
+  pagination: Pagination;
 }
 
 // Reply Types (from backend)

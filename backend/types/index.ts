@@ -43,12 +43,12 @@ export interface UserResult {
 
 // Story Types
 export interface StoryTree {
+    // this is the old story tree type
+    // use UnifiedNode instead
     id: string;
     text: string;
-    children: null | StoryTree[];
     parentId: string[] | null;
     metadata: StoryMetadata;
-    countOfChildren: number;
 }
 
 export interface StoryMetadata {
@@ -137,6 +137,11 @@ export interface UnifiedNodeMetadata {
     title?: string;
 }
 
+// Existing Selectable Quotes Types
+export interface ExistingSelectableQuotes {
+    quoteCounts: Map<Quote, number>;
+}
+
 // Cursor-based Pagination Types
 export interface CursorPaginationRequest {
     cursor?: string;
@@ -144,12 +149,14 @@ export interface CursorPaginationRequest {
     direction: 'forward' | 'backward';
 }
 
+export interface Pagination {
+    nextCursor?: string;
+    prevCursor?: string;
+    hasMore: boolean;
+    matchingRepliesCount: number;
+}
+
 export interface CursorPaginatedResponse<T> extends ApiResponse {
     data: T[];
-    pagination: {
-        nextCursor?: string;
-        prevCursor?: string;
-        hasMore: boolean;
-        matchingRepliesCount: number;
-    };
+    pagination: Pagination;
 }
