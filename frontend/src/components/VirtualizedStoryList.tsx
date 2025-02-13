@@ -74,12 +74,12 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
     loadInitialData();
   }, [postRootId, levels.length]);
 
-  const loadMoreItems = useCallback(async (startIndex: number, stopIndex: number) => {
+  const loadMoreLevels = useCallback(async (startLevelNumber: number, endLevelNumber: number) => {
     if (!hasNextPage || isLocalLoading || !postRootId) return;
 
     setIsLocalLoading(true);
     try {
-      const newLevels = await storyTreeOperator.loadMoreItems(startIndex, stopIndex);
+      const newLevels = await storyTreeOperator.loadMoreLevels(startLevelNumber, endLevelNumber);
       // TODO the loadMoreItems referenced above is semantically a bit different from the implementation
       // the implementation above is for loading more items from the same level
       // the implementation below is for loading more levels, after the ones that come with the initial load
@@ -124,7 +124,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
           <InfiniteLoader
             isItemLoaded={(index) => index < levels.length}
             itemCount={hasNextPage ? levels.length + 1 : levels.length}
-            loadMoreItems={loadMoreItems}
+            loadMoreItems={loadMoreLevels}
             minimumBatchSize={10}
             threshold={5}
           >
