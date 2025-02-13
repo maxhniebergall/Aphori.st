@@ -167,6 +167,7 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   // Loads nodes as a side effect via the StoryTreeContext
+  // TODO: verify that loadMoreItems requests can arrive out of order
   public async loadMoreItems(parentId: string, levelNumber: number, quote: Quote, startIndex: number, stopIndex: number): Promise<void> {
     return new Promise<void>(async (resolve, reject) => {
       if (!this.state || !this.dispatch) {
@@ -232,70 +233,38 @@ class StoryTreeOperator extends BaseOperator {
         console.error('Error loading more items:', error);
         reject(error);
       }
-    }
+    });
   }
 
 
-  public async loadMoreLevels(startLevelNumber: number, endLevelNumber: number): Promise<StoryTreeNode[]> {
-    if (!this.state || !this.dispatch) {
-      console.warn('StoryTreeOperator: state or dispatch not initialized');
-      return [];
-    }
+  public async loadMoreLevels(startLevelNumber: number, endLevelNumber: number): Promise<void> {
 
-    // TODO
-    //  1. Assert that the startLevelNumber is 
-
-    try {
-      const levels: StoryTreeLevel[] = this.state.storyTree?.levels ?? [];
-
-      // Filter the siblings for the provided quote.
-      let existingSiblingsForQuote: StoryTreeNode[] = this.state.storyTree?.levels[levelNumber].siblings.levelsMap.get(quote) || [];
-      // FIXME this section below is nor correct
-      // we need to get the new siblings from the backend
-
-      const limit = stopIndex - startIndex + 1;
-      const cursor = startIndex;
-      const uuid = parentId;
-      const sortingCriteria = 'mostRecent';
-
-      const response = await axios.get<{ compressedData: CursorPaginatedResponse<Reply> }>(`${process.env.REACT_APP_API_URL}/api/getReplies/${uuid}/${quote}/${sortingCriteria}?limit=${limit}&cursor=${cursor}`);
-      const data = await this.handleCompressedResponse(response);
-      if (!data || !data.compressedData) {
-        console.error('Invalid unified node data received:', data);
-        return [];
+    return new Promise<void>(async (resolve, reject) => {
+      if (!this.state || !this.dispatch || !this.state.storyTree) {
+        console.warn(`StoryTreeOperator: state or dispatch or storyTree not initialized, ${this.state}, ${this.dispatch}, ${this.state.storyTree}`);
+        return reject(new Error(`StoryTreeOperator: state or dispatch or storyTree not initialized, ${this.state}, ${this.dispatch}, ${this.state.storyTree}`));
       }
 
-      const paginatedResponse = JSON.parse(data.data) as CursorPaginatedResponse<Reply>;
-      const replies = paginatedResponse.data;
-
-      const nodes: StoryTreeNode[] = replies.map((reply) => ({
-        id: reply.id,
-        rootNodeId: this.state.storyTree?.id || 'undefinedRootNodeId',
-        parentId: reply.parentId,
-        textContent: reply.text,
-        quote: reply.quote
-      }));
-
-      const level: StoryTreeLevel = {
-        parentId: [this.state.storyTree?.id || 'undefinedRootNodeId'],
-        rootNodeId: this.state.storyTree?.id || 'undefinedRootNodeId',
-        levelNumber: levelNumber,
-        selectedQuote: quote,
-        siblings: { levelsMap: new Map([[quote, nodes]]) }
-      };
-
-      if (nodes.length > 0) {
-        this.dispatch({
-          type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
-          payload: [level]
-        });
+      if (startLevelNumber > (this.state.storyTree?.levels.length ?? 0)) {
+        console.warn(`Start level number ${startLevelNumber} is to big, max is ${this.state.storyTree?.levels.length}`);
+        return reject(new Error(`Start level number ${startLevelNumber} is to big, max is ${this.state.storyTree?.levels.length}`));
       }
 
-      return [...existingSiblingsForQuote, ...nodes];
-    } catch (error) {
-      console.error('Error loading more items:', error);
-      return [];
-    }
+      const countOfNewLevelsToLoad = endLevelNumber - startLevelNumber;
+      for (let i = 0; i < countOfNewLevelsToLoad; i++) {
+        const parentId = this.state.storyTree?.levels[startLevelNumber].parentId[0];
+        if (!parentId) {
+          console.warn('StoryTreeOperator: parentId not found');
+          return reject(new Error('StoryTreeOperator: parentId not found'));
+        }
+        const levelNumber = startLevelNumber + i;
+        const quote = this.state.storyTree?.levels[levelNumber].selectedQuote;
+        await this.loadMoreItems(parentId, levelNumber, quote, 0, 10); // loadMoreItems dispatches the new levels, which should update the parentIDss
+      }
+      
+      return resolve();
+    });
+
   }
 
   async submitReply(rootNodeId: string, replyContent: string, quote: Quote): Promise<{ success: boolean }> {
