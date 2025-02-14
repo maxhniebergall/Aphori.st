@@ -21,7 +21,7 @@
  */
 
 import React from 'react';
-import { ACTIONS, StoryTreeNode, StoryTreeState, UnifiedNode, StoryTreeLevel, Action, IdToIndexPair, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts } from '../types/types';
+import { ACTIONS, StoryTreeNode, StoryTreeState, UnifiedNode, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts } from '../types/types';
 import { Quote } from '../types/quote';
 import axios, { AxiosResponse, AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
