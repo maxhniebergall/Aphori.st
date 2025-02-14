@@ -60,6 +60,7 @@ import {
     ExistingSelectableQuotes,
     UnifiedNodeMetadata
 } from './types/index.js';
+import { getQuoteKey } from './utils/quoteUtils.js';
 
 dotenv.config();
 
@@ -749,15 +750,15 @@ app.post('/api/signup', async (req: Request, res: Response): Promise<void> => {
 app.post('/api/createReply', authenticateToken, async (req: Request, res: Response): Promise<void> => {
     try {
         // Destructure required fields from the request body.
-        const text : string = req.body.text;
-        const parentId : string[] = req.body.parentId;
-        const metadata : UnifiedNodeMetadata = req.body.metadata;
-        const quote : Quote = req.body.quote;
+        const text: string = req.body.text;
+        const parentId: string[] = req.body.parentId;
+        const metadata: UnifiedNodeMetadata = req.body.metadata;
+        const quote: Quote = req.body.quote;
 
         // Validate that required fields are provided.
         if (!text || !parentId || !quote || !quote.text || !quote.sourcePostId || !quote.selectionRange) {
-             res.status(400).json({ error: 'Missing required fields. Ensure text, parentId, and a full quote (with text) are provided.' });
-             return;
+            res.status(400).json({ error: 'Missing required fields. Ensure text, parentId, and a full quote (with text, sourcePostId, and selectionRange) are provided.' });
+            return;
         }
         if (!metadata || !metadata.author) {
             res.status(400).json({ error: 'Missing metadata: author is required.' });
@@ -769,7 +770,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             id: crypto.randomUUID(), // Using crypto for unique ID generation
             text,
             parentId, // Expecting an array of parent IDs
-            quote,    // Store the complete quote object (includes text, sourcePostId, selectionRange)
+            quote,    // Store the complete quote object
             metadata: {
                 author: metadata.author,
                 createdAt: new Date().toISOString()
@@ -779,27 +780,30 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         // Save the new reply in the database under a Redis hash field 'reply'.
         await db.hSet(newReply.id, 'reply', newReply);
 
-        // Update the corresponding sorted set for replies based on the quote.
-        // Generate a key using the full quote object.
-        const quoteKey = `${quote.text}|${quote.sourcePostId || ''}|${quote.selectionRange ? `${quote.selectionRange.start}-${quote.selectionRange.end}` : ''}`;
-        // Use the current timestamp as the score (suitable for a "mostRecent" sort).
+        // Use the helper function to convert the quote object into a string key.
+        const quoteKey = getQuoteKey(quote);
         const score = Date.now();
-        // Sorted set key for this quote using a default sorting criteria (e.g., "mostRecent").
-        const sortedSetKey = `replies:quote:${quoteKey}:mostRecent`;
-        await db.zAdd(sortedSetKey, score, newReply.id);
+        // Use the first parent ID as the primary parent for indexing.
+        const actualParentId = Array.isArray(newReply.parentId) ? newReply.parentId[0] : newReply.parentId;
+        const replyId = newReply.id;
 
-        const sortedSetWithUuidKey = `replies:uuid:${newReply.parentId}:quote:${quoteKey}:mostRecent`;
-        await db.zAdd(sortedSetWithUuidKey, score, newReply.id);
+        // 1. Index for "Replies by Quote (General)"
+        await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, score, replyId);
 
-        // Increment the quote count in the hash
-        await db.hIncrBy(`${newReply.parentId}:quoteCounts`, JSON.stringify(quote), 1);
+        // 2. Index for "Replies by Parent ID and Detailed Quote"
+        await db.zAdd(`replies:uuid:${actualParentId}:quote:${quoteKey}:mostRecent`, score, replyId);
 
-        // Add to sorted sets for different access patterns
-        await db.zAdd(`replies:${actualParentId}:${quote?.text}:mostRecent`, timestamp, replyId);
-        await db.zAdd('replies:feed:mostRecent', timestamp, replyId);
-        if (quote?.text) {
-            await db.zAdd(`replies:quote:${quote.text}:mostRecent`, timestamp, replyId);
-        }
+        // Increment the quote count in the hash using the primary parent's ID.
+        await db.hIncrBy(`${actualParentId}:quoteCounts`, JSON.stringify(quote), 1);
+
+        // 3. Index for "Replies by Parent ID and Quote Text"
+        await db.zAdd(`replies:${actualParentId}:${quote.text}:mostRecent`, score, replyId);
+
+        // 4. Index for "Global Replies Feed" (all replies)
+        await db.zAdd('replies:feed:mostRecent', score, replyId);
+
+        // 5. Index for "Conditional Replies by Quote Text Only"
+        await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId);
 
         logger.info(`Created new reply with ID: ${replyId} for parent: ${actualParentId}`);
         res.json({ 
@@ -810,7 +814,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         logger.error('Error creating reply:', err);
         res.status(500).json({ error: 'Server error' });
     }
-}) as unknown as RequestHandler));
+}) as unknown as RequestHandler;
 
 
 // Get global replies feed
@@ -891,7 +895,7 @@ app.get<{
         }
 
         // Generate a unique key for the quote using its properties.
-        const quoteKey = `${quoteObj.text}|${quoteObj.sourcePostId}|${quoteObj.selectionRange.start}|${quoteObj.selectionRange.end}`;
+        const quoteKey = getQuoteKey(quoteObj);
 
         // Cursor-based pagination handling via query parameters.
         const limit = parseInt(req.query.limit as string) || 10;
@@ -1018,7 +1022,7 @@ app.get<{ uuid: string }, ApiResponse<UnifiedNode>>('/api/combinedNode/:uuid', a
 
         const apiResponse: ApiResponse<UnifiedNode> = {
             success: true,
-            data: unifiedNode
+            compressedData: unifiedNode
         };
         const compressedResponse = await db.compress(apiResponse);
         res.setHeader('X-Data-Compressed', 'true');
