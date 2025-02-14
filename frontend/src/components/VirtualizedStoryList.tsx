@@ -38,6 +38,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
   const sizeMap = useRef<{ [key: number]: number }>({});
   const [levels, setLevels] = useState<StoryTreeLevel[]>([]);
   const [hasNextPage, setHasNextPage] = useState(true);
+  const { replyTarget } = useReplyContext();
 
   // useEffects
     // Load initial data
@@ -47,11 +48,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
       
       setIsLocalLoading(true);
       try {
-        const initialNodes = await storyTreeOperator.fetchRootNode(postRootId);
-        if (initialNodes) {
-          setLevels(initialNodes);
-          setHasNextPage(initialNodes.length > 0);
-        }
+        storyTreeOperator.initializeStoryTree(postRootId);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load story tree');
       } finally {
@@ -124,13 +121,15 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
                     return (
                       <Row
                         style={style}
-                        level={level}
-                        onHeightChange={(height) => {
+                        levelData={level}
+                        setSize={(height) => {
                           sizeMap.current[index] = height;
                           if (listRef.current) {
                             listRef.current.resetAfterIndex(index);
                           }
                         }}
+                        shouldHide={!!(replyTarget?.levelNumber) && (replyTarget.levelNumber > level.levelNumber)}
+                        index={index}
                       />
                     );
                   }}

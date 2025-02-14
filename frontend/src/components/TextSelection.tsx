@@ -10,7 +10,7 @@ import React from 'react';
 import { useTextSelection } from '../hooks/useTextSelection';
 import './TextSelection.css';
 import { Quote } from '../types/quote';
-
+import { QuoteCounts } from '../types/types';
 interface Selection {
   start: number;
   end: number;
@@ -21,7 +21,7 @@ interface TextSelectionProps {
   onSelectionCompleted: (quote: Quote) => void;
   selectAll?: boolean;
   selectedQuote?: Quote;
-  existingSelectableQuotes?: Record<string, number>;
+  existingSelectableQuotes?: QuoteCounts;
 }
 
 const TextSelection: React.FC<TextSelectionProps> = ({

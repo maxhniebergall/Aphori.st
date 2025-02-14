@@ -18,28 +18,27 @@
  * - Performance optimization and proper null checks/fallbacks
  */
 
-import React, { useEffect, useState, useCallback, useMemo, ChangeEvent } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import './StoryTree.css';
 import Header from './Header';
 import { StoryTreeProvider, useStoryTree } from '../context/StoryTreeContext';
 import { ACTIONS } from '../types/types';
-import { Quote } from '../types/quote';
 import VirtualizedStoryList from './VirtualizedStoryList';
-import storyTreeOperator from '../operators/StoryTreeOperator';
-import MDEditor, { ContextStore } from '@uiw/react-md-editor';
+import MDEditor from '@uiw/react-md-editor';
 import '@uiw/react-md-editor/markdown-editor.css';
 import rehypeSanitize from 'rehype-sanitize';
 import { ReplyProvider, useReplyContext } from '../context/ReplyContext';
+import StoryTreeOperator from '../operators/StoryTreeOperator';
 
 // Main content component
 function StoryTreeContent() {
   const navigate = useNavigate();
-  const { state, dispatch } = useStoryTree();
-  const [isOperatorInitialized, setIsOperatorInitialized] = useState(false);
+  const { state } = useStoryTree();
+  const [isRootInitialized, setIsRootInitialized] = useState(false);
   // Get the UUID from the URL
   const { uuid: rootUUID } = useParams<{ uuid: string }>();
-
+ 
   const { 
     replyTarget, 
     setReplyTarget,
@@ -66,8 +65,6 @@ function StoryTreeContent() {
   // Handle editor change with proper types
   const handleEditorChange = useCallback((
     value?: string,
-    event?: ChangeEvent<HTMLTextAreaElement>,
-    state?: ContextStore
   ) => {
     if (value !== undefined) {
       setReplyContent(value);
@@ -76,61 +73,13 @@ function StoryTreeContent() {
   
   // Initialize story tree and fetch data
   useEffect(() => {
-    if (!isOperatorInitialized && rootUUID) {
-      const initializeStoryTree = async () => {
-        try {
-          // Start loading the story tree
-          storyTreeOperator.updateContext(state, dispatch);
-          dispatch({ type: ACTIONS.START_STORY_TREE_LOAD, payload: { rootNodeId: rootUUID } });
-          
-          // Fetch root node and initialize
-          const nodes = await storyTreeOperator.fetchRootNode(rootUUID);
-          if (nodes?.length) {
-            dispatch({ 
-              type: ACTIONS.SET_STORY_TREE_DATA, 
-              payload: {
-                levels: nodes,
-                idToIndexPair: { indexMap: new Map() }
-              }
-            });
-          }
-        } catch (error) {
-          console.error('Error fetching story data:', error);
-          dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load story tree' });
-        }
-      };
-
-      initializeStoryTree();
-      setIsOperatorInitialized(true);
+    if (!isRootInitialized && rootUUID) {
+      StoryTreeOperator.initializeStoryTree(rootUUID);
+      setIsRootInitialized(true);
     }
-  }, [isOperatorInitialized, rootUUID, dispatch, state]);
+  }, [isRootInitialized, rootUUID]);
 
-  // Handle reply submission
-  const handleReplySubmit = useCallback(async () => {
-    if (!replyTarget || !replyQuote || !replyContent.trim()) {
-      console.warn('Missing required data for reply submission');
-      return;
-    }
 
-    try {
-      const result = await storyTreeOperator.submitReply(
-        replyTarget.rootNodeId,
-        replyContent,
-        replyQuote
-      );
-      
-      if (result.success) {
-        setReplyContent('');
-        setReplyTarget(null);
-        setReplyQuote(null);
-      } else {
-        throw new Error('Failed to submit reply');
-      }
-    } catch (error) {
-      console.error('Error submitting reply:', error);
-      dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to submit reply' });
-    }
-  }, [replyTarget, replyQuote, replyContent, setReplyContent, setReplyTarget, setReplyQuote, dispatch]);
 
   // Handle reply cancellation
   const handleReplyCancel = useCallback(() => {
@@ -177,7 +126,7 @@ function StoryTreeContent() {
         </div>
         <div className="reply-actions" role="group" aria-label="Reply actions">
           <button 
-            onClick={handleReplySubmit}
+            onClick={() => StoryTreeOperator.submitReply(replyTarget.rootNodeId, replyContent, replyQuote)}
             disabled={!replyContent.trim()}
             className="submit-reply-button"
             aria-label="Submit reply"

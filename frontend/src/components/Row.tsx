@@ -14,19 +14,18 @@
  * - Consistent component rendering
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { ListChildComponentProps } from 'react-window';
 import RowContainer from './RowContainer';
 import TitleRow from './TitleRow';
 import NormalRowContent from './NormalRowContent';
 import { StoryTreeLevel } from '../types/types';
-import { useReplyContext } from '../context/ReplyContext';
+import StoryTreeOperator from '../operators/StoryTreeOperator';
 
 
 interface RowProps extends Omit<ListChildComponentProps, 'data'> {
   levelData: StoryTreeLevel;
   setSize: (visualHeight: number) => void;
-  replyTarget: StoryTreeLevel | null;
   shouldHide: boolean;
 }
 
@@ -48,7 +47,8 @@ const Row: React.FC<RowProps> = React.memo(
     // Choose which content component to render
     const content = useMemo(() => {
       if (levelData.levelNumber === 0) { // Title node is always level 0
-        return <TitleRow node={levelData} />;
+        const titleNodes = levelData.siblings.levelsMap.get(StoryTreeOperator.rootQuote);
+        return <TitleRow node={titleNodes ? titleNodes[0] : undefined} />;
       }
 
       return (
@@ -84,7 +84,7 @@ const Row: React.FC<RowProps> = React.memo(
       prevProps.levelData?.rootNodeId === nextProps.levelData?.rootNodeId &&
       prevProps.index === nextProps.index &&
       prevProps.style.top === nextProps.style.top &&
-      prevProps.replyTarget?.rootNodeId === nextProps.replyTarget?.rootNodeId
+      prevProps.shouldHide === nextProps.shouldHide
     );
   }
 );

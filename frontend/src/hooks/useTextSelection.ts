@@ -15,12 +15,12 @@ import { useRef, useCallback, useEffect } from 'react';
 import { throttle } from 'lodash';
 import { getCurrentOffset, getWordBoundaries } from '../utils/selectionUtils';
 import { Quote } from '../types/quote';
-
+import { QuoteCounts } from '../types/types';
 interface UseTextSelectionProps {
   onSelectionCompleted: (quote: Quote) => void;
   selectAll?: boolean;
   selectedQuote?: Quote;
-  existingSelectableQuotes?: Record<string, number>;
+  existingSelectableQuotes?: QuoteCounts;
 }
 
 interface UseTextSelectionReturn {
@@ -86,7 +86,7 @@ const highlightText = (element: HTMLElement, startOffset: number, endOffset: num
   }
 };
 
-const highlightQuotes = (element: HTMLElement, quotes: Record<string, number>): void => {
+const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts): void => {
   removeExistingHighlights(element);
 
   // Sort quotes by reply count descending and process top 10 only
@@ -156,7 +156,7 @@ export function useTextSelection({
   onSelectionCompleted,
   selectAll = false,
   selectedQuote,
-  existingSelectableQuotes: quotes,
+  existingSelectableQuotes,
 }: UseTextSelectionProps): UseTextSelectionReturn {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const boundThrottledAnimationRef = useRef<((e: Event) => void) | null>(null);
@@ -289,10 +289,10 @@ export function useTextSelection({
 
   // Effect: highlight quotes if provided (e.g. based on reply counts)
   useEffect(() => {
-    if (containerRef.current && quotes) {
-      highlightQuotes(containerRef.current, quotes);
+    if (containerRef.current && existingSelectableQuotes) {
+      highlightQuotes(containerRef.current, existingSelectableQuotes);
     }
-  }, [quotes]);
+  }, [existingSelectableQuotes]);
 
   // Wrap our internal handlers for React events
   const onMouseDownHandler = (event: React.MouseEvent<HTMLDivElement>) => {

@@ -16,6 +16,7 @@ import { Quote, QuoteMetadata } from "./quote";
 
 export interface IdToIndexPair {
   indexMap: Map<string, { levelIndex: number; siblingIndex: number }>;
+  // uuid for the node maps to the levelIndex and siblingIndex, allowing for fast lookup of the location of the node in the tree
 }
 
 export interface QuoteCounts {
@@ -125,7 +126,7 @@ export interface Reply {
 
 export enum ACTIONS {
   START_STORY_TREE_LOAD = 'START_STORY_TREE_LOAD',
-  SET_STORY_TREE_DATA = 'SET_STORY_TREE_DATA',
+  SET_INITIAL_STORY_TREE_DATA = 'SET_INITIAL_STORY_TREE_DATA',
   INCLUDE_NODES_IN_LEVELS = 'INCLUDE_NODES_IN_LEVELS',
   SET_ERROR = 'SET_ERROR',
   CLEAR_ERROR = 'CLEAR_ERROR'
@@ -133,7 +134,7 @@ export enum ACTIONS {
 
 export type Action =
   | { type: ACTIONS.START_STORY_TREE_LOAD; payload: { rootNodeId: string } }
-  | { type: ACTIONS.SET_STORY_TREE_DATA; payload: { levels: StoryTreeLevel[]; idToIndexPair: IdToIndexPair } }
+  | { type: ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { storyTree: StoryTree } }
   | { type: ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: StoryTreeLevel[] }
   | { type: ACTIONS.SET_ERROR; payload: string }
   | { type: ACTIONS.CLEAR_ERROR };
