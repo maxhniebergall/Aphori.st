@@ -1,6 +1,8 @@
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
 import { StoryTreeState, Action, StoryTreeLevel, IdToIndexPair } from '../types/types';
 import { ACTIONS } from '../types/types';
+import StoryTreeErrorBoundary from '../context/StoryTreeErrorBoundary';
+import StoryTreeOperator from '../operators/StoryTreeOperator';
 
 /*
  * Requirements:
@@ -19,13 +21,12 @@ import { ACTIONS } from '../types/types';
  * - Handle quote metadata
  * - Support for reply-based navigation
  * - TypeScript type safety and interfaces
+ * - Provide state to UI components without exposing dispatch.
+ * - Dispatch is centralized in StoryTreeOperator to handle all state updates.
  */
 
 const initialState: StoryTreeState = {
-  rootNodeId: '',
-  selectedQuote: null,
-  levels: [],
-  idToIndexPair: { indexMap: new Map() },
+  storyTree: null,
   error: null,
 };
 
@@ -62,13 +63,16 @@ function mergeLevels(existingLevels: StoryTreeLevel[], existingIdToIndexPair: Id
   return { updatedLevels: returnableLevels, updatedIdToIndexPair: returnableIdToIndexPair };
 
   function addNewLevelToIndex(levelWithNewItems: StoryTreeLevel, levelIndex: number) {
+    // TODO FIXME what is even happening here?
     const countOfNodesUsingQuote = new Map<string, number>();
     for (const [quote, newNodesAtLevel] of levelWithNewItems.siblings?.levelsMap) {
       for (const newNodeAtLevel of newNodesAtLevel) {
+        // Retrieve the current count for this quote.
         const currentCount = countOfNodesUsingQuote.get(quote.quoteLiteral) || 0;
-        const compositeKey = `${newNodeAtLevel.rootNodeId}-${newNodeAtLevel.levelNumber}`;
-        returnableIdToIndexPair.indexMap.set(compositeKey,
+        // Update the index map with the levelIndex and the node's sibling order.
+        returnableIdToIndexPair.indexMap.set(newNodeAtLevel.id,
           { levelIndex: levelIndex, siblingIndex: currentCount });
+        // Increment the counter for nodes with this quote.
         countOfNodesUsingQuote.set(quote.quoteLiteral, currentCount + 1);
       }
     }
@@ -98,10 +102,10 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         }
       };
     
-    case ACTIONS.SET_STORY_TREE_DATA:
+    case ACTIONS.SET_INITIAL_STORY_TREE_DATA:
       return {
         ...state,
-        storyTree: action.payload.storyTree
+        storyTree: action.payload.storyTree,
       };
     
     case ACTIONS.INCLUDE_NODES_IN_LEVELS:
@@ -134,57 +138,23 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
 
 interface StoryTreeContextType {
   state: StoryTreeState;
-  dispatch: React.Dispatch<Action>;
 }
 
 const StoryTreeContext = createContext<StoryTreeContextType | undefined>(undefined);
 
-interface StoryTreeErrorBoundaryProps {
-  children: ReactNode;
-}
-
-interface StoryTreeErrorBoundaryState {
-  hasError: boolean;
-}
-
-class StoryTreeErrorBoundary extends React.Component<
-  StoryTreeErrorBoundaryProps,
-  StoryTreeErrorBoundaryState
-> {
-  constructor(props: StoryTreeErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(error: Error): StoryTreeErrorBoundaryState {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    console.error('StoryTree Error:', error, errorInfo);
-  }
-
-  render(): React.ReactElement {
-    if (this.state.hasError) {
-      return (
-        <div className="story-tree-error">
-          <h2>Something went wrong.</h2>
-          <button onClick={() => window.location.reload()}>
-            Refresh Page
-          </button>
-        </div>
-      );
-    }
-
-    return <>{this.props.children}</>;
-  }
-}
-
 export function StoryTreeProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(storyTreeReducer, initialState);
-  const value = {
-    state,
-    dispatch  };
+
+  // Initialize the operator's dispatch so that all state updates
+  // are routed through the operator.
+  useEffect(() => {
+    // Set the private dispatch on the operator.
+    // This makes dispatch available only inside StoryTreeOperator.
+    StoryTreeOperator.setDispatch(dispatch);
+  }, [dispatch]);
+
+  // Provide only the state to consumers.
+  const value = { state };
 
   return (
     <StoryTreeErrorBoundary>

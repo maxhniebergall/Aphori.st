@@ -1,8 +1,6 @@
 /**
  * Requirements:
  * - Render a StoryTreeLevel to display regular node content
- * - Pass down proper props such as onSiblingChange and fetchNode
- * - Ensure consistency with parent's state for reply handling
  */
 
 import React from 'react';

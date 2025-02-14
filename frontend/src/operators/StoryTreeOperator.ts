@@ -13,6 +13,7 @@
  * - Issue 2: Added submitReply method to support reply submission
  * - **Update:** Uses unified node backend API for fetching individual nodes.
  * - **Update:** loadMoreItems method now utilizes levelNumber and quote to fetch the correct sibling nodes.
+ * - **Refactor:** fetchStoryTree now returns a complete StoryTree object rather than a StoryTreeLevel[].
  * 
  * - TODO:
  * - Implement caching with CacheService
@@ -26,11 +27,10 @@ import axios, { AxiosResponse, AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
 import { compareQuotes } from '../types/quote';
 import { CompressedResponse } from '../types/compressed';
+
 class StoryTreeOperator extends BaseOperator {
   private state: StoryTreeState;
   private dispatch: React.Dispatch<Action> | null;
-  private replySubscribers: Map<string, Set<() => void>>;
-  public fetchRootNode: (uuid: string) => Promise<StoryTreeLevel[] | null>;
   public rootQuote: Quote = {
     quoteLiteral: '',
     sourcePostId: '',
@@ -40,6 +40,7 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
   private titleNodeId: string = "";
+
   constructor() {
     super();
     this.state = {
@@ -47,20 +48,12 @@ class StoryTreeOperator extends BaseOperator {
       error: null
     };
     this.dispatch = null;
-    this.replySubscribers = new Map();
-
     // Bind methods
     this.loadMoreItems = this.loadMoreItems.bind(this);
-    this.fetchNode = this.fetchNode.bind(this);
-    this.updateContext = this.updateContext.bind(this);
-    this.fetchRootNode = this.fetchRootNodeImpl.bind(this);
   }
 
-  updateContext(state: Partial<StoryTree>, dispatch: React.Dispatch<Action>): void {
-    this.state = {
-      ...this.state,
-      ...state
-    };
+  // Public setter for dispatch. This is called once from StoryTreeProvider.
+  public setDispatch(dispatch: React.Dispatch<Action>): void {
     this.dispatch = dispatch;
   }
 
@@ -79,7 +72,7 @@ class StoryTreeOperator extends BaseOperator {
     return super.handleCompressedResponse(response);
   }
 
-  private async fetchRootNodeImpl(uuid: string): Promise<StoryTreeLevel[] | null> {
+  private async fetchStoryTree(uuid: string): Promise<StoryTree> {
     try {
       const response = await axios.get<{ storyTree: CompressedResponse<UnifiedNode> }>(
         `${process.env.REACT_APP_API_URL}/api/combinedNode/${uuid}`
@@ -87,12 +80,10 @@ class StoryTreeOperator extends BaseOperator {
       const data = await this.handleCompressedResponse(response);
       if (!data || !data.storyTree) {
         console.error('Invalid response data received:', data);
-        return null;
+        throw new Error('Invalid response data received');
       }
 
       const storyTree: StoryTree = typeof data.storyTree === 'string' ? JSON.parse(data.storyTree) : data.storyTree;
-
-      const levels: StoryTreeLevel[] = [];
 
       // Create a title node if metadata exists
       if (storyTree.metadata?.title || storyTree.metadata?.author) {
@@ -101,7 +92,7 @@ class StoryTreeOperator extends BaseOperator {
           rootNodeId: storyTree.id,
           parentId: [storyTree.id],
           textContent: storyTree.metadata.title || 'Untitled',
-          quote: this.rootQuote,
+          quoteCounts: {quoteCounts: new Map([[this.rootQuote, 0]])},
           isTitleNode: true
         };
         const titleLevel: StoryTreeLevel = {
@@ -109,32 +100,35 @@ class StoryTreeOperator extends BaseOperator {
           rootNodeId: storyTree.id,
           levelNumber: 0,
           selectedQuote: this.rootQuote,
-          siblings: { levelsMap: new Map([[this.rootQuote, [titleNode]]]) }
+          siblings: { levelsMap: new Map([[this.rootQuote, [titleNode]]]) },
+          pagination: {nextCursor: undefined, prevCursor: undefined, hasMore: false, matchingRepliesCount: 0} // TODO: verify that this is correct
         };
 
-        levels.push(titleLevel);
+        storyTree.levels.push(titleLevel);
       }
 
       // Create a content node
-      levels.push({
+      storyTree.levels.push({
         rootNodeId: storyTree.id,
         parentId: [this.titleNodeId],
-        levelNumber: levels.length,
+        levelNumber: storyTree.levels.length,
         selectedQuote: this.rootQuote,
-        siblings: { levelsMap: new Map() }
+        siblings: { levelsMap: new Map() },
+        pagination: {nextCursor: undefined, prevCursor: undefined, hasMore: false, matchingRepliesCount: 0} // TODO: verify that this is correct
       });
 
-      return levels;
+      return storyTree;
     } catch (error) {
       console.error('Error fetching root node:', error);
       if (this.dispatch) {
         this.dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load story tree' });
       }
-      return null;
+      throw error;
     }
   }
 
-  async fetchNode(id: string, quote: Quote, retries = 3, delay = 1000): Promise<StoryTreeLevel | null> {
+  private async fetchNode(id: string, quote: Quote, retries = 3, delay = 1000): Promise<StoryTreeLevel | null> {
+    // this function is currently not used
     for (let i = 0; i < retries; i++) {
       try {
         const response = await axios.get<{ data: UnifiedNode }>(`${process.env.REACT_APP_API_URL}/api/combinedNode/${id}`);
@@ -152,7 +146,8 @@ class StoryTreeOperator extends BaseOperator {
           parentId: unifiedNode.metadata.parentId ? unifiedNode.metadata.parentId : [],
           levelNumber: 1, // Default to 1 for non-root nodes
           selectedQuote: quote,
-          siblings: { levelsMap: new Map() }
+          siblings: { levelsMap: new Map() },
+          pagination: {nextCursor: undefined, prevCursor: undefined, hasMore: false, matchingRepliesCount: 0} // TODO: verify that this is correct
         };
       } catch (error) {
         const axiosError = error as AxiosError;
@@ -167,7 +162,32 @@ class StoryTreeOperator extends BaseOperator {
     return null;
   }
 
-  async fetchQuoteCounts(id: string): Promise<QuoteCounts> {
+  // Centralized method to initialize a story tree.
+  public async initializeStoryTree(rootUUID: string) {
+    try {
+      if (!this.dispatch) {
+        throw new Error('Dispatch not initialized in StoryTreeOperator');
+      }
+      this.dispatch({ type: ACTIONS.START_STORY_TREE_LOAD, payload: { rootNodeId: rootUUID } });
+      
+      // Fetch the complete story tree
+      const storyTree = await this.fetchStoryTree(rootUUID);
+      if (storyTree) {
+        this.dispatch({
+          type: ACTIONS.SET_INITIAL_STORY_TREE_DATA,
+          payload: { storyTree }
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching story data:', error);
+      if (this.dispatch) {
+        this.dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load story tree' });
+      }
+    }
+  };
+
+  private async fetchQuoteCounts(id: string, quote: Quote, limit: number, cursor: number): Promise<QuoteCounts> {
+    const sortingCriteria = 'mostRecent';
     const response = await axios.get<{ compressedData: QuoteCounts }>(`${process.env.REACT_APP_API_URL}/api/getReplies/${id}/${quote}/${sortingCriteria}?limit=${limit}&cursor=${cursor}`);
     const data = await this.handleCompressedResponse(response);
     if (!data || !data.compressedData) {
@@ -184,7 +204,7 @@ class StoryTreeOperator extends BaseOperator {
     return new Promise<void>(async (resolve, reject) => {
       if (!this.state || !this.dispatch) {
         console.warn('StoryTreeOperator: state or dispatch not initialized');
-        reject(new Error('StoryTreeOperator: state or dispatch not initialized'));
+        return reject(new Error('StoryTreeOperator: state or dispatch not initialized'));
       }
       try {
         const levels: StoryTreeLevel[] = this.state.storyTree?.levels ?? [];
@@ -195,7 +215,7 @@ class StoryTreeOperator extends BaseOperator {
 
         if (!targetLevel) { 
           console.warn(`No level found for levelNumber ${levelNumber} with the provided quote`);
-          reject(new Error(`No level found for levelNumber ${levelNumber} with the provided quote`));
+          return reject(new Error(`No level found for levelNumber ${levelNumber} with the provided quote`));
         }
 
         const limit = stopIndex - startIndex + 1;
@@ -221,9 +241,10 @@ class StoryTreeOperator extends BaseOperator {
           quote: reply.quote,
           quoteCounts: null
         }));
-
-        nodes.forEach((node) => {
-          node.quoteCounts = fetchQuoteCounts(node.id);
+ 
+        nodes.forEach(async (node) => {
+          // node quoteCounts will appear asynchronously
+          node.quoteCounts = await this.fetchQuoteCounts(node.id, quote, limit, cursor);
         });
 
         const level: StoryTreeLevel = {
@@ -236,15 +257,11 @@ class StoryTreeOperator extends BaseOperator {
         };
 
         if (nodes.length > 0) {
-          if (this.dispatch) {
-            this.dispatch({
-              type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
-              payload: [level]
-            });
-            resolve();
-          } else {
-            reject(new Error('StoryTreeOperator: dispatch not initialized'));
-          }
+          this.dispatch({
+            type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
+            payload: [level]
+          });
+          resolve();
         }
 
       } catch (error) {
@@ -254,9 +271,7 @@ class StoryTreeOperator extends BaseOperator {
     });
   }
 
-
   public async loadMoreLevels(startLevelNumber: number, endLevelNumber: number): Promise<void> {
-
     return new Promise<void>(async (resolve, reject) => {
       if (!this.state || !this.dispatch || !this.state.storyTree) {
         console.warn(`StoryTreeOperator: state or dispatch or storyTree not initialized, ${this.state}, ${this.dispatch}, ${this.state.storyTree}`);
@@ -282,10 +297,9 @@ class StoryTreeOperator extends BaseOperator {
       
       return resolve();
     });
-
   }
 
-  async submitReply(rootNodeId: string, replyContent: string, quote: Quote): Promise<{ success: boolean }> {
+  public async submitReply(rootNodeId: string, replyContent: string, quote: Quote): Promise<{ success: boolean }> {
     try {
       const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/reply`, {
         rootNodeId,

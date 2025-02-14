@@ -17,13 +17,13 @@
 import React, { useMemo } from 'react';
 import TextSelection from './TextSelection';
 import QuoteRenderer from './QuoteRenderer';
-import { StoryTreeNode } from '../types/types';
-import { SelectionState, Quote } from '../types/quote';
+import { QuoteCounts, StoryTreeNode } from '../types/types';
+import { Quote } from '../types/quote';
 interface NodeContentProps {
   node: StoryTreeNode;
   onSelectionComplete?: (quote: Quote) => void;
   quote?: Quote;
-  existingSelectableQuotes?: Record<string, number>;
+  existingSelectableQuotes?: QuoteCounts;
 }
 
 const NodeContent: React.FC<NodeContentProps> = ({

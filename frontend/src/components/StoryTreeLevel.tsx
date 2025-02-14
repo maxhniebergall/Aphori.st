@@ -24,6 +24,11 @@
  *   * loadMoreItems is now a placeholder that must return a promise.
  * - Moved totalSiblingsCount, siblingsToUse, validCurrentIndex, and infiniteNodes to useState
  * - Kept sizeMap as useRef to minimize re-renders.
+ * 
+ * - TODO:
+ * - Verify that the quoteCounts are being passed down correctly to the NodeContent component.
+ * --                       existingSelectableQuotes={currentNode.quoteCounts || {quoteCounts: new Map()}}
+ * -- verify that the NodeContent rerenders when quoteCounts change
  */
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
@@ -221,7 +226,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
                       quote={
                         (isReplyTarget(currentNode.id) && replyQuote) ? replyQuote : undefined
                       }
-                      existingSelectableQuotes={levelData.existingSelectableQuotes}
+                      existingSelectableQuotes={currentNode.quoteCounts || {quoteCounts: new Map()}}
                       onSelectionComplete={handleTextSelectionCompleted}
                     />
                     <NodeFooter

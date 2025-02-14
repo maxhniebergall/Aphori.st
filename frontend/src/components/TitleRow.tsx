@@ -13,10 +13,10 @@
  */
 
 import React from 'react';
-import { StoryTreeLevel, StoryTree } from '../types/types';
+import { StoryTreeNode, StoryTree } from '../types/types';
 
 interface TitleRowProps {
-  node: StoryTreeLevel;
+  node: StoryTreeNode | undefined;
   storyTree?: StoryTree;
 }
 
@@ -41,7 +41,7 @@ const TitleRow: React.FC<TitleRowProps> = ({ node, storyTree }) => {
   };
 
   // Extract metadata with proper null checks
-  const title = storyTree?.metadata?.title || node.textContent || 'Untitled';
+  const title = storyTree?.metadata?.title || node?.textContent || 'Untitled';
   const author = storyTree?.metadata?.author || 'Anonymous';
   const date = formatDate(storyTree?.metadata?.createdAt);
 
