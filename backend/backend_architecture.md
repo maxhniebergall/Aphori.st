@@ -10,6 +10,7 @@ This document provides an overview of the Aphorist backend architecture, detaili
   - [Feed APIs](#feed-apis)
 - [Backend-Private APIs](#backend-private-apis)
 - [Backend Files Overview](#backend-files-overview)
+- [Database Access Patterns for Replies](#database-access-patterns-for-replies)
 
 ## Frontend APIs
 
@@ -165,7 +166,8 @@ interface CreateReplyRequest {
   text: string;
   quote?: {
     text: string;
-    range?: [number, number];
+    sourcePostId: string;
+    selectionRange: [number, number];
   };
 }
 ```
@@ -181,33 +183,6 @@ interface CreateReplyResponse {
 }
 ```
 
-#### GET /api/getReply/:uuid
-
-**Description:**  
-Retrieves a single reply by its UUID.
-
-**URL Parameters:**
-uuid: string
-
-**Response Interface:**
-```typescript
-interface Reply {
-  id: string;
-  text: string;
-  parentId: string[];
-  quote?: {
-    text: string;
-    range?: [number, number];
-  };
-  metadata: {
-    author: string;
-    authorId: string;
-    authorEmail: string;
-    createdAt: number;
-  };
-}
-```
-
 #### GET /api/getReplies/:uuid/:quote/:sortingCriteria
 
 **Description:**  
@@ -219,18 +194,15 @@ quote: the quote to be used for sorting
 sortingCriteria: the criteria to sort the replies by (most recent, oldest, most liked, least liked)
 
 **Query Parameters:**
-page?: number
-limit?: number
+cursor?: string
 
 **Response Interface:**
 ```typescript
 interface GetRepliesResponse {
   replies: string[];
   pagination: {
-    page: number;
-    limit: number;
-    totalChildren: number;
-    totalPages: number;
+    nextCursor?: string;
+    previousCursor?: string;
   };
 }
 ```
@@ -241,18 +213,15 @@ interface GetRepliesResponse {
 Retrieves a global feed of replies sorted by recency.
 
 **Query Parameters:**
-page?: number
-limit?: number
+cursor?: string
 
 **Response Interface:**
 ```typescript
 interface GetRepliesFeedResponse {
   replies: string[];
   pagination: {
-    page: number;
-    limit: number;
-    totalChildren: number;
-    totalPages: number;
+    nextCursor?: string;
+    previousCursor?: string;
   };
 }
 ```
@@ -319,16 +288,18 @@ interface CreateStoryTreeResponse {
 Retrieves a paginated list of feed items. Each feed item represents a story added to the feed.
 
 **Query Parameters:**
-page?: number (defaults to 1 if not provided)
+cursor?: string
 
 **Response Interface:**
 ```typescript
 interface FeedItem {
 id: string;
 text: string;
+title: string;
+author: string;
 }
 interface GetFeedResponse {
-page: number;
+cursor?: string;
 items: FeedItem[];
 }
 ```
@@ -377,6 +348,31 @@ Used for seeding the Redis database with initial data. This script populates the
 - Feed Population: Adds feed items corresponding to each seeded story to the Redis feed list.
 - Logging: Tracks the progress and any issues encountered during the seeding process.
 - Random Data Generation: Utilizes random UUIDs and selects random authors and titles from predefined lists to ensure uniqueness and variability in seeded data.
+
+## Database Access Patterns for Replies
+
+Below is a list of the key database patterns used for handling replies:
+
+1. **Global Replies Feed**: `replies:feed:mostRecent`  
+   - **Purpose:** Stores reply IDs for the global replies feed, enabling retrieval of the most recent replies across posts.
+
+2. **Replies by Quote (General)**: `replies:quote:<quoteKey>:mostRecent`  
+   - **Structure:** `<quoteKey>` is constructed from the reply's quote data (combining `quote.text`, `quote.sourcePostId`, and `quote.selectionRange` formatted as `start-end` when provided).  
+   - **Purpose:** Indexes replies associated with a specific quote object, sorted by timestamp for recent activity.
+
+3. **Replies by Parent ID and Detailed Quote**: `replies:uuid:<parentId>:quote:<quoteKey>:mostRecent`  
+   - **Structure:** Utilizes the parent post's UUID (`<parentId>`) in addition to the detailed `<quoteKey>`.  
+   - **Purpose:** Facilitates retrieval of replies for a specific parent post and associated quote, ensuring that reply queries are efficient and sorted by recency.
+
+4. **Replies by Parent ID and Quote Text**: `replies:<actualParentId>:<quoteText>:mostRecent`  
+   - **Purpose:** Provides an alternative lookup mechanism keyed only by the parent identifier (`<actualParentId>`) and the raw text of the quote (`<quoteText>`), sorted by timestamp. This pattern supports scenarios where a simplified index is beneficial.
+
+5. **Dynamic Replies Retrieval with Sorting**: `replies:uuid:<uuid>:quote:<quoteKey>:<sortingCriteria>`  
+   - **Structure:** Contains the node's UUID, the detailed `<quoteKey>`, and a dynamic `<sortingCriteria>` (e.g., "mostRecent", "oldest", etc.).  
+   - **Purpose:** Supports cursor-based pagination and custom sorting options when retrieving replies associated with a given post and quote.
+
+6. **Conditional Replies by Quote Text Only**: `replies:quote:<quote.text>:mostRecent`  
+   - **Purpose:** When a reply includes a quote with text, it is conditionally indexed under this key to offer an additional means of retrieval based solely on the quote text.
 
 Conclusion
 The Aphorist backend is structured to provide robust and secure APIs for frontend interactions, leveraging Redis for efficient data storage and retrieval. With clear separation of concerns across its various files and comprehensive authentication mechanisms, the backend is well-equipped to support the application's functionalities. Future developments may introduce backend-private APIs and additional services, which will be documented accordingly.
