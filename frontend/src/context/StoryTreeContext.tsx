@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
-import { StoryTreeState, Action, StoryTreeLevel, IdToIndexPair } from '../types/types';
+import { StoryTreeState, Action, StoryTreeLevel } from '../types/types';
 import { ACTIONS } from '../types/types';
 import StoryTreeErrorBoundary from '../context/StoryTreeErrorBoundary';
 import StoryTreeOperator from '../operators/StoryTreeOperator';
@@ -37,16 +37,14 @@ function getLevelIndex(existingLevels: StoryTreeLevel[], level: StoryTreeLevel):
   );
 }
 
-function mergeLevels(existingLevels: StoryTreeLevel[], existingIdToIndexPair: IdToIndexPair, newLevels: StoryTreeLevel[]): { updatedLevels: StoryTreeLevel[], updatedIdToIndexPair: IdToIndexPair } {
+function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTreeLevel[]): StoryTreeLevel[] {
   const returnableLevels = [...existingLevels];
-  const returnableIdToIndexPair = { ...existingIdToIndexPair };
 
   for (const levelWithNewItems of newLevels) { 
     const levelIndex = getLevelIndex(existingLevels, levelWithNewItems);
     
     if (levelIndex === -1) {
       returnableLevels.push(levelWithNewItems);
-      addNewLevelToIndex(levelWithNewItems, returnableLevels.length - 1);
     } else {
       for (const [quote, newNodesAtLevel] of levelWithNewItems.siblings?.levelsMap) {
         const returnableSiblings = returnableLevels[levelIndex].siblings.levelsMap.get(quote);
@@ -56,27 +54,10 @@ function mergeLevels(existingLevels: StoryTreeLevel[], existingIdToIndexPair: Id
           returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...newNodesAtLevel]);
         }
       } 
-      addNewLevelToIndex(levelWithNewItems, levelIndex);
     }
   }
 
-  return { updatedLevels: returnableLevels, updatedIdToIndexPair: returnableIdToIndexPair };
-
-  function addNewLevelToIndex(levelWithNewItems: StoryTreeLevel, levelIndex: number) {
-    // TODO FIXME what is even happening here?
-    const countOfNodesUsingQuote = new Map<string, number>();
-    for (const [quote, newNodesAtLevel] of levelWithNewItems.siblings?.levelsMap) {
-      for (const newNodeAtLevel of newNodesAtLevel) {
-        // Retrieve the current count for this quote.
-        const currentCount = countOfNodesUsingQuote.get(quote.quoteLiteral) || 0;
-        // Update the index map with the levelIndex and the node's sibling order.
-        returnableIdToIndexPair.indexMap.set(newNodeAtLevel.id,
-          { levelIndex: levelIndex, siblingIndex: currentCount });
-        // Increment the counter for nodes with this quote.
-        countOfNodesUsingQuote.set(quote.quoteLiteral, currentCount + 1);
-      }
-    }
-  }
+  return returnableLevels;
 }
 
 function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {
@@ -85,7 +66,6 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
       return {
         ...state,
         storyTree: {
-          ...state.storyTree,
           id: action.payload.rootNodeId,
           parentId: null,
           metadata: {
@@ -97,7 +77,6 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
             quote: null
           },
           levels: [],
-          idToIndexPair: { indexMap: new Map() },
           error: null
         }
       };
@@ -109,14 +88,14 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
       };
     
     case ACTIONS.INCLUDE_NODES_IN_LEVELS:
-      const { updatedLevels, updatedIdToIndexPair } = mergeLevels(state.storyTree?.levels ?? [], state.storyTree?.idToIndexPair ?? { indexMap: new Map() }, action.payload)
+      if (!state.storyTree) {
+        console.error("StoryTree is not initialized");
+        return state;
+      }
+      const updatedLevels = mergeLevels(state.storyTree.levels, action.payload);
       return {
         ...state,
-        storyTree: {
-          ...state.storyTree,
-          levels: updatedLevels,
-          idToIndexPair: updatedIdToIndexPair
-        }
+        storyTree: { ...state.storyTree, levels: updatedLevels },
       };
     
     case ACTIONS.SET_ERROR:

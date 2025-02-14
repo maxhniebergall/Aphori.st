@@ -14,11 +14,6 @@
 
 import { Quote, QuoteMetadata } from "./quote";
 
-export interface IdToIndexPair {
-  indexMap: Map<string, { levelIndex: number; siblingIndex: number }>;
-  // uuid for the node maps to the levelIndex and siblingIndex, allowing for fast lookup of the location of the node in the tree
-}
-
 export interface QuoteCounts {
   quoteCounts: Map<Quote, number>;
 }
@@ -67,7 +62,6 @@ export interface StoryTree { // this is the root of the story tree
   parentId: string[] | null;
   metadata: StoryTreeMetadata;
   levels: StoryTreeLevel[];
-  idToIndexPair: IdToIndexPair;
   error: string | null;
 }
 
