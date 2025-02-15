@@ -61,8 +61,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   useEffect(() => {
     setSiblings(levelData.siblings.levelsMap.get(levelData.selectedQuote) || []);
   }, [levelData]);
+  
   useEffect(() => {
-    setCurrentNode(siblings[currentIndex] ||  null);
+    if (siblings.length === 0) {
+      setCurrentNode(null);
+      return;
+    }
+    setCurrentNode(siblings[currentIndex] || null);
   }, [siblings, currentIndex]);
 
   // Check if a node is the reply target

@@ -73,13 +73,30 @@ function StoryTreeContent() {
   
   // Initialize story tree and fetch data
   useEffect(() => {
-    if (!isRootInitialized && rootUUID) {
-      StoryTreeOperator.initializeStoryTree(rootUUID);
-      setIsRootInitialized(true);
-    }
-  }, [isRootInitialized, rootUUID]);
+    let mounted = true;
 
+    const initializeTree = async () => {
+      if (!isRootInitialized && rootUUID && mounted) {
+        try {
+          await StoryTreeOperator.initializeStoryTree(rootUUID);
+          if (mounted) {
+            setIsRootInitialized(true);
+          }
+        } catch (error) {
+          console.error('Failed to initialize story tree:', error);
+          if (mounted) {
+            navigate('/feed');
+          }
+        }
+      }
+    };
 
+    initializeTree();
+
+    return () => {
+      mounted = false;
+    };
+  }, [isRootInitialized, rootUUID, navigate]);
 
   // Handle reply cancellation
   const handleReplyCancel = useCallback(() => {
@@ -108,6 +125,7 @@ function StoryTreeContent() {
   // Render reply editor
   const renderReplyEditor = () => {
     if (!replyTarget || !replyQuote) {
+      console.error('Reply target or quote is not set, ' + replyTarget + ' ' + replyQuote);
       return null;
     }
 
@@ -147,19 +165,15 @@ function StoryTreeContent() {
 
   return (
     <div className="story-tree-container">
-      <div className="story-tree-header">
-        <Header 
-          title="Story Tree"
-          subtitle="View and reply to stories"
-          onLogoClick={() => navigate('/feed')}
-        />
-      </div>
+      <Header 
+        title="Story Tree"
+        subtitle="View and reply to stories"
+        onLogoClick={() => navigate('/feed')}
+      />
       <main className="story-tree-content" role="main">
-        <VirtualizedStoryList
-          postRootId={rootUUID || ''}
-        />
-        {renderReplyEditor()}
+        <VirtualizedStoryList postRootId={rootUUID || ''} />
       </main>
+      {replyTarget && renderReplyEditor()}
     </div>
   );
 }

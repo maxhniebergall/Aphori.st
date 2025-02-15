@@ -37,7 +37,7 @@ function getLevelIndex(existingLevels: StoryTreeLevel[], level: StoryTreeLevel):
   );
 }
 
-function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTreeLevel[]): StoryTreeLevel[] {
+export function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTreeLevel[]): StoryTreeLevel[] {
   const returnableLevels = [...existingLevels];
 
   for (const levelWithNewItems of newLevels) { 
@@ -124,8 +124,7 @@ const StoryTreeContext = createContext<StoryTreeContextType | undefined>(undefin
 export function StoryTreeProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(storyTreeReducer, initialState);
 
-  // Initialize the operator's dispatch so that all state updates
-  // are routed through the operator.
+  // Initialize the operator's dispatch and state
   useEffect(() => {
     // Set the private dispatch on the operator.
     // This makes dispatch available only inside StoryTreeOperator.
