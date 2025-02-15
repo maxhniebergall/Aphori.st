@@ -6,61 +6,93 @@ export class BaseOperator {
     }
 
     async handleCompressedResponse(response) {
-        const isCompressed = response.headers['x-data-compressed'] === 'true';
-        if (isCompressed || (response.data?.v === 1 && response.data?.c === true && response.data?.d) || response.data?.items) {
-            // Handle compressed data
-            if (response.data?.v === 1 && response.data?.c === true && response.data?.d) {
-                console.log("BaseOperator: data is compressed as single item");
-                // This is our compressed data format
-                const decompressedData = await this.decompressItem(response.data);
-                return decompressedData;
-            } else if (response.data?.items && Array.isArray(response.data.items)) {
-                console.log("BaseOperator: data is compressed as array of items");
-                return response.data.items.map((item) => this.decompressItem(item));
-            }
+        try {
+            const isCompressed = response.headers['x-data-compressed'] === 'true';
+            const responseData = response.data;
 
-        
-            // If the entire response is compressed (legacy format)
-            console.log("BaseOperator: data is compressed as entire response");
-            return await compression.decompress(response.data);
-        } else if (response.data?.v ===1 && response.data?.c === false && response.data?.d) {
-            console.log("BaseOperator: data is encoded as entire response");
-            return compression.unencode(response.data.d);  
-        } else {
-            console.log("BaseOperator: data is not compressed",);
-            return response.data;
+            // Log the response structure for debugging
+            console.log("BaseOperator: Response structure:", {
+                isCompressed,
+                hasVersion: responseData?.v !== undefined,
+                isCompressed: responseData?.c === true,
+                hasData: responseData?.d !== undefined,
+                hasItems: responseData?.items !== undefined
+            });
+
+            if (isCompressed || (responseData?.v === 1 && responseData?.c === true && responseData?.d) || responseData?.items) {
+                // Handle compressed data
+                if (responseData?.v === 1 && responseData?.c === true && responseData?.d) {
+                    console.log("BaseOperator: Processing compressed single item");
+                    const decompressedData = await this.decompressItem(responseData);
+                    console.log("BaseOperator: Successfully decompressed single item");
+                    return decompressedData;
+                } else if (responseData?.items && Array.isArray(responseData.items)) {
+                    console.log("BaseOperator: Processing compressed array of items");
+                    const decompressedItems = await Promise.all(responseData.items.map(item => this.decompressItem(item)));
+                    console.log("BaseOperator: Successfully decompressed array items");
+                    return decompressedItems;
+                }
+
+                // If the entire response is compressed (legacy format)
+                console.log("BaseOperator: Processing legacy compressed response");
+                const decompressedResponse = await compression.decompress(responseData);
+                console.log("BaseOperator: Successfully decompressed legacy response");
+                return decompressedResponse;
+            } else if (responseData?.v === 1 && responseData?.c === false && responseData?.d) {
+                console.log("BaseOperator: Processing encoded response");
+                const unencodedResponse = compression.unencode(responseData.d);
+                console.log("BaseOperator: Successfully unencoded response");
+                return unencodedResponse;
+            } else {
+                console.log("BaseOperator: Response is not compressed, returning as is");
+                return responseData;
+            }
+        } catch (error) {
+            console.error("BaseOperator: Error handling compressed response:", error);
+            throw error;
         }
     }
 
     // Helper method to decompress a single item if needed
     async decompressItem(item) {
-        const itemObject = typeof item === 'string' ? JSON.parse(item) : item;  
-        console.log("BaseOperator: decompressing item", itemObject);
-        if (itemObject?.v === 1 && itemObject?.c === true && itemObject?.d) {
-            const decompressedItem = await compression.decompress(itemObject.d);
-            console.log("BaseOperator: decompressed item", decompressedItem);
+        try {
+            const itemObject = typeof item === 'string' ? JSON.parse(item) : item;
+            console.log("BaseOperator: Decompressing item structure:", {
+                hasVersion: itemObject?.v !== undefined,
+                isCompressed: itemObject?.c === true,
+                hasData: itemObject?.d !== undefined
+            });
 
-            try {
-                if (typeof decompressedItem === 'string') {
-                    return JSON.parse(decompressedItem)
-                } else {
+            if (itemObject?.v === 1 && itemObject?.c === true && itemObject?.d) {
+                console.log("BaseOperator: Decompressing compressed item");
+                const decompressedItem = await compression.decompress(itemObject.d);
+                console.log("BaseOperator: Successfully decompressed item");
+
+                try {
+                    if (typeof decompressedItem === 'string') {
+                        return JSON.parse(decompressedItem);
+                    } else {
+                        return decompressedItem;
+                    }
+                } catch (e) {
+                    console.error('BaseOperator: Error parsing decompressed item:', e);
                     return decompressedItem;
                 }
-            } catch (e) {
-                console.error('Error parsing decompressed item:', e);
-                return decompressedItem;
+            } else if (itemObject?.v === 1 && itemObject?.c === false && itemObject?.d) {
+                console.log("BaseOperator: Unencoding item");
+                const unencodedItem = await compression.unencode(itemObject.d);
+                if (typeof unencodedItem === 'string') {
+                    return JSON.parse(unencodedItem);
+                } else {
+                    return unencodedItem;
+                }
             }
-        } else if (itemObject?.v === 1 && itemObject?.c === false && itemObject?.d) {
-            console.log("BaseOperator: data is encoded as item");
-            const unencodedItem = await compression.unencode(itemObject.d);
-            if (typeof unencodedItem === 'string') {
-                return JSON.parse(unencodedItem);
-            } else {
-                return unencodedItem;
-            }
-        }
 
-        return item;    
+            return item;
+        } catch (error) {
+            console.error("BaseOperator: Error decompressing item:", error);
+            throw error;
+        }
     }
 
     // Helper method for retrying API calls

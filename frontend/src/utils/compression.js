@@ -12,14 +12,23 @@ export class DatabaseCompression {
     }
 
     async decompress(value) {
-        if (!value) return null;
-        const compressed = Buffer.from(value, 'base64');
-        const decompressed = pako.inflate(compressed);
-        const text = new TextDecoder().decode(decompressed);
+        if (!value) {
+            console.warn('Compression: Received null or undefined value to decompress');
+            return null;
+        }
         try {
-            return JSON.parse(text);
+            const compressed = Buffer.from(value, 'base64');
+            const decompressed = pako.inflate(compressed);
+            const text = new TextDecoder().decode(decompressed);
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                console.warn('Compression: Failed to parse decompressed JSON:', e);
+                return text;
+            }
         } catch (e) {
-            return text;
+            console.error('Compression: Failed to decompress value:', e);
+            throw e;
         }
     }
 
