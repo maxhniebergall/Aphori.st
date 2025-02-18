@@ -54,8 +54,6 @@ export interface StoryTree {
 export interface StoryMetadata {
     title?: string;
     author?: string;
-    authorId: string;
-    authorEmail: string;
     createdAt: string;
     quote: Quote | null;
 }

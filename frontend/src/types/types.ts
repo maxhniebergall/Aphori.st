@@ -51,8 +51,6 @@ export interface StoryTreeLevel {
 export interface StoryTreeMetadata {
   title: string;
   author: string;
-  authorId: string;
-  authorEmail: string;
   createdAt: string;
   quote: Quote | null;
 }
@@ -112,23 +110,21 @@ export interface Reply {
   quote: Quote;
   metadata: {
       author: string;
-      authorId: string;
-      authorEmail: string;
       createdAt: number;
   };
 }
 
-export enum ACTIONS {
-  START_STORY_TREE_LOAD = 'START_STORY_TREE_LOAD',
-  SET_INITIAL_STORY_TREE_DATA = 'SET_INITIAL_STORY_TREE_DATA',
-  INCLUDE_NODES_IN_LEVELS = 'INCLUDE_NODES_IN_LEVELS',
-  SET_ERROR = 'SET_ERROR',
-  CLEAR_ERROR = 'CLEAR_ERROR'
-}
+export const ACTIONS = {
+  START_STORY_TREE_LOAD: 'START_STORY_TREE_LOAD',
+  SET_INITIAL_STORY_TREE_DATA: 'SET_INITIAL_STORY_TREE_DATA',
+  INCLUDE_NODES_IN_LEVELS: 'INCLUDE_NODES_IN_LEVELS',
+  SET_ERROR: 'SET_ERROR',
+  CLEAR_ERROR: 'CLEAR_ERROR'
+} as const;
 
 export type Action =
-  | { type: ACTIONS.START_STORY_TREE_LOAD; payload: { rootNodeId: string } }
-  | { type: ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { storyTree: StoryTree } }
-  | { type: ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: StoryTreeLevel[] }
-  | { type: ACTIONS.SET_ERROR; payload: string }
-  | { type: ACTIONS.CLEAR_ERROR };
+  | { type: typeof ACTIONS.START_STORY_TREE_LOAD; payload: { rootNodeId: string } }
+  | { type: typeof ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { storyTree: StoryTree } }
+  | { type: typeof ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: StoryTreeLevel[] }
+  | { type: typeof ACTIONS.SET_ERROR; payload: string }
+  | { type: typeof ACTIONS.CLEAR_ERROR };

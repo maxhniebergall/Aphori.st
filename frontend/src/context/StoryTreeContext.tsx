@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useLayoutEffect, ReactNode } from 'react';
 import { StoryTreeState, Action, StoryTreeLevel } from '../types/types';
 import { ACTIONS } from '../types/types';
-import StoryTreeErrorBoundary from '../context/StoryTreeErrorBoundary';
-import StoryTreeOperator from '../operators/StoryTreeOperator';
+import StoryTreeErrorBoundary from './StoryTreeErrorBoundary';
+import storyTreeOperator from '../operators/StoryTreeOperator';
 
 /*
  * Requirements:
@@ -11,7 +11,7 @@ import StoryTreeOperator from '../operators/StoryTreeOperator';
  * - Loading state management with simple boolean isLoading
  * - Error handling and propagation
  * - Initial state with proper type definitions
- * - Pagination state management
+ * - **Cursor based pagination state management**
  * - Sibling navigation state handling
  * - Editing state management
  * - Node removal tracking
@@ -46,12 +46,33 @@ export function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTr
     if (levelIndex === -1) {
       returnableLevels.push(levelWithNewItems);
     } else {
+      // Update the pagination information with cursor based details
+      returnableLevels[levelIndex].pagination = {
+        ...returnableLevels[levelIndex].pagination,
+        ...levelWithNewItems.pagination
+      };
+
+      // Merge siblings map using cursor based pagination.
+      // Instead of using an index for insertion, check for the existence of prevCursor:
+      // if prevCursor exists, the new nodes are from an earlier page and should be prepended;
+      // otherwise, they are appended.
       for (const [quote, newNodesAtLevel] of levelWithNewItems.siblings?.levelsMap) {
-        const returnableSiblings = returnableLevels[levelIndex].siblings.levelsMap.get(quote);
-        if (returnableSiblings) {
-          returnableSiblings.push(...newNodesAtLevel);
+        const existingSiblings = returnableLevels[levelIndex].siblings.levelsMap.get(quote);
+        
+        // Filter out nodes that already exist
+        const existingIds = existingSiblings ? new Set(existingSiblings.map(node => node.id)) : new Set();
+        const uniqueNewNodes = newNodesAtLevel.filter(node => !existingIds.has(node.id));
+        
+        if (existingSiblings && existingSiblings.length > 0) {
+          if (levelWithNewItems.pagination.prevCursor) {
+            // Prepend new nodes if pagination indicates loading a previous page.
+            returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...uniqueNewNodes, ...existingSiblings]);
+          } else {
+            // Otherwise, append new nodes.
+            returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...existingSiblings, ...uniqueNewNodes]);
+          }
         } else {
-          returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...newNodesAtLevel]);
+          returnableLevels[levelIndex].siblings.levelsMap.set(quote, uniqueNewNodes);
         }
       } 
     }
@@ -61,6 +82,7 @@ export function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTr
 }
 
 function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {
+  console.log('UserContext reducer:', action);
   switch (action.type) {
     case ACTIONS.START_STORY_TREE_LOAD:
       return {
@@ -71,8 +93,6 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           metadata: {
             title: '',
             author: '',
-            authorId: '',
-            authorEmail: '',
             createdAt: '',
             quote: null
           },
@@ -117,6 +137,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
 
 interface StoryTreeContextType {
   state: StoryTreeState;
+  dispatch: React.Dispatch<Action>;
 }
 
 const StoryTreeContext = createContext<StoryTreeContextType | undefined>(undefined);
@@ -124,19 +145,14 @@ const StoryTreeContext = createContext<StoryTreeContextType | undefined>(undefin
 export function StoryTreeProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(storyTreeReducer, initialState);
 
-  // Initialize the operator's dispatch and state
-  useEffect(() => {
-    // Set the private dispatch on the operator.
-    // This makes dispatch available only inside StoryTreeOperator.
-    StoryTreeOperator.setDispatch(dispatch);
-  }, [dispatch]);
-
-  // Provide only the state to consumers.
-  const value = { state };
+  // Use useLayoutEffect to synchronously inject the store before child effects run.
+  useLayoutEffect(() => {
+    storyTreeOperator.setStore({ state, dispatch });
+  }, [state, dispatch]);
 
   return (
     <StoryTreeErrorBoundary>
-      <StoryTreeContext.Provider value={value}>
+      <StoryTreeContext.Provider value={{ state, dispatch }}>
         {children}
       </StoryTreeContext.Provider>
     </StoryTreeErrorBoundary>

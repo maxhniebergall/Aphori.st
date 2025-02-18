@@ -16,7 +16,7 @@
  * - Clear loading state after data is loaded
  */
 
-import React, { useCallback, useRef, useEffect, useMemo, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { VariableSizeList } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -37,32 +37,29 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
   const listRef = useRef<VariableSizeList>(null);
   const sizeMap = useRef<{ [key: number]: number }>({});
   const [levels, setLevels] = useState<StoryTreeLevel[]>([]);
-  const [hasNextPage, setHasNextPage] = useState(true);
   const { replyTarget } = useReplyContext();
 
   // useEffects
     // Load initial data
   useEffect(() => {
-    const loadInitialData = async () => {
-      if (!postRootId) return;
-      
+    if (!postRootId) {
       setIsLocalLoading(true);
-      try {
-        storyTreeOperator.initializeStoryTree(postRootId);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load story tree');
-      } finally {
-        setIsLocalLoading(false);
-      }
-    };
-
-    loadInitialData();
+      return;
+    } else {
+      setIsLocalLoading(false);
+    }
   }, [postRootId]);
     // Load more levels
   useEffect(() => {
     if (!postRootId) return;
     setLevels(state?.storyTree?.levels || []);
   }, [postRootId, state?.storyTree?.levels]);
+  // Set error
+  useEffect(() => {
+    if (state?.error) {
+      setError(state.error);
+    }
+  }, [state?.error]);
 
   // Show initial loading state
   if (isLocalLoading && !levels.length) {
@@ -79,11 +76,6 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
     return <div className="error" role="alert">Error: {error}</div>;
   }
 
-  // Show empty state
-  if (!levels.length && !hasNextPage) {
-    return <div className="empty" role="status">No content available</div>;
-  }
-
   // Show content with potential loading more indicator
   return (
     <div style={{ height: '100%', overflow: 'visible' }} role="list" aria-label="Story tree content">
@@ -91,7 +83,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
         {({ height, width }) => (
           <InfiniteLoader
             isItemLoaded={(index) => index < levels.length}
-            itemCount={hasNextPage ? levels.length + 1 : levels.length}
+            itemCount={Number.MAX_SAFE_INTEGER} // TODO: we need to actually get the total number of levels
             loadMoreItems={storyTreeOperator.loadMoreLevels}
             minimumBatchSize={10}
             threshold={5}

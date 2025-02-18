@@ -4,7 +4,7 @@
  * - Support TypeScript props
  * - Handle null checks
  * - Support accessibility
- * - Use quoteLiteral for quote text
+ * - Use text for quote text
  * - Link to source post
  * - Proper styling
  * - Error handling
@@ -23,7 +23,7 @@ interface QuoteRendererProps {
 const QuoteRenderer: React.FC<QuoteRendererProps> = ({ quote }) => {
   return (
     <div className="quote-container" role="blockquote">
-      <p className="quote-text">{quote.quoteLiteral}</p>
+      <p className="quote-text">{quote.text}</p>
       <Link to={`/post/${quote.sourcePostId}`} className="quote-source">
         View source post
       </Link>
