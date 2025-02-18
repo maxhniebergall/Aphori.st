@@ -23,3 +23,6 @@ yarn-debug.log*
 yarn-error.log*
 frontend/playwright-report
 frontend/test-results
+
+# Private individual user cursor rules
+.cursor/rules/_*.mdc
