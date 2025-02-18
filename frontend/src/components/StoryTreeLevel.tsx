@@ -48,8 +48,15 @@ interface StoryTreeLevelProps {
 
 export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelData }) => {
   // State declarations
+  console.log("StoryTreeLevel: Initializing with levelData:", {
+    rootNodeId: levelData.rootNodeId,
+    levelNumber: levelData.levelNumber,
+    siblings: levelData.siblings,
+    pagination: levelData.pagination,
+    selectedQuote: levelData.selectedQuote
+  });
   const [replyError, setReplyError] = useState<string | null>(null);
-  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [currentIndex, setCurrentIndex] = useState<number>(-1);
   const [siblings, setSiblings] = useState<StoryTreeNode[]>([]);
   const [currentNode, setCurrentNode] = useState<StoryTreeNode | null>(null);
   // Keeping sizeMap as a ref for performance reasons (frequent updates do not trigger re-renders)
@@ -57,17 +64,39 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   const { setReplyTarget, replyTarget, setReplyQuote, replyQuote, clearReplyState } = useReplyContext();
 
   // useEffects to update state based on props
-  // TODO verify that this works correctly with respect to rerenders
   useEffect(() => {
-    setSiblings(levelData.siblings.levelsMap.get(levelData.selectedQuote) || []);
-  }, [levelData]);
+    const levelsMapEntries = Array.from(levelData.siblings.levelsMap.entries()).map(([quote, nodes]) => ({
+      quote: quote.toString(),
+      nodesCount: nodes.length,
+      nodeIds: nodes.map(n => n.id)
+    }));
+    console.log("StoryTreeLevel: Accessing levelsMap:", {
+      mapSize: levelData.siblings.levelsMap.size,
+      selectedQuote: levelData.selectedQuote.toString(),
+      availableQuotes: Array.from(levelData.siblings.levelsMap.keys()).map(q => q.toString()),
+      entries: levelsMapEntries,
+      pagination: levelData.pagination
+    });
+    const siblingsArray = levelData.siblings.levelsMap.get(levelData.selectedQuote) || [];
+    setSiblings(siblingsArray);
+    // Reset currentIndex if it's out of bounds
+    if (currentIndex >= siblingsArray.length) {
+      setCurrentIndex(0);
+    } else if (currentIndex < 0 && siblingsArray.length > 0) {
+      setCurrentIndex(0);
+    }
+  }, [levelData.siblings.levelsMap, currentIndex, levelData.selectedQuote, levelData.pagination]);
   
   useEffect(() => {
-    if (siblings.length === 0) {
+    console.log('siblings', siblings);
+    console.log('currentIndex', currentIndex);
+    const node = siblings[currentIndex];
+    console.log('node', node);
+    if (!node?.rootNodeId) {
       setCurrentNode(null);
       return;
     }
-    setCurrentNode(siblings[currentIndex] || null);
+    setCurrentNode(node);
   }, [siblings, currentIndex]);
 
   // Check if a node is the reply target
@@ -104,14 +133,30 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
       } else {
         // if not in reply mode, enter reply mode
         setReplyTarget(levelData);
-        const quote: Quote = {
-          quoteLiteral: currentNode.textContent, // if the reply button is clicked, the quote is the whole text content of the current node
-          sourcePostId: currentNode.rootNodeId,
-          selectionRange: {
+        
+        // Only create quote if we have valid content
+        if (!currentNode.textContent || currentNode.textContent.trim().length === 0) {
+          console.error('Cannot create quote: node has no text content', currentNode);
+          return;
+        }
+
+        const quote: Quote = new Quote(
+          currentNode.textContent.trim(),
+          currentNode.rootNodeId,
+          {
             start: 0,
-            end: currentNode.textContent.length
+            end: currentNode.textContent.trim().length
           }
-        };
+        );
+
+        if (!quote.isValid()) {
+          console.error('Failed to create valid quote for reply:', {
+            node: currentNode,
+            quote
+          });
+          return;
+        }
+
         setReplyQuote(quote);
         setReplyError(null);
         window.dispatchEvent(new Event('resize'));
@@ -125,7 +170,9 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     setReplyTarget,
     setReplyQuote,
     isReplyTarget,
-    levelData
+    levelData,
+    currentNode,
+    setReplyError
   ]);
 
   const navigateToNextSibling = () => { 
@@ -139,20 +186,63 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     }
   };
   
-  const loadMoreItems = async (startIndex: number, stopIndex: number): Promise<void> => {
-    // TODO account for multiple parentIds
-    const promise = StoryTreeOperator.loadMoreItems(levelData.parentId[0], levelData.levelNumber, levelData.selectedQuote, startIndex, stopIndex);
-    return promise;
-  };
+  const infiniteLoaderProps = useMemo(() => {
+    const loadMoreItems = async (startIndex: number, stopIndex: number): Promise<void> => {
+      console.log("InfiniteLoader: Loading more items:", {
+        startIndex,
+        stopIndex,
+        parentId: levelData.parentId[0],
+        levelNumber: levelData.levelNumber,
+        selectedQuote: levelData.selectedQuote.toString(),
+        currentPagination: levelData.pagination,
+        isTitleNode: levelData.levelNumber === 0
+      });
+      return StoryTreeOperator.loadMoreItems(
+        levelData.parentId[0], 
+        levelData.levelNumber, 
+        levelData.selectedQuote, 
+        startIndex, 
+        stopIndex
+      );
+    };
 
-  // Setup InfiniteLoader properties
-  const infiniteLoaderProps = useMemo(() => ({
-    itemCount: levelData.siblings.levelsMap.get(levelData.selectedQuote)?.length || 1,
-    loadMoreItems, 
-    isItemLoaded: (index: number): boolean => Boolean(levelData.siblings.levelsMap.get(levelData.selectedQuote)?.[index]),
-    minimumBatchSize: 3,
-    threshold: 2,
-  }), [levelData]);
+    const currentNodes = levelData.siblings.levelsMap.get(levelData.selectedQuote) || [];
+    const isItemLoaded = (index: number): boolean => {
+      console.log("InfiniteLoader: Checking if item is loaded:", {
+        index,
+        currentNodesLength: currentNodes.length,
+        hasMore: levelData.pagination.hasMore,
+        matchingRepliesCount: levelData.pagination.matchingRepliesCount,
+        nextCursor: levelData.pagination.nextCursor,
+        prevCursor: levelData.pagination.prevCursor,
+        isTitleNode: levelData.levelNumber === 0
+      });
+      return index < currentNodes.length;
+    };
+    
+    const calculatedItemCount = levelData.pagination.hasMore 
+      ? Math.max((currentNodes.length || 0) + 1, levelData.pagination.matchingRepliesCount)
+      : (currentNodes.length || 0);
+      
+    console.log("InfiniteLoader: Calculated props:", {
+      calculatedItemCount,
+      currentNodesLength: currentNodes.length,
+      matchingRepliesCount: levelData.pagination.matchingRepliesCount,
+      hasMore: levelData.pagination.hasMore,
+      nextCursor: levelData.pagination.nextCursor,
+      prevCursor: levelData.pagination.prevCursor,
+      isTitleNode: levelData.levelNumber === 0,
+      levelNumber: levelData.levelNumber
+    });
+    
+    return {
+      itemCount: calculatedItemCount,
+      loadMoreItems,
+      isItemLoaded,
+      minimumBatchSize: 3,
+      threshold: 2,
+    };
+  }, [levelData]);
 
   // Setup gesture handling for swipe navigation
   const bind = useGesture({
@@ -186,8 +276,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     },
   });
 
-  if (!currentNode?.rootNodeId) {
-    console.warn('StoryTreeLevel received invalid node:', currentNode);
+  if (!currentNode) {
+    // Only warn if we have siblings but no current node
     return null;
   }
 

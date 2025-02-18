@@ -88,49 +88,45 @@ const highlightText = (element: HTMLElement, startOffset: number, endOffset: num
 
 const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts): void => {
   removeExistingHighlights(element);
+  if (!quotes.quoteCounts) return;
 
   // Sort quotes by reply count descending and process top 10 only
-  const sortedQuotes = Object.entries(quotes)
+  const sortedQuotes = Array.from(quotes.quoteCounts.entries())
     .sort(([, count1], [, count2]) => count2 - count1)
     .slice(0, 10);
 
-  sortedQuotes.forEach(([quoteRange, count]) => {
-    try {
-      const { start, end } = JSON.parse(quoteRange);
-      const findNodeAndOffset = (offset: number) => {
-        let currentOffset = 0;
-        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-        while (walker.nextNode()) {
-          const node = walker.currentNode;
-          const length = node.textContent ? node.textContent.length : 0;
-          if (currentOffset + length >= offset) {
-            return { node, offset: offset - currentOffset };
-          }
-          currentOffset += length;
+  sortedQuotes.forEach(([quote, count]) => {
+    // Here, 'quote' should already be a Quote object that contains the selectionRange.
+    const { start, end } = quote.selectionRange;
+    const findNodeAndOffset = (offset: number) => {
+      let currentOffset = 0;
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const length = node.textContent ? node.textContent.length : 0;
+        if (currentOffset + length >= offset) {
+          return { node, offset: offset - currentOffset };
         }
-        return null;
-      };
-
-      const startPos = findNodeAndOffset(start);
-      const endPos = findNodeAndOffset(end);
-      if (!startPos || !endPos) return;
-
-      const range = document.createRange();
-      range.setStart(startPos.node, startPos.offset);
-      range.setEnd(endPos.node, endPos.offset);
-
-      const span = document.createElement('span');
-      span.style.backgroundColor = `rgba(0, 255, 0, ${Math.min(0.1 + count * 0.05, 0.5)})`;
-      span.dataset.quoteRange = quoteRange;
-      span.dataset.replyCount = count.toString();
-
-      try {
-        range.surroundContents(span);
-      } catch (e) {
-        console.warn('Could not highlight quote:', e);
+        currentOffset += length;
       }
-    } catch (err) {
-      console.warn('Error parsing quote range:', err);
+      return null;
+    };
+
+    const startPos = findNodeAndOffset(start);
+    const endPos = findNodeAndOffset(end);
+    if (!startPos || !endPos) return;
+
+    const range = document.createRange();
+    range.setStart(startPos.node, startPos.offset);
+    range.setEnd(endPos.node, endPos.offset);
+
+    const span = document.createElement('span');
+    span.style.backgroundColor = `rgba(0, 255, 0, ${Math.min(0.1 + count * 0.05, 0.5)})`;
+    // TODO add styling to display the reply count
+    try {
+      range.surroundContents(span);
+    } catch (e) {
+      console.warn('Could not highlight quote:', e);
     }
   });
 };
@@ -204,14 +200,14 @@ export function useTextSelection({
       cleanupEventListeners();
       if (!containerRef.current) return null;
       finalOffsetRef.current = getCurrentOffset(containerRef.current, event);
-      const quote: Quote = {
-        quoteLiteral: containerRef.current.textContent?.slice(initialOffsetRef.current ?? 0, finalOffsetRef.current ?? 0) || '',
-        sourcePostId: containerRef.current.id,
-        selectionRange: {
+      const quote: Quote = new Quote(
+        containerRef.current.textContent?.slice(initialOffsetRef.current ?? 0, finalOffsetRef.current ?? 0) || '',
+        containerRef.current.id,
+        {
           start: initialOffsetRef.current ?? 0,
           end: finalOffsetRef.current ?? 0,
         },
-      };
+      );
       return quote;
     },
     [cleanupEventListeners]
@@ -241,11 +237,11 @@ export function useTextSelection({
           const { start, end } = getWordBoundaries(text, offset);
           removeExistingHighlights(containerRef.current);
           highlightText(containerRef.current, start, end);
-          onSelectionCompleted({
-            quoteLiteral: text.slice(start, end),
-            sourcePostId: containerRef.current.id,
-            selectionRange: { start, end },
-          });
+          onSelectionCompleted(new Quote(
+            text.slice(start, end),
+            containerRef.current.id,
+            { start, end }
+          ));
           mouseIsDownRef.current = false;
           return;
         }
