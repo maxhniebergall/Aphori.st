@@ -4,6 +4,7 @@ Requirements:
 - Extend DatabaseClientInterface
 - Handle Redis client connection and error events
 - Provide methods for key-value, hash, list, and sorted set operations
+- Support list operations including lSet for updating list elements
 */
 
 import { createClient, RedisClientType } from 'redis';
@@ -22,6 +23,10 @@ export class RedisClient extends DatabaseClientInterface {
 
   async connect(): Promise<void> {
     await this.client.connect();
+  }
+
+  async disconnect(): Promise<void> {
+    await this.client.disconnect();
   }
 
   async get(key: string): Promise<any> {
@@ -54,6 +59,17 @@ export class RedisClient extends DatabaseClientInterface {
 
   async lRange(key: string, start: number, end: number): Promise<any[]> {
     return this.client.lRange(key, start, end);
+  }
+
+  async lSet(key: string, index: number, value: any): Promise<void> {
+    logger.info(`Redis lSet called with key: ${key}, index: ${index}`);
+    try {
+      await this.client.lSet(key, index, value);
+      logger.info(`Redis lSet successful for index ${index}`);
+    } catch (err) {
+      logger.error('Redis lSet error:', err);
+      throw err;
+    }
   }
 
   async isConnected(): Promise<boolean> {
