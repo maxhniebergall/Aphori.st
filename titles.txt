@@ -1,0 +1,49 @@
+Title Node Locations in Codebase
+============================
+
+1. frontend/src/types/types.ts
+   - Line 26: Title node definition in StoryTreeNode interface with isTitleNode?: boolean
+
+2. frontend/src/components/TitleRow.tsx
+   - Line 41: Title usage in metadata extraction (const title = storyTree?.metadata?.title || node?.textContent || 'Untitled')
+   - Line 47: Title rendering in header component
+
+3. frontend/src/operators/StoryTreeOperator.ts
+   - Line 43: Title node ID storage in titleNodeId property
+
+4. frontend/src/components/StoryTreeHolder.tsx
+   - Contains Header component which handles title display
+   - Provides context for story tree that includes title information
+
+5. frontend/src/components/StoryTreeLevel.tsx
+   - Uses StoryTreeNode interface which includes the isTitleNode property
+   - Renders nodes including title nodes through the NodeContent component
+
+Note: The title node system is implemented as a special type of StoryTreeNode with the isTitleNode flag, 
+managed through the StoryTreeOperator class. The actual display of titles is handled by the TitleRow component, 
+while the node structure is defined in the types file. 
+
+Backend Title Locations
+--------------------
+
+1. backend/types/index.ts
+   - Line 55: Title field in StoryMetadata interface (title?: string)
+   - Line 87: Title field in FeedItem interface (title?: string)
+   - Line 132: Title field in UnifiedNodeMetadata interface (title?: string)
+
+2. backend/server.ts
+   - Line 621-625: Title handling in createStoryTree endpoint, storing title in metadata
+   - Line 637-644: Title inclusion in feedItem creation and storage
+   - Line 1001-1004: Title handling in combinedNode endpoint for unified node structure
+
+3. backend/seed.js
+   - Line 543: Title generation and storage in metadata during story creation
+   - Line 552-554: Title inclusion in feed item creation
+   - Line 608-610: Title storage in storyTree object structure
+
+4. backend/migrate.ts
+   - Line 35-39: Title field definition in OldStoryTree interface metadata
+
+Note: In the backend, titles are consistently stored as part of metadata objects and are included in both the story tree 
+and feed item structures. They are handled in creation endpoints, seeding operations, and retrieval endpoints, with 
+optional typing (title?) throughout the type system. 
