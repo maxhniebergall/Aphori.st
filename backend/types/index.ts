@@ -3,6 +3,7 @@ import { Request } from 'express';
 // Database Types
 export interface DatabaseClient {
     connect: () => Promise<void>;
+    disconnect?: () => Promise<void>;
     isConnected?: () => boolean;
     isReady?: () => boolean;
     hGet: (key: string, field: string, options?: { returnCompressed: boolean }) => Promise<any>;
@@ -13,6 +14,7 @@ export interface DatabaseClient {
     set: (key: string, value: any) => Promise<void>;
     lPush: (key: string, value: any) => Promise<void>;
     lRange: (key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<any[]>;
+    lSet: (key: string, index: number, value: any) => Promise<void>;
     sAdd: (key: string, value: string) => Promise<void>;
     zAdd: (key: string, score: number, value: string) => Promise<void>;
     zRange: (key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<any[]>;
@@ -21,6 +23,7 @@ export interface DatabaseClient {
     compress: (data: any) => Promise<any>;
     decompress: (data: any) => Promise<any>;
     zRevRangeByScore: (key: string, max: number, min: number, options?: { limit?: number }) => Promise<any[]>;
+    keys: (pattern: string) => Promise<string[]>;
 }
 
 // User Types
@@ -52,7 +55,6 @@ export interface StoryTree {
 }
 
 export interface StoryMetadata {
-    title?: string;
     author?: string;
     createdAt: string;
     quote: Quote | null;
@@ -88,7 +90,6 @@ export interface Replies {
 // Feed Types
 export interface FeedItem {
     id: string;
-    title?: string;
     text: string;
     author: {
         id: string;
@@ -132,7 +133,6 @@ export interface UnifiedNodeMetadata {
     quote?: Quote;
     author: string;
     createdAt: string;
-    title?: string;
 }
 
 // Existing Selectable Quotes Types

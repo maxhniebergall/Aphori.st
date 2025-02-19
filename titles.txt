@@ -1,5 +1,59 @@
+Refactor to remove titles
+===============================
+
+Background:
+- Titles were included in story trees to emulate other social media platforms & document structures
+- Titles are included in the metadata for story trees (including unified nodes and feed items) in the backend
+- There aren't any working tests, so we don't need to worry about updating them
+
+``` typescript
+export interface StoryMetadata {
+    title?: string;
+    author?: string;
+    createdAt: string;
+    quote: Quote | null;
+}
+
+export interface UnifiedNodeMetadata {
+    parentId: string[] | null;
+    quote?: Quote;
+    author: string;
+    createdAt: string;
+    title?: string;
+}
+
+export interface FeedItem {
+    id: string;
+    title?: string;
+    text: string;
+    author: {
+        id: string;
+        email: string;
+    };
+    createdAt: string;
+}
+```
+
+- We will need to update the migration script to migrate existing story trees in the database
+  - For story trees with titles, prepend the title to the text content, with markdown formatting (`# Title\n\nContent`)
+  - We should assume that after running the migration script, all of the data in the system will be in the new format, so we don't need to worry about handling old format data
+- We will need to update the backend endpoints to remove titles from the metadata for all elements which have them
+- We will need to update the frontend components to remove titles from the metadata
+- We will need to update the seed data to remove titles
+- We will need to update frontend components to remove titles nodes, rows, and components
+  - Currently we are adding a special title node to the story tree, but we don't need to do that anymore
+  - Any frontend code that creates a title node should be removed
+  - The isTitleNode flag should be removed
+  - The removal of titles nodes shouldn't impact the rendering of other nodes in the story tree, or the overall story tree structure
+- We should completely remove title fields, we don't need to worry about versioning or BWC (except for the migration script)
+- We are curently working in a development environment, so we can make these changes without worrying about production deployments or the production database.
+  - Before we run the migration script on the production database, we will perform a back up of production data, and we will run the migration script on a copy of the production database. 
+  - So, we don't need to worry about production data for now.
+
 Title Node Locations in Codebase
-============================
+===============================
+Frontend Title Locations
+--------------------
 
 1. frontend/src/types/types.ts
    - Line 26: Title node definition in StoryTreeNode interface with isTitleNode?: boolean
@@ -7,6 +61,7 @@ Title Node Locations in Codebase
 2. frontend/src/components/TitleRow.tsx
    - Line 41: Title usage in metadata extraction (const title = storyTree?.metadata?.title || node?.textContent || 'Untitled')
    - Line 47: Title rendering in header component
+   - This whole file can be removed
 
 3. frontend/src/operators/StoryTreeOperator.ts
    - Line 43: Title node ID storage in titleNodeId property
