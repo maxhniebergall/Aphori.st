@@ -34,9 +34,9 @@ export interface FeedItem {
 }
 ```
 
-- We will need to update the migration script to migrate existing story trees in the database
-  - For story trees with titles, prepend the title to the text content, with markdown formatting (`# Title\n\nContent`)
-  - We should assume that after running the migration script, all of the data in the system will be in the new format, so we don't need to worry about handling old format data
+[x] We will need to update the migration script to migrate existing story trees in the database
+  [x] For story trees with titles, prepend the title to the text content, with markdown formatting (`# Title\n\nContent`)
+  [x] We should assume that after running the migration script, all of the data in the system will be in the new format, so we don't need to worry about handling old format data
 - We will need to update the backend endpoints to remove titles from the metadata for all elements which have them
 - We will need to update the frontend components to remove titles from the metadata
 - We will need to update the seed data to remove titles

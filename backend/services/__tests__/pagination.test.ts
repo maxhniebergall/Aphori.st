@@ -24,7 +24,6 @@ describe('PaginationService', () => {
                 parentId: null,
                 author: 'User 1',
                 authorId: 'user1',
-                authorEmail: 'user1@example.com',
                 createdAt: '2024-01-01T00:00:00Z',
                 title: 'Story 1'
             }
@@ -37,7 +36,6 @@ describe('PaginationService', () => {
                 parentId: ['1'],
                 author: 'User 2',
                 authorId: 'user2',
-                authorEmail: 'user2@example.com',
                 createdAt: '2024-01-01T00:01:00Z'
             }
         }

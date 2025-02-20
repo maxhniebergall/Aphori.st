@@ -620,10 +620,8 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
             text: storyTree.content || storyTree.text,
             parentId: null, // Root-level posts always have null parentId
             metadata: {
-                title: storyTree.title,
                 author: storyTree.author,
                 authorId: req.user.id,
-                authorEmail: req.user.email,
                 createdAt: new Date().toISOString(),
                 quote: null // Root-level posts don't have quotes
             },
@@ -636,7 +634,6 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         // Add to feed items (only root-level posts go to feed)
         const feedItem = {
             id: uuid,
-            title: storyTree.title,
             text: storyTree.content || storyTree.text,
             author: {
                 id: req.user.id,
@@ -1002,7 +999,6 @@ app.get<{ uuid: string }, ApiResponse<UnifiedNode>>('/api/combinedNode/:uuid', a
                     parentId: rawData.parentId, // expected to be null for story nodes
                     author: rawData.metadata.author,
                     createdAt: rawData.metadata.createdAt,
-                    title: rawData.metadata.title,
                     quote: rawData.metadata.quote || undefined
                 }
             };
