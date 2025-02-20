@@ -74,9 +74,12 @@ async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
             logger.info("Existing feed items cleared");
         }
 
+        const storyIds: string[] = [];
+
         // Create each story
         for (const story of sampleStories) {
             const uuid = crypto.randomUUID();
+            storyIds.push(uuid);
             
             // Create the story following UnifiedNode schema structure
             const formattedStory: UnifiedNode = {
@@ -109,8 +112,76 @@ async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
         }
 
         logger.info(`Successfully seeded ${sampleStories.length} stories`);
+
+        // Seed test replies
+        await seedTestReplies(storyIds);
     } catch (error) {
         logger.error('Error seeding stories:', error);
+        throw error;
+    }
+}
+
+async function seedTestReplies(storyIds: string[]): Promise<void> {
+    try {
+        logger.info("Seeding test replies...");
+
+        for (const storyId of storyIds) {
+            // Create a test reply for each story
+            const replyId = crypto.randomUUID();
+            const timestamp = Date.now();
+
+            // Create a test quote targeting the first character of the story
+            const quote = {
+                text: "content",
+                sourcePostId: "content",
+                selectionRange: {
+                    start: 0,
+                    end: 1
+                }
+            };
+
+            // Create the reply object
+            const reply = {
+                id: replyId,
+                text: "This is a test reply to help with testing the reply functionality.",
+                parentId: [storyId],
+                quote: quote,
+                metadata: {
+                    authorId: 'seed_user',
+                    createdAt: new Date().toISOString()
+                }
+            };
+
+            // Store the reply in Redis
+            await db.hSet(replyId, 'reply', reply);
+
+            // Add to various indices
+            const quoteKey = `${quote.text}|${quote.sourcePostId}|${quote.selectionRange.start}-${quote.selectionRange.end}`;
+
+            // 1. Global replies feed
+            await db.zAdd('replies:feed:mostRecent', timestamp, replyId);
+
+            // 2. Replies by Quote (General)
+            await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, timestamp, replyId);
+
+            // 3. Replies by Parent ID and Detailed Quote
+            await db.zAdd(`replies:uuid:${storyId}:quote:${quoteKey}:mostRecent`, timestamp, replyId);
+
+            // 4. Replies by Parent ID and Quote Text
+            await db.zAdd(`replies:${storyId}:${quote.text}:mostRecent`, timestamp, replyId);
+
+            // 5. Conditional Replies by Quote Text Only
+            await db.zAdd(`replies:quote:${quote.text}:mostRecent`, timestamp, replyId);
+
+            // Increment the quote count
+            await db.hIncrBy(`${storyId}:quoteCounts`, JSON.stringify(quote), 1);
+
+            logger.info(`Created test reply with ID: ${replyId} for story: ${storyId}`);
+        }
+
+        logger.info(`Successfully seeded ${storyIds.length} test replies`);
+    } catch (error) {
+        logger.error('Error seeding test replies:', error);
         throw error;
     }
 }

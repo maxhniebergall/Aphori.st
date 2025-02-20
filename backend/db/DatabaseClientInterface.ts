@@ -78,4 +78,8 @@ export abstract class DatabaseClientInterface {
   async hIncrBy(key: string, field: string, increment: number): Promise<number> {
     throw new Error('Method not implemented');
   }
+
+  async zRevRangeByScore(key: string, max: number, min: number, options?: { limit?: number }): Promise<any[]> {
+    throw new Error('Method not implemented');
+  }
 } 
