@@ -40,8 +40,8 @@ class StoryTreeOperator extends BaseOperator {
 
   // Initialize with a valid root quote that represents the entire content
   public rootQuote: Quote = new Quote(
-    'rootQuote',  // Non-empty text
-    'rootQuote',          // Non-empty source ID
+    'content',  // Non-empty text
+    'content',  // Non-empty source ID
     { start: 0, end: 1 }  // Valid range
   );
 

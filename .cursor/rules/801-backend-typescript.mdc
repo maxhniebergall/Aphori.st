@@ -1,1 +1,64 @@
- 
+---
+description: RUN TypeScript scripts in backend container USING ts-node with ES modules support TO ensure proper execution
+globs: backend/**/*.ts
+tags: [docker, backend, typescript, scripts]
+priority: 1
+version: 1.0.0
+---
+
+# Backend TypeScript Script Execution Rule
+
+## Context
+- Backend container uses TypeScript and ES modules
+- Scripts need ts-node for direct execution without compilation
+- ES modules require specific Node.js options
+- Direct `tsc` compilation often fails due to module resolution issues
+
+## Requirements
+- MUST use ts-node for running TypeScript scripts
+- MUST include proper Node.js options for ES modules support
+- MUST execute scripts from the /app directory in the container
+- MUST use the correct container name (aphorist-backend-1)
+
+## Command Template
+```bash
+docker exec aphorist-backend-1 sh -c 'cd /app && NODE_OPTIONS="--loader ts-node/esm --experimental-specifier-resolution=node" node script.ts'
+```
+
+## Examples
+<example>
+Running a migration script:
+```bash
+docker exec aphorist-backend-1 sh -c 'cd /app && NODE_OPTIONS="--loader ts-node/esm --experimental-specifier-resolution=node" node migrate.ts'
+```
+</example>
+
+<example type="invalid">
+❌ Wrong: Direct TypeScript execution
+```bash
+docker exec aphorist-backend-1 node migrate.ts
+```
+
+❌ Wrong: Using tsc to compile first
+```bash
+docker exec aphorist-backend-1 tsc migrate.ts && node migrate.js
+```
+
+❌ Wrong: Missing ES modules support
+```bash
+docker exec aphorist-backend-1 ts-node migrate.ts
+```
+</example>
+
+## Troubleshooting
+1. If you see "Cannot find module" errors:
+   - Ensure you're in /app directory
+   - Check that imports use .js extension
+   - Verify NODE_OPTIONS includes --experimental-specifier-resolution=node
+
+2. If you see "ERR_UNKNOWN_FILE_EXTENSION" for .ts files:
+   - Verify NODE_OPTIONS includes --loader ts-node/esm
+
+3. If you see ES modules related errors:
+   - Check package.json has "type": "module"
+   - Ensure imports use proper ES module syntax 

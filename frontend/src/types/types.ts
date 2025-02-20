@@ -11,7 +11,6 @@
  * - Yarn for package management
  */
 
-
 import { Quote, QuoteMetadata } from "./quote";
 
 export interface QuoteCounts {
@@ -74,16 +73,16 @@ export interface UnifiedNodeMetadata {
 }
 
 export interface UnifiedNode {
-    id: string;
-    type: 'story' | 'reply';
-    content: string;
-    metadata: UnifiedNodeMetadata;
+  id: string;
+  type: 'story' | 'reply';
+  content: string;
+  metadata: UnifiedNodeMetadata;
 }
 
 // Cache Types
 export interface CacheKey {
-    type: 'story' | 'reply' | 'batch';
-    id: string;
+  type: 'story' | 'reply' | 'batch';
+  id: string;
 }
 
 // API Response Types
@@ -106,8 +105,8 @@ export interface Reply {
   parentId: string[];
   quote: Quote;
   metadata: {
-      author: string;
-      createdAt: number;
+    author: string;
+    createdAt: number;
   };
 }
 
