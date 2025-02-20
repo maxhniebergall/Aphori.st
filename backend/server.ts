@@ -58,7 +58,8 @@ import {
     UnifiedNode,
     Replies,
     ExistingSelectableQuotes,
-    UnifiedNodeMetadata
+    UnifiedNodeMetadata,
+    CreateReplyResponse
 } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 
@@ -740,7 +741,7 @@ app.post('/api/signup', async (req: Request, res: Response): Promise<void> => {
     });
 });
 
-app.post('/api/createReply', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+app.post('/api/createReply', authenticateToken, async (req: Request, res: Response<CreateReplyResponse>): Promise<void> => {
     try {
         // Destructure required fields from the request body.
         const text: string = req.body.text;
@@ -750,11 +751,17 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
 
         // Validate that required fields are provided.
         if (!text || !parentId || !quote || !quote.text || !quote.sourcePostId || !quote.selectionRange) {
-            res.status(400).json({ error: 'Missing required fields. Ensure text, parentId, and a full quote (with text, sourcePostId, and selectionRange) are provided.' });
+            res.status(400).json({ 
+                success: false, 
+                error: 'Missing required fields. Ensure text, parentId, and a full quote (with text, sourcePostId, and selectionRange) are provided.' 
+            });
             return;
         }
         if (!metadata || !metadata.authorId) {
-            res.status(400).json({ error: 'Missing metadata: authorId is required.' });
+            res.status(400).json({ 
+                success: false, 
+                error: 'Missing metadata: authorId is required.' 
+            });
             return;
         }
 
@@ -766,7 +773,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             quote,    // Store the complete quote object
             metadata: {
                 authorId: metadata.authorId,
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString() // don't use metadata.createdAt so that users can't change the createdAt time of a reply
             }
         };
 
@@ -805,7 +812,10 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         });
     } catch (err) {
         logger.error('Error creating reply:', err);
-        res.status(500).json({ error: 'Server error' });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Server error' 
+        });
     }
 }) as unknown as RequestHandler;
 

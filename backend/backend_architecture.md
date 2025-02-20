@@ -164,10 +164,16 @@ Creates a new reply to a story or another reply.
 interface CreateReplyRequest {
   parentId: string | string[];
   text: string;
-  quote?: {
+  quote: {  // Required field for tracking what is being replied to
     text: string;
     sourcePostId: string;
-    selectionRange: [number, number];
+    selectionRange: {
+      start: number;
+      end: number;
+    };
+  };
+  metadata: {
+    authorId: string;  // Required for tracking reply author
   };
 }
 ```
@@ -182,6 +188,14 @@ interface CreateReplyResponse {
   error?: string;
 }
 ```
+
+**Authentication:**  
+Requires valid authentication token in Authorization header.
+
+**Error Responses:**
+- 400: Missing required fields (text, parentId, quote, or metadata.authorId)
+- 401: Invalid or missing authentication token
+- 500: Server error
 
 #### GET /api/getReplies/:uuid/:quote/:sortingCriteria
 

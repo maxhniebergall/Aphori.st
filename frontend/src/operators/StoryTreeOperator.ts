@@ -27,7 +27,7 @@
  * - Implement caching with CacheService
  */
 
-import { ACTIONS, StoryTreeNode, StoryTreeState, UnifiedNode, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, ApiResponse } from '../types/types';
+import { ACTIONS, StoryTreeNode, StoryTreeState, UnifiedNode, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, ApiResponse, CreateReplyResponse } from '../types/types';
 import { Quote } from '../types/quote';
 import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
@@ -37,6 +37,7 @@ import { createPaginatedFetcher, createCursor } from '../utils/pagination';
 class StoryTreeOperator extends BaseOperator {
   // Introduce a store property to hold state and dispatch injected from a React component.
   private store: { state: StoryTreeState, dispatch: React.Dispatch<Action> } | null = null;
+  private userContext: { state: { user: { id: string } | null } } | null = null;
 
   // Initialize with a valid root quote that represents the entire content
   public rootQuote: Quote = new Quote(
@@ -60,11 +61,23 @@ class StoryTreeOperator extends BaseOperator {
     this.store = store;
   }
 
+  // Method to inject the user context
+  public setUserContext(context: { state: { user: { id: string } | null } }): void {
+    this.userContext = context;
+  }
+
   private getState() {
     if (!this.store) {
-      throw new Error("Store not initialized in StoryTreeOperator. Call setStore() with the appropriate context.");
+      throw new StoryTreeError("Store not initialized in StoryTreeOperator. Call setStore() with the appropriate context.");
     }
     return this.store.state;
+  }
+
+  private getUserId(): string {
+    if (!this.userContext?.state.user) {
+      throw new StoryTreeError("User not authenticated. Please log in to submit replies.");
+    }
+    return this.userContext.state.user.id;
   }
 
   validateNode(level: any): level is StoryTreeLevel {
@@ -143,6 +156,7 @@ class StoryTreeOperator extends BaseOperator {
       id: storyTree.id,
       rootNodeId: storyTree.id,
       parentId: [storyTree.id],
+      levelNumber: storyTree.levels.length,
       textContent: unifiedNode.content || '',  // Handle potential null content
       quoteCounts: { quoteCounts: new Map([[this.rootQuote, 0]]) },
       metadata: {
@@ -320,6 +334,7 @@ class StoryTreeOperator extends BaseOperator {
           id: reply.id,
           rootNodeId: storyTreeId,
           parentId: reply.parentId,
+          levelNumber,
           textContent: reply.text,
           quoteCounts,
           metadata: {
@@ -407,34 +422,56 @@ class StoryTreeOperator extends BaseOperator {
   /**
    * Submits a reply to a given story node.
    *
-   * @param rootNodeId - The root node identifier.
-   * @param replyContent - The content of the reply.
+   * @param text - The content of the reply.
+   * @param parentId - The parent node identifier.
    * @param quote - The quote associated with the reply.
-   * @returns A promise resolving to an object indicating success.
+   * @returns A promise resolving to an object indicating success and optionally the reply ID.
+   * @throws {StoryTreeError} If user is not authenticated
    */
-  public async submitReply(rootNodeId: string, replyContent: string, quote: Quote): Promise<{ success: boolean }> {
+  public async submitReply(text: string, parentId: string, quote: Quote): Promise<{ replyId?: string; error?: string }> {
     try {
-      const response = await axios.post<ApiResponse<any>>(`${process.env.REACT_APP_API_URL}/api/reply`, {
-        rootNodeId,
-        replyContent,
-        quote
+      // Get the user ID, which will throw if user is not authenticated
+      const authorId = this.getUserId();
+
+      const response = await axios.post<CreateReplyResponse>(`${process.env.REACT_APP_API_URL}/api/createReply`, {
+        text,
+        parentId,
+        quote,
+        metadata: {
+          authorId,
+          createdAt: new Date().toISOString()
+        }
       });
-      const data = await this.handleCompressedResponse<ApiResponse<any>>(response);
-      if (data && data.success) {
-        return { success: true };
+
+      if (!response.data.success) {
+        console.error('Error submitting reply:', response.data.error);
+        return { error: response.data.error || 'Unknown error occurred' };
       }
+
+      // After successful reply, reload the story tree data
+      const state = this.getState();
+      if (state.storyTree) {
+        await this.initializeStoryTree(state.storyTree.id);
+      }
+
+      return { replyId: response.data.data?.id };
     } catch (error) {
-      const axiosErr = error as AxiosError;
-      const statusCode = axiosErr.response?.status;
-      const endpoint = `${process.env.REACT_APP_API_URL}/api/reply`;
-      const storyTreeErr = new StoryTreeError('Error submitting reply', statusCode, endpoint, error);
-      console.error(storyTreeErr);
+      if (error instanceof StoryTreeError) {
+        return { error: error.message };
+      }
+      const axiosErr = error as AxiosError<CreateReplyResponse>;
+      console.error('Error submitting reply:', {
+        status: axiosErr.response?.status,
+        endpoint: `${process.env.REACT_APP_API_URL}/api/createReply`,
+        error: axiosErr.response?.data?.error || axiosErr.message
+      });
+      return { error: axiosErr.response?.data?.error || 'Failed to submit reply' };
     }
-    return { success: false };
   }
 
   // loadMoreLevels remains unchanged (aside from the improvements in loadMoreItems)
   public loadMoreLevels = async (startLevelNumber: number, endLevelNumber: number): Promise<void> => {
+    console.log("StoryTreeOperator: Loading more levels:", { startLevelNumber, endLevelNumber });
     let state = this.getState();
     if (!state.storyTree) {
       const errorMsg = `StoryTreeOperator: storyTree not initialized`;
@@ -501,5 +538,6 @@ class StoryTreeOperator extends BaseOperator {
   }
 }
 
+// Create and export a single instance
 const storyTreeOperator = new StoryTreeOperator();
 export default storyTreeOperator;

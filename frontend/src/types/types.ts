@@ -22,6 +22,7 @@ export interface StoryTreeNode {
   id: string;
   rootNodeId: string;
   parentId: string[];
+  levelNumber: number;
   textContent: string;
   metadata?: QuoteMetadata;
   quoteCounts: QuoteCounts | null;
@@ -92,6 +93,15 @@ export interface ApiResponse<T = any> {
   error?: string;
   message?: string;
   compressedData?: T;
+}
+
+// Specific response type for createReply endpoint
+export interface CreateReplyResponse {
+  success: boolean;
+  error?: string;
+  data?: {
+    id: string;
+  };
 }
 
 export interface CursorPaginatedResponse<T> extends ApiResponse {

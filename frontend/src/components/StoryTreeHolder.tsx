@@ -143,7 +143,7 @@ function StoryTreeContent() {
         </div>
         <div className="reply-actions" role="group" aria-label="Reply actions">
           <button 
-            onClick={() => StoryTreeOperator.submitReply(replyTarget.rootNodeId, replyContent, replyQuote)}
+            onClick={() => StoryTreeOperator.submitReply(replyContent, replyTarget.id, replyQuote)}
             disabled={!replyContent.trim()}
             className="submit-reply-button"
             aria-label="Submit reply"

@@ -87,7 +87,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     
     // Handle case when there are no siblings but we have a root node
     if (!node && levelData.levelNumber === 0 && levelData.rootNodeId) {
-      setCurrentNode({
+      const node = {
         id: levelData.rootNodeId,
         rootNodeId: levelData.rootNodeId,
         parentId: levelData.parentId,
@@ -96,7 +96,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
         metadata: {
           replyCounts: new Map()
         }
-      });
+      } as StoryTreeNode;
+      setCurrentNode(node);
       return;
     }
     
@@ -120,7 +121,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     (quote: Quote): void => {
       try {
         setReplyError(null);
-        setReplyTarget(levelData);
+        setReplyTarget(currentNode);
         setReplyQuote(quote);
       } catch (error) {
         setReplyError('Failed to set reply target');
@@ -142,7 +143,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
         clearReplyState();
       } else {
         // if not in reply mode, enter reply mode
-        setReplyTarget(levelData);
+        setReplyTarget(currentNode);
         
         // Only create quote if we have valid content
         if (!currentNode.textContent || currentNode.textContent.trim().length === 0) {
@@ -293,12 +294,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     id: levelData.rootNodeId,
     rootNodeId: levelData.rootNodeId,
     parentId: levelData.parentId,
+    levelNumber: levelData.levelNumber,
     textContent: '',
     quoteCounts: { quoteCounts: new Map() },
     metadata: {
       replyCounts: new Map()
     }
-  };
+  } as StoryTreeNode;
 
   // Early return if we don't have a valid node
   if (!node?.rootNodeId) {
