@@ -22,7 +22,7 @@ export interface DatabaseClient {
     encodeKey: (id: string, prefix: string) => string;
     compress: (data: any) => Promise<any>;
     decompress: (data: any) => Promise<any>;
-    zRevRangeByScore: (key: string, max: number, min: number, options?: { limit?: number }) => Promise<any[]>;
+    zRevRangeByScore: <T = string>(key: string, max: number, min: number, options?: { limit?: number }) => Promise<RedisSortedSetItem<T>[]>;
     keys: (pattern: string) => Promise<string[]>;
 }
 
@@ -152,4 +152,10 @@ export interface Pagination {
 export interface CursorPaginatedResponse<T> extends ApiResponse {
     data: T[];
     pagination: Pagination;
+}
+
+// Redis Types
+export interface RedisSortedSetItem<T> {
+    score: number;
+    value: T;
 }

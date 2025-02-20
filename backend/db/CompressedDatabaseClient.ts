@@ -279,4 +279,31 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         // Note: We don't compress increment values as they're numeric
         return this.db.hIncrBy(key, field, increment);
     }
+
+    async zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<T[]> {
+        try {
+            const items = await this.db.zRevRangeByScore(key, max, min, options);
+            if (!items.length) return [];
+            
+            const decompressedItems = await Promise.all(
+                items.map(async (item) => {
+                    try {
+                        // Parse the outer string if it's stringified JSON
+                        const parsedItem = typeof item.value === 'string' ? JSON.parse(item.value) : item.value;
+                        const decompressed = await this.compression.decompress(parsedItem);
+                        return decompressed as T;
+                    } catch (err) {
+                        logger.error('Error parsing/decompressing item:', err);
+                        return null;
+                    }
+                })
+            );
+            
+            // Filter out any failed decompression attempts and cast to T[]
+            return decompressedItems.filter((item): item is NonNullable<typeof item> => item !== null) as T[];
+        } catch (err) {
+            logger.error('Error in zRevRangeByScore:', err);
+            throw err;
+        }
+    }
 } 

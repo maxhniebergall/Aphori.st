@@ -19,9 +19,7 @@ const DEV_USER = {
 };
 
 // Reducer to handle state changes based on actions
-function userReducer(state, action) {
-    console.log('UserContext reducer:', { type: action.type, payload: action.payload, currentState: state });
-    
+function userReducer(state, action) {    
     switch(action.type) {
         case 'AUTH_REQUEST':
             return { ...state, loading: true, error: null };

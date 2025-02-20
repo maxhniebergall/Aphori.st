@@ -865,25 +865,39 @@ app.get<{
         const { uuid, quote, sortingCriteria } = req.params;
         let quoteObj: Quote;
         try {
-            // Decode and parse the JSON from the URL parameter.
+            // First try parsing as JSON
             const decodedQuote = decodeURIComponent(quote);
-            quoteObj = JSON.parse(decodedQuote);
+            try {
+                quoteObj = JSON.parse(decodedQuote);
+            } catch (e) {
+                // If JSON parsing fails, try pipe-delimited format
+                const [text, sourcePostId, range] = decodedQuote.split('|');
+                if (!text || !sourcePostId || !range) {
+                    throw new Error('Invalid quote format');
+                }
+                const [start, end] = range.split('-').map(Number);
+                quoteObj = {
+                    text,
+                    sourcePostId,
+                    selectionRange: { start, end }
+                };
+            }
         } catch (error) {
-            const errorReponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+            const errorResponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
                 success: false,
                 error: 'Invalid quote object provided in URL parameter'
             };
-            res.status(400).json(errorReponse);
+            res.status(400).json(errorResponse);
             return;
         }
 
-        // Validate that the quote object includes the required 'text' field.
+        // Validate that the quote object includes the required fields.
         if (!quoteObj.text || !quoteObj.sourcePostId || !quoteObj.selectionRange) {
-            const errorReponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+            const errorResponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
                 success: false,
-                error: 'Quote object must include a "text" field'
+                error: 'Quote object must include text, sourcePostId, and selectionRange fields'
             };
-            res.status(400).json(errorReponse);
+            res.status(400).json(errorResponse);
             return;
         }
 
@@ -898,8 +912,8 @@ app.get<{
         // Build the sorted set key for replies based on the full quote object and sorting criteria.
         const sortedSetKey = `replies:uuid:${uuid}:quote:${quoteKey}:${sortingCriteria}`;
         
-        // Use zRevRangeByScore to fetch reply score pairs using cursor-based pagination.
-        const replyScorePairs: Array<{ replyId: string, score: number }> = await db.zRevRangeByScore(
+        // Step 1: Get reply IDs from the sorted set
+        const replyIds = await db.zRevRangeByScore<string>(
             sortedSetKey, 
             cursor, 
             Number.NEGATIVE_INFINITY, 
@@ -909,19 +923,31 @@ app.get<{
         const matchingRepliesCount = await db.zCard(sortedSetKey);
         
         let nextCursor: number | null = null;
-        if (replyScorePairs.length === limit) {
-            nextCursor = replyScorePairs[replyScorePairs.length - 1].score;
+        if (replyIds && replyIds.length === limit) {
+            // Use the score from the last item as the next cursor
+            nextCursor = replyIds[replyIds.length - 1].score;
         }
-        const replyIds = replyScorePairs.map(pair => pair.replyId);
+
+        // Step 2: Fetch the actual reply data for each ID
+        const replies = await Promise.all(
+            replyIds.map(async (item) => {
+                try {
+                    // Fetch the actual reply data using the ID
+                    const reply = await db.hGet(item.value, 'reply');
+                    return reply;
+                } catch (err) {
+                    logger.error(`Error fetching reply ${item.value}:`, err);
+                    return null;
+                }
+            })
+        );
+
+        // Filter out any null values from failed fetches
+        const validReplies = replies.filter(reply => reply !== null) as Reply[];
         
-        // For each reply ID, fetch and decompress the reply data.
-        const replyKeys = await Promise.all(
-            replyIds.map(id => db.hGet(id, 'reply', { returnCompressed: true }).then(data => db.decompress(data)))
-        ) as Reply[];
-        
-        // Prepare the response object with cursor pagination info.
+        // Prepare the response object with cursor pagination info
         const response = {
-            replies: replyKeys,
+            replies: validReplies,
             pagination: {
                 limit,
                 nextCursor,
@@ -930,7 +956,7 @@ app.get<{
             }
         };
 
-        // Compress and send the response.
+        // Compress and send the response
         const compressedResponse = await db.compress(response) as CursorPaginatedResponse<Reply>;
         res.setHeader('X-Data-Compressed', 'true');
         const apiResponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
@@ -940,11 +966,11 @@ app.get<{
         res.send(apiResponse);
     } catch (err) {
         logger.error('Error fetching replies by quote:', err);
-        const errorReponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+        const errorResponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
             success: false,
             error: 'Server error'
         };
-        res.status(500).json(errorReponse);
+        res.status(500).json(errorResponse);
     }
 });
 

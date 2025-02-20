@@ -9,6 +9,7 @@ Requirements:
 
 import { createClient, RedisClientType } from 'redis';
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
+import { RedisSortedSetItem } from '../types/index.js';
 import newLogger from '../logger.js';
 const logger = newLogger("RedisClient.js");
 
@@ -123,7 +124,7 @@ export class RedisClient extends DatabaseClientInterface {
       const result = await this.client.zAdd(key, [
         {
           score: score,
-          value: value.toString() // Ensure value is a string
+          value: value // Value is already a string from CompressedDatabaseClient
         }
       ]);
       logger.info(`zAdd result: ${result}`);
@@ -146,6 +147,49 @@ export class RedisClient extends DatabaseClientInterface {
       return result;
     } catch (err) {
       logger.error('Redis hIncrBy error:', err);
+      throw err;
+    }
+  }
+
+  async zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<RedisSortedSetItem<T>[]> {
+    logger.info(`Redis zRevRangeByScore called with key: ${key}, max: ${max}, min: ${min}, options:`, options);
+    
+    try {
+      // Use ZRANGE with REV and BYSCORE options (Redis 6.2+ recommended approach)
+      const rangeArgs = ['ZRANGE', key, String(max), String(min), 'BYSCORE', 'REV', 'WITHSCORES'];
+      
+      if (options?.limit) {
+        rangeArgs.push('LIMIT', String(0), String(options.limit));
+      }
+      
+      logger.info(`Executing Redis command: ${rangeArgs.join(' ')}`);
+      const result = await this.client.sendCommand(rangeArgs);
+      
+      logger.info(`zRevRangeByScore raw result:`, result);
+      
+      // Redis returns results as [value1, score1, value2, score2, ...]
+      // Transform into array of {score, value} objects
+      const items: RedisSortedSetItem<T>[] = [];
+      if (Array.isArray(result)) {
+        for (let i = 0; i < result.length; i += 2) {
+          const value = result[i];
+          const score = result[i + 1];
+          if (value !== undefined && score !== undefined) {
+            const parsedScore = typeof score === 'string' ? parseFloat(score) : 
+                              typeof score === 'number' ? score : 
+                              Buffer.isBuffer(score) ? parseFloat(score.toString()) : 0;
+            
+            items.push({
+              value: value as unknown as T,
+              score: parsedScore
+            });
+          }
+        }
+      }
+      
+      return items;
+    } catch (err) {
+      logger.error('Redis zRevRangeByScore error:', err);
       throw err;
     }
   }
