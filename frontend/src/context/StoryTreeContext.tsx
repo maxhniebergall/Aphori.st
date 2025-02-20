@@ -82,7 +82,6 @@ export function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTr
 }
 
 function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {
-  console.log('UserContext reducer:', action);
   switch (action.type) {
     case ACTIONS.START_STORY_TREE_LOAD:
       return {
