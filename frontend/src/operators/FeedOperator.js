@@ -11,7 +11,7 @@ class FeedOperator extends BaseOperator {
             );
             console.log("FeedOperator: response", response);
             try {
-                return { success: true, items: response.items.map((item) => JSON.parse(item)), page: response.page };
+                return { success: true, items: response.items, page: response.page };
             } catch (e) {
                 console.error("Error parsing data", e);
                 return { success: false, error: "Error parsing data" };

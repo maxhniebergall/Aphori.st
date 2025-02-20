@@ -105,7 +105,7 @@ class StoryTreeOperator extends BaseOperator {
         id: unifiedNode.id,
         parentId: unifiedNode.metadata?.parentId || null,
         metadata: {
-          author: unifiedNode.metadata?.author || '',
+          authorId: unifiedNode.metadata?.authorId || '',
           createdAt: unifiedNode.metadata?.createdAt || '',
           quote: null
         },
@@ -316,7 +316,7 @@ class StoryTreeOperator extends BaseOperator {
           textContent: reply.text,
           quoteCounts,
           metadata: {
-            author: reply.metadata.author,
+            authorId: reply.metadata.authorId,
             createdAt: reply.metadata.createdAt.toString(),
             quote: reply.quote,
             replyCounts: new Map([[reply.quote, 0]])
