@@ -55,7 +55,7 @@ export interface StoryTree {
 }
 
 export interface StoryMetadata {
-    author?: string;
+    authorId: string;
     createdAt: string;
     quote: Quote | null;
 }
@@ -76,7 +76,6 @@ export interface Reply {
     parentId: string[];
     quote: Quote;
     metadata: {
-        author: string;
         authorId: string;
         createdAt: number;
     };
@@ -90,9 +89,7 @@ export interface Replies {
 export interface FeedItem {
     id: string;
     text: string;
-    author: {
-        id: string;
-    };
+    authorId: string;
     createdAt: string;
 }
 
@@ -129,7 +126,7 @@ export interface UnifiedNode {
 export interface UnifiedNodeMetadata {
     parentId: string[] | null;
     quote?: Quote;
-    author: string;
+    authorId: string;
     createdAt: string;
 }
 

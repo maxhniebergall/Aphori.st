@@ -620,12 +620,11 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
             text: storyTree.content || storyTree.text,
             parentId: null, // Root-level posts always have null parentId
             metadata: {
-                author: storyTree.author,
                 authorId: req.user.id,
                 createdAt: new Date().toISOString(),
                 quote: null // Root-level posts don't have quotes
             },
-        };
+        } as StoryTree;
 
         // Store in Redis
         await db.hSet(uuid, 'storyTree', JSON.stringify(formattedStoryTree));
@@ -635,12 +634,9 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         const feedItem = {
             id: uuid,
             text: storyTree.content || storyTree.text,
-            author: {
-                id: req.user.id,
-                email: req.user.email
-            },
+            authorId: req.user.id,
             createdAt: formattedStoryTree.metadata.createdAt
-        };
+        } as FeedItem;
         await db.lPush('feedItems', JSON.stringify(feedItem));
         logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
 
@@ -757,8 +753,8 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             res.status(400).json({ error: 'Missing required fields. Ensure text, parentId, and a full quote (with text, sourcePostId, and selectionRange) are provided.' });
             return;
         }
-        if (!metadata || !metadata.author) {
-            res.status(400).json({ error: 'Missing metadata: author is required.' });
+        if (!metadata || !metadata.authorId) {
+            res.status(400).json({ error: 'Missing metadata: authorId is required.' });
             return;
         }
 
@@ -769,7 +765,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             parentId, // Expecting an array of parent IDs
             quote,    // Store the complete quote object
             metadata: {
-                author: metadata.author,
+                authorId: metadata.authorId,
                 createdAt: new Date().toISOString()
             }
         };
@@ -997,7 +993,7 @@ app.get<{ uuid: string }, ApiResponse<UnifiedNode>>('/api/combinedNode/:uuid', a
                 content: rawData.text,
                 metadata: {
                     parentId: rawData.parentId, // expected to be null for story nodes
-                    author: rawData.metadata.author,
+                    authorId: rawData.metadata.authorId || 'Unknown',
                     createdAt: rawData.metadata.createdAt,
                     quote: rawData.metadata.quote || undefined
                 }
@@ -1009,7 +1005,7 @@ app.get<{ uuid: string }, ApiResponse<UnifiedNode>>('/api/combinedNode/:uuid', a
                 content: rawData.text,
                 metadata: {
                     parentId: rawData.parentId, // expected to be an array for reply nodes
-                    author: rawData.metadata.author,
+                    authorId: rawData.metadata.authorId || 'Unknown',
                     createdAt: rawData.metadata.createdAt,
                     quote: rawData.quote || undefined
                 }

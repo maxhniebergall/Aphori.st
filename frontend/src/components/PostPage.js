@@ -52,7 +52,10 @@ function PostPage() {
         {
           storyTree: {
             title: title.trim(),
-            content: content.trim()
+            content: content.trim(),
+            metadata: {
+              authorId: state.user.id
+            }
           }
         }
       );

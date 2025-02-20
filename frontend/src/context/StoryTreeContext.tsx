@@ -91,7 +91,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           id: action.payload.rootNodeId,
           parentId: null,
           metadata: {
-            author: '',
+            authorId: '',
             createdAt: '',
             quote: null
           },

@@ -9,6 +9,7 @@
  * - Reply and navigation types
  * - Type safety for all operations
  * - Yarn for package management
+ * - Consistent author and authorId fields across all interfaces
  */
 
 import { Quote, QuoteMetadata } from "./quote";
@@ -47,7 +48,7 @@ export interface StoryTreeLevel {
 }
 
 export interface StoryTreeMetadata {
-  author: string;
+  authorId: string;
   createdAt: string;
   quote: Quote | null;
 }
@@ -68,7 +69,7 @@ export interface StoryTreeState {
 export interface UnifiedNodeMetadata {
   parentId: string[] | null;
   quote?: Quote;
-  author: string;
+  authorId: string;
   createdAt: string;
 }
 
@@ -105,7 +106,7 @@ export interface Reply {
   parentId: string[];
   quote: Quote;
   metadata: {
-    author: string;
+    authorId: string;
     createdAt: number;
   };
 }
