@@ -2,7 +2,7 @@
  * Requirements:
  * - Memory efficient row rendering with React.memo
  * - Hide descendant nodes when in reply mode using row indices
- * - Render loading, fallback, title, or normal node states as appropriate
+ * - Render loading, fallback, or normal node states as appropriate
  * - Delegate dynamic height and ref handling to RowContainer
  * - TypeScript support with strict typing
  * - Yarn for package management
@@ -17,11 +17,8 @@
 import React, { useMemo } from 'react';
 import { ListChildComponentProps } from 'react-window';
 import RowContainer from './RowContainer';
-import TitleRow from './TitleRow';
 import NormalRowContent from './NormalRowContent';
 import { StoryTreeLevel } from '../types/types';
-import StoryTreeOperator from '../operators/StoryTreeOperator';
-
 
 interface RowProps extends Omit<ListChildComponentProps, 'data'> {
   levelData: StoryTreeLevel;
@@ -43,30 +40,22 @@ const Row: React.FC<RowProps> = React.memo(
       ...style,
     }), [style]);
 
-
-    // Choose which content component to render
-    const content = useMemo(() => {
-      if (levelData.levelNumber === 0) { // Title node is always level 0
-        const titleNodes = levelData.siblings.levelsMap.get(StoryTreeOperator.rootQuote);
-        return <TitleRow node={titleNodes ? titleNodes[0] : undefined} />;
-      }
-
-      return (
-        <NormalRowContent
-          levelData={levelData}
-        />
-      );
-    }, [
+    // Create content component
+    const content = useMemo(() => (
+      <NormalRowContent
+        levelData={levelData}
+      />
+    ), [
       shouldHide,
       levelData,
     ]);
 
     // Create wrapper div for accessibility attributes
     const wrappedContent = useMemo(() => (
-      <div role="listitem" aria-label={levelData.levelNumber === 0   ? 'Story title' : 'Story content'}>
+      <div role="listitem" aria-label="Story content">
         {content}
       </div>
-    ), [content, levelData.levelNumber]);
+    ), [content]);
 
     return (
       <RowContainer

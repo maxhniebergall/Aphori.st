@@ -165,8 +165,8 @@ function StoryTreeContent() {
   return (
     <div className="story-tree-container">
       <Header 
-        title="Story Tree"
-        subtitle="View and reply to stories"
+        title="Stories"
+        subtitle="View and respond to stories"
         onLogoClick={() => navigate('/feed')}
       />
       <main className="story-tree-content" role="main">
