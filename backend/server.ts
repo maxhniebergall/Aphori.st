@@ -1016,9 +1016,9 @@ app.get<{ uuid: string }, ApiResponse<UnifiedNode>>('/api/combinedNode/:uuid', a
             unifiedNode = {
                 id: rawData.id,
                 type: 'story',
-                content: rawData.text,
+                content: rawData.content || rawData.text,
                 metadata: {
-                    parentId: rawData.parentId, // expected to be null for story nodes
+                    parentId: rawData.parentId,
                     authorId: rawData.metadata.authorId || 'Unknown',
                     createdAt: rawData.metadata.createdAt,
                     quote: rawData.metadata.quote || undefined
@@ -1028,9 +1028,9 @@ app.get<{ uuid: string }, ApiResponse<UnifiedNode>>('/api/combinedNode/:uuid', a
             unifiedNode = {
                 id: rawData.id,
                 type: 'reply',
-                content: rawData.text,
+                content: rawData.content || rawData.text,
                 metadata: {
-                    parentId: rawData.parentId, // expected to be an array for reply nodes
+                    parentId: rawData.parentId,
                     authorId: rawData.metadata.authorId || 'Unknown',
                     createdAt: rawData.metadata.createdAt,
                     quote: rawData.quote || undefined
