@@ -24,7 +24,6 @@ export interface StoryTreeNode {
   parentId: string[];
   textContent: string;
   metadata?: QuoteMetadata;
-  isTitleNode?: boolean;
   quoteCounts: QuoteCounts | null;
 }
 
@@ -49,7 +48,6 @@ export interface StoryTreeLevel {
 }
 
 export interface StoryTreeMetadata {
-  title: string;
   author: string;
   createdAt: string;
   quote: Quote | null;
@@ -73,7 +71,6 @@ export interface UnifiedNodeMetadata {
   quote?: Quote;
   author: string;
   createdAt: string;
-  title?: string;
 }
 
 export interface UnifiedNode {

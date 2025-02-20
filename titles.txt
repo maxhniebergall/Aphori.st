@@ -37,9 +37,9 @@ export interface FeedItem {
 [x] We will need to update the migration script to migrate existing story trees in the database
   [x] For story trees with titles, prepend the title to the text content, with markdown formatting (`# Title\n\nContent`)
   [x] We should assume that after running the migration script, all of the data in the system will be in the new format, so we don't need to worry about handling old format data
-- We will need to update the backend endpoints to remove titles from the metadata for all elements which have them
-- We will need to update the frontend components to remove titles from the metadata
-- We will need to update the seed data to remove titles
+[x] We will need to update the backend endpoints to remove titles from the metadata for all elements which have them
+[x] We will need to update the seed data to remove titles
+[x] We will need to update the frontend components to remove titles from the metadata
 - We will need to update frontend components to remove titles nodes, rows, and components
   - Currently we are adding a special title node to the story tree, but we don't need to do that anymore
   - Any frontend code that creates a title node should be removed

@@ -194,8 +194,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
         parentId: levelData.parentId[0],
         levelNumber: levelData.levelNumber,
         selectedQuote: levelData.selectedQuote.toString(),
-        currentPagination: levelData.pagination,
-        isTitleNode: levelData.levelNumber === 0
+        currentPagination: levelData.pagination
       });
       return StoryTreeOperator.loadMoreItems(
         levelData.parentId[0], 
@@ -214,8 +213,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
         hasMore: levelData.pagination.hasMore,
         matchingRepliesCount: levelData.pagination.matchingRepliesCount,
         nextCursor: levelData.pagination.nextCursor,
-        prevCursor: levelData.pagination.prevCursor,
-        isTitleNode: levelData.levelNumber === 0
+        prevCursor: levelData.pagination.prevCursor
       });
       return index < currentNodes.length;
     };
@@ -231,7 +229,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
       hasMore: levelData.pagination.hasMore,
       nextCursor: levelData.pagination.nextCursor,
       prevCursor: levelData.pagination.prevCursor,
-      isTitleNode: levelData.levelNumber === 0,
       levelNumber: levelData.levelNumber
     });
     

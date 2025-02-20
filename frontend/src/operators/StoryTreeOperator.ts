@@ -44,7 +44,6 @@ class StoryTreeOperator extends BaseOperator {
     'rootQuote',          // Non-empty source ID
     { start: 0, end: 1 }  // Valid range
   );
-  private titleNodeId: string = "";
 
   constructor() {
     super();
@@ -106,7 +105,6 @@ class StoryTreeOperator extends BaseOperator {
         id: unifiedNode.id,
         parentId: unifiedNode.metadata?.parentId || null,
         metadata: {
-          title: unifiedNode.metadata?.title || '',
           author: unifiedNode.metadata?.author || '',
           createdAt: unifiedNode.metadata?.createdAt || '',
           quote: null
@@ -115,11 +113,10 @@ class StoryTreeOperator extends BaseOperator {
         error: null
       };
 
-      // Create title and content levels using modularized helper functions.
-      this.addTitleLevel(storyTree, unifiedNode);
+      // Create content level using modularized helper function
       this.addContentLevel(storyTree, unifiedNode);
 
-      // Update each level with fresh pagination data.
+      // Update each level with fresh pagination data
       await this.updateLevelsPagination(storyTree.levels);
       return storyTree;
     } catch (error) {
@@ -136,43 +133,6 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   /**
-   * Helper method to add a title level to the StoryTree.
-   *
-   * @param storyTree - The StoryTree object being built.
-   * @param unifiedNode - The unified node data received from the API.
-   */
-  private addTitleLevel(storyTree: StoryTree, unifiedNode: UnifiedNode): void {
-    if (storyTree.metadata?.title || storyTree.metadata?.author) {
-      const titleNode: StoryTreeNode = {
-        id: this.titleNodeId,
-        rootNodeId: storyTree.id,
-        parentId: [storyTree.id],
-        textContent: storyTree.metadata.title || 'Untitled',
-        quoteCounts: { quoteCounts: new Map([[this.rootQuote, 0]]) },
-        isTitleNode: true
-      };
-
-      console.log("StoryTreeOperator: Creating title level with pagination:", {
-        titleNodeId: this.titleNodeId,
-        rootNodeId: storyTree.id,
-        defaultPagination: { nextCursor: undefined, prevCursor: undefined, hasMore: false, matchingRepliesCount: 0 }
-      });
-
-      const titleLevel: StoryTreeLevel = {
-        parentId: [storyTree.id],
-        rootNodeId: storyTree.id,
-        levelNumber: 0,
-        selectedQuote: this.rootQuote,
-        siblings: { levelsMap: new Map([[this.rootQuote, [titleNode]]]) },
-        pagination: { nextCursor: undefined, prevCursor: undefined, hasMore: false, matchingRepliesCount: 0 }
-      };
-
-      // Immutable update: create a new levels array rather than mutating the existing one.
-      storyTree.levels = [...storyTree.levels, titleLevel];
-    }
-  }
-
-  /**
    * Helper method to add a content level to the StoryTree.
    *
    * @param storyTree - The StoryTree object being built.
@@ -182,7 +142,7 @@ class StoryTreeOperator extends BaseOperator {
     const contentNode: StoryTreeNode = {
       id: storyTree.id,
       rootNodeId: storyTree.id,
-      parentId: [this.titleNodeId],
+      parentId: [storyTree.id],
       textContent: unifiedNode.content,
       quoteCounts: { quoteCounts: new Map([[this.rootQuote, 0]]) }, // TODO: update this with actual quote counts
       metadata: {
@@ -192,13 +152,13 @@ class StoryTreeOperator extends BaseOperator {
 
     console.log("StoryTreeOperator: Creating content level with pagination:", {
       nodeId: storyTree.id,
-      parentId: this.titleNodeId,
+      parentId: storyTree.id,
       defaultPagination: { nextCursor: undefined, prevCursor: undefined, hasMore: false, matchingRepliesCount: 1 }
     });
 
     const contentLevel: StoryTreeLevel = {
       rootNodeId: storyTree.id,
-      parentId: [this.titleNodeId],
+      parentId: [storyTree.id],
       levelNumber: storyTree.levels.length,
       selectedQuote: this.rootQuote,
       siblings: { levelsMap: new Map([[this.rootQuote, [contentNode]]]) },
