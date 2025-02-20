@@ -78,7 +78,6 @@ export interface Reply {
     metadata: {
         author: string;
         authorId: string;
-        authorEmail: string;
         createdAt: number;
     };
 }
@@ -93,7 +92,6 @@ export interface FeedItem {
     text: string;
     author: {
         id: string;
-        email: string;
     };
     createdAt: string;
 }
