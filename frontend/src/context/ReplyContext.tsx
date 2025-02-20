@@ -14,12 +14,12 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { StoryTreeLevel } from '../types/types';      
+import { StoryTreeNode } from '../types/types';      
 import { Quote } from '../types/quote';
 
 interface ReplyContextType {
-  replyTarget: StoryTreeLevel | null;
-  setReplyTarget: (target: StoryTreeLevel | null) => void;
+  replyTarget: StoryTreeNode | null;
+  setReplyTarget: (target: StoryTreeNode | null) => void;
   replyContent: string;
   setReplyContent: (content: string) => void;
   replyQuote: Quote | null;
@@ -40,7 +40,7 @@ interface ReplyProviderProps {
 }
 
 export function ReplyProvider({ children }: ReplyProviderProps) {
-  const [replyTarget, setReplyTarget] = useState<StoryTreeLevel | null>(null);
+  const [replyTarget, setReplyTarget] = useState<StoryTreeNode | null>(null);
   const [replyContent, setReplyContent] = useState<string>('');
   const [replyQuote, setReplyQuote] = useState<Quote | null>(null);
   const [replyError, setReplyError] = useState<string | null>(null);

@@ -106,6 +106,15 @@ export interface ApiResponse<T = any> {
     compressedData?: T;
 }
 
+// Specific response type for createReply endpoint
+export interface CreateReplyResponse {
+    success: boolean;
+    error?: string;
+    data?: {
+        id: string;
+    };
+}
+
 // Token Types
 export interface TokenPayload {
     email: string;

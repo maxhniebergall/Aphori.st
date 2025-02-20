@@ -3,6 +3,7 @@ import { StoryTreeState, Action, StoryTreeLevel } from '../types/types';
 import { ACTIONS } from '../types/types';
 import StoryTreeErrorBoundary from './StoryTreeErrorBoundary';
 import storyTreeOperator from '../operators/StoryTreeOperator';
+import { useUser } from './UserContext';
 
 /*
  * Requirements:
@@ -142,11 +143,13 @@ const StoryTreeContext = createContext<StoryTreeContextType | undefined>(undefin
 
 export function StoryTreeProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(storyTreeReducer, initialState);
+  const userContext = useUser();
 
-  // Use useLayoutEffect to synchronously inject the store before child effects run.
+  // Use useLayoutEffect to synchronously inject the store and user context before child effects run.
   useLayoutEffect(() => {
     storyTreeOperator.setStore({ state, dispatch });
-  }, [state, dispatch]);
+    storyTreeOperator.setUserContext(userContext);
+  }, [state, dispatch, userContext]);
 
   return (
     <StoryTreeErrorBoundary>
