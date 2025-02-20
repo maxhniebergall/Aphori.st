@@ -6,6 +6,8 @@ Requirements:
 - Provide type safety for all method parameters
 */
 
+import { RedisSortedSetItem } from '../types/index.js';
+
 export abstract class DatabaseClientInterface {
   async get(key: string): Promise<any> {
     throw new Error('Method not implemented');
@@ -79,7 +81,11 @@ export abstract class DatabaseClientInterface {
     throw new Error('Method not implemented');
   }
 
-  async zRevRangeByScore(key: string, max: number, min: number, options?: { limit?: number }): Promise<any[]> {
+  zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<RedisSortedSetItem<T>[]> {
+    throw new Error('Method not implemented');
+  }
+
+  zscan(key: string, cursor: string, options?: { match?: string; count?: number }): Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }> {
     throw new Error('Method not implemented');
   }
 } 

@@ -193,4 +193,59 @@ export class RedisClient extends DatabaseClientInterface {
       throw err;
     }
   }
+
+  async zscan(key: string, cursor: string = '0', options?: { match?: string; count?: number }): Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }> {
+    logger.info(`Redis zscan called with key: ${key}, cursor: ${cursor}, options:`, options);
+    
+    try {
+      const scanArgs = ['ZSCAN', key, cursor];
+      
+      if (options?.match) {
+        scanArgs.push('MATCH', options.match);
+      }
+      
+      if (options?.count) {
+        scanArgs.push('COUNT', options.count.toString());
+      }
+      
+      logger.info(`Executing Redis command: ${scanArgs.join(' ')}`);
+      const result = await this.client.sendCommand(scanArgs);
+      
+      if (!Array.isArray(result) || result.length !== 2) {
+        throw new Error('Invalid ZSCAN response format');
+      }
+      
+      const [nextCursor, elements] = result;
+      const nextCursorStr = typeof nextCursor === 'string' ? nextCursor : 
+                           typeof nextCursor === 'number' ? nextCursor.toString() : 
+                           Buffer.isBuffer(nextCursor) ? nextCursor.toString() : '0';
+      
+      // Redis returns results as [member1, score1, member2, score2, ...]
+      const items: RedisSortedSetItem<string>[] = [];
+      if (Array.isArray(elements)) {
+        for (let i = 0; i < elements.length; i += 2) {
+          const value = elements[i];
+          const score = elements[i + 1];
+          if (value !== undefined && score !== undefined) {
+            const parsedScore = typeof score === 'string' ? parseFloat(score) : 
+                              typeof score === 'number' ? score : 
+                              Buffer.isBuffer(score) ? parseFloat(score.toString()) : 0;
+            
+            items.push({
+              value: value as string,
+              score: parsedScore
+            });
+          }
+        }
+      }
+      
+      return {
+        cursor: nextCursorStr,
+        items
+      };
+    } catch (err) {
+      logger.error('Redis zscan error:', err);
+      throw err;
+    }
+  }
 } 

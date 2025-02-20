@@ -23,6 +23,7 @@ export interface DatabaseClient {
     compress: (data: any) => Promise<any>;
     decompress: (data: any) => Promise<any>;
     zRevRangeByScore: <T = string>(key: string, max: number, min: number, options?: { limit?: number }) => Promise<RedisSortedSetItem<T>[]>;
+    zscan: (key: string, cursor: string, options?: { match?: string; count?: number }) => Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }>;
     keys: (pattern: string) => Promise<string[]>;
 }
 

@@ -59,7 +59,8 @@ import {
     Replies,
     ExistingSelectableQuotes,
     UnifiedNodeMetadata,
-    CreateReplyResponse
+    CreateReplyResponse,
+    RedisSortedSetItem
 } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 
@@ -917,30 +918,26 @@ app.get<{
         // Cursor-based pagination handling via query parameters.
         const limit = parseInt(req.query.limit as string) || 10;
         // If no cursor is provided, use a high value to start from the newest score.
-        const cursor = req.query.cursor ? Number(req.query.cursor) : Number.POSITIVE_INFINITY;
+        const cursor = req.query.cursor as string;
         
         // Build the sorted set key for replies based on the full quote object and sorting criteria.
         const sortedSetKey = `replies:uuid:${uuid}:quote:${quoteKey}:${sortingCriteria}`;
         
-        // Step 1: Get reply IDs from the sorted set
-        const replyIds = await db.zRevRangeByScore<string>(
-            sortedSetKey, 
-            cursor, 
-            Number.NEGATIVE_INFINITY, 
-            { limit }
-        );
-
+        // Step 1: Get reply IDs from the sorted set using ZSCAN
+        const scanCursor = cursor || '0';
+        const scanResult = await db.zscan(sortedSetKey, scanCursor, { count: limit });
+        
         const matchingRepliesCount = await db.zCard(sortedSetKey);
         
-        let nextCursor: number | null = null;
-        if (replyIds && replyIds.length === limit) {
-            // Use the score from the last item as the next cursor
-            nextCursor = replyIds[replyIds.length - 1].score;
+        let nextCursor: string | null = null;
+        if (scanResult.cursor !== '0') {
+            // If there are more items to scan, set the next cursor
+            nextCursor = scanResult.cursor;
         }
 
         // Step 2: Fetch the actual reply data for each ID
         const replies = await Promise.all(
-            replyIds.map(async (item) => {
+            scanResult.items.map(async (item: RedisSortedSetItem<string>) => {
                 try {
                     // Fetch the actual reply data using the ID
                     const reply = await db.hGet(item.value, 'reply');
@@ -953,7 +950,7 @@ app.get<{
         );
 
         // Filter out any null values from failed fetches
-        const validReplies = replies.filter(reply => reply !== null) as Reply[];
+        const validReplies = replies.filter((reply: Reply | null): reply is Reply => reply !== null);
         
         // Prepare the response object with cursor pagination info
         const response = {
