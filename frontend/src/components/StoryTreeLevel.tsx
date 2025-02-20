@@ -56,7 +56,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     selectedQuote: levelData.selectedQuote
   });
   const [replyError, setReplyError] = useState<string | null>(null);
-  const [currentIndex, setCurrentIndex] = useState<number>(-1);
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [siblings, setSiblings] = useState<StoryTreeNode[]>([]);
   const [currentNode, setCurrentNode] = useState<StoryTreeNode | null>(null);
   // Keeping sizeMap as a ref for performance reasons (frequent updates do not trigger re-renders)
@@ -65,39 +65,49 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
 
   // useEffects to update state based on props
   useEffect(() => {
-    const levelsMapEntries = Array.from(levelData.siblings.levelsMap.entries()).map(([quote, nodes]) => ({
-      quote: quote.toString(),
-      nodesCount: nodes.length,
-      nodeIds: nodes.map(n => n.id)
-    }));
-    console.log("StoryTreeLevel: Accessing levelsMap:", {
-      mapSize: levelData.siblings.levelsMap.size,
-      selectedQuote: levelData.selectedQuote.toString(),
-      availableQuotes: Array.from(levelData.siblings.levelsMap.keys()).map(q => q.toString()),
-      entries: levelsMapEntries,
-      pagination: levelData.pagination
-    });
     const siblingsArray = levelData.siblings.levelsMap.get(levelData.selectedQuote) || [];
+    console.log('StoryTreeLevel: Got siblings array:', {
+      selectedQuote: levelData.selectedQuote.toString(),
+      siblingsLength: siblingsArray.length,
+      siblings: siblingsArray
+    });
     setSiblings(siblingsArray);
-    // Reset currentIndex if it's out of bounds
+    
+    // Only reset currentIndex if it's out of bounds
     if (currentIndex >= siblingsArray.length) {
-      setCurrentIndex(0);
-    } else if (currentIndex < 0 && siblingsArray.length > 0) {
-      setCurrentIndex(0);
+      setCurrentIndex(Math.max(0, siblingsArray.length - 1));
     }
-  }, [levelData.siblings.levelsMap, currentIndex, levelData.selectedQuote, levelData.pagination]);
+  }, [levelData.siblings.levelsMap, currentIndex, levelData.selectedQuote]);
   
   useEffect(() => {
     console.log('siblings', siblings);
     console.log('currentIndex', currentIndex);
     const node = siblings[currentIndex];
     console.log('node', node);
+    
+    // Handle case when there are no siblings but we have a root node
+    if (!node && levelData.levelNumber === 0 && levelData.rootNodeId) {
+      setCurrentNode({
+        id: levelData.rootNodeId,
+        rootNodeId: levelData.rootNodeId,
+        parentId: levelData.parentId,
+        textContent: '',  // This will be populated by the API
+        quoteCounts: { quoteCounts: new Map() },
+        metadata: {
+          replyCounts: new Map()
+        }
+      });
+      return;
+    }
+    
+    // Handle case when there is no valid node
     if (!node?.rootNodeId) {
       setCurrentNode(null);
       return;
     }
+    
     setCurrentNode(node);
-  }, [siblings, currentIndex]);
+  }, [siblings, currentIndex, levelData.rootNodeId, levelData.levelNumber, levelData.parentId]);
 
   // Check if a node is the reply target
   const isReplyTarget = useCallback(
@@ -273,8 +283,25 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     },
   });
 
-  if (!currentNode) {
-    // Only warn if we have siblings but no current node
+  if (!currentNode && levelData.levelNumber !== 0) {
+    // Only warn if we have siblings but no current node, and it's not the root level
+    return null;
+  }
+
+  // Ensure currentNode is not null before rendering
+  const node = currentNode || {
+    id: levelData.rootNodeId,
+    rootNodeId: levelData.rootNodeId,
+    parentId: levelData.parentId,
+    textContent: '',
+    quoteCounts: { quoteCounts: new Map() },
+    metadata: {
+      replyCounts: new Map()
+    }
+  };
+
+  // Early return if we don't have a valid node
+  if (!node?.rootNodeId) {
     return null;
   }
 
@@ -282,7 +309,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     <AnimatePresence mode="wait">
       <motion.div
         className={`story-tree-node ${
-          isReplyTarget(currentNode.rootNodeId) ? 'reply-target' : ''
+          isReplyTarget(node.rootNodeId) ? 'reply-target' : ''
         }}`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -301,42 +328,40 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
               onItemsRendered={onItemsRendered}
               ref={ref}
             >
-              {({ index, style }) => {
-                return (
-                  <div
-                    style={style}
-                    {...bind()}
-                    className={`story-tree-node-content ${levelData.pagination.matchingRepliesCount > 1 ? 'has-siblings' : ''} ${
-                      currentIndex > 0 || currentIndex < levelData.pagination.matchingRepliesCount - 1 ? 'swipeable' : ''
-                    }`}
-                    id={currentNode.rootNodeId}
-                    role="region"
-                    aria-label={`Story content ${index + 1} of ${levelData.pagination.matchingRepliesCount}`}
-                  >
-                    <NodeContent
-                      node={currentNode}
-                      quote={
-                        (isReplyTarget(currentNode.id) && replyQuote) ? replyQuote : undefined
-                      }
-                      existingSelectableQuotes={currentNode.quoteCounts || {quoteCounts: new Map()}}
-                      onSelectionComplete={handleTextSelectionCompleted}
-                    />
-                    <NodeFooter
-                      currentIndex={index}
-                      totalSiblings={levelData.pagination.matchingRepliesCount}
-                      onReplyClick={handleReplyButtonClick}
-                      isReplyTarget={isReplyTarget(currentNode.rootNodeId)}
-                      onNextSibling={navigateToNextSibling}
-                      onPreviousSibling={navigateToPreviousSibling}
-                    />
-                    {replyError && (
-                      <div className="reply-error" role="alert" aria-live="polite">
-                        {replyError}
-                      </div>
-                    )}
-                  </div>
-                );
-              }}
+              {({ index, style }) => (
+                <div
+                  style={style}
+                  {...bind()}
+                  className={`story-tree-node-content ${levelData.pagination.matchingRepliesCount > 1 ? 'has-siblings' : ''} ${
+                    currentIndex > 0 || currentIndex < levelData.pagination.matchingRepliesCount - 1 ? 'swipeable' : ''
+                  }`}
+                  id={node.rootNodeId}
+                  role="region"
+                  aria-label={`Story content ${index + 1} of ${levelData.pagination.matchingRepliesCount}`}
+                >
+                  <NodeContent
+                    node={node}
+                    quote={
+                      (isReplyTarget(node.id) && replyQuote) ? replyQuote : undefined
+                    }
+                    existingSelectableQuotes={node.quoteCounts || {quoteCounts: new Map()}}
+                    onSelectionComplete={handleTextSelectionCompleted}
+                  />
+                  <NodeFooter
+                    currentIndex={index}
+                    totalSiblings={levelData.pagination.matchingRepliesCount}
+                    onReplyClick={handleReplyButtonClick}
+                    isReplyTarget={isReplyTarget(node.rootNodeId)}
+                    onNextSibling={navigateToNextSibling}
+                    onPreviousSibling={navigateToPreviousSibling}
+                  />
+                  {replyError && (
+                    <div className="reply-error" role="alert" aria-live="polite">
+                      {replyError}
+                    </div>
+                  )}
+                </div>
+              )}
             </VariableSizeList>
           )}
         </InfiniteLoader>

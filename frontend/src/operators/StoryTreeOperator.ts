@@ -143,17 +143,19 @@ class StoryTreeOperator extends BaseOperator {
       id: storyTree.id,
       rootNodeId: storyTree.id,
       parentId: [storyTree.id],
-      textContent: unifiedNode.content,
-      quoteCounts: { quoteCounts: new Map([[this.rootQuote, 0]]) }, // TODO: update this with actual quote counts
+      textContent: unifiedNode.content || '',  // Handle potential null content
+      quoteCounts: { quoteCounts: new Map([[this.rootQuote, 0]]) },
       metadata: {
-        replyCounts: new Map([[this.rootQuote, 0]]) // TODO: update this with actual reply counts
+        replyCounts: new Map([[this.rootQuote, 0]])
       }
     };
 
     console.log("StoryTreeOperator: Creating content level with pagination:", {
       nodeId: storyTree.id,
       parentId: storyTree.id,
-      defaultPagination: { nextCursor: undefined, prevCursor: undefined, hasMore: false, matchingRepliesCount: 1 }
+      content: contentNode.textContent,
+      quoteCounts: contentNode.quoteCounts,
+      metadata: contentNode.metadata
     });
 
     const contentLevel: StoryTreeLevel = {
@@ -162,7 +164,12 @@ class StoryTreeOperator extends BaseOperator {
       levelNumber: storyTree.levels.length,
       selectedQuote: this.rootQuote,
       siblings: { levelsMap: new Map([[this.rootQuote, [contentNode]]]) },
-      pagination: { nextCursor: undefined, prevCursor: undefined, hasMore: false, matchingRepliesCount: 1 }
+      pagination: { 
+        nextCursor: undefined,
+        prevCursor: undefined,
+        hasMore: false,
+        matchingRepliesCount: 1  // Root node always counts as 1
+      }
     };
 
     // Immutable update for the levels array.
