@@ -7,10 +7,12 @@
 - Adds debug logging for data types and values
 - Supports atomic increments for hash fields
 - Properly typed TypeScript implementation
+- Implements zscan method for sorted set scanning with compression support
 */
 
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 import { DatabaseCompression } from './DatabaseCompression.js';
+import { RedisSortedSetItem } from '../types/index.js';
 import newLogger from '../logger.js';
 
 const logger = newLogger("CompressedDatabaseClient.js");
@@ -303,6 +305,38 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             return decompressedItems.filter((item): item is NonNullable<typeof item> => item !== null) as T[];
         } catch (err) {
             logger.error('Error in zRevRangeByScore:', err);
+            throw err;
+        }
+    }
+
+    async zscan(key: string, cursor: string = '0', options?: { match?: string; count?: number }): Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }> {
+        logger.info(`CompressedDatabaseClient zscan called with:`, {
+            key,
+            cursor,
+            options
+        });
+
+        try {
+            const result = await this.db.zscan(key, cursor, options);
+            
+            if (!result || !result.items) {
+                return { cursor: '0', items: [] };
+            }
+
+            // Decompress each item's value while preserving scores
+            const decompressedItems = await Promise.all(
+                result.items.map(async (item) => ({
+                    score: item.score,
+                    value: await this.compression.decompress(item.value)
+                }))
+            );
+
+            return {
+                cursor: result.cursor,
+                items: decompressedItems
+            };
+        } catch (err) {
+            logger.error('Error in zscan:', err);
             throw err;
         }
     }

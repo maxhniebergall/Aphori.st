@@ -117,6 +117,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
                         setSize={(height) => {
                           sizeMap.current[index] = height;
                           if (listRef.current) {
+                            // TODO: what is happening here?
                             listRef.current.resetAfterIndex(index);
                           }
                         }}
