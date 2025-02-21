@@ -42,7 +42,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { 
-    DatabaseClient, 
+    DatabaseClient as DatabaseClientBase, 
     User, 
     ExistingUser,
     UserResult, 
@@ -63,6 +63,7 @@ import {
     RedisSortedSetItem
 } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
+import { createCursor, decodeCursor } from './utils/cursorUtils.js';
 
 dotenv.config();
 
@@ -126,6 +127,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Extend the DatabaseClient type to include lLen
+type DatabaseClient = DatabaseClientBase & {
+    lLen(key: string): Promise<number>;
+};
 
 const db: DatabaseClient = createDatabaseClient();
 
@@ -194,10 +200,21 @@ const authenticateToken = (req: Request, res: Response, next: NextFunction): voi
 
 // Get feed data with pagination
 app.get('/api/feed', async (req: Request, res: Response): Promise<void> => {
-    // TODO fix pagination
-    const page = parseInt(req.query.page as string) || 1;
-    const pageSize = 10; // Number of items per page
-    logger.info("Handling request for feed at page "+page);
+    const limit = parseInt(req.query.limit as string) || 10;
+    let cursor = 0;
+
+    // Parse cursor if provided
+    if (req.query.cursor) {
+        try {
+            const decodedCursor = decodeCursor(req.query.cursor as string);
+            cursor = parseInt(decodedCursor.id);
+        } catch (error) {
+            res.status(400).json({ error: 'Invalid cursor format' });
+            return;
+        }
+    }
+
+    logger.info("Handling request for feed with cursor", cursor, "and limit", limit);
     
     try {
         logger.info('Current db connection state: %O', {
@@ -205,17 +222,28 @@ app.get('/api/feed', async (req: Request, res: Response): Promise<void> => {
             ready: db.isReady?.() || 'unknown'
         });
 
-        // Fetch all feed items from db with pagination
-        const startIndex = (page - 1) * pageSize;
-        const endIndex = startIndex + pageSize;
+        // Get total length for pagination
+        const totalItems = await db.lLen('feedItems');
+        
+        // Validate cursor bounds
+        if (cursor < 0) {
+            res.status(400).json({ error: 'Cursor cannot be negative' });
+            return;
+        }
+        if (cursor > totalItems) {
+            res.status(400).json({ error: 'Cursor is beyond the end of the feed' });
+            return;
+        }
+
+        const endIndex = Math.min(cursor + limit, totalItems);
 
         logger.info('Attempting to fetch feed items from db with range: %O', {
-            startIndex,
+            cursor,
             endIndex,
             key: 'feedItems'
         });
 
-        const compressedResults = await db.lRange('feedItems', startIndex, endIndex, { returnCompressed: true }); 
+        const compressedResults = await db.lRange('feedItems', cursor, endIndex - 1, { returnCompressed: true }); 
         logger.info('Raw db response for feed items: %O', compressedResults);
 
         if (!Array.isArray(compressedResults)) {
@@ -229,13 +257,16 @@ app.get('/api/feed', async (req: Request, res: Response): Promise<void> => {
             compressedResults.map((item: any) => db.decompress(item))
         );
         logger.info('Decompressed feed items: %O', decompressedItems);
-
-        // Create the response object
+        
+        // Create the response object with cursor-based pagination
         const response = {
-            page,
-            items: decompressedItems,
-            // totalItems,
-            // totalPages: Math.ceil(totalItems / itemsPerPage)
+            data: decompressedItems,
+            pagination: {
+                nextCursor: endIndex < totalItems ? createCursor(endIndex.toString(), Date.now(), 'story') : undefined,
+                prevCursor: cursor > 0 ? createCursor(Math.max(0, cursor - limit).toString(), Date.now(), 'story') : undefined,
+                hasMore: endIndex < totalItems,
+                matchingItemsCount: totalItems
+            }
         };
         logger.info('Response object: %O', response);
         
@@ -247,15 +278,9 @@ app.get('/api/feed', async (req: Request, res: Response): Promise<void> => {
         res.send(compressedResponse);
     } catch (error) {
         if (error instanceof Error) {
-            logger.error('Error fetching feed items: %O', {
-                error: error.message,
-                stack: error.stack,
-                message: error.message
-            });
-        } else {
-            logger.error('Unknown error fetching feed items');
+            logger.error('Error fetching feed items:', error);
+            res.status(500).json({ error: 'Internal server error' });
         }
-        res.status(500).json({ error: 'Server error' });
     }
 });
 

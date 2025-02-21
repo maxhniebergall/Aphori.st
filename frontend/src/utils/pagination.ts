@@ -60,7 +60,13 @@ export function createCursor(id: string, timestamp: number, type: 'story' | 'rep
   return encodeCursor({ id, timestamp, type });
 }
 
-export function usePagination<T>(
+// Helper function to deduplicate items by ID
+function mergeItems<T extends { id: string }>(oldItems: T[], newItems: T[]): T[] {
+  const seen = new Set(oldItems.map(item => item.id));
+  return [...oldItems, ...newItems.filter(item => !seen.has(item.id))];
+}
+
+export function usePagination<T extends { id: string }>(
   fetchItems: (cursor: string | undefined, limit: number) => Promise<FetchItemsResponse<T>>,
   options: PaginationOptions = {}
 ) {
@@ -84,7 +90,7 @@ export function usePagination<T>(
       const response = await fetchItems(cursor, limit);
 
       setState(prev => ({
-        items: reset ? response.data : [...prev.items, ...response.data],
+        items: reset ? response.data : mergeItems(prev.items, response.data),
         nextCursor: response.pagination.nextCursor,
         prevCursor: response.pagination.prevCursor,
         hasMore: response.pagination.hasMore,
@@ -106,8 +112,12 @@ export function usePagination<T>(
       hasMore: true,
       matchingItemsCount: 0,
       isLoading: false,
+      nextCursor: undefined,
+      prevCursor: undefined,
+      error: undefined
     });
-    loadMore(true);
+    // Avoid race conditions by using setTimeout
+    setTimeout(() => loadMore(true), 0);
   }, [loadMore]);
 
   return {

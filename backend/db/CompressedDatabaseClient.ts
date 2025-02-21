@@ -187,6 +187,10 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         return decompressedItems;
     }
 
+    async lLen(key: string): Promise<number> {
+        return this.db.lLen(key);
+    }
+
     async sAdd(key: string, value: string): Promise<any> {
         // For sets, we don't compress the values as they're often used as lookup keys
         return this.db.sAdd(key, value);
