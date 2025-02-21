@@ -136,8 +136,13 @@ export function createPaginatedFetcher<T>(
 
     const data = await response.json();
     return {
-      data: transformResponse ? transformResponse(data.data) : data.data,
-      pagination: data.pagination,
+      data: transformResponse ? transformResponse(data) : data.data,
+      pagination: data.pagination || {
+        nextCursor: undefined,
+        prevCursor: undefined,
+        hasMore: false,
+        matchingItemsCount: 0
+      }
     };
   };
 } 

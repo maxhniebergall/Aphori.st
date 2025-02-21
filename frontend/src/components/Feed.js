@@ -1,9 +1,10 @@
 // components/Feed.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { motion } from 'framer-motion';
 import './Feed.css';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
+import { usePagination, createPaginatedFetcher } from '../utils/pagination';
 import feedOperator from '../operators/FeedOperator';
 
 // Helper function to strip markdown and truncate text
@@ -41,11 +42,34 @@ const truncateText = (text, maxLength = 150) => {
 };
 
 function Feed() {
-  const [items, setItems] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [currentIndex, setCurrentIndex] = useState(1);
   const navigate = useNavigate();
+
+  // Create a paginated fetcher for feed items
+  const fetchFeedItems = createPaginatedFetcher(
+    `${process.env.REACT_APP_API_URL}/api/feed`,
+    (response) => {
+      if (!response || !response.data || !Array.isArray(response.data)) {
+        console.error('Invalid feed data received:', response);
+        return [];
+      }
+      return response.data.map((item) => ({
+        ...item,
+        id: item.id
+      }));
+    }
+  );
+
+  // Use the usePagination hook
+  const {
+    items,
+    isLoading,
+    error,
+    loadMore,
+    reset,
+    hasMore
+  } = usePagination(fetchFeedItems, {
+    limit: 10
+  });
 
   const navigateToStoryTree = useCallback(
     (nodeId) => {
@@ -54,47 +78,9 @@ function Feed() {
     [navigate]
   );
 
-  useEffect(() => {
-    console.log('Feed: Starting to fetch items');
-    const fetchFeedItems = async () => {
-      console.log('Feed: Setting loading state to true');
-      setIsLoading(true);
-      try {
-        setCurrentIndex(1); // todo implement pagination
-        console.log('Feed: Making API request');
-        const result = await feedOperator.getFeedItems(currentIndex);
-        console.log('Feed: Received response:', result);
+  console.log('Feed: Current state:', { isLoading, error, itemsCount: items.length, hasMore });
 
-        if (result?.success && result?.items) {
-          console.log('Feed: Setting items:', result.items);
-          const processedItems = result.items.map((item, index) => ({
-            ...item,
-            id: item.id
-          }));
-          setItems(processedItems);
-        } else {
-          console.log('Feed: No items in response or error, setting empty array');
-          setItems([]);
-          if (!result.success) {
-            setError(result.error);
-          }
-        }
-      } catch (error) {
-        console.error('Feed: Error fetching feed items:', error);
-        setError('Failed to load feed items');
-        setItems([]);
-      } finally {
-        console.log('Feed: Setting loading state to false');
-        setIsLoading(false);
-      }
-    };
-
-    fetchFeedItems();
-  }, [currentIndex]);
-
-  console.log('Feed: Current state:', { isLoading, error, itemsCount: items.length });
-
-  if (isLoading) {
+  if (isLoading && items.length === 0) {
     return (
       <>
         <Header 
@@ -106,55 +92,49 @@ function Feed() {
     );
   }
 
-  if (error) {
-    return (
-      <>
-        <Header 
-          title=""
-          onLogoClick={() => navigate('/feed')}
-        />
-        <div>Error: {error}</div>
-      </>
-    );
-  }
-
   return (
     <>
       <Header 
-          title=""
-          onLogoClick={() => navigate('/feed')}
+        title=""
+        onLogoClick={() => navigate('/feed')}
       />
-      <div className="feed-container">
-        {items && items.length > 0 ? (
-          items.map((item, index) => {
-            const itemKey = item.id || "placeholder-"+index;
-            return (
-              <motion.div
-                key={itemKey}
-                layoutId={itemKey}
-                onClick={() => {
-                  if(!item?.id) {
-                    console.log("placeholder item, skipping");
-                  } else {
-                    navigateToStoryTree(item.id);
-                  }
-                }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="feed-item"
-              >
-                {item.title && <motion.h3>{item.title}</motion.h3>}
-                <motion.div className="feed-item-content">
-                  <p className="feed-text">
-                    {item.text ? truncateText(item.text) : 'Loading...'}
-                  </p>
-                </motion.div>
-              </motion.div>
-            );
-          })
-        ) : (
-          <div>No items to display</div>
+      <div className="feed">
+        {items.map((item) => (
+          <motion.div
+            key={item.id}
+            layoutId={item.id}
+            onClick={() => {
+              if(!item?.id) {
+                console.log("placeholder item, skipping");
+              } else {
+                navigateToStoryTree(item.id);
+              }
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="feed-item"
+          >
+            {item.title && <motion.h3>{item.title}</motion.h3>}
+            <motion.div className="feed-item-content">
+              <p className="feed-text">
+                {item.text ? truncateText(item.text) : 'Loading...'}
+              </p>
+            </motion.div>
+          </motion.div>
+        ))}
+        {hasMore && (
+          <button 
+            onClick={() => loadMore()}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Loading more...' : 'Load more'}
+          </button>
+        )}
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
         )}
       </div>
     </>
