@@ -1,10 +1,10 @@
 // components/Feed.js
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import './Feed.css';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
-import { usePagination, createPaginatedFetcher } from '../utils/pagination';
+import { usePagination } from '../utils/pagination';
 import feedOperator from '../operators/FeedOperator';
 
 // Helper function to strip markdown and truncate text
@@ -45,19 +45,32 @@ function Feed() {
   const navigate = useNavigate();
 
   // Create a paginated fetcher for feed items
-  const fetchFeedItems = createPaginatedFetcher(
-    `${process.env.REACT_APP_API_URL}/api/feed`,
-    (response) => {
-      if (!response || !response.data || !Array.isArray(response.data)) {
-        console.error('Invalid feed data received:', response);
-        return [];
+  const fetchFeedItems = async (cursor, limit) => {
+    try {
+      const response = await feedOperator.getFeedItems(cursor);
+      if (!response.success) {
+        throw new Error(response.error);
       }
-      return response.data.map((item) => ({
-        ...item,
-        id: item.id
-      }));
+      
+      // Validate response data
+      if (!response.items || !Array.isArray(response.items)) {
+        throw new Error('Invalid response format');
+      }
+
+      return {
+        data: response.items,
+        pagination: {
+          nextCursor: response.pagination?.nextCursor,
+          prevCursor: response.pagination?.prevCursor,
+          hasMore: response.pagination?.hasMore || false,
+          matchingItemsCount: response.pagination?.matchingItemsCount || response.items.length
+        }
+      };
+    } catch (error) {
+      console.error('Error in fetchFeedItems:', error);
+      throw error;
     }
-  );
+  };
 
   // Use the usePagination hook
   const {
@@ -70,6 +83,11 @@ function Feed() {
   } = usePagination(fetchFeedItems, {
     limit: 10
   });
+
+  // Load items when component mounts
+  useEffect(() => {
+    loadMore();
+  }, [loadMore]);
 
   const navigateToStoryTree = useCallback(
     (nodeId) => {

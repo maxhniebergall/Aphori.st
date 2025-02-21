@@ -33,6 +33,10 @@ export abstract class DatabaseClientInterface {
     throw new Error('Method not implemented');
   }
 
+  async lLen(key: string): Promise<number> {
+    throw new Error('Method not implemented');
+  }
+
   async sAdd(key: string, value: string): Promise<number> {
     throw new Error('Method not implemented');
   }

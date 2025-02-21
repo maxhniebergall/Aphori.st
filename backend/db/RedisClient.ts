@@ -62,6 +62,10 @@ export class RedisClient extends DatabaseClientInterface {
     return this.client.lRange(key, start, end);
   }
 
+  async lLen(key: string): Promise<number> {
+    return this.client.lLen(key);
+  }
+
   async lSet(key: string, index: number, value: any): Promise<void> {
     logger.info(`Redis lSet called with key: ${key}, index: ${index}`);
     try {
