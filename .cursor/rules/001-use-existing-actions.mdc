@@ -1,0 +1,27 @@
+---
+description: Use existing ACTIONS when available; ask permission before creating new ones.
+globs: src/**/*.{js,ts,tsx}
+tags: [state management, actions, coding standards]
+priority: 2
+version: 1.0.0
+---
+
+# Rule: Reuse Existing ACTIONS
+
+## Context
+- When managing state actions, adding redundant or duplicate ACTION constants can lead to inconsistency and bloat.
+- Reusing existing ACTIONS promotes a cleaner and more maintainable codebase.
+
+## Requirements
+- **Scan for existing actions:** Always check the existing `ACTIONS` object to determine if a suitable action already exists for your needs.
+- **Reuse when possible:** If an appropriate ACTION is found, reuse it instead of creating a new one.
+- **Obtain permission for new actions:** If no existing ACTION fits the requirement, ask for team permission before adding a new ACTION.
+
+## Examples
+<example>
+Valid: Using `ACTIONS.REFRESH_STORY_TREE_NODE` to update a refreshed node rather than creating a new action.
+</example>
+
+<example type="invalid">
+Invalid: Creating `ACTIONS.NEW_QUOTE_UPDATE` without checking for an existing action and without obtaining team approval.
+</example> 

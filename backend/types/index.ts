@@ -143,7 +143,7 @@ export interface UnifiedNodeMetadata {
 
 // Existing Selectable Quotes Types
 export interface ExistingSelectableQuotes {
-    quoteCounts: Map<Quote, number>;
+    quoteCounts: [Quote, number][];
 }
 
 // Cursor-based Pagination Types

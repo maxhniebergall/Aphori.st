@@ -20,6 +20,7 @@
 - Maintains quote reply counts using hash storage for efficient retrieval
 - Reads old format of quote reply counts, migrates to new format, and replaces old format in database
 - Implements combined node endpoint for unified node structure with backward compatibility and updated compression handling
+- Provides API endpoint to retrieve quote reply counts for a given parent ID, returning ApiResponse<ExistingSelectableQuotes>
 
 - TODO:
   - Seperate user + email functions into a seperate file
@@ -1080,6 +1081,49 @@ app.get<{ uuid: string }, ApiResponse<UnifiedNode>>('/api/combinedNode/:uuid', a
     } catch (error) {
         logger.error('Error in combinedNode endpoint:', error);
         res.status(500).json({ success: false, error: 'Server error' });
+    }
+});
+
+// New API endpoint: Retrieves quote reply counts for a given parent ID.
+// Returns an ApiResponse containing ExistingSelectableQuotes, where the quoteCounts property is an array of map entries.
+app.get<{ parentId: string }, ApiResponse<ExistingSelectableQuotes>>('/api/getQuoteCounts/:parentId', async (req: Request, res: Response) => {
+    const { parentId } = req.params;
+    if (!parentId) {
+        res.status(400).json({ success: false, error: 'Parent ID is required' });
+        return;
+    }
+    try {
+        // Retrieve the quote reply counts from Redis using the key pattern: "<parentId>:quoteCounts"
+        const rawQuoteCounts = await db.hGetAll(`${parentId}:quoteCounts`);
+
+        // Process the raw results into a Map<Quote, number>
+        const quoteCountsMap = new Map<Quote, number>();
+        for (const [key, value] of Object.entries(rawQuoteCounts)) {
+            let parsedQuote: Quote;
+            try {
+                parsedQuote = JSON.parse(key) as Quote;
+            } catch (parseError) {
+                // Fallback: if parsing fails, use the key as the quote text with default values.
+                parsedQuote = { text: key, sourcePostId: "", selectionRange: { start: 0, end: 0 } };
+            }
+            quoteCountsMap.set(parsedQuote, Number(value));
+        }
+        
+        // Convert the Map into an array of entries.
+        // This is equivalent to: JSON.stringify(Array.from(quoteCountsMap.entries()))
+        // since res.json will automatically serialize the object.
+        const quoteCountsArray = Array.from(quoteCountsMap.entries());
+
+        const apiResponse: ApiResponse<ExistingSelectableQuotes> = {
+            success: true,
+            compressedData: { quoteCounts: quoteCountsArray }
+        };
+        const compressedResponse = await db.compress(apiResponse);
+        res.setHeader('X-Data-Compressed', 'true');
+        res.send(compressedResponse);
+    } catch (error) {
+        logger.error('Error retrieving quote counts for parent ID %s: %s', parentId, error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
