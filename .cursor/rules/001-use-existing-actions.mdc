@@ -1,9 +1,6 @@
 ---
 description: Use existing ACTIONS when available; ask permission before creating new ones.
 globs: src/**/*.{js,ts,tsx}
-tags: [state management, actions, coding standards]
-priority: 2
-version: 1.0.0
 ---
 
 # Rule: Reuse Existing ACTIONS
@@ -19,7 +16,7 @@ version: 1.0.0
 
 ## Examples
 <example>
-Valid: Using `ACTIONS.REFRESH_STORY_TREE_NODE` to update a refreshed node rather than creating a new action.
+Valid: Using `ACTIONS.INCLUDE_NODES_IN_LEVELS` to include new (or updated) nodes rather than creating a new action.
 </example>
 
 <example type="invalid">
