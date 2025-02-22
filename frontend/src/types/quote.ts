@@ -72,10 +72,6 @@ export class Quote {
   }
 }
 
-export interface QuoteMetadata {
-  replyCounts: Map<Quote, number>;
-}
-
 export function compareQuotes(q1: Quote, q2: Quote): boolean {
   return (
     q1.text === q2.text &&

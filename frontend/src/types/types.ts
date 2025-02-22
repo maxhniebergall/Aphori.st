@@ -12,10 +12,14 @@
  * - Consistent author and authorId fields across all interfaces
  */
 
-import { Quote, QuoteMetadata } from "./quote";
+import { Quote } from "./quote";
 
 export interface QuoteCounts {
   quoteCounts: Map<Quote, number>;
+}
+
+export interface ExistingSelectableQuotesApiFormat {
+  quoteCounts: [Quote, number][];
 }
 
 export interface StoryTreeNode {
@@ -24,8 +28,13 @@ export interface StoryTreeNode {
   parentId: string[];
   levelNumber: number;
   textContent: string;
-  metadata?: QuoteMetadata;
   quoteCounts: QuoteCounts | null;
+  metadata?: {
+    authorId: string;
+    createdAt: string;
+    quote: Quote;
+    replyCounts: Map<Quote, number>;
+  };
 }
 
 export interface Siblings {

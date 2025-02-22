@@ -27,7 +27,7 @@
  * - Implement caching with CacheService
  */
 
-import { ACTIONS, StoryTreeNode, StoryTreeState, UnifiedNode, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, ApiResponse, CreateReplyResponse } from '../types/types';
+import { ACTIONS, StoryTreeNode, StoryTreeState, UnifiedNode, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, ApiResponse, CreateReplyResponse, ExistingSelectableQuotesApiFormat } from '../types/types';
 import { Quote } from '../types/quote';
 import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
@@ -126,11 +126,40 @@ class StoryTreeOperator extends BaseOperator {
         error: null
       };
 
-      // Create content level using modularized helper function
+      // Create content level using modularized helper function.
       this.addContentLevel(storyTree, unifiedNode);
 
       // Update each level with fresh pagination data
       await this.updateLevelsPagination(storyTree.levels);
+
+      // Asynchronously update the root node's quoteCounts using the new function.
+      // Do not await this promise to avoid delaying the initial story tree load.
+      this.fetchQuoteCounts(storyTree.id)
+        .then(quoteCounts => {
+          // Locate the content level (assumed at index 0).
+          const contentLevel = storyTree.levels[0];
+          if (contentLevel) {
+            // Retrieve the content node using the rootQuote as key.
+            const nodes = contentLevel.siblings.levelsMap.get(this.rootQuote);
+            if (nodes && nodes.length > 0) {
+              // Create an updated copy of the content node, following immutable update patterns.
+              const updatedNode: StoryTreeNode = { ...nodes[0], quoteCounts };
+              // Update the levelsMap for the root quote. (overrides the existing root node)
+              contentLevel.siblings.levelsMap.set(this.rootQuote, [updatedNode]);
+              // Reuse the existing action to update the level data.
+              if (this.store && this.store.dispatch) {
+                this.store.dispatch({
+                  type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
+                  payload: [contentLevel]
+                });
+              }
+            }
+          }
+        })
+        .catch(error => {
+          console.error("Failed to update quote counts for root node:", error);
+        });
+
       return storyTree;
     } catch (error) {
       const axiosErr = error as AxiosError;
@@ -158,9 +187,12 @@ class StoryTreeOperator extends BaseOperator {
       parentId: [storyTree.id],
       levelNumber: storyTree.levels.length,
       textContent: unifiedNode.content || '',  // Handle potential null content
-      quoteCounts: { quoteCounts: new Map([[this.rootQuote, 0]]) },
+      quoteCounts: null, // Will be populated asynchronously
       metadata: {
-        replyCounts: new Map([[this.rootQuote, 0]])
+        authorId: unifiedNode.metadata?.authorId || '',
+        createdAt: unifiedNode.metadata?.createdAt || '',
+        quote: this.rootQuote,
+        replyCounts: new Map()
       }
     };
 
@@ -172,12 +204,16 @@ class StoryTreeOperator extends BaseOperator {
       metadata: contentNode.metadata
     });
 
+    // Create a Map with the root quote and an array containing the content node
+    const levelsMap = new Map();
+    levelsMap.set(this.rootQuote, [contentNode]);
+
     const contentLevel: StoryTreeLevel = {
       rootNodeId: storyTree.id,
       parentId: [storyTree.id],
       levelNumber: storyTree.levels.length,
       selectedQuote: this.rootQuote,
-      siblings: { levelsMap: new Map([[this.rootQuote, [contentNode]]]) },
+      siblings: { levelsMap },
       pagination: { 
         nextCursor: undefined,
         prevCursor: undefined,
@@ -238,27 +274,22 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   /**
-   * Fetches quote counts for a given node.
+   * Fetches quote counts for a given node using the new API.
    *
    * @param id - The id of the node.
-   * @param quote - The quote used for filtering.
-   * @param limit - The pagination limit.
-   * @param cursor - The pagination cursor.
    * @returns A promise resolving to QuoteCounts.
    */
-  private async fetchQuoteCounts(id: string, quote: Quote, limit: number, cursor: number): Promise<QuoteCounts> {
-    const sortingCriteria = 'mostRecent';
-    const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${id}/${quote}/${sortingCriteria}?limit=${limit}&cursor=${cursor}`;
-    const response = await axios.get<ApiResponse<QuoteCounts>>(url);
-    const data = await this.handleCompressedResponse<ApiResponse<QuoteCounts>>(response);
+  private async fetchQuoteCounts(id: string): Promise<QuoteCounts> {
+    const url = `${process.env.REACT_APP_API_URL}/api/getQuoteCounts/${id}`;
+    const response = await axios.get<ApiResponse<ExistingSelectableQuotesApiFormat>>(url);
+    const data = await this.handleCompressedResponse<ApiResponse<ExistingSelectableQuotesApiFormat>>(response);
     if (!data || !data.compressedData) {
-      console.error('Invalid unified node data received:', data);
+      console.error('Invalid data received for quote counts:', data);
       return { quoteCounts: new Map() };
     }
-    const quoteCounts = typeof data.compressedData === 'string'
-      ? JSON.parse(data.compressedData) as QuoteCounts
-      : data.compressedData;
-    return quoteCounts;
+    const quoteCounts = new Map(data.compressedData.quoteCounts) as Map<Quote, number>;
+    console.log("StoryTreeOperator: Fetched quote counts:", quoteCounts);
+    return { quoteCounts };
   }
 
   /**
@@ -329,7 +360,7 @@ class StoryTreeOperator extends BaseOperator {
 
       const storyTreeId = state.storyTree.id;
       const nodes: StoryTreeNode[] = await Promise.all(response.data.map(async (reply) => {
-        const quoteCounts = await this.fetchQuoteCounts(reply.id, quote, limit, 0);
+        const quoteCounts = await this.fetchQuoteCounts(reply.id);
         return {
           id: reply.id,
           rootNodeId: storyTreeId,

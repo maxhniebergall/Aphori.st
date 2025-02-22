@@ -1,4 +1,4 @@
-  /**
+/**
  * Requirements:
  * - Break StoryTreeLevel into sub-components for clear separation of concerns
  * - useGesture for detecting swipe gestures
@@ -34,7 +34,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { useGesture } from '@use-gesture/react';
+import { useGesture, FullGestureState } from '@use-gesture/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import InfiniteLoader from 'react-window-infinite-loader';
 import { VariableSizeList } from 'react-window';
@@ -59,11 +59,48 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     pagination: levelData.pagination,
     selectedQuote: levelData.selectedQuote
   });
+
+  // All hooks must be called before any conditional returns
   const [replyError, setReplyError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [currentNode, setCurrentNode] = useState<StoryTreeNode | null>(null);
   const sizeMap = useRef<{ [key: number]: number }>({});
   const { setReplyTarget, replyTarget, setReplyQuote, replyQuote, clearReplyState } = useReplyContext();
+
+  // Calculate dimensions based on viewport - moved before any conditional logic
+  const dimensions = useMemo(() => {
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    return {
+      height: Math.max(viewportHeight * 0.8, 400), // At least 400px or 80% of viewport height
+      width: Math.max(viewportWidth * 0.8, 600),   // At least 600px or 80% of viewport width
+      defaultItemSize: Math.max(viewportHeight * 0.3, 200) // At least 200px or 30% of viewport height
+    };
+  }, []);
+
+  // Update dimensions on window resize - moved before any conditional logic
+  useEffect(() => {
+    const handleResize = () => {
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      dimensions.height = Math.max(viewportHeight * 0.8, 400);
+      dimensions.width = Math.max(viewportWidth * 0.8, 600);
+      dimensions.defaultItemSize = Math.max(viewportHeight * 0.3, 200);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [dimensions]);
+
+  // Get initial siblings from levelData
+  const initialSiblings = useMemo(() => {
+    const siblingsArray = levelData.siblings.levelsMap.get(levelData.selectedQuote) || [];
+    console.log("StoryTreeLevel: Initial siblings from levelData:", {
+      count: siblingsArray.length,
+      siblings: siblingsArray
+    });
+    return siblingsArray;
+  }, [levelData.siblings.levelsMap, levelData.selectedQuote]);
 
   // Create a paginated fetcher for this level's siblings
   const fetchSiblings = useMemo(() => createPaginatedFetcher<StoryTreeNode>(
@@ -72,7 +109,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
 
   // Use the usePagination hook
   const {
-    items: siblings,
+    items: paginatedSiblings,
     hasMore,
     matchingItemsCount,
     isLoading,
@@ -83,6 +120,20 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     limit: 10,
     initialCursor: levelData.pagination.nextCursor
   });
+
+  // Combine initial siblings with paginated siblings
+  const siblings = useMemo(() => {
+    const combinedSiblings = [...initialSiblings];
+    if (paginatedSiblings.length > 0) {
+      // Add only new siblings that aren't already in the array
+      paginatedSiblings.forEach(sibling => {
+        if (!combinedSiblings.some(s => s.id === sibling.id)) {
+          combinedSiblings.push(sibling);
+        }
+      });
+    }
+    return combinedSiblings;
+  }, [initialSiblings, paginatedSiblings]);
 
   // useEffects to update state based on props and pagination
   useEffect(() => {
@@ -110,6 +161,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
         id: levelData.rootNodeId,
         rootNodeId: levelData.rootNodeId,
         parentId: levelData.parentId,
+        levelNumber: levelData.levelNumber,
         textContent: '',  // This will be populated by the API
         quoteCounts: { quoteCounts: new Map() },
         metadata: {
@@ -147,7 +199,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
         console.error('Selection error:', error);
       }
     },
-    [setReplyTarget, setReplyQuote, levelData]
+    [currentNode, setReplyTarget, setReplyQuote, setReplyError]
   );
 
   // Handle reply button click
@@ -200,22 +252,25 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     setReplyTarget,
     setReplyQuote,
     isReplyTarget,
-    levelData,
+    levelData.rootNodeId,
     currentNode,
     setReplyError
   ]);
 
-  const navigateToNextSibling = () => { 
+  // Navigation callbacks
+  const navigateToNextSibling = useCallback(() => { 
     if (currentIndex < siblings.length - 1) {
       setCurrentIndex(currentIndex + 1);
     }
-  };
-  const navigateToPreviousSibling = () => {
+  }, [currentIndex, siblings.length, setCurrentIndex]);
+
+  const navigateToPreviousSibling = useCallback(() => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
     }
-  };
+  }, [currentIndex, setCurrentIndex]);
   
+  // Memoize infinite loader props to prevent unnecessary recalculations
   const infiniteLoaderProps = useMemo(() => {
     const loadMoreItems = async (startIndex: number, stopIndex: number): Promise<void> => {
       console.log("InfiniteLoader: Loading more items:", {
@@ -260,11 +315,22 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
       minimumBatchSize: 3,
       threshold: 2,
     };
-  }, [levelData, siblings.length, hasMore, matchingItemsCount, isLoading, loadMore]);
+  }, [
+    levelData.parentId,
+    levelData.levelNumber,
+    levelData.selectedQuote,
+    levelData.pagination,
+    siblings.length,
+    hasMore,
+    matchingItemsCount,
+    isLoading,
+    loadMore
+  ]);
 
   // Setup gesture handling for swipe navigation
   const bind = useGesture({
-    onDrag: ({ down, movement: [mx], cancel, velocity: [vx] }) => {
+    onDrag: useCallback((state: FullGestureState<'drag'>) => {
+      const { down, movement: [mx], cancel, velocity: [vx] } = state;
       if (!down) {
         try {
           if (mx < -100 || (vx < -0.5 && mx < -50)) {
@@ -282,25 +348,43 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
           console.error('Navigation error:', error);
         }
       }
-    },
+    }, [navigateToNextSibling, navigateToPreviousSibling, currentIndex, siblings.length])
   }, {
-    drag: {
+    drag: useMemo(() => ({
       axis: 'x',
       enabled: Boolean(currentNode?.rootNodeId) && (
         (Boolean(navigateToNextSibling) && currentIndex < siblings.length - 1) ||
         (Boolean(navigateToPreviousSibling) && currentIndex > 0)
       ),
       threshold: 5,
-    },
+    }), [currentNode?.rootNodeId, navigateToNextSibling, navigateToPreviousSibling, currentIndex, siblings.length])
   });
 
-  if (!currentNode && levelData.levelNumber !== 0) {
-    // Only warn if we have siblings but no current node, and it's not the root level
+  // Get the current node to render
+  const nodeToRender = useMemo(() => {
+    if (!currentNode && levelData.levelNumber === 0 && levelData.rootNodeId) {
+      return {
+        id: levelData.rootNodeId,
+        rootNodeId: levelData.rootNodeId,
+        parentId: levelData.parentId,
+        levelNumber: levelData.levelNumber,
+        textContent: '',
+        quoteCounts: { quoteCounts: new Map() },
+        metadata: {
+          replyCounts: new Map()
+        }
+      } as StoryTreeNode;
+    }
+    return currentNode;
+  }, [currentNode, levelData]);
+
+  // Early return if we don't have a valid node
+  if (!nodeToRender?.rootNodeId && levelData.levelNumber !== 0) {
     return null;
   }
 
-  // Ensure currentNode is not null before rendering
-  const node = currentNode || {
+  // Ensure we have a valid node for rendering
+  const node = nodeToRender || {
     id: levelData.rootNodeId,
     rootNodeId: levelData.rootNodeId,
     parentId: levelData.parentId,
@@ -311,11 +395,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
       replyCounts: new Map()
     }
   } as StoryTreeNode;
-
-  // Early return if we don't have a valid node
-  if (!node?.rootNodeId) {
-    return null;
-  }
 
   return (
     <AnimatePresence mode="wait">
@@ -332,48 +411,53 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
         <InfiniteLoader {...infiniteLoaderProps}>
           {({ onItemsRendered, ref }) => (
             <VariableSizeList
-              height={200}
-              width={200}
+              height={dimensions.height}
+              width={dimensions.width}
               itemCount={matchingItemsCount}
-              itemSize={(index) => sizeMap.current[index] || 50}
+              itemSize={(index) => sizeMap.current[index] || dimensions.defaultItemSize}
               overscanCount={5}
               onItemsRendered={onItemsRendered}
               ref={ref}
             >
-              {({ index, style }) => (
-                <div
-                  style={style}
-                  {...bind()}
-                  className={`story-tree-node-content ${matchingItemsCount > 1 ? 'has-siblings' : ''} ${
-                    currentIndex > 0 || currentIndex < matchingItemsCount - 1 ? 'swipeable' : ''
-                  }`}
-                  id={node.rootNodeId}
-                  role="region"
-                  aria-label={`Story content ${index + 1} of ${matchingItemsCount}`}
-                >
-                  <NodeContent
-                    node={node}
-                    quote={
-                      (isReplyTarget(node.id) && replyQuote) ? replyQuote : undefined
-                    }
-                    existingSelectableQuotes={node.quoteCounts || {quoteCounts: new Map()}}
-                    onSelectionComplete={handleTextSelectionCompleted}
-                  />
-                  <NodeFooter
-                    currentIndex={index}
-                    totalSiblings={matchingItemsCount}
-                    onReplyClick={handleReplyButtonClick}
-                    isReplyTarget={isReplyTarget(node.rootNodeId)}
-                    onNextSibling={navigateToNextSibling}
-                    onPreviousSibling={navigateToPreviousSibling}
-                  />
-                  {(replyError || error) && (
-                    <div className="reply-error" role="alert" aria-live="polite">
-                      {replyError || error}
-                    </div>
-                  )}
-                </div>
-              )}
+              {({ index, style }) => {
+                const sibling = siblings[index] || null;
+                if (!sibling || !sibling.rootNodeId) {
+                  return null;
+                }
+
+                return (
+                  <div
+                    style={style}
+                    {...bind()}
+                    className={`story-tree-node-content ${matchingItemsCount > 1 ? 'has-siblings' : ''} ${
+                      currentIndex > 0 || currentIndex < matchingItemsCount - 1 ? 'swipeable' : ''
+                    }`}
+                    id={sibling.rootNodeId}
+                    role="region"
+                    aria-label={`Story content ${index + 1} of ${matchingItemsCount}`}
+                  >
+                    <NodeContent
+                      node={sibling}
+                      quote={(isReplyTarget(sibling.id) && replyQuote) ? replyQuote : undefined}
+                      existingSelectableQuotes={sibling.quoteCounts || {quoteCounts: new Map()}}
+                      onSelectionComplete={handleTextSelectionCompleted}
+                    />
+                    <NodeFooter
+                      currentIndex={index}
+                      totalSiblings={matchingItemsCount}
+                      onReplyClick={handleReplyButtonClick}
+                      isReplyTarget={isReplyTarget(sibling.rootNodeId)}
+                      onNextSibling={navigateToNextSibling}
+                      onPreviousSibling={navigateToPreviousSibling}
+                    />
+                    {(replyError || error) && (
+                      <div className="reply-error" role="alert" aria-live="polite">
+                        {replyError || error}
+                      </div>
+                    )}
+                  </div>
+                );
+              }}
             </VariableSizeList>
           )}
         </InfiniteLoader>
