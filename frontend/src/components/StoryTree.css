@@ -107,13 +107,6 @@ html, body, #root {
   overflow: visible;
 }
 
-.story-tree-node-text {
-  width: 100%;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  white-space: normal;
-}
-
 .story-node {
   margin-bottom: 16px;
   position: relative;
@@ -372,11 +365,6 @@ h2 {
 
 .cancel-reply-button:hover {
   background-color: #f8f9fa;
-}
-
-/* Ensure the text container doesn't scroll */
-.story-tree-node-text {
-  overflow: visible;
 }
 
 .story-tree-node.reply-target {
