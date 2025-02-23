@@ -14,5 +14,9 @@ export interface Compressed<T> {
   d: string;
 }
 
+export interface CompressedData<T> {
+  compressedData: string; // the compressed data as a string
+}
+
 // Helper type in case the response might be either a compressed object or a plain string
 export type CompressedResponse<T> = Compressed<T> | string; 

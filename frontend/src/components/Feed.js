@@ -41,36 +41,39 @@ const truncateText = (text, maxLength = 150) => {
   return truncated + '...';
 };
 
+// Create a paginated fetcher for feed items - moved outside component
+const createFetchFeedItems = (feedOperator) => async (cursor, limit) => {
+  try {
+    const response = await feedOperator.getFeedItems(cursor);
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+    
+    // Validate response data
+    if (!response.items || !Array.isArray(response.items)) {
+      throw new Error('Invalid response format');
+    }
+
+    return {
+      data: response.items,
+      pagination: {
+        nextCursor: response.pagination?.nextCursor,
+        prevCursor: response.pagination?.prevCursor,
+        hasMore: response.pagination?.hasMore || false,
+        matchingItemsCount: response.pagination?.matchingItemsCount || response.items.length
+      }
+    };
+  } catch (error) {
+    console.error('Error in fetchFeedItems:', error);
+    throw error;
+  }
+};
+
 function Feed() {
   const navigate = useNavigate();
 
-  // Create a paginated fetcher for feed items
-  const fetchFeedItems = async (cursor, limit) => {
-    try {
-      const response = await feedOperator.getFeedItems(cursor);
-      if (!response.success) {
-        throw new Error(response.error);
-      }
-      
-      // Validate response data
-      if (!response.items || !Array.isArray(response.items)) {
-        throw new Error('Invalid response format');
-      }
-
-      return {
-        data: response.items,
-        pagination: {
-          nextCursor: response.pagination?.nextCursor,
-          prevCursor: response.pagination?.prevCursor,
-          hasMore: response.pagination?.hasMore || false,
-          matchingItemsCount: response.pagination?.matchingItemsCount || response.items.length
-        }
-      };
-    } catch (error) {
-      console.error('Error in fetchFeedItems:', error);
-      throw error;
-    }
-  };
+  // Memoize the fetch function
+  const fetchFeedItems = useCallback(createFetchFeedItems(feedOperator), []);
 
   // Use the usePagination hook
   const {

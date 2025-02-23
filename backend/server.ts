@@ -265,7 +265,7 @@ app.get('/api/feed', async (req: Request, res: Response<ApiResponse<FeedItemsRes
         const compressedData = await db.compress(data);
         const response = {
             success: true,
-            data: compressedData
+            compressedData: compressedData
         } as ApiResponse<FeedItemsResponse>;
 
         // Add compression header to indicate data is compressed

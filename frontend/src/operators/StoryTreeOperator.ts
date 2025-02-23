@@ -33,6 +33,8 @@ import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
 import StoryTreeError from '../errors/StoryTreeError';
 import { createPaginatedFetcher, createCursor } from '../utils/pagination';
+import { Compressed } from '../types/compressed';
+import compression from '../utils/compression';
 
 class StoryTreeOperator extends BaseOperator {
   // Introduce a store property to hold state and dispatch injected from a React component.
@@ -100,26 +102,24 @@ class StoryTreeOperator extends BaseOperator {
   private async fetchStoryTree(uuid: string): Promise<StoryTree> {
     const url = `${process.env.REACT_APP_API_URL}/api/getPost/${uuid}`;
     try {
-      const axiosResponse = await axios.get<ApiResponse<Post>>(url);
-      const apiResponse = await this.handleCompressedResponse<ApiResponse<Post>>(axiosResponse);
-      console.log("StoryTreeOperator: Initial story tree response:", {
-        success: apiResponse?.success,
-        hasCompressedData: Boolean(apiResponse?.compressedData),
-        url
-      });
-      if (!apiResponse || !apiResponse.success || !apiResponse.compressedData) {
-        console.error("Invalid response data received:", apiResponse);
-        throw new StoryTreeError('Invalid response data received', axiosResponse.status, url, apiResponse);
+      const compressedPost = await this.retryApiCallSimplified<Compressed<Post>>(
+        () => axios.get<ApiResponse<Compressed<Post>>>(url, {
+            validateStatus: status => status === 200
+        })
+      );
+
+      const decompressedPost = await compression.decompress<Compressed<Post>, Post>(compressedPost);
+      if (!decompressedPost) {
+        throw new StoryTreeError('Failed to decompress post');
       }
 
-      const post = apiResponse.compressedData;
       const storyTree: StoryTree = {
-        post,
+        post: decompressedPost,
         levels: [],
         error: null
       };
 
-      this.addPostContentToLevelZero(storyTree, post);
+      this.addPostContentToLevelZero(storyTree, decompressedPost);
 
       // Update each level with fresh pagination data
       await this.updateLevelsPagination(storyTree.levels);
@@ -235,11 +235,15 @@ class StoryTreeOperator extends BaseOperator {
         const cursor = 0;
         const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${level.parentId[0]}/${encodeURIComponent(level.selectedQuote.toString())}/${sortingCriteria}?limit=${limit}&cursor=${cursor}`;
         try {
-          const paginationResponse = await axios.get<ApiResponse<CursorPaginatedResponse<Reply>>>(url);
-          const paginationData = await this.handleCompressedResponse<ApiResponse<CursorPaginatedResponse<Reply>>>(paginationResponse);
-          if (paginationData && paginationData.compressedData && paginationData.compressedData.pagination) {
+          const compressedPaginatedResponse = await this.retryApiCallSimplified<Compressed<CursorPaginatedResponse<Reply>>>(
+            () => axios.get(url, {
+              validateStatus: status => status === 200
+            })
+          );
+          const decompressedPaginatedData = await compression.decompress<Compressed<CursorPaginatedResponse<Reply>>, CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
+          if (decompressedPaginatedData && decompressedPaginatedData.pagination) {
             // Here we update pagination data inside level.
-            Object.assign(level, { pagination: paginationData.compressedData.pagination });
+            Object.assign(level, { pagination: decompressedPaginatedData.pagination });
             console.log(`Fetched pagination for level ${level.levelNumber}:`, level.pagination);
           } else {
             console.warn(`No pagination data found for level ${level.levelNumber}.`);
@@ -268,13 +272,17 @@ class StoryTreeOperator extends BaseOperator {
    */
   private async fetchQuoteCounts(id: string): Promise<QuoteCounts> {
     const url = `${process.env.REACT_APP_API_URL}/api/getQuoteCounts/${id}`;
-    const response = await axios.get<ApiResponse<ExistingSelectableQuotesApiFormat>>(url);
-    const data = await this.handleCompressedResponse<ApiResponse<ExistingSelectableQuotesApiFormat>>(response);
-    if (!data || !data.compressedData) {
-      console.error('Invalid data received for quote counts:', data);
-      return { quoteCounts: new Map() };
+    const compressedResponse = await this.retryApiCallSimplified<Compressed<ExistingSelectableQuotesApiFormat>>(
+      () => axios.get(url, {
+        validateStatus: status => status === 200
+      })
+    );
+    const decompressedResponse = await compression.decompress<Compressed<ExistingSelectableQuotesApiFormat>, ExistingSelectableQuotesApiFormat>(compressedResponse);
+    if (!decompressedResponse || !decompressedResponse.quoteCounts) {
+      console.error('Invalid data received for quote counts:', decompressedResponse);
+      throw new StoryTreeError('Invalid data received for quote counts');
     }
-    const quoteCounts = new Map(data.compressedData.quoteCounts) as Map<Quote, number>;
+    const quoteCounts = new Map(decompressedResponse.quoteCounts) as Map<Quote, number>;
     console.log("StoryTreeOperator: Fetched quote counts:", quoteCounts);
     return { quoteCounts };
   }
