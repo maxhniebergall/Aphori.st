@@ -117,6 +117,16 @@ export interface CreateReplyResponse {
     };
 }
 
+export interface FeedItemsResponse{
+    feedItems: FeedItem[];
+    pagination: Pagination;
+}
+
+export interface RepliesFeedResponse{
+    replies: Reply[];
+    pagination: Pagination;
+}
+
 // Token Types
 export interface TokenPayload {
     email: string;
