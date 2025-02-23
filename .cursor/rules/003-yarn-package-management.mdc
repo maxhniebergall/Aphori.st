@@ -1,0 +1,24 @@
+---
+description: Use yarn for package management.
+globs: package.json, yarn.lock
+tags: [package-management, yarn]
+priority: 1
+version: 1.0.0
+---
+
+## Context
+- In projects where dependencies are managed, Yarn must be used to ensure consistency and performance.
+
+## Requirements
+- Use Yarn commands (e.g., `yarn install`, `yarn add`, `yarn remove`) for all package management tasks.
+- Do not use npm commands (e.g., `npm install`).
+- Ensure a valid `yarn.lock` file exists in the project root.
+
+## Examples
+<example>
+Valid: Running `yarn install` to set up the project.
+</example>
+
+<example type="invalid">
+Invalid: Running `npm install` to install packages.
+</example>
