@@ -87,6 +87,11 @@ export interface Replies {
     replies: Reply[];
 }
 
+export enum SortingCriteria {
+    MOST_RECENT = 'mostRecent'
+    // TODO add other sorting criteria
+}
+
 // Feed Types
 export interface FeedItem {
     id: string;
