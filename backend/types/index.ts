@@ -45,27 +45,10 @@ export interface UserResult {
     error?: string;
     data?: ExistingUser;
 }
-
-// Story Types
-export interface StoryTree {
-    // this is the old story tree type
-    // use UnifiedNode instead
-    id: string;
-    text: string;
-    parentId: string[] | null;
-    metadata: StoryMetadata;
-}
-
-export interface StoryMetadata {
-    authorId: string;
-    createdAt: string;
-    quote: Quote | null;
-}
-
 export interface Quote {
     text: string;
-    sourcePostId?: string;
-    selectionRange?: {
+    sourcePostId: string;
+    selectionRange: {
         start: number;
         end: number;
     };
@@ -77,10 +60,8 @@ export interface Reply {
     text: string;
     parentId: string[];
     quote: Quote;
-    metadata: {
-        authorId: string;
-        createdAt: number;
-    };
+    authorId: string;
+    createdAt: string;
 }
 
 export interface Replies {
@@ -141,16 +122,11 @@ export interface AuthTokenPayload extends User {
     iat?: number;
     exp?: number;
 }
-// Unified Node Types
-export interface UnifiedNode {
-    id: string;
-    type: 'story' | 'reply';
-    content: string;
-    metadata: UnifiedNodeMetadata;
-}
 
-export interface UnifiedNodeMetadata {
-    parentId: string[] | null;
+// Post Types
+export interface Post {
+    id: string;
+    content: string;
     quote?: Quote;
     authorId: string;
     createdAt: string;

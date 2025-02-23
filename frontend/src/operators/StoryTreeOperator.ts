@@ -27,7 +27,7 @@
  * - Implement caching with CacheService
  */
 
-import { ACTIONS, StoryTreeNode, StoryTreeState, UnifiedNode, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, ApiResponse, CreateReplyResponse, ExistingSelectableQuotesApiFormat } from '../types/types';
+import { ACTIONS, StoryTreeNode, StoryTreeState, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, ApiResponse, CreateReplyResponse, ExistingSelectableQuotesApiFormat, Post } from '../types/types';
 import { Quote } from '../types/quote';
 import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
@@ -98,43 +98,35 @@ class StoryTreeOperator extends BaseOperator {
    * @throws {StoryTreeError} Throws an error if fetching or processing the story tree data fails.
    */
   private async fetchStoryTree(uuid: string): Promise<StoryTree> {
+    const url = `${process.env.REACT_APP_API_URL}/api/getPost/${uuid}`;
     try {
-      const url = `${process.env.REACT_APP_API_URL}/api/combinedNode/${uuid}`;
-      const response = await axios.get<ApiResponse<UnifiedNode>>(url);
-      const data = await this.handleCompressedResponse<ApiResponse<UnifiedNode>>(response);
+      const axiosResponse = await axios.get<ApiResponse<Post>>(url);
+      const apiResponse = await this.handleCompressedResponse<ApiResponse<Post>>(axiosResponse);
       console.log("StoryTreeOperator: Initial story tree response:", {
-        success: data?.success,
-        hasCompressedData: Boolean(data?.compressedData),
-        metadata: data?.compressedData?.metadata,
+        success: apiResponse?.success,
+        hasCompressedData: Boolean(apiResponse?.compressedData),
         url
       });
-      if (!data || !data.success || !data.compressedData) {
-        console.error("Invalid response data received:", data);
-        throw new StoryTreeError('Invalid response data received', response.status, url, data);
+      if (!apiResponse || !apiResponse.success || !apiResponse.compressedData) {
+        console.error("Invalid response data received:", apiResponse);
+        throw new StoryTreeError('Invalid response data received', axiosResponse.status, url, apiResponse);
       }
 
-      const unifiedNode = data.compressedData;
+      const post = apiResponse.compressedData;
       const storyTree: StoryTree = {
-        id: unifiedNode.id,
-        parentId: unifiedNode.metadata?.parentId || null,
-        metadata: {
-          authorId: unifiedNode.metadata?.authorId || '',
-          createdAt: unifiedNode.metadata?.createdAt || '',
-          quote: null
-        },
+        post,
         levels: [],
         error: null
       };
 
-      // Create content level using modularized helper function.
-      this.addContentLevel(storyTree, unifiedNode);
+      this.addPostContentToLevelZero(storyTree, post);
 
       // Update each level with fresh pagination data
       await this.updateLevelsPagination(storyTree.levels);
 
       // Asynchronously update the root node's quoteCounts using the new function.
       // Do not await this promise to avoid delaying the initial story tree load.
-      this.fetchQuoteCounts(storyTree.id)
+      this.fetchQuoteCounts(storyTree.post.id)
         .then(quoteCounts => {
           // Locate the content level (assumed at index 0).
           const contentLevel = storyTree.levels[0];
@@ -164,8 +156,7 @@ class StoryTreeOperator extends BaseOperator {
     } catch (error) {
       const axiosErr = error as AxiosError;
       const statusCode = axiosErr.response?.status;
-      const endpoint = `${process.env.REACT_APP_API_URL}/api/combinedNode/${uuid}`;
-      const storyTreeErr = new StoryTreeError('Error fetching root node', statusCode, endpoint, error);
+      const storyTreeErr = new StoryTreeError('Error fetching root node', statusCode, url, error);
       console.error(storyTreeErr);
       if (this.store && this.store.dispatch) {
         this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: storyTreeErr.message });
@@ -175,33 +166,29 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   /**
-   * Helper method to add a content level to the StoryTree.
+   * Helper method to add the content for level 0 of the story tree (the post)
    *
    * @param storyTree - The StoryTree object being built.
-   * @param unifiedNode - The unified node data received from the API.
+   * @param post - The post data received from the API.
    */
-  private addContentLevel(storyTree: StoryTree, unifiedNode: UnifiedNode): void {
+  private addPostContentToLevelZero(storyTree: StoryTree, post: Post): void {
     const contentNode: StoryTreeNode = {
-      id: storyTree.id,
-      rootNodeId: storyTree.id,
-      parentId: [storyTree.id],
-      levelNumber: storyTree.levels.length,
-      textContent: unifiedNode.content || '',  // Handle potential null content
-      quoteCounts: null, // Will be populated asynchronously
-      metadata: {
-        authorId: unifiedNode.metadata?.authorId || '',
-        createdAt: unifiedNode.metadata?.createdAt || '',
-        quote: this.rootQuote,
-        replyCounts: new Map()
-      }
+      id: post.id,
+      rootNodeId: post.id,
+      parentId: [],
+      levelNumber: 0,
+      textContent: post.content,
+      authorId: post.authorId,
+      createdAt: post.createdAt,
+      repliedToQuote: this.rootQuote,
+      quoteCounts: { quoteCounts: new Map<Quote, number>() } // Will be populated asynchronously
     };
 
     console.log("StoryTreeOperator: Creating content level with pagination:", {
-      nodeId: storyTree.id,
-      parentId: storyTree.id,
+      nodeId: storyTree.post.id,
+      parentId: storyTree.post.id,
       content: contentNode.textContent,
       quoteCounts: contentNode.quoteCounts,
-      metadata: contentNode.metadata
     });
 
     // Create a Map with the root quote and an array containing the content node
@@ -209,8 +196,8 @@ class StoryTreeOperator extends BaseOperator {
     levelsMap.set(this.rootQuote, [contentNode]);
 
     const contentLevel: StoryTreeLevel = {
-      rootNodeId: storyTree.id,
-      parentId: [storyTree.id],
+      rootNodeId: storyTree.post.id,
+      parentId: [],
       levelNumber: storyTree.levels.length,
       selectedQuote: this.rootQuote,
       siblings: { levelsMap },
@@ -358,7 +345,7 @@ class StoryTreeOperator extends BaseOperator {
         return;
       }
 
-      const storyTreeId = state.storyTree.id;
+      const storyTreeId = state.storyTree.post.id;
       const nodes: StoryTreeNode[] = await Promise.all(response.data.map(async (reply) => {
         const quoteCounts = await this.fetchQuoteCounts(reply.id);
         return {
@@ -368,13 +355,10 @@ class StoryTreeOperator extends BaseOperator {
           levelNumber,
           textContent: reply.text,
           quoteCounts,
-          metadata: {
-            authorId: reply.metadata.authorId,
-            createdAt: reply.metadata.createdAt.toString(),
-            quote: reply.quote,
-            replyCounts: new Map([[reply.quote, 0]])
-          }
-        };
+          authorId: reply.metadata.authorId,
+          createdAt: reply.metadata.createdAt.toString(),
+          repliedToQuote: reply.quote,
+        } as StoryTreeNode;
       }));
 
       // Create a StoryTreeLevel with the new nodes and pagination
@@ -405,49 +389,6 @@ class StoryTreeOperator extends BaseOperator {
       console.error(storyTreeErr);
       throw storyTreeErr;
     }
-  }
-
-  /**
-   * (Currently unused.) Fetches a single node wrapped as a StoryTreeLevel.
-   *
-   * @param id - The node id.
-   * @param quote - The quote for filtering.
-   * @param retries - Number of retry attempts.
-   * @param delay - Delay between retries in milliseconds.
-   * @returns A promise resolving to a StoryTreeLevel or null.
-   */
-  private async fetchNode(id: string, quote: Quote, retries = 3, delay = 1000): Promise<StoryTreeLevel | null> {
-    for (let i = 0; i < retries; i++) {
-      try {
-        const url = `${process.env.REACT_APP_API_URL}/api/combinedNode/${id}`;
-        const response = await axios.get<ApiResponse<UnifiedNode>>(url);
-        const data = await this.handleCompressedResponse<ApiResponse<UnifiedNode>>(response);
-        if (!data || !data.compressedData) {
-          console.error('Invalid unified node data received:', data);
-          return null;
-        }
-        const unifiedNode: UnifiedNode = typeof data.compressedData === 'string' ? JSON.parse(data.compressedData) : data.compressedData;
-        return {
-          rootNodeId: unifiedNode.id,
-          parentId: unifiedNode.metadata.parentId ? unifiedNode.metadata.parentId : [],
-          levelNumber: 1,
-          selectedQuote: quote,
-          siblings: { levelsMap: new Map() },
-          pagination: { nextCursor: undefined, prevCursor: undefined, hasMore: false, matchingRepliesCount: 0 }
-        };
-      } catch (error) {
-        const axiosErr = error as AxiosError;
-        if (axiosErr.response?.status === 503 && i < retries - 1) {
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
-        const endpoint = `${process.env.REACT_APP_API_URL}/api/combinedNode/${id}`;
-        const storyTreeErr = new StoryTreeError('Error fetching unified node', axiosErr.response?.status, endpoint, error);
-        console.error(storyTreeErr);
-        return null;
-      }
-    }
-    return null;
   }
 
   /**
@@ -482,7 +423,7 @@ class StoryTreeOperator extends BaseOperator {
       // After successful reply, reload the story tree data
       const state = this.getState();
       if (state.storyTree) {
-        await this.initializeStoryTree(state.storyTree.id);
+        await this.initializeStoryTree(state.storyTree.post.id);
       }
 
       return { replyId: response.data.data?.id };

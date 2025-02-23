@@ -15,6 +15,7 @@
 import { Quote } from "./quote";
 
 export interface QuoteCounts {
+  // the quoteCounts map is a map of quotes (of the node) to the number of replies to that quote
   quoteCounts: Map<Quote, number>;
 }
 
@@ -22,19 +23,24 @@ export interface ExistingSelectableQuotesApiFormat {
   quoteCounts: [Quote, number][];
 }
 
-export interface StoryTreeNode {
+export interface Post { // this is the value returned from the backend, representing the root node of the story tree
+  id: string; // probably a UUID, appears in the URL; same as the rootNodeId
+  content: string;
+  quote?: Quote;
+  authorId: string;
+  createdAt: string;
+}
+
+export interface StoryTreeNode { // this value only exists in the frontend. it combines the post and the levels of the story tree
   id: string;
   rootNodeId: string;
   parentId: string[];
   levelNumber: number;
   textContent: string;
+  repliedToQuote: Quote;
   quoteCounts: QuoteCounts | null;
-  metadata?: {
-    authorId: string;
-    createdAt: string;
-    quote: Quote;
-    replyCounts: Map<Quote, number>;
-  };
+  authorId: string;
+  createdAt: string;
 }
 
 export interface Siblings {
@@ -57,37 +63,15 @@ export interface StoryTreeLevel {
   pagination: Pagination;
 }
 
-export interface StoryTreeMetadata {
-  authorId: string;
-  createdAt: string;
-  quote: Quote | null;
-}
-
-export interface StoryTree { // this is the root of the story tree
-  id: string; // probably a UUID, appears in the URL; same as the rootNodeId
-  parentId: string[] | null;
-  metadata: StoryTreeMetadata;
+export interface StoryTree { // this is the story tree we assemble as the user navigates
+  post: Post;
   levels: StoryTreeLevel[];
   error: string | null;
 }
 
-export interface StoryTreeState {
+export interface StoryTreeState { // required to allow storyTree to be null before it is initialized
   storyTree: StoryTree | null;
   error: string | null;
-}
-
-export interface UnifiedNodeMetadata {
-  parentId: string[] | null;
-  quote?: Quote;
-  authorId: string;
-  createdAt: string;
-}
-
-export interface UnifiedNode {
-  id: string;
-  type: 'story' | 'reply';
-  content: string;
-  metadata: UnifiedNodeMetadata;
 }
 
 // Cache Types

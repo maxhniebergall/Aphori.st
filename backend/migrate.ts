@@ -11,7 +11,7 @@ Requirements:
   - Ensure metadata includes parentId, author, createdAt
 - Validate migration:
   - Scan all objects in database
-  - Verify they are in new format (UnifiedNode)
+  - Verify they are in new format (Post, Reply)
   - Log non-compliant objects to DLQ file
   - Throw exception if any non-compliant objects found
 
@@ -25,6 +25,8 @@ How to Run:
 4. If validation errors occur, they will be written to migration_dlq.json
 
 Note: The script requires ts-node and ES modules support. Do not try to compile it with tsc directly.
+
+TODO: migration for removal of UnifiedNode, and replacement with Post and Reply
 */
 
 import * as dotenv from 'dotenv';
@@ -32,7 +34,7 @@ dotenv.config();
 
 import { createDatabaseClient } from './db/index.js';
 import newLogger from './logger.js';
-import { UnifiedNode, Quote } from './types/index.js';
+import { Post, Reply, Quote } from './types/index.js';
 import { DatabaseClient } from './types/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
