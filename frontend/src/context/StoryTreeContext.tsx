@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useLayoutEffect, ReactNode } from 'react';
-import { StoryTreeState, Action, StoryTreeLevel } from '../types/types';
+import { StoryTreeState, Action, StoryTreeLevel, StoryTree } from '../types/types';
 import { ACTIONS } from '../types/types';
 import StoryTreeErrorBoundary from './StoryTreeErrorBoundary';
 import storyTreeOperator from '../operators/StoryTreeOperator';
@@ -89,16 +89,15 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
       return {
         ...state,
         storyTree: {
-          id: action.payload.rootNodeId,
-          parentId: null,
-          metadata: {
+          post: {
+            id: action.payload.rootNodeId,
+            content: '',
             authorId: '',
-            createdAt: '',
-            quote: null
+            createdAt: ''
           },
           levels: [],
           error: null
-        }
+        } as StoryTree
       };
     
     case ACTIONS.SET_INITIAL_STORY_TREE_DATA:

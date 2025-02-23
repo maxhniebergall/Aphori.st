@@ -157,18 +157,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     
     // Handle case when there are no siblings but we have a root node
     if (!node && levelData.levelNumber === 0 && levelData.rootNodeId) {
-      const node = {
-        id: levelData.rootNodeId,
-        rootNodeId: levelData.rootNodeId,
-        parentId: levelData.parentId,
-        levelNumber: levelData.levelNumber,
-        textContent: '',  // This will be populated by the API
-        quoteCounts: { quoteCounts: new Map() },
-        metadata: {
-          replyCounts: new Map()
-        }
-      } as StoryTreeNode;
-      setCurrentNode(node);
+      setCurrentNode(null);
       return;
     }
     
@@ -363,17 +352,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   // Get the current node to render
   const nodeToRender = useMemo(() => {
     if (!currentNode && levelData.levelNumber === 0 && levelData.rootNodeId) {
-      return {
-        id: levelData.rootNodeId,
-        rootNodeId: levelData.rootNodeId,
-        parentId: levelData.parentId,
-        levelNumber: levelData.levelNumber,
-        textContent: '',
-        quoteCounts: { quoteCounts: new Map() },
-        metadata: {
-          replyCounts: new Map()
-        }
-      } as StoryTreeNode;
+      console.log("StoryTreeLevel: No current node, but level is root node");
     }
     return currentNode;
   }, [currentNode, levelData]);
@@ -391,9 +370,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     levelNumber: levelData.levelNumber,
     textContent: '',
     quoteCounts: { quoteCounts: new Map() },
-    metadata: {
-      replyCounts: new Map()
-    }
   } as StoryTreeNode;
 
   return (

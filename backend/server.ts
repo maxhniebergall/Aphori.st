@@ -768,21 +768,14 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         // Destructure required fields from the request body.
         const text: string = req.body.text;
         const parentId: string[] = req.body.parentId;
-        const metadata: UnifiedNodeMetadata = req.body.metadata;
         const quote: Quote = req.body.quote;
+        const user: User = (req as AuthenticatedRequest).user;
 
         // Validate that required fields are provided.
         if (!text || !parentId || !quote || !quote.text || !quote.sourcePostId || !quote.selectionRange) {
             res.status(400).json({ 
                 success: false, 
                 error: 'Missing required fields. Ensure text, parentId, and a full quote (with text, sourcePostId, and selectionRange) are provided.' 
-            });
-            return;
-        }
-        if (!metadata || !metadata.authorId) {
-            res.status(400).json({ 
-                success: false, 
-                error: 'Missing metadata: authorId is required.' 
             });
             return;
         }
@@ -793,11 +786,9 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             text,
             parentId, // Expecting an array of parent IDs
             quote,    // Store the complete quote object
-            metadata: {
-                authorId: metadata.authorId,
-                createdAt: new Date().toISOString() // don't use metadata.createdAt so that users can't change the createdAt time of a reply
-            }
-        };
+            authorId: user.id,
+            createdAt: new Date().getTime() // don't use metadata.createdAt so that users can't change the createdAt time of a reply
+        } as Reply;
 
         // Save the new reply in the database under a Redis hash field 'reply'.
         await db.hSet(newReply.id, 'reply', newReply);
@@ -828,7 +819,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId);
 
         logger.info(`Created new reply with ID: ${replyId} for parent: ${actualParentId}`);
-        const response = { 
+        const response = {
             success: true,
             data: { id: replyId }
         } as ApiResponse<{ id: string }>;
@@ -1008,67 +999,33 @@ app.get<{ uuid: string }, ApiResponse<ExistingSelectableQuotes>>('/api/getExisti
 });
 
 /**
- * @route   GET /api/combinedNode/:uuid
- * @desc    Retrieves a combined node (story or reply) with unified node structure
+ * @route   GET /api/getPost/:uuid
+ * @desc    Retrieves a post, a top level storyTree element
  * @access  Public
  */
-app.get<{ uuid: string }, ApiResponse<UnifiedNode>>('/api/combinedNode/:uuid', async (req, res) => {
+app.get<{ uuid: string }, ApiResponse<Post>>('/api/getPost/:uuid', async (req, res) => {
     const { uuid } = req.params;
     if (!uuid) {
         res.status(400).json({ success: false, error: 'UUID is required' });
-        return;
+        return; 
     }
     try {
         // Try fetching as a story node first
-        let compressedData = await db.hGet(uuid, 'storyTree', { returnCompressed: true });
-        let nodeType: 'story' | 'reply' = 'story';
-        if (!compressedData) {
-            // If not found, try fetching as a reply
-            compressedData = await db.hGet(uuid, 'reply', { returnCompressed: true });
-            nodeType = 'reply';
-        }
-        if (!compressedData) {
+        let maybePost = await db.hGet(uuid, 'storyTree', { returnCompressed: true });
+        if (!maybePost) {
             res.status(404).json({ success: false, error: 'Node not found' });
             return;
         }
-        const rawData = await db.decompress(compressedData);
-
-        let unifiedNode: UnifiedNode;
-        if (nodeType === 'story') {
-            unifiedNode = {
-                id: rawData.id,
-                type: 'story',
-                content: rawData.content || rawData.text,
-                metadata: {
-                    parentId: rawData.parentId,
-                    authorId: rawData.metadata.authorId || 'Unknown',
-                    createdAt: rawData.metadata.createdAt,
-                    quote: rawData.metadata.quote || undefined
-                }
-            };
-        } else {
-            unifiedNode = {
-                id: rawData.id,
-                type: 'reply',
-                content: rawData.content || rawData.text,
-                metadata: {
-                    parentId: rawData.parentId,
-                    authorId: rawData.metadata.authorId || 'Unknown',
-                    createdAt: rawData.metadata.createdAt,
-                    quote: rawData.quote || undefined
-                }
-            };
-        }
-
-        const apiResponse: ApiResponse<UnifiedNode> = {
+        const post = maybePost as Post;
+    
+        const apiResponse: ApiResponse<Post> = {
             success: true,
-            compressedData: unifiedNode
+            compressedData: post
         };
-        const compressedResponse = await db.compress(apiResponse);
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(compressedResponse);
+        res.send(apiResponse);
     } catch (error) {
-        logger.error('Error in combinedNode endpoint:', error);
+        logger.error('Error in getPost endpoint:', error);
         res.status(500).json({ success: false, error: 'Server error' });
     }
 });

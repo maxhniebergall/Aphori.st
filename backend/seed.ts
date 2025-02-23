@@ -12,7 +12,7 @@ import { createClient, RedisClientType } from 'redis';
 import crypto from "crypto";
 import newLogger from './logger.js';
 import { createDatabaseClient } from './db/index.js';
-import { DatabaseClient, FeedItem, UnifiedNode } from './types/index.js';
+import { DatabaseClient, FeedItem, Post, Reply, Quote } from './types/index.js';
 
 const logger = newLogger("seed.ts");
 
@@ -81,29 +81,25 @@ async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
             const uuid = crypto.randomUUID();
             storyIds.push(uuid);
             
-            // Create the story following UnifiedNode schema structure
-            const formattedStory: UnifiedNode = {
+            // Create the story following Post schema structure
+            const formattedStory: Post = {
                 id: uuid,
-                type: 'story',
                 content: story.content,
-                metadata: {
-                    parentId: null, // Root-level posts always have null parentId
-                    authorId: 'seed_user',
-                    createdAt: new Date().toISOString(),
-                    quote: undefined // Root-level posts don't have quotes
-                }
+                authorId: 'seed_user',
+                createdAt: new Date().toISOString(),
+                quote: undefined // Root-level posts don't have quotes
             };
 
             // Store in Redis - let the database client handle compression
-            await db.hSet(uuid, 'storyTree', formattedStory);
+            await db.hSet(uuid, 'post', formattedStory);
             await db.lPush('allStoryTreeIds', uuid);
 
             // Add to feed items (only root-level posts go to feed)
             const feedItem = {
                 id: uuid,
                 text: formattedStory.content,
-                authorId: formattedStory.metadata.authorId,
-                createdAt: formattedStory.metadata.createdAt
+                authorId: formattedStory.authorId,
+                createdAt: formattedStory.createdAt
             } as FeedItem;
             await db.lPush('feedItems', feedItem);
             logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
@@ -138,7 +134,7 @@ async function seedTestReplies(storyIds: string[]): Promise<void> {
                     start: 0,
                     end: 1
                 }
-            };
+            } as Quote;
 
             // Create the reply object
             const reply = {
@@ -146,11 +142,9 @@ async function seedTestReplies(storyIds: string[]): Promise<void> {
                 text: "This is a test reply to help with testing the reply functionality.",
                 parentId: [storyId],
                 quote: quote,
-                metadata: {
-                    authorId: 'seed_user',
-                    createdAt: new Date().toISOString()
-                }
-            };
+                authorId: 'seed_user',
+                createdAt: new Date().toISOString()
+            } as Reply;
 
             // Store the reply in Redis
             await db.hSet(replyId, 'reply', reply);

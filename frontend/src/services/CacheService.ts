@@ -1,13 +1,13 @@
 /**
  * Requirements:
- * - LRU cache implementation for UnifiedNode storage
+ * - LRU cache implementation for Replies storage
  * - Memory-only caching with size limits
  * - Separate limits for stories and replies
  * - Cache invalidation strategy
  * - Type safety for all operations
  */
 
-import { UnifiedNode } from '../types/types';
+import { Reply } from '../types/types';
 
 class LRUCache<T> {
     private capacity: number;
@@ -59,14 +59,12 @@ class LRUCache<T> {
 
 export class CacheService {
     private static instance: CacheService;
-    private storyCache: LRUCache<UnifiedNode>;
-    private replyCache: LRUCache<UnifiedNode>;
-    private batchCache: LRUCache<UnifiedNode[]>;
+    private replyCache: LRUCache<Reply>;
+    private batchCache: LRUCache<Reply[]>;
 
     private constructor() {
-        this.storyCache = new LRUCache<UnifiedNode>(100); // Limit to 100 stories
-        this.replyCache = new LRUCache<UnifiedNode>(1000); // Limit to 1000 replies
-        this.batchCache = new LRUCache<UnifiedNode[]>(50); // Limit to 50 batch results
+        this.replyCache = new LRUCache<Reply>(1000); // Limit to 1000 replies
+        this.batchCache = new LRUCache<Reply[]>(50); // Limit to 50 batch results
     }
 
     public static getInstance(): CacheService {
@@ -76,40 +74,27 @@ export class CacheService {
         return CacheService.instance;
     }
 
-    public get(key: string): UnifiedNode | null {
-        const nodeType = this.getNodeType(key);
-        return nodeType === 'story' 
-            ? this.storyCache.get(key)
-            : this.replyCache.get(key);
+    public get(key: string): Reply | null {
+        return this.replyCache.get(key);
     }
 
-    public set(key: string, value: UnifiedNode): void {
-        const nodeType = this.getNodeType(key);
-        if (nodeType === 'story') {
-            this.storyCache.set(key, value);
-        } else {
-            this.replyCache.set(key, value);
-        }
+    public set(key: string, value: Reply): void {
+        this.replyCache.set(key, value);
     }
 
-    public getBatch(key: string): UnifiedNode[] | null {
+    public getBatch(key: string): Reply[] | null {
         return this.batchCache.get(key);
     }
 
-    public setBatch(key: string, values: UnifiedNode[]): void {
+    public setBatch(key: string, values: Reply[]): void {
         this.batchCache.set(key, values);
         // Also cache individual nodes
         values.forEach(node => this.set(node.id, node));
     }
 
     public clear(): void {
-        this.storyCache.clear();
         this.replyCache.clear();
         this.batchCache.clear();
-    }
-
-    private getNodeType(key: string): 'story' | 'reply' {
-        return key.startsWith('story:') ? 'story' : 'reply';
     }
 }
 
