@@ -11,11 +11,12 @@
  * - Handle null safety for DOM operations
  */
 
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useState } from 'react';
 import { throttle } from 'lodash';
 import { getCurrentOffset, getWordBoundaries } from '../utils/selectionUtils';
 import { Quote } from '../types/quote';
 import { QuoteCounts } from '../types/types';
+
 interface UseTextSelectionProps {
   onSelectionCompleted: (quote: Quote) => void;
   selectAll?: boolean;
@@ -86,7 +87,7 @@ const highlightText = (element: HTMLElement, startOffset: number, endOffset: num
   }
 };
 
-const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts): void => {
+const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts, storeQuote: (quote: Quote) => number): void => {
   removeExistingHighlights(element);
   if (!quotes.quoteCounts) return;
 
@@ -122,6 +123,7 @@ const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts): void => {
 
     const span = document.createElement('span');
     span.style.backgroundColor = `rgba(0, 255, 0, ${Math.min(0.1 + count * 0.05, 0.5)})`;
+    span.dataset.quoteId = storeQuote(quote).toString();
     // TODO add styling to display the reply count
     try {
       range.surroundContents(span);
@@ -148,12 +150,72 @@ const throttledAnimationLoop = throttle(
   16
 );
 
+/**
+ * Manages text selection and dynamic highlighting on a DOM container via mouse and touch interactions.
+ *
+ * This hook encapsulates the logic for:
+ * - Tracking text selection and word boundaries.
+ * - Rendering highlights with a throttled animation ensuring smooth visual updates (~60fps).
+ * - Handling both full container ("select all") and partial text selections.
+ * - Applying dynamic quote-based highlights based on external counts.
+ * - Cleaning up event listeners to prevent memory leaks.
+ *
+ * @param {Object} props - Configuration options for managing text selection.
+ * @param {(quote: Quote) => void} props.onSelectionCompleted - Callback invoked after a selection is finalized,
+ *   receiving a Quote object that holds the selected text, container ID, and selection range.
+ * @param {boolean} [props.selectAll=false] - If true, automatically selects and highlights the entire container text.
+ * @param {Quote} [props.selectedQuote] - A quote object representing pre-selected text to be highlighted.
+ * @param {QuoteCounts} [props.existingSelectableQuotes] - A collection of quotes with associated counts used to highlight
+ *   the top quotes dynamically.
+ *
+ * @returns {{
+ *   containerRef: React.RefObject<HTMLDivElement>,
+ *   eventHandlers: {
+ *     onMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void,
+ *     onTouchStart: (event: React.TouchEvent<HTMLDivElement>) => void,
+ *     onMouseUp: (event: React.MouseEvent<HTMLDivElement>) => void,
+ *     onTouchEnd: (event: React.TouchEvent<HTMLDivElement>) => void,
+ *   }
+ * }} An object containing:
+ *   - containerRef: a React ref to be attached to the container DOM element.
+ *   - eventHandlers: event handler functions to manage text selection interactions.
+ *
+ * @example
+ * // Example usage in a React component
+ * function TextSelectionComponent() {
+ *   const { containerRef, eventHandlers } = useTextSelection({
+ *     onSelectionCompleted: (quote) => {
+ *       console.log('Selected text:', quote.text);
+ *     },
+ *   });
+ *
+ *   return (
+ *     <div ref={containerRef} {...eventHandlers}>
+ *       This is a sample text that you can select to highlight.
+ *     </div>
+ *   );
+ * }
+ */
 export function useTextSelection({  
   onSelectionCompleted,
   selectAll = false,
   selectedQuote,
   existingSelectableQuotes,
 }: UseTextSelectionProps): UseTextSelectionReturn {
+  const [nextQuoteId, setNextQuoteId] = useState<number>(0);
+  const [quoteIdToQuoteMap, setQuoteIdToQuoteMap] = useState<Map<number, Quote>>(new Map());
+
+  const storeQuote = useCallback((quote: Quote): number => {
+    const currentQuoteId = nextQuoteId;
+    setQuoteIdToQuoteMap(prevMap => {
+      const newMap = new Map(prevMap);
+      newMap.set(currentQuoteId, quote);
+      return newMap;
+    });
+    setNextQuoteId(prevId => prevId + 1);
+    return currentQuoteId;
+  }, [nextQuoteId]);
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const boundThrottledAnimationRef = useRef<((e: Event) => void) | null>(null);
   const mouseIsDownRef = useRef(false);
@@ -218,12 +280,19 @@ export function useTextSelection({
       if (!mouseIsDownRef.current || !containerRef.current) return;
 
       if (!isDraggingRef.current) {
-        // If click occurred on a quote highlight (data attribute on target)
+        // If click occurred on a quote highlight 
         const target = event.target as HTMLElement;
         if (target.dataset.quoteRange) {
           try {
-            const quoteRange = JSON.parse(target.dataset.quoteRange);
-            onSelectionCompleted(quoteRange);
+            if (!target.dataset.quoteId) {
+              console.warn('No quote ID found for target', target);
+              return;
+            }
+            const quoteId = parseInt(target.dataset.quoteId);
+            const quote = quoteIdToQuoteMap.get(quoteId);
+            if (quote) {
+              onSelectionCompleted(quote);
+            }
           } catch (err) {
             console.warn('Error parsing quote range', err);
           }
@@ -286,9 +355,9 @@ export function useTextSelection({
   // Effect: highlight quotes if provided (e.g. based on reply counts)
   useEffect(() => {
     if (containerRef.current && existingSelectableQuotes) {
-      highlightQuotes(containerRef.current, existingSelectableQuotes);
+      highlightQuotes(containerRef.current, existingSelectableQuotes, storeQuote);
     }
-  }, [existingSelectableQuotes]);
+  }, [existingSelectableQuotes, storeQuote]);
 
   // Wrap our internal handlers for React events
   const onMouseDownHandler = (event: React.MouseEvent<HTMLDivElement>) => {
