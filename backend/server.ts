@@ -7,7 +7,6 @@
 - Handles reply creation with quote references and parent tracking
 - Creates formatted story trees with metadata and node structure
 - Manages feed items for root-level posts only
-- Fetches and returns compressed storyTree objects from Redis
 - Supports retrieving individual replies by UUID
 - Fetches replies by post UUID and quote
 - Supports sorting replies by different criteria
@@ -47,7 +46,6 @@ import {
     User, 
     ExistingUser,
     UserResult, 
-    StoryTree, 
     Reply, 
     FeedItem,
     AuthenticatedRequest,
@@ -63,7 +61,8 @@ import {
     FeedItemsResponse,
     RepliesFeedResponse,
     SortingCriteria,
-    Post
+    Post,
+    PostCreationRequest
 } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { createCursor, decodeCursor } from './utils/cursorUtils.js';
@@ -628,7 +627,7 @@ app.get('/health', (req: Request, res: Response): void => {
 
 app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const { storyTree } = req.body;
+        const { storyTree } = req.body as { storyTree: PostCreationRequest };
         if (!storyTree) {
             res.status(400).json({ error: 'StoryTree data is required' });
             return;
@@ -640,14 +639,11 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         // Create the full object following new schema structure
         const formattedStoryTree = {
             id: uuid,
-            text: storyTree.content || storyTree.text,
+            content: storyTree.content,
             parentId: null, // Root-level posts always have null parentId
-            metadata: {
-                authorId: req.user.id,
-                createdAt: new Date().toISOString(),
-                quote: null // Root-level posts don't have quotes
-            },
-        } as StoryTree;
+            authorId: req.user.id,
+            createdAt: new Date().toISOString(),
+        } as Post;
 
         // Store in Redis
         await db.hSet(uuid, 'storyTree', JSON.stringify(formattedStoryTree));
@@ -656,9 +652,9 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         // Add to feed items (only root-level posts go to feed)
         const feedItem = {
             id: uuid,
-            text: storyTree.content || storyTree.text,
+            text: storyTree.content,
             authorId: req.user.id,
-            createdAt: formattedStoryTree.metadata.createdAt
+            createdAt: formattedStoryTree.createdAt
         } as FeedItem;
         await db.lPush('feedItems', JSON.stringify(feedItem));
         logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
@@ -787,7 +783,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             parentId, // Expecting an array of parent IDs
             quote,    // Store the complete quote object
             authorId: user.id,
-            createdAt: new Date().getTime() // don't use metadata.createdAt so that users can't change the createdAt time of a reply
+            createdAt: new Date().getTime().toString() // don't use metadata.createdAt so that users can't change the createdAt time of a reply
         } as Reply;
 
         // Save the new reply in the database under a Redis hash field 'reply'.
@@ -1049,8 +1045,8 @@ app.get<{ parentId: string }, ApiResponse<ExistingSelectableQuotes>>('/api/getQu
             try {
                 parsedQuote = JSON.parse(key) as Quote;
             } catch (parseError) {
-                // Fallback: if parsing fails, use the key as the quote text with default values.
-                parsedQuote = { text: key, sourcePostId: "", selectionRange: { start: 0, end: 0 } };
+                logger.error('Error parsing quote: [', key, '] with error: [', parseError, ']');
+                throw new Error('Invalid quote format');
             }
             quoteCountsMap.set(parsedQuote, Number(value));
         }

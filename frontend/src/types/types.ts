@@ -31,6 +31,10 @@ export interface Post { // this is the value returned from the backend, represen
   createdAt: string;
 }
 
+export interface PostCreationRequest {
+  content: string;
+}
+
 export interface StoryTreeNode { // this value only exists in the frontend. it combines the post and the levels of the story tree
   id: string;
   rootNodeId: string;

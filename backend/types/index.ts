@@ -127,9 +127,12 @@ export interface AuthTokenPayload extends User {
 export interface Post {
     id: string;
     content: string;
-    quote?: Quote;
     authorId: string;
     createdAt: string;
+}
+
+export interface PostCreationRequest {
+    content: string;
 }
 
 // Existing Selectable Quotes Types

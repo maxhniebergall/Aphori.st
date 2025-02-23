@@ -1,6 +1,6 @@
 /*
 Requirements:
-- Allow users to create posts with title and markdown content
+- Allow users to create posts with markdown content
 - Provide markdown editing capabilities
 - Handle form submission and validation
 - Show loading state during submission
@@ -17,15 +17,15 @@ import './PostPage.css';
 import Header from './Header';
 import { useUser } from '../context/UserContext';
 import { Link } from 'react-router-dom';
+import { PostCreationRequest } from '../types/types';
 
-function PostPage() {
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
+const PostPage: React.FC = (): JSX.Element => {
+  const [content, setContent] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
   const navigate = useNavigate();
   const { state } = useUser();
-  const loggedOutMessage = 'Please sign in to create a post';
+  const loggedOutMessage: string = 'Please sign in to create a post';
 
   useEffect(() => {
     if (!state?.verified) {
@@ -33,36 +33,26 @@ function PostPage() {
     } else {
       setError('');
     }
-  }, [state?.verified, navigate]);
+  }, [state?.verified, navigate, loggedOutMessage]);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
-    
-    if (!title.trim() || !content.trim()) {
-      setError('Please fill in both title and content');
-      return;
-    }
 
     setIsSubmitting(true);
     setError('');
-
     try {
+      const newPost: PostCreationRequest = {
+        content: content.trim(),
+      };
+
       await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/createStoryTree`, 
-        {
-          storyTree: {
-            title: title.trim(),
-            content: content.trim(),
-            metadata: {
-              authorId: state.user.id
-            }
-          }
-        }
+        `${process.env.REACT_APP_API_URL}/api/createStoryTree`,
+        { post: newPost }
       );
       navigate('/');
-    } catch (err) {
+    } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to create post');
-    } finally {
+    } finally { 
       setIsSubmitting(false);
     }
   };
@@ -71,36 +61,30 @@ function PostPage() {
     <div className="post-page">
       <Header 
         title="Create a New Post"
+        subtitle="Write your post content here using Markdown..."
         onLogoClick={() => navigate('/feed')}
       />
 
-      {error && <div className="error-message">{error}{error === loggedOutMessage && <Link to="/login"> here</Link>}</div>}
+      {error && (
+        <div className="error-message">
+          {error}
+          {error === loggedOutMessage && <Link to="/login"> here</Link>}
+        </div>
+      )}
       
       {error !== loggedOutMessage && (
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="title">Title</label>
-            <input
-              type="text"
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter your post title"
-              disabled={isSubmitting}
-            />
-          </div>
-
           <div className="form-group">
             <label htmlFor="content">Content</label>
             <div data-color-mode="light">
               <MDEditor
                 value={content}
-                onChange={setContent}
+                onChange={(value?: string) => setContent(value || '')}
                 preview="edit"
                 height={400}
                 textareaProps={{
                   placeholder: "Write your post content here using Markdown...",
-                  disabled: isSubmitting
+                  disabled: isSubmitting,
                 }}
               />
             </div>
@@ -117,6 +101,6 @@ function PostPage() {
       )}
     </div>
   );
-}
+};
 
 export default PostPage;
