@@ -57,25 +57,26 @@ export function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTr
       // Instead of using an index for insertion, check for the existence of prevCursor:
       // if prevCursor exists, the new nodes are from an earlier page and should be prepended;
       // otherwise, they are appended.
-      for (const [quote, newNodesAtLevel] of levelWithNewItems.siblings?.levelsMap) {
-        const existingSiblings = returnableLevels[levelIndex].siblings.levelsMap.get(quote);
-        
-        // Filter out nodes that already exist
-        const existingIds = existingSiblings ? new Set(existingSiblings.map(node => node.id)) : new Set();
-        const uniqueNewNodes = newNodesAtLevel.filter(node => !existingIds.has(node.id));
-        
-        if (existingSiblings && existingSiblings.length > 0) {
-          if (levelWithNewItems.pagination.prevCursor) {
-            // Prepend new nodes if pagination indicates loading a previous page.
-            returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...uniqueNewNodes, ...existingSiblings]);
+      if (levelWithNewItems.siblings?.levelsMap) {
+        for (const [quote, newNodesAtLevel] of levelWithNewItems.siblings.levelsMap) {
+          const existingSiblings = returnableLevels[levelIndex].siblings.levelsMap.get(quote);        
+          // Filter out nodes that already exist
+          const existingIds = existingSiblings ? new Set(existingSiblings.map(node => node.id)) : new Set();
+          const uniqueNewNodes = newNodesAtLevel.filter(node => !existingIds.has(node.id));
+          
+          if (existingSiblings && existingSiblings.length > 0) {
+            if (levelWithNewItems.pagination.prevCursor) {
+              // Prepend new nodes if pagination indicates loading a previous page.
+              returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...uniqueNewNodes, ...existingSiblings]);
+            } else {
+              // Otherwise, append new nodes.
+              returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...existingSiblings, ...uniqueNewNodes]);
+            }
           } else {
-            // Otherwise, append new nodes.
-            returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...existingSiblings, ...uniqueNewNodes]);
+            returnableLevels[levelIndex].siblings.levelsMap.set(quote, uniqueNewNodes);
           }
-        } else {
-          returnableLevels[levelIndex].siblings.levelsMap.set(quote, uniqueNewNodes);
         }
-      } 
+      }
     }
   }
 
