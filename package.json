@@ -20,5 +20,9 @@
     "yarn": "^1.22.22"
   },
   "type": "module",
-  "repository": "https://github.com/maxhniebergall/Aphori.st.git"
+  "repository": "https://github.com/maxhniebergall/Aphori.st.git",
+  "devDependencies": {
+    "eslint-config-react": "^1.1.7",
+    "eslint-config-react-app": "^7.0.1"
+  }
 }

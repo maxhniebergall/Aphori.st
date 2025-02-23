@@ -12,6 +12,7 @@
  * - Consistent author and authorId fields across all interfaces
  */
 
+import { Compressed } from "./compressed";
 import { Quote } from "./quote";
 
 export interface QuoteCounts {
@@ -35,6 +36,27 @@ export interface PostCreationRequest {
   content: string;
 }
 
+export interface Pagination {
+  nextCursor?: string;
+  prevCursor?: string;
+  hasMore: boolean;
+  matchingRepliesCount: number;
+}
+
+
+export interface FeedItem {
+  id: string;
+  text: string;
+  authorId: string;
+  createdAt: string;
+}
+
+export interface FeedItemsResponse{
+    feedItems: FeedItem[];
+    pagination: Pagination;
+}
+
+
 export interface StoryTreeNode { // this value only exists in the frontend. it combines the post and the levels of the story tree
   id: string;
   rootNodeId: string;
@@ -50,14 +72,6 @@ export interface StoryTreeNode { // this value only exists in the frontend. it c
 export interface Siblings {
   levelsMap: Map<Quote, StoryTreeNode[]>;
 }
-
-export interface Pagination {
-  nextCursor?: string;
-  prevCursor?: string;
-  hasMore: boolean;
-  matchingRepliesCount: number;
-}
-
 export interface StoryTreeLevel {
   rootNodeId: string;
   parentId: string[];
@@ -89,7 +103,7 @@ export interface ApiResponse<T = any> {
   success: boolean;
   error?: string;
   message?: string;
-  compressedData?: T;
+  compressedData?: Compressed<T>;
 }
 
 // Specific response type for createReply endpoint

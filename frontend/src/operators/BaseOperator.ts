@@ -11,6 +11,8 @@
 
 import compression from '../utils/compression';
 import { AxiosResponse } from 'axios';
+import { ApiResponse } from '../types/types';
+import { Compressed } from '../types/compressed';
 
 // Interface to represent objects with an 'items' property.
 interface HasItems<T = unknown> {
@@ -136,33 +138,22 @@ export class BaseOperator {
    * @param retries - The maximum number of retry attempts (default is 3).
    * @param delay - The delay between retries in milliseconds (default is 1000).
    * @returns A promise that resolves to the processed response data of type T.
+   * 
    */
-  async retryApiCall<T = unknown>(apiCall: () => Promise<AxiosResponse>, retries = 3, delay = 1000): Promise<T> {
+  async retryApiCallSimplified<T = unknown>(apiCall: () => Promise<AxiosResponse<ApiResponse<T>>>, retries = 3, delay = 1000): Promise<Compressed<T>> {
     for (let i = 0; i < retries; i++) {
       try {
-        const response = await apiCall();
-        const data = await this.handleCompressedResponse<T>(response);
-        
-        if (Array.isArray(data)) {
-          // If the caller expects an array, infer the element type
-          type ElementType = T extends Array<infer U> ? U : unknown;
-          const decompressedItems = await Promise.all(
-            (data as unknown[]).map((item: unknown) => this.decompressItem<ElementType>(item))
-          );
-          return decompressedItems as T;
-        } else if (this.isHasItems(data)) {
-          // If the response has an 'items' array property, infer its element type
-          type ElementType = T extends { items: Array<infer U> } ? U : unknown;
-          const decompressedItems = await Promise.all(
-            data.items.map((item: unknown) => this.decompressItem<ElementType>(item))
-          );
-          return {
-            ...data,
-            items: decompressedItems
-          } as T;
+        const response: AxiosResponse<ApiResponse<T>> = await apiCall();
+        console.log("BaseOperator: Retry API call simplified response:", response);
+        if (response.data.success && response.data.compressedData) {
+          if (typeof response.data.compressedData === 'string') {
+            return JSON.parse(response.data.compressedData) as Compressed<T>;
+          } else {
+            return response.data.compressedData as Compressed<T>;
+          }
+        } else {
+          throw new Error(response.data.error || 'Unknown error, response: ' + JSON.stringify(response.data));
         }
-        
-        return data;
       } catch (error: any) {
         if (error.response?.status === 503 && i < retries - 1) {
           console.log(`Retrying API call after 503 error (attempt ${i + 1}/${retries})`);
@@ -174,6 +165,54 @@ export class BaseOperator {
     }
     throw new Error("Max retries exceeded");
   }
+
+    /**
+   * Helper method for retrying API calls.
+   *
+   * @param apiCall - A function that performs the API call and returns an AxiosResponse.
+   * @param retries - The maximum number of retry attempts (default is 3).
+   * @param delay - The delay between retries in milliseconds (default is 1000).
+   * @returns A promise that resolves to the processed response data of type T.
+   * @deprecated: this is a weird method that implements both API call retrying and decompression.
+   * TODO: refactor to use retryApiCallSimplified instead (then rename retryApiCallSimplified sto retryApiCall)
+   */
+    async retryApiCall<T = unknown>(apiCall: () => Promise<AxiosResponse>, retries = 3, delay = 1000): Promise<T> {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const response = await apiCall();
+          const data = await this.handleCompressedResponse<T>(response);
+          
+          if (Array.isArray(data)) {
+            // If the caller expects an array, infer the element type
+            type ElementType = T extends Array<infer U> ? U : unknown;
+            const decompressedItems = await Promise.all(
+              (data as unknown[]).map((item: unknown) => this.decompressItem<ElementType>(item))
+            );
+            return decompressedItems as T;
+          } else if (this.isHasItems(data)) {
+            // If the response has an 'items' array property, infer its element type
+            type ElementType = T extends { items: Array<infer U> } ? U : unknown;
+            const decompressedItems = await Promise.all(
+              data.items.map((item: unknown) => this.decompressItem<ElementType>(item))
+            );
+            return {
+              ...data,
+              items: decompressedItems
+            } as T;
+          }
+          
+          return data;
+        } catch (error: any) {
+          if (error.response?.status === 503 && i < retries - 1) {
+            console.log(`Retrying API call after 503 error (attempt ${i + 1}/${retries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          throw error;
+        }
+      }
+      throw new Error("Max retries exceeded");
+    }
 
   /**
    * Type guard to check if an object has an 'items' property which is an array.
