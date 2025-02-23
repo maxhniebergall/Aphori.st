@@ -61,7 +61,9 @@ import {
     ExistingSelectableQuotes,
     UnifiedNodeMetadata,
     CreateReplyResponse,
-    RedisSortedSetItem
+    RedisSortedSetItem,
+    FeedItemsResponse,
+    RepliesFeedResponse
 } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { createCursor, decodeCursor } from './utils/cursorUtils.js';
@@ -200,7 +202,7 @@ const authenticateToken = (req: Request, res: Response, next: NextFunction): voi
 };
 
 // Get feed data with pagination
-app.get('/api/feed', async (req: Request, res: Response): Promise<void> => {
+app.get('/api/feed', async (req: Request, res: Response<ApiResponse<FeedItemsResponse>>): Promise<void> => {
     const limit = parseInt(req.query.limit as string) || 10;
     let cursor = 0;
 
@@ -210,7 +212,7 @@ app.get('/api/feed', async (req: Request, res: Response): Promise<void> => {
             const decodedCursor = decodeCursor(req.query.cursor as string);
             cursor = parseInt(decodedCursor.id);
         } catch (error) {
-            res.status(400).json({ error: 'Invalid cursor format' });
+            res.status(400).json({success: false, error: 'Invalid cursor format' });
             return;
         }
     }
@@ -228,11 +230,11 @@ app.get('/api/feed', async (req: Request, res: Response): Promise<void> => {
         
         // Validate cursor bounds
         if (cursor < 0) {
-            res.status(400).json({ error: 'Cursor cannot be negative' });
+            res.status(400).json({success: false, error: 'Cursor cannot be negative' });
             return;
         }
         if (cursor > totalItems) {
-            res.status(400).json({ error: 'Cursor is beyond the end of the feed' });
+            res.status(400).json({success: false, error: 'Cursor is beyond the end of the feed' });
             return;
         }
 
@@ -244,43 +246,36 @@ app.get('/api/feed', async (req: Request, res: Response): Promise<void> => {
             key: 'feedItems'
         });
 
-        const compressedResults = await db.lRange('feedItems', cursor, endIndex - 1, { returnCompressed: true }); 
-        logger.info('Raw db response for feed items: %O', compressedResults);
+        const feedItems = await db.lRange('feedItems', cursor, endIndex - 1, { returnCompressed: false }) as FeedItem[]; 
 
-        if (!Array.isArray(compressedResults)) {
-            logger.error('db error when fetching feed: invalid response format');
-            res.status(500).json({ error: 'Error fetching data from Redis' });
-            return;
-        }
-
-        // Decompress each item in the results array
-        const decompressedItems = await Promise.all(
-            compressedResults.map((item: any) => db.decompress(item))
-        );
-        logger.info('Decompressed feed items: %O', decompressedItems);
+        logger.info("feed items: %O", feedItems);
         
         // Create the response object with cursor-based pagination
-        const response = {
-            data: decompressedItems,
+        const data = {
+            feedItems: feedItems,
             pagination: {
                 nextCursor: endIndex < totalItems ? createCursor(endIndex.toString(), Date.now(), 'story') : undefined,
                 prevCursor: cursor > 0 ? createCursor(Math.max(0, cursor - limit).toString(), Date.now(), 'story') : undefined,
                 hasMore: endIndex < totalItems,
-                matchingItemsCount: totalItems
+                matchingRepliesCount: totalItems // TOOD the semantics are a bit off here, we should refactor later
             }
-        };
-        logger.info('Response object: %O', response);
+        } as FeedItemsResponse;
+        logger.info('Response object: %O', data);
         
         // Compress the final response
-        const compressedResponse = await db.compress(response);
+        const compressedData = await db.compress(data);
+        const response = {
+            success: true,
+            data: compressedData
+        } as ApiResponse<FeedItemsResponse>;
 
         // Add compression header to indicate data is compressed
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(compressedResponse);
+        res.send(response);
     } catch (error) {
         if (error instanceof Error) {
             logger.error('Error fetching feed items:', error);
-            res.status(500).json({ error: 'Internal server error' });
+            res.status(500).json({success: false, error: 'Internal server error' });
         }
     }
 });
@@ -833,10 +828,11 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId);
 
         logger.info(`Created new reply with ID: ${replyId} for parent: ${actualParentId}`);
-        res.json({ 
+        const response = { 
             success: true,
             data: { id: replyId }
-        });
+        } as ApiResponse<{ id: string }>;
+        res.send(response);
     } catch (err) {
         logger.error('Error creating reply:', err);
         res.status(500).json({ 
@@ -848,47 +844,49 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
 
 
 // Get global replies feed
-app.get('/api/getRepliesFeed', async (req: Request, res: Response): Promise<void> => {
+app.get('/api/getRepliesFeed', async (req: Request, res: Response<ApiResponse<RepliesFeedResponse>>): Promise<void> => {
     try {
-        const { page = 1, limit = 10 } = req.query;
 
-        // Validate and sanitize pagination parameters
-        const pageNum = Math.max(1, parseInt(page as string));
-        const itemsPerPage = Math.min(100, Math.max(1, parseInt(limit as string)));
-        const start = (pageNum - 1) * itemsPerPage;
-        const end = start + itemsPerPage - 1;
+        // Cursor-based pagination handling via query parameters.
+        const limit = parseInt(req.query.limit as string) || 10;
+        // If no cursor is provided, use a high value to start from the newest score.
+        const cursor = req.query.cursor as string;
 
         // Get total count for pagination info
         const repliesCount = await db.zCard('replies:feed:mostRecent') || 0;
         
         // Get compressed reply keys from the global feed sorted set with pagination
-        const compressedReplyKeys = await db.zRange('replies:feed:mostRecent', start, end, { returnCompressed: true }) || [];
-        
-        // Decompress each reply key
-        const replyKeys = await Promise.all(
-            compressedReplyKeys.map(key => db.decompress(key))
-        );
+        const scanResult = await db.zscan('replies:feed:mostRecent', cursor, { count: limit });
+
+        const replies = scanResult.items.map((item: RedisSortedSetItem<string>) => {
+            return JSON.parse(item.value) as Reply;
+        });
 
         // Create the response object
-        const response = {
-            replies: replyKeys,
+        const data = {
+            replies: replies,
             pagination: {
-                page: pageNum,
-                limit: itemsPerPage,
-                repliesCount,
-                totalPages: Math.ceil(repliesCount / itemsPerPage)
+                nextCursor: scanResult.cursor,
+                prevCursor: cursor,
+                hasMore: scanResult.cursor !== '0',
+                matchingRepliesCount: repliesCount
             }
-        };
+        } as RepliesFeedResponse;
+
 
         // Compress the final response
-        const compressedResponse = await db.compress(response);
+        const compressedData = await db.compress(data);
+        const response = {
+            success: true,
+            compressedData: compressedData
+        } as ApiResponse<RepliesFeedResponse>;
         
         // Add compression header
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(compressedResponse);
+        res.send(response);
     } catch (err) {
         logger.error('Error fetching replies feed:', err);
-        res.status(500).json({ error: 'Server error' });
+        res.status(500).json({success: false, error: 'Server error' });
     }
 }); 
 
