@@ -25,14 +25,6 @@ Data Storage:
 Quote metadata stored with reply in backend
 Includes reference to source post and selection positions
 
-Selection persists when clicking elsewhere
-Only one active selection per reply composition
-Data Storage:
-Quote metadata stored with reply in backend
-Includes reference to source post and selection positions
-No newline at end of file
-Includes reference to source post and selection positions
-
 Phase 1: Selection State Management
 Update StoryTreeContext to include selection state:
 Add selection range data (start/end positions)
