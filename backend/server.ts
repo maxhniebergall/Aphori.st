@@ -56,14 +56,14 @@ import {
     TokenPayload,
     AuthTokenPayload,
     Quote,
-    UnifiedNode,
     Replies,
     ExistingSelectableQuotes,
-    UnifiedNodeMetadata,
     CreateReplyResponse,
     RedisSortedSetItem,
     FeedItemsResponse,
-    RepliesFeedResponse
+    RepliesFeedResponse,
+    SortingCriteria,
+    Post
 } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { createCursor, decodeCursor } from './utils/cursorUtils.js';
@@ -894,7 +894,7 @@ app.get('/api/getRepliesFeed', async (req: Request, res: Response<ApiResponse<Re
 app.get<{ 
     uuid: string;
     quote: string; 
-    sortingCriteria: string 
+    sortingCriteria: SortingCriteria 
 }, ApiResponse<CursorPaginatedResponse<Reply>>>('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req, res) => {
     try {
         const { uuid, quote, sortingCriteria } = req.params;
@@ -905,17 +905,8 @@ app.get<{
             try {
                 quoteObj = JSON.parse(decodedQuote);
             } catch (e) {
-                // If JSON parsing fails, try pipe-delimited format
-                const [text, sourcePostId, range] = decodedQuote.split('|');
-                if (!text || !sourcePostId || !range) {
-                    throw new Error('Invalid quote format');
-                }
-                const [start, end] = range.split('-').map(Number);
-                quoteObj = {
-                    text,
-                    sourcePostId,
-                    selectionRange: { start, end }
-                };
+                logger.error('Error parsing quote: [', decodedQuote, "] with error: [", e, "]");
+                throw new Error('Invalid quote format');
             }
         } catch (error) {
             const errorResponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
