@@ -202,19 +202,19 @@ export function useTextSelection({
   selectedQuote,
   existingSelectableQuotes,
 }: UseTextSelectionProps): UseTextSelectionReturn {
-  const [nextQuoteId, setNextQuoteId] = useState<number>(0);
+  const nextQuoteIdRef = useRef<number>(0);
   const [quoteIdToQuoteMap, setQuoteIdToQuoteMap] = useState<Map<number, Quote>>(new Map());
 
   const storeQuote = useCallback((quote: Quote): number => {
-    const currentQuoteId = nextQuoteId;
+    const currentQuoteId = nextQuoteIdRef.current;
     setQuoteIdToQuoteMap(prevMap => {
       const newMap = new Map(prevMap);
       newMap.set(currentQuoteId, quote);
       return newMap;
     });
-    setNextQuoteId(prevId => prevId + 1);
+    nextQuoteIdRef.current = currentQuoteId + 1;
     return currentQuoteId;
-  }, [nextQuoteId]);
+  }, []);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const boundThrottledAnimationRef = useRef<((e: Event) => void) | null>(null);
