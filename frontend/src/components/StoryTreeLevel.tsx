@@ -78,19 +78,19 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
     };
   }, []);
 
-  // Update dimensions on window resize - moved before any conditional logic
-  useEffect(() => {
-    const handleResize = () => {
-      const viewportHeight = window.innerHeight;
-      const viewportWidth = window.innerWidth;
-      dimensions.height = Math.max(viewportHeight * 0.8, 400);
-      dimensions.width = Math.max(viewportWidth * 0.8, 600);
-      dimensions.defaultItemSize = Math.max(viewportHeight * 0.3, 200);
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [dimensions]);
+// Assuming 'dimensions' has been defined elsewhere, e.g., via useMemo
+const [dimensionValues, setDimensionValues] = useState(dimensions);
+useEffect(() => {
+  const handleResize = () => {
+    setDimensionValues({
+      height: Math.max(window.innerHeight * 0.8, 400),
+      width: Math.max(window.innerWidth * 0.8, 600),
+      defaultItemSize: Math.max(window.innerHeight * 0.3, 200),
+    });
+  };
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, []);
 
   // Get initial siblings from levelData
   const initialSiblings = useMemo(() => {
@@ -103,9 +103,23 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   }, [levelData.siblings.levelsMap, levelData.selectedQuote]);
 
   // Create a paginated fetcher for this level's siblings
-  const fetchSiblings = useMemo(() => createPaginatedFetcher<StoryTreeNode>(
-    `${process.env.REACT_APP_API_URL}/api/getReplies/${levelData.parentId[0]}/${encodeURIComponent(levelData.selectedQuote.toString())}/mostRecent`
-  ), [levelData.parentId, levelData.selectedQuote]);
+  const fetchSiblings = useMemo(() => {
+    // For root level (no selectedQuote), return a no-op fetcher
+    if (!levelData.selectedQuote) {
+      return async (_cursor: string | undefined, _limit: number) => ({
+        data: [],
+        pagination: {
+          nextCursor: undefined,
+          prevCursor: undefined,
+          hasMore: false,
+          matchingItemsCount: 1
+        }
+      });
+    }
+    return createPaginatedFetcher<StoryTreeNode>(
+      `${process.env.REACT_APP_API_URL}/api/getReplies/${levelData.parentId[0]}/${encodeURIComponent(levelData.selectedQuote.toString())}/mostRecent`
+    );
+  }, [levelData.parentId, levelData.selectedQuote]);
 
   // Use the usePagination hook
   const {
@@ -138,7 +152,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   // useEffects to update state based on props and pagination
   useEffect(() => {
     console.log('StoryTreeLevel: Got siblings array:', {
-      selectedQuote: levelData.selectedQuote.toString(),
+      selectedQuote: levelData.selectedQuote?.toString() || 'none',
       siblingsLength: siblings.length,
       siblings
     });
@@ -262,6 +276,12 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
   // Memoize infinite loader props to prevent unnecessary recalculations
   const infiniteLoaderProps = useMemo(() => {
     const loadMoreItems = async (startIndex: number, stopIndex: number): Promise<void> => {
+      // Skip loading more items for root level
+      if (!levelData.selectedQuote) {
+        console.log("Skipping loading more items for root level");
+        return Promise.resolve();
+      }
+
       console.log("InfiniteLoader: Loading more items:", {
         startIndex,
         stopIndex,
@@ -281,12 +301,19 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
         matchingItemsCount,
         isLoading
       });
+      // For root level, we always have the item loaded
+      if (levelData.levelNumber === 0) {
+        return true;
+      }
       return index < siblings.length;
     };
     
-    const calculatedItemCount = hasMore 
-      ? Math.max((siblings.length || 0) + 1, matchingItemsCount)
-      : (siblings.length || 0);
+    // For root level, we always have exactly one item
+    const calculatedItemCount = levelData.levelNumber === 0 
+      ? 1 
+      : (hasMore 
+          ? Math.max((siblings.length || 0) + 1, matchingItemsCount)
+          : (siblings.length || 0));
       
     console.log("InfiniteLoader: Calculated props:", {
       calculatedItemCount,
@@ -294,7 +321,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
       matchingItemsCount,
       hasMore,
       isLoading,
-      levelNumber: levelData.levelNumber
+      levelNumber: levelData.levelNumber,
+      isRootLevel: levelData.levelNumber === 0
     });
     
     return {
@@ -351,26 +379,38 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
 
   // Get the current node to render
   const nodeToRender = useMemo(() => {
-    if (!currentNode && levelData.levelNumber === 0 && levelData.rootNodeId) {
-      console.log("StoryTreeLevel: No current node, but level is root node");
+    if (!currentNode) {
+      console.log("StoryTreeLevel: Creating root node fallback:", {
+        rootNodeId: levelData.rootNodeId,
+        levelNumber: levelData.levelNumber,
+        parentId: levelData.parentId
+      });
+      return levelData.siblings.levelsMap.get(null)?.[0];
     }
     return currentNode;
   }, [currentNode, levelData]);
 
   // Early return if we don't have a valid node
-  if (!nodeToRender?.rootNodeId && levelData.levelNumber !== 0) {
+  if (!nodeToRender?.rootNodeId) {
+    console.log("StoryTreeLevel: Early return - no valid node:", {
+      hasNodeToRender: !!nodeToRender,
+      rootNodeId: nodeToRender?.rootNodeId,
+      levelNumber: levelData.levelNumber
+    });
     return null;
   }
 
   // Ensure we have a valid node for rendering
-  const node = nodeToRender || {
-    id: levelData.rootNodeId,
-    rootNodeId: levelData.rootNodeId,
-    parentId: levelData.parentId,
-    levelNumber: levelData.levelNumber,
-    textContent: '',
-    quoteCounts: { quoteCounts: new Map() },
-  } as StoryTreeNode;
+  const node = nodeToRender;
+
+  console.log("StoryTreeLevel: Rendering node:", {
+    id: node.id,
+    rootNodeId: node.rootNodeId,
+    levelNumber: node.levelNumber,
+    textContent: node.textContent?.substring(0, 50) + (node.textContent?.length > 50 ? '...' : ''),
+    hasQuoteCounts: !!node.quoteCounts,
+    quoteCountsSize: node.quoteCounts?.quoteCounts?.size ?? 0
+  });
 
   return (
     <AnimatePresence mode="wait">
@@ -387,10 +427,16 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
         <InfiniteLoader {...infiniteLoaderProps}>
           {({ onItemsRendered, ref }) => (
             <VariableSizeList
-              height={dimensions.height}
-              width={dimensions.width}
-              itemCount={matchingItemsCount}
-              itemSize={(index) => sizeMap.current[index] || dimensions.defaultItemSize}
+              height={dimensionValues.height}
+              width={dimensionValues.width}
+              itemCount={infiniteLoaderProps.itemCount}
+              itemSize={(index) => {
+                // For root level, ensure we have a minimum height
+                if (levelData.levelNumber === 0) {
+                  return Math.max(dimensionValues.defaultItemSize, sizeMap.current[index] || 0);
+                }
+                return sizeMap.current[index] || dimensionValues.defaultItemSize;
+              }}
               overscanCount={5}
               onItemsRendered={onItemsRendered}
               ref={ref}
@@ -401,12 +447,17 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
                   return null;
                 }
 
+                // Special handling for root level (level 0)
+                const isRootLevel = levelData.levelNumber === 0;
+                
                 return (
                   <div
                     style={style}
-                    {...bind()}
-                    className={`story-tree-node-content ${matchingItemsCount > 1 ? 'has-siblings' : ''} ${
-                      currentIndex > 0 || currentIndex < matchingItemsCount - 1 ? 'swipeable' : ''
+                    {...(isRootLevel ? {} : bind())}
+                    className={`story-tree-node-content ${
+                      !isRootLevel && matchingItemsCount > 1 ? 'has-siblings' : ''
+                    } ${
+                      !isRootLevel && (currentIndex > 0 || currentIndex < matchingItemsCount - 1) ? 'swipeable' : ''
                     }`}
                     id={sibling.rootNodeId}
                     role="region"
@@ -423,8 +474,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelDa
                       totalSiblings={matchingItemsCount}
                       onReplyClick={handleReplyButtonClick}
                       isReplyTarget={isReplyTarget(sibling.rootNodeId)}
-                      onNextSibling={navigateToNextSibling}
-                      onPreviousSibling={navigateToPreviousSibling}
+                      onNextSibling={!isRootLevel ? navigateToNextSibling : () => {}}
+                      onPreviousSibling={!isRootLevel ? navigateToPreviousSibling : () => {}}
                     />
                     {(replyError || error) && (
                       <div className="reply-error" role="alert" aria-live="polite">

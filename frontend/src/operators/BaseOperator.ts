@@ -152,7 +152,7 @@ export class BaseOperator {
             return response.data.compressedData as Compressed<T>;
           }
         } else {
-          throw new Error(response.data.error || 'Unknown error, response: ' + JSON.stringify(response.data));
+          throw new Error(response.data.error || 'Unknown error, response: ' + JSON.stringify(response.data) + " type: " + typeof response.data);
         }
       } catch (error: any) {
         if (error.response?.status === 503 && i < retries - 1) {

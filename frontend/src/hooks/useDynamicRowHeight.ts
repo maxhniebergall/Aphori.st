@@ -23,38 +23,46 @@ const useDynamicRowHeight = ({
     const element = rowRef.current;
     if (!element) return;
 
-    let totalHeight = 0;
-    const contentSection = element.querySelector('.story-content-section') as HTMLElement | null;
-    const replySection = element.querySelector('.story-reply-section') as HTMLElement | null;
+    const calculateHeight = () => {
+      if (shouldHide) {
+        setSize(0);
+        return;
+      }
 
-    if (contentSection) totalHeight += contentSection.offsetHeight;
-    if (replySection) totalHeight += replySection.offsetHeight;
+      // Get the actual height of the entire element
+      const totalHeight = Math.max(element.scrollHeight, element.offsetHeight);
+      
+      // Ensure a minimum height of 100px for visibility
+      const finalHeight = Math.max(totalHeight, 100);
+      console.log("useDynamicRowHeight: Calculated height:", {
+        scrollHeight: element.scrollHeight,
+        offsetHeight: element.offsetHeight,
+        finalHeight
+      });
+      
+      setSize(finalHeight);
+    };
 
-    setSize(totalHeight);
+    // Initial calculation
+    calculateHeight();
 
-    // Set up a ResizeObserver to handle dynamic content changes.
+    // Set up a ResizeObserver for element changes
     const resizeObserver = new ResizeObserver(() => {
       if (!shouldHide) {
-        requestAnimationFrame(() => {
-          let totalHeight = 0;
-          const contentSection = element.querySelector('.story-content-section') as HTMLElement | null;
-          const replySection = element.querySelector('.story-reply-section') as HTMLElement | null;
-
-          if (contentSection) totalHeight += contentSection.offsetHeight;
-          if (replySection) totalHeight += replySection.offsetHeight;
-
-          setSize(totalHeight);
-        });
+        requestAnimationFrame(calculateHeight);
       }
     });
     resizeObserver.observe(element);
-    const contentElement = element.querySelector('.story-tree-node-content');
-    if (contentElement) {
-      resizeObserver.observe(contentElement);
-    }
+
+    // Set up a MutationObserver to detect dynamic addition/removal of children
+    const mutationObserver = new MutationObserver(() => {
+      requestAnimationFrame(calculateHeight);
+    });
+    mutationObserver.observe(element, { childList: true, subtree: true });
 
     return () => {
       resizeObserver.disconnect();
+      mutationObserver.disconnect();
     };
   }, [rowRef, setSize, shouldHide]);
 };
