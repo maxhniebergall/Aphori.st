@@ -44,11 +44,6 @@ const NodeContent: React.FC<NodeContentProps> = ({
       role="article"
       aria-label={quote ? 'Selected content for reply' : 'Story content'}
     >
-      {quote && (
-        <div className="quote-container" role="region" aria-label="Quoted content">
-          <QuoteRenderer quote={quote} />
-        </div>
-      )}
       <div className="text-content" role="region" aria-label="Main content">
         <TextSelection
           onSelectionCompleted={onSelectionComplete}
@@ -59,6 +54,11 @@ const NodeContent: React.FC<NodeContentProps> = ({
           {textContent}
         </TextSelection>
       </div>
+      {quote && (
+        <div className="quote-container" role="region" aria-label="Quoted content">
+          <QuoteRenderer quote={quote} />
+        </div>
+      )}
     </div>
   );
 };

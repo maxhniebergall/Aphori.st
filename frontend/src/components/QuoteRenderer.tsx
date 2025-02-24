@@ -23,10 +23,7 @@ interface QuoteRendererProps {
 const QuoteRenderer: React.FC<QuoteRendererProps> = ({ quote }) => {
   return (
     <div className="quote-container" role="blockquote">
-      <p className="quote-text">{quote.text}</p>
-      <Link to={`/post/${quote.sourcePostId}`} className="quote-source">
-        View source post
-      </Link>
+      <blockquote className="quote-text">{quote.text}</blockquote>
     </div>
   );
 };
