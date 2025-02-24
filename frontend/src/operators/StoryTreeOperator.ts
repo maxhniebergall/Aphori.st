@@ -180,7 +180,7 @@ class StoryTreeOperator extends BaseOperator {
         nextCursor: undefined,
         prevCursor: undefined,
         hasMore: false,
-        matchingRepliesCount: 1  // Root node always counts as 1
+        matchingRepliesCount: 0  // Root node always counts as 1
       }
     };
 
