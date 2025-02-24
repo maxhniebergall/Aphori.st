@@ -87,7 +87,6 @@ async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
                 content: story.content,
                 authorId: 'seed_user',
                 createdAt: new Date().toISOString(),
-                quote: undefined // Root-level posts don't have quotes
             };
 
             // Store in Redis - let the database client handle compression

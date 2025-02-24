@@ -1007,7 +1007,7 @@ app.get<{ uuid: string }, ApiResponse<Post>>('/api/getPost/:uuid', async (req, r
     }
     try {
         // Try fetching as a story node first
-        let maybePost = await db.hGet(uuid, 'storyTree', { returnCompressed: true });
+        let maybePost = await db.hGet(uuid, 'post', { returnCompressed: true });
         if (!maybePost) {
             res.status(404).json({ success: false, error: 'Node not found' });
             return;
@@ -1055,14 +1055,14 @@ app.get<{ parentId: string }, ApiResponse<ExistingSelectableQuotes>>('/api/getQu
         // This is equivalent to: JSON.stringify(Array.from(quoteCountsMap.entries()))
         // since res.json will automatically serialize the object.
         const quoteCountsArray = Array.from(quoteCountsMap.entries());
+        const compressedResponse = await db.compress({ quoteCounts: quoteCountsArray });
 
         const apiResponse: ApiResponse<ExistingSelectableQuotes> = {
             success: true,
-            compressedData: { quoteCounts: quoteCountsArray }
+            compressedData: compressedResponse
         };
-        const compressedResponse = await db.compress(apiResponse);
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(compressedResponse);
+        res.send(apiResponse);
     } catch (error) {
         logger.error('Error retrieving quote counts for parent ID %s: %s', parentId, error);
         res.status(500).json({ success: false, error: 'Internal server error' });
