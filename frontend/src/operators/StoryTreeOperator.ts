@@ -42,11 +42,7 @@ class StoryTreeOperator extends BaseOperator {
   private userContext: { state: { user: { id: string } | null } } | null = null;
 
   // Initialize with a valid root quote that represents the entire content
-  public rootQuote: Quote = new Quote(
-    'content',  // Non-empty text
-    'content',  // Non-empty source ID
-    { start: 0, end: 1 }  // Valid range
-  );
+
 
   constructor() {
     super();
@@ -119,38 +115,11 @@ class StoryTreeOperator extends BaseOperator {
         error: null
       };
 
+      // Add the root post content and fetch its quote counts
       this.addPostContentToLevelZero(storyTree, decompressedPost);
 
       // Update each level with fresh pagination data
       await this.updateLevelsPagination(storyTree.levels);
-
-      // Asynchronously update the root node's quoteCounts using the new function.
-      // Do not await this promise to avoid delaying the initial story tree load.
-      this.fetchQuoteCounts(storyTree.post.id)
-        .then(quoteCounts => {
-          // Locate the content level (assumed at index 0).
-          const contentLevel = storyTree.levels[0];
-          if (contentLevel) {
-            // Retrieve the content node using the rootQuote as key.
-            const nodes = contentLevel.siblings.levelsMap.get(this.rootQuote);
-            if (nodes && nodes.length > 0) {
-              // Create an updated copy of the content node, following immutable update patterns.
-              const updatedNode: StoryTreeNode = { ...nodes[0], quoteCounts };
-              // Update the levelsMap for the root quote. (overrides the existing root node)
-              contentLevel.siblings.levelsMap.set(this.rootQuote, [updatedNode]);
-              // Reuse the existing action to update the level data.
-              if (this.store && this.store.dispatch) {
-                this.store.dispatch({
-                  type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
-                  payload: [contentLevel]
-                });
-              }
-            }
-          }
-        })
-        .catch(error => {
-          console.error("Failed to update quote counts for root node:", error);
-        });
 
       return storyTree;
     } catch (error) {
@@ -172,6 +141,13 @@ class StoryTreeOperator extends BaseOperator {
    * @param post - The post data received from the API.
    */
   private addPostContentToLevelZero(storyTree: StoryTree, post: Post): void {
+    console.log("StoryTreeOperator: Adding post content to level zero:", {
+      postId: post.id,
+      postContent: post.content,
+      authorId: post.authorId,
+      createdAt: post.createdAt
+    });
+
     const contentNode: StoryTreeNode = {
       id: post.id,
       rootNodeId: post.id,
@@ -180,26 +156,25 @@ class StoryTreeOperator extends BaseOperator {
       textContent: post.content,
       authorId: post.authorId,
       createdAt: post.createdAt,
-      repliedToQuote: this.rootQuote,
-      quoteCounts: { quoteCounts: new Map<Quote, number>() } // Will be populated asynchronously
+      repliedToQuote: null, // Root post isn't replying to anything
+      quoteCounts: { quoteCounts: new Map() } // Will be populated by fetchQuoteCounts
     };
 
-    console.log("StoryTreeOperator: Creating content level with pagination:", {
-      nodeId: storyTree.post.id,
-      parentId: storyTree.post.id,
-      content: contentNode.textContent,
-      quoteCounts: contentNode.quoteCounts,
+    console.log("StoryTreeOperator: Created content node:", {
+      nodeId: contentNode.id,
+      textContent: contentNode.textContent,
+      levelNumber: contentNode.levelNumber
     });
 
-    // Create a Map with the root quote and an array containing the content node
+    // For the root post, we use null as the key since it's not replying to any quote
     const levelsMap = new Map();
-    levelsMap.set(this.rootQuote, [contentNode]);
+    levelsMap.set(null, [contentNode]);
 
     const contentLevel: StoryTreeLevel = {
       rootNodeId: storyTree.post.id,
       parentId: [],
       levelNumber: storyTree.levels.length,
-      selectedQuote: this.rootQuote,
+      selectedQuote: null, // Root level has no quote
       siblings: { levelsMap },
       pagination: { 
         nextCursor: undefined,
@@ -209,8 +184,46 @@ class StoryTreeOperator extends BaseOperator {
       }
     };
 
+    console.log("StoryTreeOperator: Created content level:", {
+      rootNodeId: contentLevel.rootNodeId,
+      levelNumber: contentLevel.levelNumber,
+      siblingsCount: contentLevel.siblings.levelsMap.get(null)?.length || 0,
+      firstNodeContent: contentLevel.siblings.levelsMap.get(null)?.[0]?.textContent
+    });
+
     // Immutable update for the levels array.
     storyTree.levels = [...storyTree.levels, contentLevel];
+
+    // Asynchronously update the root node's quoteCounts
+    this.fetchQuoteCounts(storyTree.post.id)
+      .then(quoteCounts => {
+        // Locate the content level (assumed at index 0).
+        const contentLevel = storyTree.levels[0];
+        if (contentLevel) {
+          // For root post, we use null as the key
+          const nodes = contentLevel.siblings.levelsMap.get(null);
+          if (nodes && nodes.length > 0) {
+            // Create an updated copy of the content node, following immutable update patterns.
+            const updatedNode: StoryTreeNode = { ...nodes[0], quoteCounts };
+            // Update the levelsMap (overrides the existing root node)
+            contentLevel.siblings.levelsMap.set(null, [updatedNode]);
+            // Reuse the existing action to update the level data.
+            if (this.store && this.store.dispatch) {
+              console.log("StoryTreeOperator: Dispatching updated node with quote counts:", {
+                nodeId: updatedNode.id,
+                quoteCountsSize: updatedNode.quoteCounts?.quoteCounts?.size ?? 0
+              });
+              this.store.dispatch({
+                type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
+                payload: [contentLevel]
+              });
+            }
+          }
+        }
+      })
+      .catch(error => {
+        console.error("Failed to update quote counts for root node:", error);
+      });
   }
 
   /**
@@ -277,6 +290,7 @@ class StoryTreeOperator extends BaseOperator {
         validateStatus: status => status === 200
       })
     );
+    console.log("StoryTreeOperator: Fetched quote counts, compressed response:", compressedResponse);
     const decompressedResponse = await compression.decompress<Compressed<ExistingSelectableQuotesApiFormat>, ExistingSelectableQuotesApiFormat>(compressedResponse);
     if (!decompressedResponse || !decompressedResponse.quoteCounts) {
       console.error('Invalid data received for quote counts:', decompressedResponse);
@@ -472,12 +486,22 @@ class StoryTreeOperator extends BaseOperator {
         console.warn(`Level ${levelNumber} not found`);
         continue;
       }
+      // Skip root level (level 0) since it doesn't have a quote
+      if (levelNumber === 0) {
+        console.log("Skipping root level (level 0) since it doesn't have a quote");
+        continue;
+      }
       const parentId = level.parentId[0];
       if (!parentId) {
         console.warn(`ParentId not found for level ${levelNumber}`);
         continue;
       }
-      loadPromises.push(this.loadMoreItems(parentId, levelNumber, level.selectedQuote, 0, 10));
+      // Only load more items if we have a valid quote
+      if (level.selectedQuote) {
+        loadPromises.push(this.loadMoreItems(parentId, levelNumber, level.selectedQuote, 0, 10)); // TODO we shouldn't be hard coding hte cursor
+      } else {
+        console.warn(`No selected quote found for level ${levelNumber}`);
+      }
     }
     if (loadPromises.length === 0) {
       return Promise.resolve();

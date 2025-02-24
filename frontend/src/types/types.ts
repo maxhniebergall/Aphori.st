@@ -63,20 +63,21 @@ export interface StoryTreeNode { // this value only exists in the frontend. it c
   parentId: string[];
   levelNumber: number;
   textContent: string;
-  repliedToQuote: Quote;
+  repliedToQuote: Quote | null;
   quoteCounts: QuoteCounts | null;
   authorId: string;
   createdAt: string;
 }
 
 export interface Siblings {
-  levelsMap: Map<Quote, StoryTreeNode[]>;
+  levelsMap: Map<Quote | null, StoryTreeNode[]>;
 }
+
 export interface StoryTreeLevel {
   rootNodeId: string;
   parentId: string[];
   levelNumber: number;
-  selectedQuote: Quote;
+  selectedQuote: Quote | null;
   siblings: Siblings;
   pagination: Pagination;
 }

@@ -54,14 +54,7 @@ export class Quote {
       });
       throw new Error('Cannot serialize invalid Quote');
     }
-    if (this.text === 'rootQuote' && this.sourcePostId === 'rootQuote') {
-      console.error('Should never serialize rootQuote:', {
-        text: this.text,
-        sourcePostId: this.sourcePostId,
-        selectionRange: this.selectionRange
-      });
-      throw new Error('Cannot serialize rootQuote');
-    }
+
     return encodeURIComponent(
       JSON.stringify({
         text: this.text,

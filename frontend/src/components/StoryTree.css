@@ -89,6 +89,7 @@ html, body, #root {
 .story-tree-node {
   cursor: pointer;
   width: 100%;
+  height: auto;
   box-sizing: border-box;
   overflow: visible;
   background-color: #fff;
@@ -100,6 +101,7 @@ html, body, #root {
 .story-tree-node-content {
   touch-action: none;
   width: 100%;
+  height: auto;
   position: relative;
   transform: translateX(0);
   transition: transform 0.3s ease;
@@ -227,7 +229,6 @@ button {
   right: 0;
   width: 100%;
   box-sizing: border-box;
-  overflow: visible;
 }
 
 /* Logo container styles */

@@ -39,9 +39,18 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
   const [levels, setLevels] = useState<StoryTreeLevel[]>([]);
   const { replyTarget } = useReplyContext();
 
-  // useEffects
-    // Load initial data
+  // Reset size cache when levels change
   useEffect(() => {
+    if (listRef.current) {
+      sizeMap.current = {};
+      listRef.current.resetAfterIndex(0);
+    }
+  }, [levels]);
+
+  // useEffects
+  // Load initial data
+  useEffect(() => {
+    console.log("VirtualizedStoryList: postRootId changed:", { postRootId, isLocalLoading });
     if (!postRootId) {
       setIsLocalLoading(true);
       return;
@@ -49,20 +58,30 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
       setIsLocalLoading(false);
     }
   }, [postRootId]);
-    // Load more levels
+
+  // Load more levels
   useEffect(() => {
     if (!postRootId) return;
+    console.log("VirtualizedStoryList: Updating levels from state:", {
+      storyTreeLevels: state?.storyTree?.levels,
+      storyTreeState: state?.storyTree,
+      hasLevels: Boolean(state?.storyTree?.levels),
+      levelsLength: state?.storyTree?.levels?.length
+    });
     setLevels(state?.storyTree?.levels || []);
   }, [postRootId, state?.storyTree?.levels]);
+
   // Set error
   useEffect(() => {
     if (state?.error) {
+      console.log("VirtualizedStoryList: Error from state:", state.error);
       setError(state.error);
     }
   }, [state?.error]);
 
   // Show initial loading state
   if (isLocalLoading && !levels.length) {
+    console.log("VirtualizedStoryList: Showing initial loading state");
     return (
       <div className="loading" role="alert" aria-busy="true">
         <div className="loading-spinner"></div>
@@ -73,64 +92,96 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
 
   // Show error state
   if (error) {
+    console.log("VirtualizedStoryList: Showing error state:", error);
     return <div className="error" role="alert">Error: {error}</div>;
   }
+
+  console.log("VirtualizedStoryList: Rendering content:", {
+    levelsLength: levels.length,
+    firstLevel: levels[0],
+    hasLevels: levels.length > 0
+  });
 
   // Show content with potential loading more indicator
   return (
     <div style={{ height: '100%', overflow: 'visible' }} role="list" aria-label="Story tree content">
       <AutoSizer>
-        {({ height, width }) => (
-          <InfiniteLoader
-            isItemLoaded={(index) => index < levels.length}
-            itemCount={Number.MAX_SAFE_INTEGER} // TODO: we need to actually get the total number of levels
-            loadMoreItems={storyTreeOperator.loadMoreLevels}
-            minimumBatchSize={10}
-            threshold={5}
-          >
-            {({ onItemsRendered, ref }) => {
-              const refSetter = (list: VariableSizeList | null) => {
-                listRef.current = list;
-                if (typeof ref === 'function') {
-                  ref(list);
-                }
-              };
+        {({ height, width }) => {
+          console.log("VirtualizedStoryList: AutoSizer dimensions:", { height, width });
+          return (
+            <InfiniteLoader
+              isItemLoaded={(index) => {
+                const isLoaded = index < levels.length;
+                console.log("VirtualizedStoryList: Checking if item is loaded:", { index, isLoaded, levelsLength: levels.length });
+                return isLoaded;
+              }}
+              itemCount={levels.length}
+              loadMoreItems={async (startIndex: number, stopIndex: number) => {
+                console.log("VirtualizedStoryList: Loading more items:", { startIndex, stopIndex });
+                return storyTreeOperator.loadMoreLevels(startIndex, stopIndex);
+              }}
+              minimumBatchSize={10}
+              threshold={5}
+            >
+              {({ onItemsRendered, ref }) => {
+                const refSetter = (list: VariableSizeList | null) => {
+                  console.log("VirtualizedStoryList: Setting list ref:", { hasRef: !!list });
+                  listRef.current = list;
+                  if (typeof ref === 'function') {
+                    ref(list);
+                  }
+                };
 
-              return (
-                <VariableSizeList
-                  height={height}
-                  width={width}
-                  itemCount={levels.length}
-                  itemSize={(index) => sizeMap.current[index] || 50}
-                  overscanCount={5}
-                  ref={refSetter}
-                  onItemsRendered={onItemsRendered}
-                >
-                  {({ index, style }) => {
-                    const level = levels[index];
-                    if (!level) return null;
+                return (
+                  <VariableSizeList
+                    height={height}
+                    width={width}
+                    itemCount={levels.length}
+                    itemSize={(index) => {
+                      const size = sizeMap.current[index] || 200;
+                      console.log("VirtualizedStoryList: Getting item size:", { index, size });
+                      return size;
+                    }}
+                    overscanCount={5}
+                    ref={refSetter}
+                    onItemsRendered={(props) => {
+                      console.log("VirtualizedStoryList: Items rendered:", props);
+                      onItemsRendered(props);
+                    }}
+                  >
+                    {({ index, style }) => {
+                      const level = levels[index];
+                      console.log("VirtualizedStoryList: Rendering level:", { 
+                        index, 
+                        hasLevel: !!level,
+                        levelNumber: level?.levelNumber,
+                        siblings: level?.siblings?.levelsMap?.size
+                      });
+                      if (!level) return null;
 
-                    return (
-                      <Row
-                        style={style}
-                        levelData={level}
-                        setSize={(height) => {
-                          sizeMap.current[index] = height;
-                          if (listRef.current) {
-                            // TODO: what is happening here?
-                            listRef.current.resetAfterIndex(index);
-                          }
-                        }}
-                        shouldHide={!!(replyTarget?.levelNumber) && (replyTarget.levelNumber > level.levelNumber)}
-                        index={index}
-                      />
-                    );
-                  }}
-                </VariableSizeList>
-              );
-            }}
-          </InfiniteLoader>
-        )}
+                      return (
+                        <Row
+                          style={style}
+                          levelData={level}
+                          setSize={(height) => {
+                            console.log("VirtualizedStoryList: Setting row size:", { index, height });
+                            sizeMap.current[index] = height;
+                            if (listRef.current) {
+                              listRef.current.resetAfterIndex(index);                             // TODO: what is happening here?
+
+                            }
+                          }}
+                          shouldHide={!!(replyTarget?.levelNumber) && (replyTarget.levelNumber > level.levelNumber)}
+                          index={index}
+                        />
+                      );
+                    }}
+                  </VariableSizeList>
+                );
+              }}
+            </InfiniteLoader>
+          );
+        }}
       </AutoSizer>
       {isLocalLoading && levels.length > 0 && (
         <div className="loading-more" role="alert" aria-busy="true">

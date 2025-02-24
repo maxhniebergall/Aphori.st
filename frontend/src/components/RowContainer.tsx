@@ -19,6 +19,13 @@ export interface RowContainerProps {
 function RowContainer({ setSize, shouldHide = false, children, style }: RowContainerProps) {
   const rowRef = useRef<HTMLDivElement>(null);
 
+  console.log("RowContainer: Initializing with props:", {
+    hasSetSize: !!setSize,
+    shouldHide,
+    hasChildren: !!children,
+    style
+  });
+
   // Use the hook to update height and cleanup
   useDynamicRowHeight({
     rowRef,
@@ -26,23 +33,29 @@ function RowContainer({ setSize, shouldHide = false, children, style }: RowConta
     shouldHide,
   });
 
-  // The component also handles forward ref responsibilities.
+  const computedStyle: React.CSSProperties = {
+    ...style,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    width: '100%',
+    padding: shouldHide ? 0 : '20px',
+    boxSizing: 'border-box',
+    display: shouldHide ? 'none' : 'block',
+    minHeight: shouldHide ? 0 : 100,
+    overflow: 'visible',
+    opacity: shouldHide ? 0 : 1,
+    transition: 'opacity 0.2s ease-in-out'
+  };
+
+  console.log("RowContainer: Computed final style:", computedStyle);
+
   return (
     <div
       ref={rowRef}
-      style={{
-        ...style,
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        width: '100%',
-        padding: shouldHide ? 0 : '20px',
-        boxSizing: 'border-box',
-        height: shouldHide ? 0 : undefined,
-        overflow: shouldHide ? 'hidden' : 'visible',
-        opacity: shouldHide ? 0 : 1,
-        pointerEvents: shouldHide ? 'none' : 'auto'
-      }}
+      style={computedStyle}
+      className="row-container"
+      role="listitem"
     >
       {children}
     </div>

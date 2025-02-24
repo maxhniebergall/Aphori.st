@@ -30,11 +30,15 @@ import puppeteer from 'puppeteer';
                 console.log('\nAPI Response:', {
                     url: response.url(),
                     status: response.status(),
+                    ok: response.ok(),
                     body: responseBody,
                 });
             } catch (e) {
                 console.log('Could not parse response body:', e);
             }
+        }
+        if (!response.ok()) {
+            console.error(`Failed response (${response.status()}): ${response.url()}`);
         }
     });
 
@@ -45,11 +49,9 @@ import puppeteer from 'puppeteer';
         // Get all arguments and properly serialize them
         const args = await Promise.all(msg.args().map(async arg => {
             try {
-                // Try to get the JSON value of the argument
                 const val = await arg.jsonValue();
                 return val;
             } catch (e) {
-                // If we can't get JSON, try to get the string representation
                 try {
                     const text = await arg.evaluate(obj => {
                         if (obj === null) return 'null';
@@ -57,7 +59,15 @@ import puppeteer from 'puppeteer';
                         if (typeof obj === 'function') return obj.toString();
                         if (typeof obj === 'object') {
                             try {
-                                return JSON.stringify(obj, null, 2);
+                                return JSON.stringify(obj, (key, value) => {
+                                    if (value instanceof Map) {
+                                        return {
+                                            dataType: 'Map',
+                                            value: Array.from(value.entries()),
+                                        };
+                                    }
+                                    return value;
+                                }, 2);
                             } catch (e) {
                                 return String(obj);
                             }
@@ -72,18 +82,16 @@ import puppeteer from 'puppeteer';
         }));
 
         // Format the log based on the message type
-        if (msg.text().includes('StoryTreeOperator state updated:')) {
-            console.log('\nStoryTree State Update:', ...args);
-        } else if (msg.text().includes('BaseOperator:')) {
-            console.log('\nBaseOperator:', ...args);
-        } else if (msg.text().includes('Drag event details:') || 
-                  msg.text().includes('Gesture enabled state:') ||
-                  msg.text().includes('Sibling navigation state:')) {
-            // Special handling for our debug logs
-            console.log(`\nBrowser ${type} (${msg.text()}):`, ...args);
+        if (msg.text().includes('StoryTreeOperator:')) {
+            console.log('\nStoryTreeOperator Log:', ...args);
+        } else if (msg.text().includes('VirtualizedStoryList:')) {
+            console.log('\nVirtualizedStoryList Log:', ...args);
+        } else if (msg.text().includes('Row:')) {
+            console.log('\nRow Log:', ...args);
+        } else if (msg.text().includes('RowContainer:')) {
+            console.log('\nRowContainer Log:', ...args);
         } else {
-            // General console logs
-            console.log(`Browser ${type}:`, ...args);
+            console.log(`\nBrowser ${type}:`, ...args);
         }
     });
 
@@ -100,7 +108,7 @@ import puppeteer from 'puppeteer';
     });
 
     console.log("Loading website...");
-    await page.goto('http://localhost:3000/storyTree/story-7f096932-cc45-4b19-8989-634c46878f4a', { 
+    await page.goto('http://localhost:3000/storyTree/a3ae004a-f84c-4e13-acef-6748d20e53cf', { 
         waitUntil: ['networkidle0', 'domcontentloaded', 'load']
     });
 
