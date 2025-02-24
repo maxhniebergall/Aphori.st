@@ -115,7 +115,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
                 console.log("VirtualizedStoryList: Checking if item is loaded:", { index, isLoaded, levelsLength: levels.length });
                 return isLoaded;
               }}
-              itemCount={levels.length}
+              itemCount={Number.MAX_SAFE_INTEGER} // we don't know how many levels there are. According to the documentation, in this case we can use an arbitrary large number. TODO: once we know that there aren't more levels, we can update this to the actual number of levels.
               loadMoreItems={async (startIndex: number, stopIndex: number) => {
                 console.log("VirtualizedStoryList: Loading more items:", { startIndex, stopIndex });
                 return storyTreeOperator.loadMoreLevels(startIndex, stopIndex);
