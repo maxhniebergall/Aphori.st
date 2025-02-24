@@ -887,7 +887,6 @@ app.get<{
         const { uuid, quote, sortingCriteria } = req.params;
         let quoteObj: Quote;
         try {
-            // First try parsing as JSON
             const decodedQuote = decodeURIComponent(quote);
             try {
                 quoteObj = JSON.parse(decodedQuote);

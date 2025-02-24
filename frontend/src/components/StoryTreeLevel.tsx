@@ -152,6 +152,7 @@ useEffect(() => {
   // useEffects to update state based on props and pagination
   useEffect(() => {
     console.log('StoryTreeLevel: Got siblings array:', {
+      levelNumber: levelData.levelNumber,
       selectedQuote: levelData.selectedQuote?.toString() || 'none',
       siblingsLength: siblings.length,
       siblings
