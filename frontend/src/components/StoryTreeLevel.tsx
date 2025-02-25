@@ -233,12 +233,13 @@ useEffect(() => {
       setCurrentIndex(currentIndex - 1);
     }
   }, [currentIndex, setCurrentIndex]);
+
+  const loadMoreItems = useCallback(async (startIndex: number, stopIndex: number): Promise<void> => {
+    await storyTreeOperator.loadMoreItems(levelData.parentId[0], levelData.levelNumber, levelData.selectedQuote, startIndex, stopIndex);
+  }, [levelData.parentId, levelData.levelNumber, levelData.selectedQuote]);
   
   // Memoize infinite loader props to prevent unnecessary recalculations
   const infiniteLoaderProps = useMemo(() => {
-    const loadMoreItems = useCallback(async (startIndex: number, stopIndex: number): Promise<void> => {
-      await storyTreeOperator.loadMoreItems(levelData.parentId[0], levelData.levelNumber, levelData.selectedQuote, startIndex, stopIndex);
-    }, [levelData.parentId, levelData.levelNumber, levelData.selectedQuote]);
 
     const isItemLoaded = (index: number): boolean => {
       console.log("InfiniteLoader: Checking if item is loaded:", {
@@ -355,7 +356,7 @@ useEffect(() => {
       <motion.div
         className={`story-tree-node ${
           isReplyTarget(node.rootNodeId) ? 'reply-target' : ''
-        }}`}
+        }`}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
