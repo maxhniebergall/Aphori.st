@@ -49,11 +49,25 @@ export interface FeedItem {
   text: string;
   authorId: string;
   createdAt: string;
+  title?: string; // Added title property
 }
 
 export interface FeedItemsResponse{
     feedItems: FeedItem[];
     pagination: Pagination;
+}
+
+// Feed component interfaces
+export interface FeedResponse {
+  success: boolean;
+  error?: string;
+  items: FeedItem[];
+  pagination?: Partial<Pagination>;
+}
+
+export interface FetchResult {
+  data: FeedItem[];
+  pagination: Pagination;
 }
 
 
