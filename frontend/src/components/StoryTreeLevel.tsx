@@ -42,9 +42,8 @@ import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
 import { StoryTreeLevel as LevelData, StoryTreeNode } from '../types/types';
-import StoryTreeOperator from '../operators/StoryTreeOperator';
 import { Quote } from '../types/quote';
-import { usePagination, createPaginatedFetcher } from '../utils/pagination';
+import storyTreeOperator from '../operators/StoryTreeOperator';
 
 interface StoryTreeLevelProps {
   levelData: LevelData; 
@@ -92,8 +91,15 @@ useEffect(() => {
   return () => window.removeEventListener('resize', handleResize);
 }, []);
 
+useEffect(() => {
+  console.log("StoryTreeLevel: currentNode changed:", currentNode);
+  if (currentNode) {
+    storyTreeOperator.setSelectedNode(currentNode); 
+  }
+}, [currentNode]);
+
   // Get initial siblings from levelData
-  const initialSiblings = useMemo(() => {
+  const siblings = useMemo(() => {
     const siblingsArray = levelData.siblings.levelsMap.get(levelData.selectedQuote) || [];
     console.log("StoryTreeLevel: Initial siblings from levelData:", {
       count: siblingsArray.length,
@@ -102,52 +108,6 @@ useEffect(() => {
     return siblingsArray;
   }, [levelData.siblings.levelsMap, levelData.selectedQuote]);
 
-  // Create a paginated fetcher for this level's siblings
-  const fetchSiblings = useMemo(() => {
-    // For root level (no selectedQuote), return a no-op fetcher
-    if (!levelData.selectedQuote) {
-      return async (_cursor: string | undefined, _limit: number) => ({
-        data: [],
-        pagination: {
-          nextCursor: undefined,
-          prevCursor: undefined,
-          hasMore: false,
-          matchingItemsCount: 1
-        }
-      });
-    }
-    return createPaginatedFetcher<StoryTreeNode>(
-      `${process.env.REACT_APP_API_URL}/api/getReplies/${levelData.parentId[0]}/${encodeURIComponent(levelData.selectedQuote.toString())}/mostRecent`
-    );
-  }, [levelData.parentId, levelData.selectedQuote]);
-
-  // Use the usePagination hook
-  const {
-    items: paginatedSiblings,
-    hasMore,
-    matchingItemsCount,
-    isLoading,
-    loadMore,
-    reset,
-    error
-  } = usePagination(fetchSiblings, {
-    limit: 10,
-    initialCursor: levelData.pagination.nextCursor
-  });
-
-  // Combine initial siblings with paginated siblings
-  const siblings = useMemo(() => {
-    const combinedSiblings = [...initialSiblings];
-    if (paginatedSiblings.length > 0) {
-      // Add only new siblings that aren't already in the array
-      paginatedSiblings.forEach(sibling => {
-        if (!combinedSiblings.some(s => s.id === sibling.id)) {
-          combinedSiblings.push(sibling);
-        }
-      });
-    }
-    return combinedSiblings;
-  }, [initialSiblings, paginatedSiblings]);
 
   // useEffects to update state based on props and pagination
   useEffect(() => {
@@ -276,31 +236,14 @@ useEffect(() => {
   
   // Memoize infinite loader props to prevent unnecessary recalculations
   const infiniteLoaderProps = useMemo(() => {
-    const loadMoreItems = async (startIndex: number, stopIndex: number): Promise<void> => {
-      // Skip loading more items for root level
-      if (!levelData.selectedQuote) {
-        console.log("Skipping loading more items for root level");
-        return Promise.resolve();
-      }
-
-      console.log("InfiniteLoader: Loading more items:", {
-        startIndex,
-        stopIndex,
-        parentId: levelData.parentId[0],
-        levelNumber: levelData.levelNumber,
-        selectedQuote: levelData.selectedQuote.toString(),
-        currentPagination: levelData.pagination
-      });
-      return loadMore();
-    };
+    const loadMoreItems = useCallback(async (startIndex: number, stopIndex: number): Promise<void> => {
+      await storyTreeOperator.loadMoreItems(levelData.parentId[0], levelData.levelNumber, levelData.selectedQuote, startIndex, stopIndex);
+    }, [levelData.parentId, levelData.levelNumber, levelData.selectedQuote]);
 
     const isItemLoaded = (index: number): boolean => {
       console.log("InfiniteLoader: Checking if item is loaded:", {
         index,
-        currentNodesLength: siblings.length,
-        hasMore,
-        matchingItemsCount,
-        isLoading
+        currentNodesLength: siblings.length
       });
       // For root level, we always have the item loaded
       if (levelData.levelNumber === 0) {
@@ -312,16 +255,14 @@ useEffect(() => {
     // For root level, we always have exactly one item
     const calculatedItemCount = levelData.levelNumber === 0 
       ? 1 
-      : (hasMore 
-          ? Math.max((siblings.length || 0) + 1, matchingItemsCount)
+      : (levelData.pagination.hasMore 
+          ? Math.max((siblings.length || 0) + 1, levelData.pagination.matchingRepliesCount)
           : (siblings.length || 0));
       
     console.log("InfiniteLoader: Calculated props:", {
       calculatedItemCount,
       currentNodesLength: siblings.length,
-      matchingItemsCount,
-      hasMore,
-      isLoading,
+      levelDataPagination: levelData.pagination,
       levelNumber: levelData.levelNumber,
       isRootLevel: levelData.levelNumber === 0
     });
@@ -339,10 +280,6 @@ useEffect(() => {
     levelData.selectedQuote,
     levelData.pagination,
     siblings.length,
-    hasMore,
-    matchingItemsCount,
-    isLoading,
-    loadMore
   ]);
 
   // Setup gesture handling for swipe navigation
@@ -456,13 +393,13 @@ useEffect(() => {
                     style={style}
                     {...(isRootLevel ? {} : bind())}
                     className={`story-tree-node-content ${
-                      !isRootLevel && matchingItemsCount > 1 ? 'has-siblings' : ''
+                      !isRootLevel && levelData.pagination.matchingRepliesCount > 1 ? 'has-siblings' : ''
                     } ${
-                      !isRootLevel && (currentIndex > 0 || currentIndex < matchingItemsCount - 1) ? 'swipeable' : ''
+                      !isRootLevel && (currentIndex > 0 || currentIndex < levelData.pagination.matchingRepliesCount - 1) ? 'swipeable' : ''
                     }`}
                     id={sibling.rootNodeId}
                     role="region"
-                    aria-label={`Story content ${index + 1} of ${matchingItemsCount}`}
+                    aria-label={`Story content ${index + 1} of ${levelData.pagination.matchingRepliesCount}`}
                   >
                     <NodeContent
                       node={sibling}
@@ -472,15 +409,15 @@ useEffect(() => {
                     />
                     <NodeFooter
                       currentIndex={index}
-                      totalSiblings={matchingItemsCount}
+                      totalSiblings={levelData.pagination.matchingRepliesCount}
                       onReplyClick={handleReplyButtonClick}
                       isReplyTarget={isReplyTarget(sibling.rootNodeId)}
                       onNextSibling={!isRootLevel ? navigateToNextSibling : () => {}}
                       onPreviousSibling={!isRootLevel ? navigateToPreviousSibling : () => {}}
                     />
-                    {(replyError || error) && (
+                    {(replyError) && (
                       <div className="reply-error" role="alert" aria-live="polite">
-                        {replyError || error}
+                        {replyError}
                       </div>
                     )}
                   </div>
