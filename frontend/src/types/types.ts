@@ -144,7 +144,7 @@ export interface Reply {
   quote: Quote;
   metadata: {
     authorId: string;
-    createdAt: number;
+    createdAt: string;
   };
 }
 
