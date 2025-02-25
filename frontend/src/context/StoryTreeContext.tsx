@@ -86,37 +86,43 @@ export function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTr
 function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {
   switch (action.type) {
     case ACTIONS.START_STORY_TREE_LOAD:
-      return {
-        ...state,
-        storyTree: {
-          post: {
-            id: action.payload.rootNodeId,
-            content: '',
-            authorId: '',
-            createdAt: ''
-          },
-          levels: [],
-          error: null
-        } as StoryTree
-      };
+      {
+        return {
+          ...state,
+          storyTree: {
+            post: {
+              id: action.payload.rootNodeId,
+              content: '',
+              authorId: '',
+              createdAt: ''
+            },
+            levels: [],
+            error: null
+          } as StoryTree
+        };
+      }
     
     case ACTIONS.SET_INITIAL_STORY_TREE_DATA:
+    {
       return {
         ...state,
         storyTree: action.payload.storyTree,
       };
+    }
     
     case ACTIONS.INCLUDE_NODES_IN_LEVELS:
       // should be able to handle new levels and new nodes, and other updates to levels and nodes
-      if (!state.storyTree) {
-        console.error("StoryTree is not initialized");
-        return state;
+      {
+        if (!state.storyTree) {
+          console.error("StoryTree is not initialized");
+          return state;
+        }
+        const updatedLevels = mergeLevels(state.storyTree.levels, action.payload); // TODO verify that this can handle a null value of existing level (for new levels)
+        return {
+          ...state,
+          storyTree: { ...state.storyTree, levels: updatedLevels },
+        };
       }
-      const updatedLevels = mergeLevels(state.storyTree.levels, action.payload); // TODO verify that this can handle a null value of existing level (for new levels)
-      return {
-        ...state,
-        storyTree: { ...state.storyTree, levels: updatedLevels },
-      };
 
     case ACTIONS.SET_SELECTED_NODE:
       {
@@ -181,20 +187,24 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
     
     
     case ACTIONS.SET_ERROR:
-      let error: string | null = null;
-      if (typeof action.payload === 'string') {
-        error = action.payload;
+      {
+        let error: string | null = null;
+        if (typeof action.payload === 'string') {
+          error = action.payload;
+        }
+        return {
+          ...state,
+          error: error
+        };
       }
-      return {
-        ...state,
-        error: error
-      };
-
+    
     case ACTIONS.CLEAR_ERROR:
-      return {
-        ...state,
-        error: null
-      };
+      {
+        return {
+          ...state,
+          error: null
+        };
+      }
     
     default:
       return state;
