@@ -77,7 +77,8 @@ export interface StoryTreeLevel {
   rootNodeId: string;
   parentId: string[];
   levelNumber: number;
-  selectedQuote: Quote | null;
+  selectedQuote: Quote; // the selected quote is a quote of this level, and defines which replies (i.e., children) are visible
+  selectedNode: StoryTreeNode;
   siblings: Siblings;
   pagination: Pagination;
 }
@@ -137,6 +138,7 @@ export const ACTIONS = {
   START_STORY_TREE_LOAD: 'START_STORY_TREE_LOAD',
   SET_INITIAL_STORY_TREE_DATA: 'SET_INITIAL_STORY_TREE_DATA',
   INCLUDE_NODES_IN_LEVELS: 'INCLUDE_NODES_IN_LEVELS',
+  SET_SELECTED_NODE: 'SET_SELECTED_NODE',
   SET_ERROR: 'SET_ERROR',
   CLEAR_ERROR: 'CLEAR_ERROR'
 } as const;
@@ -145,5 +147,6 @@ export type Action =
   | { type: typeof ACTIONS.START_STORY_TREE_LOAD; payload: { rootNodeId: string } }
   | { type: typeof ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { storyTree: StoryTree } }
   | { type: typeof ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: StoryTreeLevel[] }
+  | { type: typeof ACTIONS.SET_SELECTED_NODE; payload: StoryTreeNode }
   | { type: typeof ACTIONS.SET_ERROR; payload: string }
   | { type: typeof ACTIONS.CLEAR_ERROR };

@@ -30,14 +30,28 @@ export class Quote {
    * Validates that the quote has all required fields with non-empty values
    */
   public isValid(): boolean {
-    return Boolean(
-      this.text &&
-      this.sourcePostId &&
-      this.selectionRange &&
-      typeof this.selectionRange.start === 'number' &&
-      typeof this.selectionRange.end === 'number' &&
-      this.selectionRange.end > this.selectionRange.start
-    );
+    if (!this.text){
+      console.error('Quote text is required');
+      return false;
+    }
+    if (!this.sourcePostId){
+      console.error('Source post ID is required');
+      return false;
+    }
+    if (!this.selectionRange){
+      console.error('Selection range is required');
+      return false;
+    }
+    if (typeof this.selectionRange.start !== 'number' || typeof this.selectionRange.end !== 'number'){
+      console.error('Invalid   selection range:', this.selectionRange);
+      return false;
+    }
+    if (this.selectionRange.end <= this.selectionRange.start){
+      console.error('Invalid selection range:', this.selectionRange);
+      return false;
+    }
+    
+    return true;
   }
 
   /**

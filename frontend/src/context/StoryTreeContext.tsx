@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useLayoutEffect, ReactNode } from 'react';
-import { StoryTreeState, Action, StoryTreeLevel, StoryTree } from '../types/types';
+import { StoryTreeState, Action, StoryTreeLevel, StoryTree, StoryTreeNode } from '../types/types';
 import { ACTIONS } from '../types/types';
 import StoryTreeErrorBoundary from './StoryTreeErrorBoundary';
 import storyTreeOperator from '../operators/StoryTreeOperator';
@@ -107,20 +107,87 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
       };
     
     case ACTIONS.INCLUDE_NODES_IN_LEVELS:
+      // should be able to handle new levels and new nodes, and other updates to levels and nodes
       if (!state.storyTree) {
         console.error("StoryTree is not initialized");
         return state;
       }
-      const updatedLevels = mergeLevels(state.storyTree.levels, action.payload);
+      const updatedLevels = mergeLevels(state.storyTree.levels, action.payload); // TODO verify that this can handle a null value of existing level (for new levels)
       return {
         ...state,
         storyTree: { ...state.storyTree, levels: updatedLevels },
       };
+
+    case ACTIONS.SET_SELECTED_NODE:
+      {
+        if (!state.storyTree) {
+          console.error("StoryTree is not initialized");
+          return state;
+        }
+
+        const selectedNode: StoryTreeNode = action.payload;
+        const updatedLevel = state.storyTree.levels.find(level => level.levelNumber === selectedNode.levelNumber);
+
+        if (!updatedLevel) {
+          console.error("Selected level not found");
+          return state; // or handle the error as needed
+        }
+
+        if (selectedNode.levelNumber === 0) {
+          return {
+            ...state,
+            storyTree: { 
+              ...state.storyTree, 
+              levels: [
+                {
+                  ...updatedLevel,
+                  selectedNode: selectedNode
+                }, 
+                ...state.storyTree.levels.slice(selectedNode.levelNumber)
+              ] 
+            }
+          };
+        } else if (selectedNode.levelNumber === state.storyTree.levels.length) {
+          return {
+            ...state,
+            storyTree: { 
+              ...state.storyTree, 
+              levels: [
+                ...state.storyTree.levels.slice(0, selectedNode.levelNumber - 1), 
+                {
+                  ...updatedLevel,
+                  selectedNode: selectedNode
+                }
+              ] 
+            }
+          };
+        } else {
+          return {
+            ...state,
+            storyTree: { 
+              ...state.storyTree, 
+              levels: [
+                ...state.storyTree.levels.slice(0, selectedNode.levelNumber - 1), 
+                {
+                  ...updatedLevel,
+                  selectedNode: selectedNode
+                }, 
+                ...state.storyTree.levels.slice(selectedNode.levelNumber)
+              ] 
+            }
+          };
+        }
+      }
+    
     
     case ACTIONS.SET_ERROR:
+      let error: string | null = null;
+      if (typeof action.payload === 'string') {
+        error = action.payload;
+      }
       return {
         ...state,
-        error: action.payload
+        error: error
       };
 
     case ACTIONS.CLEAR_ERROR:
