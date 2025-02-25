@@ -47,16 +47,11 @@ const Row: React.FC<RowProps> = React.memo(
       const mergedStyle = {
         ...style,
       };
-      console.log("Row: Computed container style:", mergedStyle);
       return mergedStyle;
     }, [style]);
 
     // Create content component
     const content = useMemo(() => {
-      console.log("Row: Creating content component for level:", {
-        levelNumber: levelData?.levelNumber,
-        hasLevelData: !!levelData
-      });
       return (
         <NormalRowContent
           levelData={levelData}
@@ -69,7 +64,6 @@ const Row: React.FC<RowProps> = React.memo(
 
     // Create wrapper div for accessibility attributes
     const wrappedContent = useMemo(() => {
-      console.log("Row: Creating wrapped content");
       return (
         <div role="listitem" aria-label="Story content">
           {content}
@@ -77,7 +71,6 @@ const Row: React.FC<RowProps> = React.memo(
       );
     }, [content]);
 
-    console.log("Row: Rendering final output with RowContainer");
     return (
       <RowContainer
         setSize={setSize}
@@ -95,17 +88,6 @@ const Row: React.FC<RowProps> = React.memo(
       prevProps.style.top === nextProps.style.top &&
       prevProps.shouldHide === nextProps.shouldHide
     );
-    console.log("Row: Memo comparison:", {
-      shouldUpdate,
-      prevRootNodeId: prevProps.levelData?.rootNodeId,
-      nextRootNodeId: nextProps.levelData?.rootNodeId,
-      prevIndex: prevProps.index,
-      nextIndex: nextProps.index,
-      prevTop: prevProps.style.top,
-      nextTop: nextProps.style.top,
-      prevShouldHide: prevProps.shouldHide,
-      nextShouldHide: nextProps.shouldHide
-    });
     return shouldUpdate;
   }
 );

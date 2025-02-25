@@ -96,18 +96,11 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
     return <div className="error" role="alert">Error: {error}</div>;
   }
 
-  console.log("VirtualizedStoryList: Rendering content:", {
-    levelsLength: levels.length,
-    firstLevel: levels[0],
-    hasLevels: levels.length > 0
-  });
-
   // Show content with potential loading more indicator
   return (
     <div style={{ height: '100%', overflow: 'visible' }} role="list" aria-label="Story tree content">
       <AutoSizer>
         {({ height, width }) => {
-          console.log("VirtualizedStoryList: AutoSizer dimensions:", { height, width });
           return (
             <InfiniteLoader
               isItemLoaded={(index) => {
@@ -139,13 +132,11 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
                     itemCount={levels.length}
                     itemSize={(index) => {
                       const size = sizeMap.current[index] || 200;
-                      console.log("VirtualizedStoryList: Getting item size:", { index, size });
                       return size;
                     }}
                     overscanCount={5}
                     ref={refSetter}
                     onItemsRendered={(props) => {
-                      console.log("VirtualizedStoryList: Items rendered:", props);
                       onItemsRendered(props);
                     }}
                   >
@@ -164,7 +155,6 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
                           style={style}
                           levelData={level}
                           setSize={(height) => {
-                            console.log("VirtualizedStoryList: Setting row size:", { index, height });
                             sizeMap.current[index] = height;
                             if (listRef.current) {
                               listRef.current.resetAfterIndex(index);                             // TODO: what is happening here?

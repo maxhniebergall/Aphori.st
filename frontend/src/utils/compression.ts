@@ -44,11 +44,8 @@ export class DatabaseCompression {
             if (value.v !== 1) {
                 throw new Error('Unsupported version: ' + value.v);
             }
-            console.log("Compression: Decompressing value:", value);
             const compressed = Buffer.from(value.d, 'base64');
-            console.log("Compression: Decompressed value:", compressed);
             const decompressed = pako.inflate(compressed);
-            console.log("Compression: Decompressed value:", decompressed);
             const text = new TextDecoder().decode(decompressed);
             try {
                 return JSON.parse(text) as V;
