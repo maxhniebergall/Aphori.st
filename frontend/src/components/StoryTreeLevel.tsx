@@ -124,11 +124,9 @@ useEffect(() => {
     }
   }, [siblings, currentIndex, levelData.selectedQuote]);
   
-  useEffect(() => {
-    console.log('siblings', siblings);
-    console.log('currentIndex', currentIndex);
+  useEffect(() => { 
     const node = siblings[currentIndex];
-    console.log('node', node);
+    console.log('node', {node, currentIndex, siblings});
     
     // Handle case when there are no siblings but we have a root node
     if (!node && levelData.levelNumber === 0 && levelData.rootNodeId) {
@@ -240,7 +238,6 @@ useEffect(() => {
   
   // Memoize infinite loader props to prevent unnecessary recalculations
   const infiniteLoaderProps = useMemo(() => {
-
     const isItemLoaded = (index: number): boolean => {
       console.log("InfiniteLoader: Checking if item is loaded:", {
         index,
@@ -254,11 +251,7 @@ useEffect(() => {
     };
     
     // For root level, we always have exactly one item
-    const calculatedItemCount = levelData.levelNumber === 0 
-      ? 1 
-      : (levelData.pagination.hasMore 
-          ? Math.max((siblings.length || 0) + 1, levelData.pagination.matchingRepliesCount)
-          : (siblings.length || 0));
+    const calculatedItemCount = Number.MAX_SAFE_INTEGER;
       
     console.log("InfiniteLoader: Calculated props:", {
       calculatedItemCount,
@@ -272,7 +265,7 @@ useEffect(() => {
       itemCount: calculatedItemCount,
       loadMoreItems,
       isItemLoaded,
-      minimumBatchSize: 3,
+      minimumBatchSize: 5,
       threshold: 2,
     };
   }, [
