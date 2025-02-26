@@ -16,7 +16,7 @@
  * - Clear loading state after data is loaded
  */
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { VariableSizeList } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -30,14 +30,32 @@ interface VirtualizedStoryListProps {
   postRootId: string;
 }
 
-const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId }) => {
+// Custom hook to selectively extract only the reply context values we need
+// This prevents re-renders when replyContent changes
+function useReplyContextForList() {
+  const context = useReplyContext();
+  
+  return useMemo(() => ({
+    replyTarget: context.replyTarget,
+  }), [
+    context.replyTarget
+    // Intentionally NOT including replyContent which changes with every keystroke
+  ]);
+}
+
+// Memoize the Row component to prevent unnecessary re-renders
+const MemoizedRow = React.memo(Row);
+
+const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ postRootId }) => {
   const { state } = useStoryTree();
   const [isLocalLoading, setIsLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<VariableSizeList>(null);
   const sizeMap = useRef<{ [key: number]: number }>({});
   const [levels, setLevels] = useState<StoryTreeLevel[]>([]);
-  const { replyTarget } = useReplyContext();
+  
+  // Use our selective hook to prevent unnecessary re-renders
+  const { replyTarget } = useReplyContextForList();
 
   // Reset size cache when levels change
   useEffect(() => {
@@ -96,6 +114,35 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
     return <div className="error" role="alert">Error: {error}</div>;
   }
 
+  // Memoize the item renderer function to prevent unnecessary re-renders
+  const itemRenderer = useMemo(() => {
+    return ({ index, style }: { index: number, style: React.CSSProperties }) => {
+      const level = levels[index];
+      console.log("VirtualizedStoryList: Rendering level:", { 
+        index, 
+        hasLevel: !!level,
+        levelNumber: level?.levelNumber,
+        siblings: level?.siblings?.levelsMap?.size
+      });
+      if (!level) return null;
+
+      return (
+        <MemoizedRow
+          style={style}
+          levelData={level}
+          setSize={(height) => {
+            sizeMap.current[index] = height;
+            if (listRef.current) {
+              listRef.current.resetAfterIndex(index);
+            }
+          }}
+          shouldHide={!!(replyTarget?.levelNumber) && (replyTarget.levelNumber > level.levelNumber)}
+          index={index}
+        />
+      );
+    };
+  }, [levels, replyTarget]);
+
   // Show content with potential loading more indicator
   return (
     <div style={{ height: '100%', overflow: 'visible' }} role="list" aria-label="Story tree content">
@@ -140,32 +187,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
                       onItemsRendered(props);
                     }}
                   >
-                    {({ index, style }) => {
-                      const level = levels[index];
-                      console.log("VirtualizedStoryList: Rendering level:", { 
-                        index, 
-                        hasLevel: !!level,
-                        levelNumber: level?.levelNumber,
-                        siblings: level?.siblings?.levelsMap?.size
-                      });
-                      if (!level) return null;
-
-                      return (
-                        <Row
-                          style={style}
-                          levelData={level}
-                          setSize={(height) => {
-                            sizeMap.current[index] = height;
-                            if (listRef.current) {
-                              listRef.current.resetAfterIndex(index);                             // TODO: what is happening here?
-
-                            }
-                          }}
-                          shouldHide={!!(replyTarget?.levelNumber) && (replyTarget.levelNumber > level.levelNumber)}
-                          index={index}
-                        />
-                      );
-                    }}
+                    {itemRenderer}
                   </VariableSizeList>
                 );
               }}
@@ -181,6 +203,9 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = ({ postRootId 
       )}
     </div>
   );
-};
+});
+
+// Add display name for better debugging
+VirtualizedStoryList.displayName = 'VirtualizedStoryList';
 
 export default VirtualizedStoryList; 

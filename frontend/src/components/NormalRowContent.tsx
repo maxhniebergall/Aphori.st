@@ -3,7 +3,7 @@
  * - Render a StoryTreeLevel to display regular node content
  */
 
-import React from 'react';
+import React, { memo } from 'react';
 import { StoryTreeLevel } from '../types/types';
 import StoryTreeLevelComponent from './StoryTreeLevel';
 
@@ -11,7 +11,8 @@ interface NormalRowContentProps {
   levelData: StoryTreeLevel;
 }
 
-const NormalRowContent: React.FC<NormalRowContentProps> = ({
+// Create a memoized component that only re-renders if levelData changes
+const NormalRowContent: React.FC<NormalRowContentProps> = memo(({
   levelData,
 }) => {
   return (
@@ -21,6 +22,16 @@ const NormalRowContent: React.FC<NormalRowContentProps> = ({
       />
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Only re-render if the levelData's key properties have changed
+  return (
+    prevProps.levelData.rootNodeId === nextProps.levelData.rootNodeId &&
+    prevProps.levelData.levelNumber === nextProps.levelData.levelNumber &&
+    prevProps.levelData.selectedQuote === nextProps.levelData.selectedQuote
+  );
+});
+
+// Add display name for better debugging
+NormalRowContent.displayName = 'NormalRowContent';
 
 export default NormalRowContent; 
