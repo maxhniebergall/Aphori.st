@@ -1,132 +1,109 @@
 /**
  * Requirements:
- * - Break StoryTreeLevel into sub-components for clear separation of concerns
- * - useGesture for detecting swipe gestures
- * - framer-motion for fade-in animations
- * - InfiniteLoader for infinite scrolling/loading of siblings
- * - Maintains reply, infinite-loading, and sibling navigation functionality
- * - Integrates NodeContent and NodeFooter and passes down reply/selection logic
- * - Use useInfiniteNodes and useSiblingNavigation hooks for node fetching and navigation
- * - Supports quote mode with reply fetching and infinite-loader adjustments
- * - Properly handle sibling nodes and their text content
- * - TypeScript support with strict typing
- * - Yarn for package management
- * - Proper error handling
- * - Loading state management
- * - Accessibility compliance
- * - Performance optimization
- * - Uses usePagination hook for cursor-based pagination
- *
- * UPDATED:
- * - Updated InfiniteLoader and VariableSizeList usage to follow react-window documentation.
- *   * VariableSizeList now uses a render function that receives { index, style }.
- *   * The InfiniteLoader's provided ref is forwarded directly rather than using a custom refSetter.
- *   * itemCount is made consistent (using totalSiblingsCount) between both components.
- *   * loadMoreItems is now a placeholder that must return a promise.
- * - Moved totalSiblingsCount, siblingsToUse, validCurrentIndex, and infiniteNodes to useState
- * - Kept sizeMap as useRef to minimize re-renders.
- * - Added usePagination hook for better pagination state management
- * 
- * - TODO:
- * - Verify that the quoteCounts are being passed down correctly to the NodeContent component.
- * --                       existingSelectableQuotes={currentNode.quoteCounts || {quoteCounts: new Map()}}
- * -- verify that the NodeContent rerenders when quoteCounts change
+ * - Display the current sibling node for a given level
+ * - Support horizontal swipe gestures between siblings
+ * - Maintain pagination for loading more siblings
+ * - Preserve reply mode functionality
+ * - Support node selection and quote selection
+ * - Communicate height changes to parent components for proper virtualization
  */
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { useGesture, FullGestureState } from '@use-gesture/react';
+import { useGesture } from '@use-gesture/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import InfiniteLoader from 'react-window-infinite-loader';
-import { VariableSizeList } from 'react-window';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
-import { StoryTreeLevel as LevelData, StoryTreeNode } from '../types/types';
+import { StoryTreeLevel as LevelData, StoryTreeNode, Pagination } from '../types/types';
 import { Quote } from '../types/quote';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 
 interface StoryTreeLevelProps {
-  levelData: LevelData; 
+  levelData: LevelData;
+  reportHeight?: (height: number) => void;
 }
 
-export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ levelData }) => {
-  // State declarations
-  console.log("StoryTreeLevel: Initializing with levelData:", {
-    rootNodeId: levelData.rootNodeId,
-    levelNumber: levelData.levelNumber,
-    siblings: levelData.siblings,
-    pagination: levelData.pagination,
-    selectedQuote: levelData.selectedQuote
-  });
-
-  // All hooks must be called before any conditional returns
+export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ 
+  levelData,
+  reportHeight 
+}) => {
+  // Core state
   const [replyError, setReplyError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [currentNode, setCurrentNode] = useState<StoryTreeNode | null>(null);
-  const sizeMap = useRef<{ [key: number]: number }>({});
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Pagination state - directly use the Pagination type from our types
+  const [pagination, setPagination] = useState<Pagination>(levelData.pagination);
+  
   const { setReplyTarget, replyTarget, setReplyQuote, replyQuote, clearReplyState } = useReplyContext();
 
-  // Calculate dimensions based on viewport - moved before any conditional logic
+  // Report height to parent virtualized list when container size changes
+  useEffect(() => {
+    if (containerRef.current && reportHeight) {
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          reportHeight(entry.contentRect.height);
+        }
+      });
+      
+      resizeObserver.observe(containerRef.current);
+      return () => resizeObserver.disconnect();
+    }
+  }, [reportHeight]);
+
+  // Calculate dimensions based on viewport
   const dimensions = useMemo(() => {
     const viewportHeight = window.innerHeight;
     const viewportWidth = window.innerWidth;
     return {
-      height: Math.max(viewportHeight * 0.8, 400), // At least 400px or 80% of viewport height
-      width: Math.max(viewportWidth * 0.8, 600),   // At least 600px or 80% of viewport width
-      defaultItemSize: Math.max(viewportHeight * 0.3, 200) // At least 200px or 30% of viewport height
+      height: Math.max(viewportHeight * 0.8, 400), 
+      width: Math.max(viewportWidth * 0.8, 600),
+      defaultItemSize: Math.max(viewportHeight * 0.3, 200)
     };
   }, []);
 
-// Assuming 'dimensions' has been defined elsewhere, e.g., via useMemo
-const [dimensionValues, setDimensionValues] = useState(dimensions);
-useEffect(() => {
-  const handleResize = () => {
-    setDimensionValues({
-      height: Math.max(window.innerHeight * 0.8, 400),
-      width: Math.max(window.innerWidth * 0.8, 600),
-      defaultItemSize: Math.max(window.innerHeight * 0.3, 200),
-    });
-  };
-  window.addEventListener('resize', handleResize);
-  return () => window.removeEventListener('resize', handleResize);
-}, []);
+  // Update dimensions on window resize
+  const [dimensionValues, setDimensionValues] = useState(dimensions);
+  useEffect(() => {
+    const handleResize = () => {
+      setDimensionValues({
+        height: Math.max(window.innerHeight * 0.8, 400),
+        width: Math.max(window.innerWidth * 0.8, 600),
+        defaultItemSize: Math.max(window.innerHeight * 0.3, 200),
+      });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
-useEffect(() => {
-  console.log("StoryTreeLevel: currentNode changed:", currentNode);
-  if (currentNode) {
-    storyTreeOperator.setSelectedNode(currentNode); 
-  }
-}, [currentNode]);
+  // Update StoryTreeOperator when current node changes
+  useEffect(() => {
+    if (currentNode) {
+      storyTreeOperator.setSelectedNode(currentNode);
+    }
+  }, [currentNode]);
 
-  // Get initial siblings from levelData
+  // Get siblings from levelData using the correct key
   const siblings = useMemo(() => {
-    const siblingsArray = levelData.siblings.levelsMap.get(levelData.selectedQuote) || [];
-    console.log("StoryTreeLevel: Initial siblings from levelData:", {
-      count: siblingsArray.length,
-      siblings: siblingsArray
-    });
-    return siblingsArray;
+    return levelData.siblings.levelsMap.get(levelData.selectedQuote) || [];
   }, [levelData.siblings.levelsMap, levelData.selectedQuote]);
 
-
-  // useEffects to update state based on props and pagination
+  // Update pagination state based on levelData
   useEffect(() => {
-    console.log('StoryTreeLevel: Got siblings array:', {
-      levelNumber: levelData.levelNumber,
-      selectedQuote: levelData.selectedQuote?.toString() || 'none',
-      siblingsLength: siblings.length,
-      siblings
-    });
-    
-    // Only reset currentIndex if it's out of bounds
-    if (currentIndex >= siblings.length) {
+    setPagination(levelData.pagination);
+  }, [levelData.pagination]);
+
+  // Update current node when siblings or currentIndex changes
+  useEffect(() => {
+    // Update currentIndex if it's out of bounds
+    if (currentIndex >= siblings.length && siblings.length > 0) {
       setCurrentIndex(Math.max(0, siblings.length - 1));
+      return;
     }
-  }, [siblings, currentIndex, levelData.selectedQuote]);
-  
-  useEffect(() => { 
+    
     const node = siblings[currentIndex];
-    console.log('node', {node, currentIndex, siblings});
     
     // Handle case when there are no siblings but we have a root node
     if (!node && levelData.levelNumber === 0 && levelData.rootNodeId) {
@@ -143,6 +120,22 @@ useEffect(() => {
     setCurrentNode(node);
   }, [siblings, currentIndex, levelData.rootNodeId, levelData.levelNumber, levelData.parentId]);
 
+  // Get the current node to render
+  const nodeToRender = useMemo(() => {
+    // If we have a selected node from the current data, use it directly
+    if (currentNode) {
+      return currentNode;
+    }
+    
+    // If we don't have a current node but the levelData has a selectedNode, use that
+    if (levelData.selectedNode) {
+      return levelData.selectedNode;
+    }
+    
+    // Fallback to the first sibling from the map
+    return siblings[0] || levelData.siblings.levelsMap.get(null)?.[0];
+  }, [currentNode, levelData.selectedNode, siblings, levelData.siblings.levelsMap]);
+
   // Check if a node is the reply target
   const isReplyTarget = useCallback(
     (id: string): boolean => replyTarget?.rootNodeId === id,
@@ -154,48 +147,49 @@ useEffect(() => {
     (quote: Quote): void => {
       try {
         setReplyError(null);
-        setReplyTarget(currentNode);
+        setReplyTarget(nodeToRender);
         setReplyQuote(quote);
       } catch (error) {
         setReplyError('Failed to set reply target');
         console.error('Selection error:', error);
       }
     },
-    [currentNode, setReplyTarget, setReplyQuote, setReplyError]
+    [nodeToRender, setReplyTarget, setReplyQuote, setReplyError]
   );
 
   // Handle reply button click
   const handleReplyButtonClick = useCallback((): void => {
-    if (!currentNode) {
-      console.warn('clicked reply button on StoryTreeLevel with null currentNode');
+    if (!nodeToRender) {
+      console.warn('clicked reply button on StoryTreeLevel with null nodeToRender');
       return;
     }
+    
     try {
-      if (isReplyTarget(levelData.rootNodeId)) {
+      if (isReplyTarget(nodeToRender.rootNodeId)) {
         // if already in reply mode, exit reply mode
         clearReplyState();
       } else {
         // if not in reply mode, enter reply mode
-        setReplyTarget(currentNode);
+        setReplyTarget(nodeToRender);
         
         // Only create quote if we have valid content
-        if (!currentNode.textContent || currentNode.textContent.trim().length === 0) {
-          console.error('Cannot create quote: node has no text content', currentNode);
+        if (!nodeToRender.textContent || nodeToRender.textContent.trim().length === 0) {
+          console.error('Cannot create quote: node has no text content', nodeToRender);
           return;
         }
 
         const quote: Quote = new Quote(
-          currentNode.textContent.trim(),
-          currentNode.rootNodeId,
+          nodeToRender.textContent.trim(),
+          nodeToRender.rootNodeId,
           {
             start: 0,
-            end: currentNode.textContent.trim().length
+            end: nodeToRender.textContent.trim().length
           }
         );
 
         if (!quote.isValid()) {
           console.error('Failed to create valid quote for reply:', {
-            node: currentNode,
+            node: nodeToRender,
             quote
           });
           return;
@@ -214,214 +208,169 @@ useEffect(() => {
     setReplyTarget,
     setReplyQuote,
     isReplyTarget,
-    levelData.rootNodeId,
-    currentNode,
+    nodeToRender,
     setReplyError
   ]);
 
-  // Navigation callbacks
-  const navigateToNextSibling = useCallback(() => { 
+  // Navigation functions with pagination
+  const navigateToNextSibling = useCallback(async () => {
     if (currentIndex < siblings.length - 1) {
+      // We have the next sibling loaded already
       setCurrentIndex(currentIndex + 1);
-    }
-  }, [currentIndex, siblings.length, setCurrentIndex]);
-
-  const navigateToPreviousSibling = useCallback(() => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-    }
-  }, [currentIndex, setCurrentIndex]);
-
-  const loadMoreItems = useCallback(async (startIndex: number, stopIndex: number): Promise<void> => {
-    await storyTreeOperator.loadMoreItems(levelData.parentId[0], levelData.levelNumber, levelData.selectedQuote, startIndex, stopIndex);
-  }, [levelData.parentId, levelData.levelNumber, levelData.selectedQuote]);
-  
-  // Memoize infinite loader props to prevent unnecessary recalculations
-  const infiniteLoaderProps = useMemo(() => {
-    const isItemLoaded = (index: number): boolean => {
-      console.log("InfiniteLoader: Checking if item is loaded:", {
-        index,
-        currentNodesLength: siblings.length
-      });
-      // For root level, we always have the item loaded
-      if (levelData.levelNumber === 0) {
-        return true;
+    } else if (pagination.hasMore) {
+      // Need to load more siblings
+      setIsLoading(true);
+      try {
+        // Use loadMoreItems instead of the non-existent loadMoreSiblings
+        await storyTreeOperator.loadMoreItems(
+          levelData.parentId[0],
+          levelData.levelNumber,
+          levelData.selectedQuote,
+          siblings.length,  // startIndex
+          siblings.length + 5  // stopIndex (load 5 more)
+        );
+        // StoryTreeOperator will update the levelData, which will update siblings
+        // We'll increment the index to show the newly loaded sibling
+        setCurrentIndex(currentIndex + 1);
+      } catch (error) {
+        console.error('Failed to load more siblings:', error);
+      } finally {
+        setIsLoading(false);
       }
-      return index < siblings.length;
-    };
-    
-    // For root level, we always have exactly one item
-    const calculatedItemCount = Number.MAX_SAFE_INTEGER;
-      
-    console.log("InfiniteLoader: Calculated props:", {
-      calculatedItemCount,
-      currentNodesLength: siblings.length,
-      levelDataPagination: levelData.pagination,
-      levelNumber: levelData.levelNumber,
-      isRootLevel: levelData.levelNumber === 0
-    });
-    
-    return {
-      itemCount: calculatedItemCount,
-      loadMoreItems,
-      isItemLoaded,
-      minimumBatchSize: 5,
-      threshold: 2,
-    };
+    }
   }, [
-    levelData.parentId,
-    levelData.levelNumber,
-    levelData.selectedQuote,
-    levelData.pagination,
-    siblings.length,
+    currentIndex, siblings.length, pagination.hasMore,
+    levelData.parentId, levelData.levelNumber, levelData.selectedQuote
+  ]);
+
+  const navigateToPreviousSibling = useCallback(async () => {
+    if (currentIndex > 0) {
+      // We have the previous sibling loaded already
+      setCurrentIndex(currentIndex - 1);
+    } else if (pagination.prevCursor !== undefined) {
+      // Need to load more siblings
+      setIsLoading(true);
+      try {
+        // For previous siblings, we don't have a direct way to load them with the current API
+        // This is a placeholder - in a real implementation, you'd need to implement a method
+        // to load previous siblings using the prevCursor
+        console.warn('Loading previous siblings is not fully implemented');
+        
+        // Simulate loading previous by just resetting to the first available sibling
+        // In a real implementation, you'd load the previous page of siblings
+        setCurrentIndex(0);
+      } catch (error) {
+        console.error('Failed to load more siblings:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  }, [
+    currentIndex, pagination.prevCursor,
+    levelData.parentId, levelData.levelNumber, levelData.selectedQuote
   ]);
 
   // Setup gesture handling for swipe navigation
   const bind = useGesture({
-    onDrag: useCallback((state: FullGestureState<'drag'>) => {
-      const { down, movement: [mx], cancel, velocity: [vx] } = state;
+    onDrag: ({ down, movement: [mx], cancel, velocity: [vx] }) => {
       if (!down) {
         try {
           if (mx < -100 || (vx < -0.5 && mx < -50)) {
-            if (navigateToNextSibling && currentIndex < siblings.length - 1) {
+            if ((currentIndex < siblings.length - 1) || pagination.hasMore) {
               navigateToNextSibling();
             }
-            cancel();
+            cancel?.();
           } else if (mx > 100 || (vx > 0.5 && mx > 50)) {
-            if (navigateToPreviousSibling && currentIndex > 0) {
+            if ((currentIndex > 0) || pagination.prevCursor !== undefined) {
               navigateToPreviousSibling();
             }
-            cancel();
+            cancel?.();
           }
         } catch (error) {
           console.error('Navigation error:', error);
         }
       }
-    }, [navigateToNextSibling, navigateToPreviousSibling, currentIndex, siblings.length])
+    }
   }, {
-    drag: useMemo(() => ({
+    drag: {
       axis: 'x',
-      enabled: Boolean(currentNode?.rootNodeId) && (
-        (Boolean(navigateToNextSibling) && currentIndex < siblings.length - 1) ||
-        (Boolean(navigateToPreviousSibling) && currentIndex > 0)
+      enabled: Boolean(nodeToRender?.rootNodeId) && (
+        (currentIndex < siblings.length - 1 || pagination.hasMore) ||
+        (currentIndex > 0 || pagination.prevCursor !== undefined)
       ),
       threshold: 5,
-    }), [currentNode?.rootNodeId, navigateToNextSibling, navigateToPreviousSibling, currentIndex, siblings.length])
-  });
-
-  // Get the current node to render
-  const nodeToRender = useMemo(() => {
-    if (!currentNode) {
-      console.log("StoryTreeLevel: Creating root node fallback:", {
-        rootNodeId: levelData.rootNodeId,
-        levelNumber: levelData.levelNumber,
-        parentId: levelData.parentId
-      });
-      return levelData.siblings.levelsMap.get(null)?.[0];
     }
-    return currentNode;
-  }, [currentNode, levelData]);
+  });
 
   // Early return if we don't have a valid node
   if (!nodeToRender?.rootNodeId) {
-    console.log("StoryTreeLevel: Early return - no valid node:", {
-      hasNodeToRender: !!nodeToRender,
-      rootNodeId: nodeToRender?.rootNodeId,
-      levelNumber: levelData.levelNumber
-    });
     return null;
   }
 
-  // Ensure we have a valid node for rendering
-  const node = nodeToRender;
-
-  console.log("StoryTreeLevel: Rendering node:", {
-    id: node.id,
-    rootNodeId: node.rootNodeId,
-    levelNumber: node.levelNumber,
-    textContent: node.textContent?.substring(0, 50) + (node.textContent?.length > 50 ? '...' : ''),
-    hasQuoteCounts: !!node.quoteCounts,
-    quoteCountsSize: node.quoteCounts?.quoteCounts?.size ?? 0
-  });
-
   return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        className={`story-tree-node ${
-          isReplyTarget(node.rootNodeId) ? 'reply-target' : ''
-        }`}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        role="article"
-      >
-        <InfiniteLoader {...infiniteLoaderProps}>
-          {({ onItemsRendered, ref }) => (
-            <VariableSizeList
-              height={dimensionValues.height}
-              width={dimensionValues.width}
-              itemCount={infiniteLoaderProps.itemCount}
-              itemSize={(index) => {
-                // For root level, ensure we have a minimum height
-                if (levelData.levelNumber === 0) {
-                  return Math.max(dimensionValues.defaultItemSize, sizeMap.current[index] || 0);
-                }
-                return sizeMap.current[index] || dimensionValues.defaultItemSize;
-              }}
-              overscanCount={5}
-              onItemsRendered={onItemsRendered}
-              ref={ref}
-            >
-              {({ index, style }) => {
-                const sibling = siblings[index] || null;
-                if (!sibling || !sibling.rootNodeId) {
-                  return null;
-                }
-
-                // Special handling for root level (level 0)
-                const isRootLevel = levelData.levelNumber === 0;
-                
-                return (
-                  <div
-                    style={style}
-                    {...(isRootLevel ? {} : bind())}
-                    className={`story-tree-node-content ${
-                      !isRootLevel && levelData.pagination.matchingRepliesCount > 1 ? 'has-siblings' : ''
-                    } ${
-                      !isRootLevel && (currentIndex > 0 || currentIndex < levelData.pagination.matchingRepliesCount - 1) ? 'swipeable' : ''
-                    }`}
-                    id={sibling.rootNodeId}
-                    role="region"
-                    aria-label={`Story content ${index + 1} of ${levelData.pagination.matchingRepliesCount}`}
-                  >
-                    <NodeContent
-                      node={sibling}
-                      quote={(isReplyTarget(sibling.id) && replyQuote) ? replyQuote : undefined}
-                      existingSelectableQuotes={sibling.quoteCounts || {quoteCounts: new Map()}}
-                      onSelectionComplete={handleTextSelectionCompleted}
-                    />
-                    <NodeFooter
-                      currentIndex={index}
-                      totalSiblings={levelData.pagination.matchingRepliesCount}
-                      onReplyClick={handleReplyButtonClick}
-                      isReplyTarget={isReplyTarget(sibling.rootNodeId)}
-                      onNextSibling={!isRootLevel ? navigateToNextSibling : () => {}}
-                      onPreviousSibling={!isRootLevel ? navigateToPreviousSibling : () => {}}
-                    />
-                    {(replyError) && (
-                      <div className="reply-error" role="alert" aria-live="polite">
-                        {replyError}
-                      </div>
-                    )}
-                  </div>
-                );
-              }}
-            </VariableSizeList>
-          )}
-        </InfiniteLoader>
-      </motion.div>
-    </AnimatePresence>
+    <div
+      ref={containerRef}
+      className="story-tree-level-container"
+      style={{
+        position: 'relative',
+        width: '100%'
+      }}
+    >
+      <AnimatePresence mode="wait">
+        <div {...bind()}>
+          <motion.div
+            className={`story-tree-node ${isReplyTarget(nodeToRender.rootNodeId) ? 'reply-target' : ''}`}
+            initial={{ opacity: 0, x: currentIndex === 0 ? -50 : 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            role="article"
+            style={{
+              width: '100%',
+              padding: '16px',
+              position: 'relative'
+            }}
+          >
+            <NodeContent
+              node={nodeToRender}
+              quote={(isReplyTarget(nodeToRender.id) && replyQuote) ? replyQuote : undefined}
+              existingSelectableQuotes={nodeToRender.quoteCounts || {quoteCounts: new Map()}}
+              onSelectionComplete={handleTextSelectionCompleted}
+            />
+            <NodeFooter
+              currentIndex={currentIndex}
+              totalSiblings={pagination.matchingRepliesCount}
+              onReplyClick={handleReplyButtonClick}
+              isReplyTarget={isReplyTarget(nodeToRender.rootNodeId)}
+              onNextSibling={navigateToNextSibling}
+              onPreviousSibling={navigateToPreviousSibling}
+            />
+            {replyError && (
+              <div className="reply-error" role="alert" aria-live="polite">
+                {replyError}
+              </div>
+            )}
+            {isLoading && (
+              <div className="loading-indicator" aria-live="polite">
+                Loading...
+              </div>
+            )}
+            
+            {/* Navigation indicators */}
+            {(currentIndex > 0 || pagination.prevCursor !== undefined) && (
+              <div className="nav-indicator prev-indicator" aria-hidden="true">
+                ←
+              </div>
+            )}
+            {(currentIndex < siblings.length - 1 || pagination.hasMore) && (
+              <div className="nav-indicator next-indicator" aria-hidden="true">
+                →
+              </div>
+            )}
+          </motion.div>
+        </div>
+      </AnimatePresence>
+    </div>
   );
 };
 
