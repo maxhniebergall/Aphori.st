@@ -23,6 +23,12 @@ interface StoryTreeLevelProps {
   reportHeight?: (height: number) => void;
 }
 
+// Create a memoized NodeFooterWrapper component to prevent unnecessary re-renders
+const MemoizedNodeFooter = React.memo(NodeFooter);
+
+// Create a memoized NodeContent component to prevent unnecessary re-renders
+const MemoizedNodeContent = React.memo(NodeContent);
+
 export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ 
   levelData,
   reportHeight 
@@ -36,7 +42,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // Pagination state - directly use the Pagination type from our types
   const [pagination, setPagination] = useState<Pagination>(levelData.pagination);
   
-  // Destructure all needed properties from ReplyContext
+  // Use a custom hook to extract only the reply context values we need
+  // This prevents re-renders when replyContent changes but doesn't affect this component
   const { 
     setReplyTarget, 
     replyTarget, 
@@ -48,7 +55,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     isReplyOpen,
     setIsReplyOpen,
     isReplyActive
-  } = useReplyContext();
+  } = useReplyContextSelective();
 
   // Report height to parent virtualized list when container size changes
   useEffect(() => {
@@ -361,13 +368,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               position: 'relative'
             }}
           >
-            <NodeContent
+            <MemoizedNodeContent
               node={nodeToRender}
               quote={(isReplyTarget(nodeToRender.id) && replyQuote) ? replyQuote : undefined}
               existingSelectableQuotes={nodeToRender.quoteCounts || {quoteCounts: new Map()}}
               onSelectionComplete={handleTextSelectionCompleted}
             />
-            <NodeFooter
+            <MemoizedNodeFooter
               currentIndex={currentIndex}
               totalSiblings={pagination.matchingRepliesCount}
               onReplyClick={handleReplyButtonClick}
@@ -406,4 +413,32 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   );
 };
 
-export default StoryTreeLevelComponent; 
+// Custom hook to selectively extract only the reply context values we need
+// This prevents re-renders when replyContent changes
+function useReplyContextSelective() {
+  const context = useReplyContext();
+  
+  return useMemo(() => ({
+    setReplyTarget: context.setReplyTarget,
+    replyTarget: context.replyTarget,
+    setReplyQuote: context.setReplyQuote,
+    replyQuote: context.replyQuote,
+    clearReplyState: context.clearReplyState,
+    replyError: context.replyError,
+    setReplyError: context.setReplyError,
+    isReplyOpen: context.isReplyOpen,
+    setIsReplyOpen: context.setIsReplyOpen,
+    isReplyActive: context.isReplyActive
+  }), [
+    context.replyTarget,
+    context.replyQuote,
+    context.clearReplyState,
+    context.replyError,
+    context.isReplyOpen,
+    context.isReplyActive
+    // Intentionally NOT including replyContent which changes with every keystroke
+  ]);
+}
+
+// Use React.memo to memoize the entire component
+export default React.memo(StoryTreeLevelComponent); 

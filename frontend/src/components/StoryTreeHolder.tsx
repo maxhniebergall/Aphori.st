@@ -29,21 +29,19 @@ import '@uiw/react-md-editor/markdown-editor.css';
 import rehypeSanitize from 'rehype-sanitize';
 import { ReplyProvider, useReplyContext } from '../context/ReplyContext';
 import StoryTreeOperator from '../operators/StoryTreeOperator';
+import React from 'react';
 
-// Main content component
-function StoryTreeContent() {
-  const navigate = useNavigate();
-  const { state } = useStoryTree();
-  const [isRootInitialized, setIsRootInitialized] = useState(false);
-  // Get the UUID from the URL
-  const { uuid: rootUUID } = useParams<{ uuid: string }>();
- 
+// Memoized content component to prevent unnecessary re-renders
+const MemoizedVirtualizedStoryList = React.memo(VirtualizedStoryList);
+
+// Separate Reply Editor component to isolate rendering when content changes
+const ReplyEditor = () => {
   const { 
     replyTarget, 
-    setReplyTarget,
     replyContent,
     setReplyContent,
     replyQuote,
+    setReplyTarget,
     setReplyQuote 
   } = useReplyContext();
 
@@ -70,6 +68,62 @@ function StoryTreeContent() {
     }
   }, [setReplyContent]);
   
+  // Handle reply cancellation
+  const handleReplyCancel = useCallback(() => {
+    setReplyContent('');
+    setReplyTarget(null);
+    setReplyQuote(null);
+  }, [setReplyContent, setReplyTarget, setReplyQuote]);
+
+  if (!replyTarget || !replyQuote) {
+    return null;
+  }
+
+  return (
+    <div 
+      className="reply-editor-container"
+      role="form"
+      aria-label="Reply editor form"
+    >
+      <div data-color-mode="light">
+        <MDEditor
+          value={replyContent}
+          onChange={handleEditorChange}
+          {...editorOptions}
+        />
+      </div>
+      <div className="reply-actions" role="group" aria-label="Reply actions">
+        <button 
+          onClick={() => StoryTreeOperator.submitReply(replyContent, replyTarget.id, replyQuote)}
+          disabled={!replyContent.trim()}
+          className="submit-reply-button"
+          aria-label="Submit reply"
+        >
+          Submit
+        </button>
+        <button 
+          onClick={handleReplyCancel}
+          className="cancel-reply-button"
+          aria-label="Cancel reply"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Main content component
+function StoryTreeContent() {
+  const navigate = useNavigate();
+  const { state } = useStoryTree();
+  const [isRootInitialized, setIsRootInitialized] = useState(false);
+  // Get the UUID from the URL
+  const { uuid: rootUUID } = useParams<{ uuid: string }>();
+  
+  // Use a minimal set of context values to prevent re-renders when replyContent changes
+  const { replyTarget } = useReplyContext();
+ 
   // Initialize story tree and fetch data
   useEffect(() => {
     let mounted = true;
@@ -97,13 +151,6 @@ function StoryTreeContent() {
     };
   }, [isRootInitialized, rootUUID, navigate]);
 
-  // Handle reply cancellation
-  const handleReplyCancel = useCallback(() => {
-    setReplyContent('');
-    setReplyTarget(null);
-    setReplyQuote(null);
-  }, [setReplyContent, setReplyTarget, setReplyQuote]);
-
   // Instead of returning a global loading spinner, we let VirtualizedStoryList handle progressive loading.
   // Show error state if present
   if (state.error) {
@@ -121,46 +168,8 @@ function StoryTreeContent() {
     );
   }
 
-  // Render reply editor
-  const renderReplyEditor = () => {
-    if (!replyTarget || !replyQuote) {
-      console.error('Reply target or quote is not set, ' + replyTarget + ' ' + replyQuote);
-      return null;
-    }
-
-    return (
-      <div 
-        className="reply-editor-container"
-        role="form"
-        aria-label="Reply editor form"
-      >
-        <div data-color-mode="light">
-          <MDEditor
-            value={replyContent}
-            onChange={handleEditorChange}
-            {...editorOptions}
-          />
-        </div>
-        <div className="reply-actions" role="group" aria-label="Reply actions">
-          <button 
-            onClick={() => StoryTreeOperator.submitReply(replyContent, replyTarget.id, replyQuote)}
-            disabled={!replyContent.trim()}
-            className="submit-reply-button"
-            aria-label="Submit reply"
-          >
-            Submit
-          </button>
-          <button 
-            onClick={handleReplyCancel}
-            className="cancel-reply-button"
-            aria-label="Cancel reply"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  };
+  // Memoize the UUID to prevent unnecessary re-renders
+  const memoizedUUID = useMemo(() => rootUUID || '', [rootUUID]);
 
   return (
     <div className="story-tree-container">
@@ -170,9 +179,9 @@ function StoryTreeContent() {
         onLogoClick={() => navigate('/feed')}
       />
       <main className="story-tree-content" role="main">
-        <VirtualizedStoryList postRootId={rootUUID || ''} />
+        <MemoizedVirtualizedStoryList postRootId={memoizedUUID} />
       </main>
-      {replyTarget && renderReplyEditor()}
+      {replyTarget && <ReplyEditor />}
     </div>
   );
 }

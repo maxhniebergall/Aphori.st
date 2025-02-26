@@ -14,7 +14,7 @@
  * - Proper markdown rendering
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import TextSelection from './TextSelection';
 import QuoteRenderer from './QuoteRenderer';
 import { QuoteCounts, StoryTreeNode } from '../types/types';
@@ -25,6 +25,11 @@ interface NodeContentProps {
   quote?: Quote;
   existingSelectableQuotes?: QuoteCounts;
 }
+
+// Memoize the TextSelection component to prevent unnecessary re-renders
+const MemoizedTextSelection = React.memo(TextSelection);
+// Memoize the QuoteRenderer component to prevent unnecessary re-renders
+const MemoizedQuoteRenderer = React.memo(QuoteRenderer);
 
 const NodeContent: React.FC<NodeContentProps> = ({
   node,
@@ -38,6 +43,16 @@ const NodeContent: React.FC<NodeContentProps> = ({
     return node.textContent || '';
   }, [node.textContent]);
 
+  // Memoize the callback to prevent unnecessary re-renders
+  const memoizedOnSelectionComplete = useCallback((selectedQuote: Quote) => {
+    onSelectionComplete(selectedQuote);
+  }, [onSelectionComplete]);
+
+  // Memoize the existingSelectableQuotes to prevent unnecessary re-renders
+  const memoizedExistingSelectableQuotes = useMemo(() => {
+    return existingSelectableQuotes || { quoteCounts: new Map() };
+  }, [existingSelectableQuotes]);
+
   return (
     <div 
       className="node-content"
@@ -45,18 +60,18 @@ const NodeContent: React.FC<NodeContentProps> = ({
       aria-label={quote ? 'Selected content for reply' : 'Story content'}
     >
       <div className="text-content" role="region" aria-label="Main content">
-        <TextSelection
-          onSelectionCompleted={onSelectionComplete}
+        <MemoizedTextSelection
+          onSelectionCompleted={memoizedOnSelectionComplete}
           selectedQuote={quote}
-          existingSelectableQuotes={existingSelectableQuotes}
+          existingSelectableQuotes={memoizedExistingSelectableQuotes}
           aria-label={quote ? 'Selectable text for reply' : 'Story text'}
         >
           {textContent}
-        </TextSelection>
+        </MemoizedTextSelection>
       </div>
       {quote && (
         <div className="quote-container" role="region" aria-label="Quoted content">
-          <QuoteRenderer quote={quote} />
+          <MemoizedQuoteRenderer quote={quote} />
         </div>
       )}
     </div>
@@ -66,4 +81,5 @@ const NodeContent: React.FC<NodeContentProps> = ({
 // Add display name for better debugging
 NodeContent.displayName = 'NodeContent';
 
-export default NodeContent;
+// Export memoized component to prevent unnecessary re-renders
+export default React.memo(NodeContent);

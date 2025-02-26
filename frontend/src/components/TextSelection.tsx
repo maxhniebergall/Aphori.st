@@ -6,7 +6,7 @@
  * - Use proper styling for text selection (via TextSelection.css)
  */
 
-import React from 'react';
+import React, { useMemo, CSSProperties } from 'react';
 import { useTextSelection } from '../hooks/useTextSelection';
 import './TextSelection.css';
 import { Quote } from '../types/quote';
@@ -22,6 +22,7 @@ interface TextSelectionProps {
   selectAll?: boolean;
   selectedQuote?: Quote;
   existingSelectableQuotes?: QuoteCounts;
+  [key: string]: any; // For additional props like aria attributes
 }
 
 const TextSelection: React.FC<TextSelectionProps> = ({
@@ -30,24 +31,37 @@ const TextSelection: React.FC<TextSelectionProps> = ({
   selectAll = false,
   selectedQuote,
   existingSelectableQuotes,
+  ...restProps
 }) => {
-  const { containerRef, eventHandlers } = useTextSelection({
+  // Memoize the props to prevent unnecessary re-renders
+  const memoizedProps = useMemo(() => ({
     onSelectionCompleted,
     selectAll,
     selectedQuote,
     existingSelectableQuotes,
-  });
+  }), [onSelectionCompleted, selectAll, selectedQuote, existingSelectableQuotes]);
+  
+  const { containerRef, eventHandlers } = useTextSelection(memoizedProps);
+
+  // Memoize styles to prevent re-renders - use proper TypeScript CSSProperties
+  const containerStyle = useMemo((): CSSProperties => ({ 
+    userSelect: 'none' as const, 
+    WebkitUserSelect: 'none' as const, 
+    touchAction: 'none' as const 
+  }), []);
 
   return (
     <div
       ref={containerRef}
       className="selection-container"
-      style={{ userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}
+      style={containerStyle}
       {...eventHandlers}
+      {...restProps}
     >
       {children}
     </div>
   );
 };
 
-export default TextSelection; 
+// Export as memoized component to prevent unnecessary re-renders from parent
+export default React.memo(TextSelection); 
