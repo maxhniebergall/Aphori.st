@@ -16,6 +16,8 @@ interface NodeFooterProps {
   isReplyTarget: boolean;
   onNextSibling: () => void;
   onPreviousSibling: () => void;
+  isReplyActive?: boolean;
+  replyError?: string | null;
 }
 
 const NodeFooter: React.FC<NodeFooterProps> = ({
@@ -25,17 +27,49 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
   isReplyTarget,
   onNextSibling,
   onPreviousSibling,
+  isReplyActive = false,
+  replyError = null
 }) => {
   // Ensure currentIndex and totalSiblings are valid numbers
   const validCurrentIndex = Number.isFinite(currentIndex) ? currentIndex : 0;
   const validTotalSiblings = Number.isFinite(totalSiblings) ? totalSiblings : 1;
   const hasSiblings = validTotalSiblings > 1;
 
+  // Determine appropriate button text based on reply state
+  const getReplyButtonText = () => {
+    if (isReplyTarget) {
+      return 'Cancel Reply';
+    }
+    if (isReplyActive) {
+      return 'Select Different Node';
+    }
+    return 'Reply';
+  };
+
+  // Determine appropriate button class based on reply state and errors
+  const getReplyButtonClass = () => {
+    const baseClass = 'reply-button';
+    if (replyError) {
+      return `${baseClass} reply-button-error`;
+    }
+    if (isReplyTarget) {
+      return `${baseClass} reply-button-active`;
+    }
+    if (isReplyActive) {
+      return `${baseClass} reply-button-disabled`;
+    }
+    return baseClass;
+  };
+
   return (
     <div className="story-tree-node-footer">
       <div className="footer-left">
-        <button className="reply-button" onClick={onReplyClick} aria-label="Reply to this message">
-          {isReplyTarget ? 'Cancel Reply' : 'Reply'}
+        <button 
+          className={getReplyButtonClass()} 
+          onClick={onReplyClick} 
+          aria-label={`${getReplyButtonText()} to this message`}
+        >
+          {getReplyButtonText()}
         </button>
       </div>
       <div className="footer-right"></div>

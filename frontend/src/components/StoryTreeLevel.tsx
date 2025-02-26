@@ -28,7 +28,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   reportHeight 
 }) => {
   // Core state
-  const [replyError, setReplyError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [currentNode, setCurrentNode] = useState<StoryTreeNode | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -37,7 +36,19 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // Pagination state - directly use the Pagination type from our types
   const [pagination, setPagination] = useState<Pagination>(levelData.pagination);
   
-  const { setReplyTarget, replyTarget, setReplyQuote, replyQuote, clearReplyState } = useReplyContext();
+  // Destructure all needed properties from ReplyContext
+  const { 
+    setReplyTarget, 
+    replyTarget, 
+    setReplyQuote, 
+    replyQuote, 
+    clearReplyState,
+    replyError,
+    setReplyError,
+    isReplyOpen,
+    setIsReplyOpen,
+    isReplyActive
+  } = useReplyContext();
 
   // Report height to parent virtualized list when container size changes
   useEffect(() => {
@@ -136,48 +147,65 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     return siblings[0] || levelData.siblings.levelsMap.get(null)?.[0];
   }, [currentNode, levelData.selectedNode, siblings, levelData.siblings.levelsMap]);
 
-  // Check if a node is the reply target
+  // Check if a node is the reply target more efficiently
   const isReplyTarget = useCallback(
-    (id: string): boolean => replyTarget?.rootNodeId === id,
+    (id: string): boolean => {
+      if (!replyTarget) return false;
+      return replyTarget.rootNodeId === id || replyTarget.id === id;
+    },
     [replyTarget]
   );
 
-  // Handle text selection for replies
+  // Handle text selection for replies with improved error handling
   const handleTextSelectionCompleted = useCallback(
     (quote: Quote): void => {
       try {
+        if (!nodeToRender) {
+          throw new Error('Cannot create reply: no valid node selected');
+        }
+        
+        // Clear any previous errors
         setReplyError(null);
+        
+        // Set the reply target and quote
         setReplyTarget(nodeToRender);
         setReplyQuote(quote);
+        
+        // Open the reply interface
+        setIsReplyOpen(true);
+        
+        // Trigger resize to ensure UI updates correctly
+        window.dispatchEvent(new Event('resize'));
       } catch (error) {
-        setReplyError('Failed to set reply target');
+        setReplyError(error instanceof Error ? error.message : 'Failed to set reply target');
         console.error('Selection error:', error);
       }
     },
-    [nodeToRender, setReplyTarget, setReplyQuote, setReplyError]
+    [nodeToRender, setReplyTarget, setReplyQuote, setReplyError, setIsReplyOpen]
   );
 
-  // Handle reply button click
+  // Handle reply button click with improved functionality
   const handleReplyButtonClick = useCallback((): void => {
     if (!nodeToRender) {
-      console.warn('clicked reply button on StoryTreeLevel with null nodeToRender');
+      setReplyError('Cannot create reply: no valid node selected');
       return;
     }
     
     try {
-      if (isReplyTarget(nodeToRender.rootNodeId)) {
-        // if already in reply mode, exit reply mode
+      // Check if we're already in reply mode for this node
+      if (isReplyActive && isReplyTarget(nodeToRender.rootNodeId)) {
+        // If already in reply mode, exit reply mode
         clearReplyState();
       } else {
-        // if not in reply mode, enter reply mode
+        // If not in reply mode, enter reply mode
         setReplyTarget(nodeToRender);
         
         // Only create quote if we have valid content
         if (!nodeToRender.textContent || nodeToRender.textContent.trim().length === 0) {
-          console.error('Cannot create quote: node has no text content', nodeToRender);
-          return;
+          throw new Error('Cannot create quote: node has no text content');
         }
 
+        // Create a quote that encompasses the entire node content
         const quote: Quote = new Quote(
           nodeToRender.textContent.trim(),
           nodeToRender.rootNodeId,
@@ -188,19 +216,19 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         );
 
         if (!quote.isValid()) {
-          console.error('Failed to create valid quote for reply:', {
-            node: nodeToRender,
-            quote
-          });
-          return;
+          throw new Error('Failed to create valid quote for reply');
         }
 
+        // Set the quote and open the reply interface
         setReplyQuote(quote);
         setReplyError(null);
+        setIsReplyOpen(true);
+        
+        // Trigger resize to ensure UI updates correctly
         window.dispatchEvent(new Event('resize'));
       }
     } catch (error) {
-      setReplyError('Failed to handle reply action');
+      setReplyError(error instanceof Error ? error.message : 'Failed to handle reply action');
       console.error('Reply error:', error);
     }
   }, [
@@ -209,7 +237,9 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     setReplyQuote,
     isReplyTarget,
     nodeToRender,
-    setReplyError
+    setReplyError,
+    isReplyActive,
+    setIsReplyOpen
   ]);
 
   // Navigation functions with pagination
@@ -344,6 +374,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               isReplyTarget={isReplyTarget(nodeToRender.rootNodeId)}
               onNextSibling={navigateToNextSibling}
               onPreviousSibling={navigateToPreviousSibling}
+              isReplyActive={isReplyActive}
+              replyError={replyError}
             />
             {replyError && (
               <div className="reply-error" role="alert" aria-live="polite">
