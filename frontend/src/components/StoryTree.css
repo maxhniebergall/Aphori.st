@@ -271,6 +271,45 @@ button {
   background-color: #2563eb;
 }
 
+/* Additional reply button states */
+.reply-button-active {
+  background-color: #ef4444;  /* Red for cancel */
+}
+
+.reply-button-active:hover {
+  background-color: #dc2626;
+}
+
+.reply-button-disabled {
+  background-color: #9ca3af;  /* Gray for disabled */
+  cursor: pointer;
+}
+
+.reply-button-disabled:hover {
+  background-color: #6b7280;
+}
+
+.reply-button-error {
+  background-color: #f59e0b;  /* Amber for warning */
+  animation: pulse 1.5s infinite;
+}
+
+.reply-button-error:hover {
+  background-color: #d97706;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+
 /* Title section styling */
 .story-title-section {
   text-align: center;
