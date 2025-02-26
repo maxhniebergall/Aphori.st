@@ -350,6 +350,7 @@ class StoryTreeOperator extends BaseOperator {
    * @param startIndex - The starting index for pagination.
    * @param stopIndex - The stopping index for pagination.
    * @requires that the level already exists in the state
+   * // TODO we need to introduce the cache here so that requesting existing items doesn't trigger a new fetch (for those items)
    */
   public async loadMoreItems(parentId: string, levelNumber: number, quote: Quote, startIndex: number, stopIndex: number): Promise<void> {
     console.log("StoryTreeOperator: Loading more items:", { 
