@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useReducer, useLayoutEffect, ReactNode } from 'react';
-import { StoryTreeState, Action, StoryTreeLevel, StoryTree, StoryTreeNode } from '../types/types';
+import { StoryTreeState, Action, StoryTreeLevel, StoryTree, StoryTreeNode, Siblings } from '../types/types';
 import { ACTIONS } from '../types/types';
 import StoryTreeErrorBoundary from './StoryTreeErrorBoundary';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import { useUser } from './UserContext';
+import { Quote } from '../types/quote';
 
 /*
  * Requirements:
@@ -38,6 +39,52 @@ function getLevelIndex(existingLevels: StoryTreeLevel[], level: StoryTreeLevel):
   );
 }
 
+// Helper function to find siblings for a quote in the array-based structure
+function findSiblingsForQuote(siblings: Siblings, quote: Quote | null): StoryTreeNode[] {
+  const entry = siblings.levelsMap.find(([key]) => {
+    if (key === null && quote === null) {
+      return true;
+    }
+    if (!key || !quote) {
+      return false;
+    }
+    return key.sourcePostId === quote.sourcePostId && 
+           key.text === quote.text &&
+           key.selectionRange.start === quote.selectionRange.start &&
+           key.selectionRange.end === quote.selectionRange.end;
+  });
+  
+  return entry ? entry[1] : [];
+}
+
+// Helper function to update siblings for a quote in the array-based structure
+function updateSiblingsForQuote(siblings: Siblings, quote: Quote | null, nodes: StoryTreeNode[]): Siblings {
+  const index = siblings.levelsMap.findIndex(([key]) => {
+    if (key === null && quote === null) {
+      return true;
+    }
+    if (!key || !quote) {
+      return false;
+    }
+    return key.sourcePostId === quote.sourcePostId && 
+           key.text === quote.text &&
+           key.selectionRange.start === quote.selectionRange.start &&
+           key.selectionRange.end === quote.selectionRange.end;
+  });
+  
+  const newLevelsMap = [...siblings.levelsMap];
+  
+  if (index >= 0) {
+    // Replace the existing entry
+    newLevelsMap[index] = [quote, nodes];
+  } else {
+    // Add a new entry
+    newLevelsMap.push([quote, nodes]);
+  }
+  
+  return { levelsMap: newLevelsMap };
+}
+
 export function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTreeLevel[]): StoryTreeLevel[] {
   const returnableLevels = [...existingLevels];
 
@@ -59,21 +106,34 @@ export function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTr
       // otherwise, they are appended.
       if (levelWithNewItems.siblings?.levelsMap) {
         for (const [quote, newNodesAtLevel] of levelWithNewItems.siblings.levelsMap) {
-          const existingSiblings = returnableLevels[levelIndex].siblings.levelsMap.get(quote);        
+          const existingSiblings = findSiblingsForQuote(returnableLevels[levelIndex].siblings, quote);
+          
           // Filter out nodes that already exist
-          const existingIds = existingSiblings ? new Set(existingSiblings.map(node => node.id)) : new Set();
-          const uniqueNewNodes = newNodesAtLevel.filter(node => !existingIds.has(node.id));
+          const existingIds = existingSiblings ? new Set(existingSiblings.map((node: StoryTreeNode) => node.id)) : new Set();
+          const uniqueNewNodes = newNodesAtLevel.filter((node: StoryTreeNode) => !existingIds.has(node.id));
           
           if (existingSiblings && existingSiblings.length > 0) {
             if (levelWithNewItems.pagination.prevCursor) {
               // Prepend new nodes if pagination indicates loading a previous page.
-              returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...uniqueNewNodes, ...existingSiblings]);
+              returnableLevels[levelIndex].siblings = updateSiblingsForQuote(
+                returnableLevels[levelIndex].siblings,
+                quote,
+                [...uniqueNewNodes, ...existingSiblings]
+              );
             } else {
               // Otherwise, append new nodes.
-              returnableLevels[levelIndex].siblings.levelsMap.set(quote, [...existingSiblings, ...uniqueNewNodes]);
+              returnableLevels[levelIndex].siblings = updateSiblingsForQuote(
+                returnableLevels[levelIndex].siblings,
+                quote,
+                [...existingSiblings, ...uniqueNewNodes]
+              );
             }
           } else {
-            returnableLevels[levelIndex].siblings.levelsMap.set(quote, uniqueNewNodes);
+            returnableLevels[levelIndex].siblings = updateSiblingsForQuote(
+              returnableLevels[levelIndex].siblings,
+              quote,
+              uniqueNewNodes
+            );
           }
         }
       }

@@ -140,9 +140,10 @@ export interface PostCreationRequest {
     content: string;
 }
 
-// Existing Selectable Quotes Types
+// Quote Counts Types
+// Existing Selectable Quotes Types - Consistent with frontend QuoteCounts
 export interface ExistingSelectableQuotes {
-    quoteCounts: [Quote, number][];
+    quoteCounts: Array<[Quote, number]>;
 }
 
 // Cursor-based Pagination Types

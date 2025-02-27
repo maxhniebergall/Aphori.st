@@ -17,11 +17,11 @@ import { Quote } from "./quote";
 
 export interface QuoteCounts {
   // the quoteCounts map is a map of quotes (of the node) to the number of replies to that quote
-  quoteCounts: Map<Quote, number>;
+  quoteCounts: Array<[Quote, number]>;
 }
 
 export interface ExistingSelectableQuotesApiFormat {
-  quoteCounts: [Quote, number][];
+  quoteCounts: Array<[Quote, number]>;
 }
 
 export interface Post { // this is the value returned from the backend, representing the root node of the story tree
@@ -84,7 +84,8 @@ export interface StoryTreeNode { // this value only exists in the frontend. it c
 }
 
 export interface Siblings {
-  levelsMap: Map<Quote | null, StoryTreeNode[]>;
+  // Store siblings as an array of entries [Quote | null, StoryTreeNode[]] for better serialization
+  levelsMap: Array<[Quote | null, StoryTreeNode[]]>;
 }
 
 export interface StoryTreeLevel {
