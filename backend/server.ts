@@ -982,7 +982,7 @@ app.get<{
         };
 
         // Compress and send the response
-        const compressedResponse = await db.compress(response) as CursorPaginatedResponse<Reply>;
+        const compressedResponse = await db.compress(response) as unknown as CursorPaginatedResponse<Reply>;
         res.setHeader('X-Data-Compressed', 'true');
         const CompressedApiResponse: CompressedApiResponse<CursorPaginatedResponse<Reply>> = {
             success: true,
