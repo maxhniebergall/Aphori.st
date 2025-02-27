@@ -263,7 +263,7 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
-  private async fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
+  private async   fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
     const encodedSelectedQuoteString = new Quote(selectedQuote.text, selectedQuote.sourcePostId, selectedQuote.selectionRange).toString();
     console.log("fetchFirstRepliesForLevel", encodedSelectedQuoteString);
 
@@ -274,9 +274,7 @@ class StoryTreeOperator extends BaseOperator {
           validateStatus: status => status === 200
         })
       );
-      console.log(`Fetched replies for level ${levelNumber}:`, compressedPaginatedResponse);
       const decompressedPaginatedData = await compression.decompress<CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
-      console.log(`Fetched replies for level ${levelNumber}:`, decompressedPaginatedData);
       return decompressedPaginatedData;
 
     } catch (err) {
@@ -561,6 +559,7 @@ class StoryTreeOperator extends BaseOperator {
           pagination = maybeFirstReplies.pagination;
 
           const firstReplies: Reply[] = maybeFirstReplies.data;
+          console.log("firstReplies", firstReplies);
           const quoteCountsMap = new Map<Quote, QuoteCounts>();
           await Promise.all(firstReplies.map(async (reply: Reply) => {
             const quoteCounts = await this.fetchQuoteCounts(reply.id);
