@@ -109,12 +109,12 @@ export interface CreateReplyResponse {
 }
 
 export interface FeedItemsResponse{
-    feedItems: FeedItem[];
+    data: FeedItem[];
     pagination: Pagination;
 }
 
 export interface RepliesFeedResponse{
-    replies: Reply[];
+    data: Reply[];
     pagination: Pagination;
 }
 
@@ -161,6 +161,7 @@ export interface Pagination {
 
 export interface CursorPaginatedResponse<T> extends CompressedApiResponse<T[]> {
     pagination: Pagination;
+    data: T[];
 }
 
 // Redis Types

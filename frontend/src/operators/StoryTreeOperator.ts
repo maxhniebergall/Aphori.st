@@ -104,7 +104,7 @@ class StoryTreeOperator extends BaseOperator {
         })
       );
 
-      const decompressedPost = await compression.decompress<Compressed<Post>, Post>(compressedPost);
+      const decompressedPost = await compression.decompress<Post>(compressedPost);
       if (!decompressedPost) {
         throw new StoryTreeError('Failed to decompress post');
       }
@@ -253,11 +253,14 @@ class StoryTreeOperator extends BaseOperator {
         })
       );
       console.log(`Fetched replies for level ${level.levelNumber}:`, compressedPaginatedResponse);
-      const decompressedPaginatedData = await compression.decompress<Compressed<CursorPaginatedResponse<Reply>>, CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
+      const decompressedPaginatedData = await compression.decompress<CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
       if (decompressedPaginatedData && decompressedPaginatedData.pagination) {
         console.log(`Fetched replies for level ${level.levelNumber}:`, decompressedPaginatedData);
         const quoteCountsMap = new Map<Quote, QuoteCounts>();
-        await Promise.all(decompressedPaginatedData.data.map(async (reply: Reply) => {
+        // Use only the standardized data field
+        const repliesData = decompressedPaginatedData.data;
+                          
+        await Promise.all(repliesData.map(async (reply: Reply) => {
           const quoteCounts = await this.fetchQuoteCounts(reply.id);
           quoteCountsMap.set(reply.quote, quoteCounts);
         }));
@@ -265,7 +268,7 @@ class StoryTreeOperator extends BaseOperator {
         const newLevelData: StoryTreeLevel = {
           ...level,
           siblings: {
-            levelsMap: new Map([[level.selectedQuote, decompressedPaginatedData.data.map(reply => (
+            levelsMap: new Map([[level.selectedQuote, repliesData.map((reply: Reply) => (
               {
                 id: reply.id,
                 rootNodeId: level.rootNodeId,
@@ -314,7 +317,7 @@ class StoryTreeOperator extends BaseOperator {
         })
       );
       console.log(`Fetched replies for level ${levelNumber}:`, compressedPaginatedResponse);
-      const decompressedPaginatedData = await compression.decompress<Compressed<CursorPaginatedResponse<Reply>>, CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
+      const decompressedPaginatedData = await compression.decompress<CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
       console.log(`Fetched replies for level ${levelNumber}:`, decompressedPaginatedData);
       return decompressedPaginatedData;
 
@@ -344,7 +347,7 @@ class StoryTreeOperator extends BaseOperator {
         validateStatus: status => status === 200
       })
     );
-    const decompressedResponse = await compression.decompress<Compressed<ExistingSelectableQuotesApiFormat>, ExistingSelectableQuotesApiFormat>(compressedResponse);
+    const decompressedResponse = await compression.decompress<ExistingSelectableQuotesApiFormat>(compressedResponse);
     if (!decompressedResponse || !decompressedResponse.quoteCounts) {
       console.error('Invalid data received for quote counts:', decompressedResponse);
       throw new StoryTreeError('Invalid data received for quote counts');
