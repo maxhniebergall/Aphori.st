@@ -1,0 +1,275 @@
+---
+description: USE dispatch and reducer pattern WHEN managing global state in React TO ensure consistent and predictable state updates
+globs: src/**/*.{jsx,tsx,js,ts}
+alwaysApply: false
+---
+
+# React Dispatch and Reducer for Global State Management
+
+## Context
+- When implementing global state management in React applications
+- When state updates need to be predictable and traceable
+- When multiple components need access to the same state
+- When you need to optimize performance by avoiding prop drilling
+
+## Requirements
+- Use React's useReducer hook or createContext with useReducer for global state
+- Define action types as constants or in a TypeScript enum
+- Structure reducers as pure functions that don't cause side effects
+- Dispatch actions with a clear type and payload structure
+- Provide proper TypeScript typing for state, actions, and reducers
+- Avoid direct state mutations; always return new state objects
+- Organize related state, actions, and reducers in feature-based modules
+- Create operator classes to provide controlled access to state and dispatch functions
+- Ensure reducer functions handle all action types and include a default case
+- Remember that dispatch is asynchronous and won't update state immediately in the current function scope
+
+## Operator Pattern
+- Create operator classes that encapsulate state access and manipulation logic
+- Operators should provide methods that dispatch actions with proper typing
+- Operators should expose only the necessary state and methods to components
+- Use operators to abstract away the complexity of state management from UI components
+- Operators can include derived state calculations and business logic
+
+## Examples
+
+<example>
+// Action types
+export enum TodoActionTypes {
+  ADD_TODO = 'ADD_TODO',
+  TOGGLE_TODO = 'TOGGLE_TODO',
+  DELETE_TODO = 'DELETE_TODO',
+}
+
+// Action type definitions
+type TodoAction = 
+  | { type: TodoActionTypes.ADD_TODO; payload: { text: string } }
+  | { type: TodoActionTypes.TOGGLE_TODO; payload: { id: number } }
+  | { type: TodoActionTypes.DELETE_TODO; payload: { id: number } };
+
+// State type definition
+interface TodoState {
+  todos: Array<{ id: number; text: string; completed: boolean }>;
+  loading: boolean;
+}
+
+// Initial state
+const initialState: TodoState = {
+  todos: [],
+  loading: false,
+};
+
+// Reducer
+export const todoReducer = (state: TodoState, action: TodoAction): TodoState => {
+  switch (action.type) {
+    case TodoActionTypes.ADD_TODO:
+      return {
+        ...state,
+        todos: [...state.todos, { id: Date.now(), text: action.payload.text, completed: false }],
+      };
+    case TodoActionTypes.TOGGLE_TODO:
+      return {
+        ...state,
+        todos: state.todos.map(todo => 
+          todo.id === action.payload.id 
+            ? { ...todo, completed: !todo.completed } 
+            : todo
+        ),
+      };
+    case TodoActionTypes.DELETE_TODO:
+      return {
+        ...state,
+        todos: state.todos.filter(todo => todo.id !== action.payload.id),
+      };
+    default:
+      return state;
+  }
+};
+
+// Context creation
+export const TodoContext = createContext<{
+  state: TodoState;
+  dispatch: React.Dispatch<TodoAction>;
+} | undefined>(undefined);
+
+// Context provider
+export const TodoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [state, dispatch] = useReducer(todoReducer, initialState);
+  
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({ state, dispatch }), [state]);
+  
+  return (
+    <TodoContext.Provider value={contextValue}>
+      {children}
+    </TodoContext.Provider>
+  );
+};
+
+// Custom hook for accessing context
+export const useTodoContext = () => {
+  const context = useContext(TodoContext);
+  if (context === undefined) {
+    throw new Error('useTodoContext must be used within a TodoProvider');
+  }
+  return context;
+};
+
+// Operator class for encapsulating state access and operations
+export class TodoOperator {
+  private state: TodoState;
+  private dispatch: React.Dispatch<TodoAction>;
+
+  constructor(context: { state: TodoState; dispatch: React.Dispatch<TodoAction> }) {
+    this.state = context.state;
+    this.dispatch = context.dispatch;
+  }
+
+  // Getters for state
+  get todos() {
+    return this.state.todos;
+  }
+
+  get completedTodos() {
+    return this.state.todos.filter(todo => todo.completed);
+  }
+
+  get incompleteTodos() {
+    return this.state.todos.filter(todo => !todo.completed);
+  }
+
+  // Methods for dispatching actions
+  addTodo(text: string) {
+    this.dispatch({
+      type: TodoActionTypes.ADD_TODO,
+      payload: { text }
+    });
+  }
+
+  toggleTodo(id: number) {
+    this.dispatch({
+      type: TodoActionTypes.TOGGLE_TODO,
+      payload: { id }
+    });
+  }
+
+  deleteTodo(id: number) {
+    this.dispatch({
+      type: TodoActionTypes.DELETE_TODO,
+      payload: { id }
+    });
+  }
+}
+
+// Usage in component
+const TodoComponent: React.FC = () => {
+  const context = useTodoContext();
+  const todoOp = new TodoOperator(context);
+  const [newTodo, setNewTodo] = useState('');
+
+  const handleAddTodo = () => {
+    if (newTodo.trim()) {
+      todoOp.addTodo(newTodo);
+      setNewTodo('');
+    }
+  };
+
+  return (
+    <div>
+      <input 
+        value={newTodo} 
+        onChange={(e) => setNewTodo(e.target.value)} 
+      />
+      <button onClick={handleAddTodo}>Add Todo</button>
+      <ul>
+        {todoOp.todos.map(todo => (
+          <li key={todo.id}>
+            <span 
+              style={{ textDecoration: todo.completed ? 'line-through' : 'none' }}
+              onClick={() => todoOp.toggleTodo(todo.id)}
+            >
+              {todo.text}
+            </span>
+            <button onClick={() => todoOp.deleteTodo(todo.id)}>Delete</button>
+          </li>
+        ))}
+      </ul>
+      <div>
+        <p>Total: {todoOp.todos.length}</p>
+        <p>Completed: {todoOp.completedTodos.length}</p>
+        <p>Incomplete: {todoOp.incompleteTodos.length}</p>
+      </div>
+    </div>
+  );
+};
+</example>
+
+<example type="invalid">
+// Using a third-party dependency like redux
+import { createSlice, configureStore } from '@reduxjs/toolkit'
+
+// Directly mutating state
+const todoReducer = (state, action) => {
+  if (action.type === 'ADD_TODO') {
+    // 🚩 Wrong: mutating state directly
+    state.todos.push({ text: action.text });
+    return state;
+  }
+  return state;
+};
+
+// Missing action type constants
+// 🚩 Wrong: using string literals instead of constants
+dispatch({ type: 'add-todo', text: 'New task' });
+
+// Inconsistent action structure
+// 🚩 Wrong: using inconsistent action structure
+dispatch({ kind: 'ADD_TODO', data: { text: 'New task' } });
+
+// Side effects in reducer
+const todoReducer = (state, action) => {
+  if (action.type === 'ADD_TODO') {
+    // 🚩 Wrong: side effect in reducer
+    saveToLocalStorage(action.text);
+    return { ...state, todos: [...state.todos, { text: action.text }] };
+  }
+  return state;
+};
+
+// Missing default case in reducer
+// 🚩 Wrong: no default case to handle unknown actions
+const todoReducer = (state, action) => {
+  switch (action.type) {
+    case 'ADD_TODO':
+      return { ...state, todos: [...state.todos, { text: action.text }] };
+    case 'REMOVE_TODO':
+      return { ...state, todos: state.todos.filter(todo => todo.id !== action.id) };
+    // Missing default case
+  }
+};
+
+// Accessing context without checking if it's undefined
+// 🚩 Wrong: not checking if context is undefined
+const TodoComponent = () => {
+  const { state, dispatch } = useContext(TodoContext);
+  // This will crash if used outside of TodoProvider
+  return <div>{state.todos.length}</div>;
+};
+
+// Directly accessing state and dispatch without operator
+// 🚩 Wrong: exposing state management details to components
+const TodoComponent = () => {
+  const { state, dispatch } = useTodoContext();
+  
+  return (
+    <div>
+      <button onClick={() => dispatch({ 
+        type: TodoActionTypes.ADD_TODO, 
+        payload: { text: 'New task' } 
+      })}>
+        Add Task
+      </button>
+    </div>
+  );
+};
+</example> 
