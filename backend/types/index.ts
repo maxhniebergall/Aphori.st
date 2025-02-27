@@ -85,11 +85,18 @@ export interface AuthenticatedRequest extends Request {
 }
 
 // API Response Types
-export interface ApiResponse<T = any> {
+export interface CompressedApiResponse<T = any> {
     success: boolean;
     error?: string;
     message?: string;
     compressedData?: T;
+}
+
+export interface ApiResponse<T = any> {
+    success: boolean;
+    error?: string;
+    message?: string;
+    data?: T;
 }
 
 // Specific response type for createReply endpoint

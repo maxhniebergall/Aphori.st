@@ -19,7 +19,7 @@
 - Maintains quote reply counts using hash storage for efficient retrieval
 - Reads old format of quote reply counts, migrates to new format, and replaces old format in database
 - Implements combined node endpoint for unified node structure with backward compatibility and updated compression handling
-- Provides API endpoint to retrieve quote reply counts for a given parent ID, returning ApiResponse<ExistingSelectableQuotes>
+- Provides API endpoint to retrieve quote reply counts for a given parent ID, returning CompressedApiResponse<ExistingSelectableQuotes>
 
 - TODO:
   - Seperate user + email functions into a seperate file
@@ -49,7 +49,7 @@ import {
     Reply, 
     FeedItem,
     AuthenticatedRequest,
-    ApiResponse,
+    CompressedApiResponse,
     CursorPaginatedResponse,
     TokenPayload,
     AuthTokenPayload,
@@ -201,7 +201,7 @@ const authenticateToken = (req: Request, res: Response, next: NextFunction): voi
 };
 
 // Get feed data with pagination
-app.get('/api/feed', async (req: Request, res: Response<ApiResponse<FeedItemsResponse>>): Promise<void> => {
+app.get('/api/feed', async (req: Request, res: Response<CompressedApiResponse<FeedItemsResponse>>): Promise<void> => {
     const limit = parseInt(req.query.limit as string) || 10;
     let cursor = 0;
 
@@ -245,7 +245,24 @@ app.get('/api/feed', async (req: Request, res: Response<ApiResponse<FeedItemsRes
             key: 'feedItems'
         });
 
-        const feedItems = await db.lRange('feedItems', cursor, endIndex - 1, { returnCompressed: false }) as FeedItem[]; 
+        // Define a type guard function for FeedItem
+        function isValidFeedItem(item: any): item is FeedItem {
+            return (
+                typeof item === 'object' &&
+                typeof item.id === 'string' &&
+                typeof item.text === 'string' &&
+                typeof item.authorId === 'string' &&
+                typeof item.createdAt === 'string'
+                // Add more checks as per your FeedItem structure
+            );
+        }
+
+        // Use the type guard in your code
+        const fetchedItems: unknown = await db.lRange('feedItems', cursor, endIndex - 1, { returnCompressed: false });
+        if (!Array.isArray(fetchedItems) || !fetchedItems.every(isValidFeedItem)) {
+            throw new Error("Invalid feed items returned from the database");
+        }
+        const feedItems: FeedItem[] = fetchedItems;
 
         logger.info("feed items: %O", feedItems);
         
@@ -266,7 +283,7 @@ app.get('/api/feed', async (req: Request, res: Response<ApiResponse<FeedItemsRes
         const response = {
             success: true,
             compressedData: compressedData
-        } as ApiResponse<FeedItemsResponse>;
+        } as CompressedApiResponse<FeedItemsResponse>;
 
         // Add compression header to indicate data is compressed
         res.setHeader('X-Data-Compressed', 'true');
@@ -818,7 +835,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         const response = {
             success: true,
             data: { id: replyId }
-        } as ApiResponse<{ id: string }>;
+        } as CompressedApiResponse<{ id: string }>;
         res.send(response);
     } catch (err) {
         logger.error('Error creating reply:', err);
@@ -831,7 +848,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
 
 
 // Get global replies feed
-app.get('/api/getRepliesFeed', async (req: Request, res: Response<ApiResponse<RepliesFeedResponse>>): Promise<void> => {
+app.get('/api/getRepliesFeed', async (req: Request, res: Response<CompressedApiResponse<RepliesFeedResponse>>): Promise<void> => {
     try {
 
         // Cursor-based pagination handling via query parameters.
@@ -866,7 +883,7 @@ app.get('/api/getRepliesFeed', async (req: Request, res: Response<ApiResponse<Re
         const response = {
             success: true,
             compressedData: compressedData
-        } as ApiResponse<RepliesFeedResponse>;
+        } as CompressedApiResponse<RepliesFeedResponse>;
         
         // Add compression header
         res.setHeader('X-Data-Compressed', 'true');
@@ -882,7 +899,7 @@ app.get<{
     uuid: string;
     quote: string; 
     sortingCriteria: SortingCriteria 
-}, ApiResponse<CursorPaginatedResponse<Reply>>>('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req, res) => {
+}, CompressedApiResponse<CursorPaginatedResponse<Reply>>>('/api/getReplies/:uuid/:quote/:sortingCriteria', async (req, res) => {
     try {
         const { uuid, quote, sortingCriteria } = req.params;
         let quoteObj: Quote;
@@ -895,7 +912,7 @@ app.get<{
                 throw new Error('Invalid quote format');
             }
         } catch (error) {
-            const errorResponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+            const errorResponse: CompressedApiResponse<CursorPaginatedResponse<Reply>> = {
                 success: false,
                 error: 'Invalid quote object provided in URL parameter'
             };
@@ -905,7 +922,7 @@ app.get<{
 
         // Validate that the quote object includes the required fields.
         if (!quoteObj.text || !quoteObj.sourcePostId || !quoteObj.selectionRange) {
-            const errorResponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+            const errorResponse: CompressedApiResponse<CursorPaginatedResponse<Reply>> = {
                 success: false,
                 error: 'Quote object must include text, sourcePostId, and selectionRange fields'
             };
@@ -967,14 +984,14 @@ app.get<{
         // Compress and send the response
         const compressedResponse = await db.compress(response) as CursorPaginatedResponse<Reply>;
         res.setHeader('X-Data-Compressed', 'true');
-        const apiResponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+        const CompressedApiResponse: CompressedApiResponse<CursorPaginatedResponse<Reply>> = {
             success: true,
             compressedData: compressedResponse
         };
-        res.send(apiResponse);
+        res.send(CompressedApiResponse);
     } catch (err) {
         logger.error('Error fetching replies by quote:', err);
-        const errorResponse: ApiResponse<CursorPaginatedResponse<Reply>> = {
+        const errorResponse: CompressedApiResponse<CursorPaginatedResponse<Reply>> = {
             success: false,
             error: 'Server error'
         };
@@ -987,7 +1004,7 @@ app.get<{
  * @desc    Retrieves a post, a top level storyTree element
  * @access  Public
  */
-app.get<{ uuid: string }, ApiResponse<Post>>('/api/getPost/:uuid', async (req, res) => {
+app.get<{ uuid: string }, CompressedApiResponse<Post>>('/api/getPost/:uuid', async (req, res) => {
     const { uuid } = req.params;
     if (!uuid) {
         res.status(400).json({ success: false, error: 'UUID is required' });
@@ -1002,12 +1019,12 @@ app.get<{ uuid: string }, ApiResponse<Post>>('/api/getPost/:uuid', async (req, r
         }
         const post = maybePost as Post;
     
-        const apiResponse: ApiResponse<Post> = {
+        const CompressedApiResponse: CompressedApiResponse<Post> = {
             success: true,
             compressedData: post
         };
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(apiResponse);
+        res.send(CompressedApiResponse);
     } catch (error) {
         logger.error('Error in getPost endpoint:', error);
         res.status(500).json({ success: false, error: 'Server error' });
@@ -1015,8 +1032,8 @@ app.get<{ uuid: string }, ApiResponse<Post>>('/api/getPost/:uuid', async (req, r
 });
 
 // New API endpoint: Retrieves quote reply counts for a given parent ID.
-// Returns an ApiResponse containing ExistingSelectableQuotes, where the quoteCounts property is an array of map entries.
-app.get<{ parentId: string }, ApiResponse<ExistingSelectableQuotes>>('/api/getQuoteCounts/:parentId', async (req: Request, res: Response) => {
+// Returns an CompressedApiResponse containing ExistingSelectableQuotes, where the quoteCounts property is an array of map entries.
+app.get<{ parentId: string }, CompressedApiResponse<ExistingSelectableQuotes>>('/api/getQuoteCounts/:parentId', async (req: Request, res: Response) => {
     const { parentId } = req.params;
     if (!parentId) {
         res.status(400).json({ success: false, error: 'Parent ID is required' });
@@ -1045,12 +1062,12 @@ app.get<{ parentId: string }, ApiResponse<ExistingSelectableQuotes>>('/api/getQu
         const quoteCountsArray = Array.from(quoteCountsMap.entries());
         const compressedResponse = await db.compress({ quoteCounts: quoteCountsArray });
 
-        const apiResponse: ApiResponse<ExistingSelectableQuotes> = {
+        const CompressedApiResponse: CompressedApiResponse<ExistingSelectableQuotes> = {
             success: true,
             compressedData: compressedResponse
         };
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(apiResponse);
+        res.send(CompressedApiResponse);
     } catch (error) {
         logger.error('Error retrieving quote counts for parent ID %s: %s', parentId, error);
         res.status(500).json({ success: false, error: 'Internal server error' });
