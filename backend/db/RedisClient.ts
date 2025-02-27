@@ -220,9 +220,12 @@ export class RedisClient extends DatabaseClientInterface {
       }
       
       const [nextCursor, elements] = result;
-      const nextCursorStr = typeof nextCursor === 'string' ? nextCursor : 
-                           typeof nextCursor === 'number' ? nextCursor.toString() : 
-                           Buffer.isBuffer(nextCursor) ? nextCursor.toString() : '0';
+      let nextCursorStr = null;
+      if (typeof nextCursor === 'string') {
+        nextCursorStr = nextCursor;
+      } else {
+        throw new Error(`Invalid ZSCAN response format of cursor: [${nextCursor}]`);
+      }
       
       // Redis returns results as [member1, score1, member2, score2, ...]
       const items: RedisSortedSetItem<string>[] = [];
@@ -231,9 +234,19 @@ export class RedisClient extends DatabaseClientInterface {
           const value = elements[i];
           const score = elements[i + 1];
           if (value !== undefined && score !== undefined) {
-            const parsedScore = typeof score === 'string' ? parseFloat(score) : 
-                              typeof score === 'number' ? score : 
-                              Buffer.isBuffer(score) ? parseFloat(score.toString()) : 0;
+            let parsedScore = null;
+            if (typeof score === 'string') {
+              parsedScore = parseFloat(score);
+              if (isNaN(parsedScore)) {
+                throw new Error(`Invalid score format: [${score}]`);
+              }
+            } else if (typeof score === 'number') {
+              parsedScore = score;
+            } else if (Buffer.isBuffer(score)) {
+              parsedScore = parseFloat(score.toString());
+            } else {
+              throw new Error(`Invalid score format: [${score}]`);
+            }
             
             items.push({
               value: value as string,

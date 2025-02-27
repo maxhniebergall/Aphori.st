@@ -322,22 +322,15 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
 
         try {
             const result = await this.db.zscan(key, cursor, options);
+            console.log("result", result);
             
             if (!result || !result.items) {
                 return { cursor: '0', items: [] };
             }
 
-            // Decompress each item's value while preserving scores
-            const decompressedItems = await Promise.all(
-                result.items.map(async (item) => ({
-                    score: item.score,
-                    value: await this.compression.decompress(item.value)
-                }))
-            );
-
             return {
                 cursor: result.cursor,
-                items: decompressedItems
+                items: result.items
             };
         } catch (err) {
             logger.error('Error in zscan:', err);
