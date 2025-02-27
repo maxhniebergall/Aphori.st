@@ -958,7 +958,7 @@ app.get<{
             scanResult.items.map(async (item: RedisSortedSetItem<string>) => {
                 try {
                     // Fetch the actual reply data using the ID
-                    const reply = await db.hGet(item.value, 'reply');
+                    const reply = await db.hGet(item.value, 'reply', { returnCompressed: false });
                     return reply;
                 } catch (err) {
                     logger.error(`Error fetching reply ${item.value}:`, err);
