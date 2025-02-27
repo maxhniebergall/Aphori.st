@@ -34,10 +34,19 @@ export class DatabaseCompression {
                 throw new Error('No value provided');
             }
             if (value.c === false) {
-                console.warn("Compression: Value is not compressed, returning as is");
-                if (typeof value === 'object' && value !== null) {
+                const isb64 = isBase64(value.d);
+                
+                if (typeof value.d === 'object' && value.d !== null) {
                     return value.d as T;
                 }
+
+                // New check for Base64 encoding
+                if (typeof value.d === 'string' && isb64) {
+                    const decoded = Buffer.from(value.d, 'base64');
+                    const text = new TextDecoder().decode(decoded);
+                    return JSON.parse(text) as T;
+                }
+
                 throw new Error('Value is not of expected type');
             }
             if (!value.d) {
@@ -86,4 +95,10 @@ export class DatabaseCompression {
 
 // Create a singleton instance
 const compression = new DatabaseCompression();
-export default compression; 
+export default compression;
+
+// New helper function to check if a string is Base64 encoded
+function isBase64(str: string): boolean {
+    const base64Pattern = /^[A-Za-z0-9+/]+={0,2}$/;
+    return base64Pattern.test(str) && (str.length % 4 === 0);
+} 

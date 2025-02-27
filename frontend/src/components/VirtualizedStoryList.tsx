@@ -122,7 +122,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
         index, 
         hasLevel: !!level,
         levelNumber: level?.levelNumber,
-        siblings: JSON.stringify(level?.siblings?.levelsMap)
+        stringifiedSiblings: JSON.stringify(level?.siblings?.levelsMap)
       });
       if (!level) return null;
 
