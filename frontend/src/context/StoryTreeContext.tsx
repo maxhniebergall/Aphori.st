@@ -139,50 +139,27 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           return state; // or handle the error as needed
         }
 
-        if (selectedNode.levelNumber === 0) {
-          return {
-            ...state,
-            storyTree: { 
-              ...state.storyTree, 
-              levels: [
-                {
-                  ...updatedLevel,
-                  selectedNode: selectedNode
-                }, 
-                ...state.storyTree.levels.slice(selectedNode.levelNumber)
-              ] 
-            }
-          };
-        } else if (selectedNode.levelNumber === state.storyTree.levels.length) {
-          return {
-            ...state,
-            storyTree: { 
-              ...state.storyTree, 
-              levels: [
-                ...state.storyTree.levels.slice(0, selectedNode.levelNumber - 1), 
-                {
-                  ...updatedLevel,
-                  selectedNode: selectedNode
-                }
-              ] 
-            }
-          };
-        } else {
-          return {
-            ...state,
-            storyTree: { 
-              ...state.storyTree, 
-              levels: [
-                ...state.storyTree.levels.slice(0, selectedNode.levelNumber - 1), 
-                {
-                  ...updatedLevel,
-                  selectedNode: selectedNode
-                }, 
-                ...state.storyTree.levels.slice(selectedNode.levelNumber)
-              ] 
-            }
-          };
+        // Create a new levels array
+        const newLevels = [...state.storyTree.levels];
+        
+        // Update the level with the selected node
+        newLevels[selectedNode.levelNumber] = {
+          ...updatedLevel,
+          selectedNode: selectedNode
+        };
+        
+        // Truncate levels after the selected level if needed
+        if (selectedNode.levelNumber < newLevels.length - 1) {
+          newLevels.length = selectedNode.levelNumber + 1;
         }
+        
+        return {
+          ...state,
+          storyTree: {
+            ...state.storyTree,
+            levels: newLevels
+          }
+        };
       }
     
     

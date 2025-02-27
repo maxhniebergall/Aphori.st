@@ -50,8 +50,51 @@ const NodeContent: React.FC<NodeContentProps> = ({
 
   // Memoize the existingSelectableQuotes to prevent unnecessary re-renders
   const memoizedExistingSelectableQuotes = useMemo(() => {
-    return existingSelectableQuotes || { quoteCounts: new Map() };
-  }, [existingSelectableQuotes]);
+    // Check if node has quoteCounts directly
+    const nodeQuoteCounts = node.quoteCounts?.quoteCounts;
+    
+    // Log the node's quote counts for debugging
+    console.log('NodeContent: Node quote counts details', {
+      nodeId: node.id,
+      hasQuoteCounts: !!node.quoteCounts,
+      quotesCountsType: node.quoteCounts ? typeof node.quoteCounts.quoteCounts : 'undefined',
+      isMap: node.quoteCounts?.quoteCounts instanceof Map,
+      size: node.quoteCounts?.quoteCounts?.size || 0,
+      entries: node.quoteCounts?.quoteCounts instanceof Map ? 
+        Array.from(node.quoteCounts.quoteCounts.entries()).slice(0, 1).map(([q, c]) => ({
+          text: q.text?.substring(0, 30) + '...',
+          count: c
+        })) : 'not a map'
+    });
+    
+    // Use the node's quote counts if available, otherwise use the passed in existingSelectableQuotes
+    const result = existingSelectableQuotes || (nodeQuoteCounts ? { quoteCounts: nodeQuoteCounts } : { quoteCounts: new Map() });
+    
+    // Safely get the first entry if it exists
+    let firstEntryStr = 'none';
+    if (result.quoteCounts instanceof Map && result.quoteCounts.size > 0) {
+      try {
+        const firstEntry = Array.from(result.quoteCounts.entries())[0];
+        const [quote, count] = firstEntry;
+        firstEntryStr = `Quote: ${quote.text.substring(0, 30)}..., Count: ${count}`;
+      } catch (e) {
+        console.error('Error getting first entry from quoteCounts', e);
+      }
+    }
+    
+    console.log('NodeContent: Memoizing existingSelectableQuotes', {
+      hasExistingQuotes: !!existingSelectableQuotes,
+      resultHasQuoteCounts: !!result.quoteCounts,
+      quoteCountsSize: result.quoteCounts?.size || 0,
+      isMap: result.quoteCounts instanceof Map,
+      nodeId: node.id,
+      nodeHasQuoteCounts: !!node.quoteCounts,
+      nodeQuoteCountsSize: node.quoteCounts?.quoteCounts?.size || 0,
+      nodeQuoteCountsEntries: firstEntryStr
+    });
+    
+    return result;
+  }, [existingSelectableQuotes, node.quoteCounts, node.id]);
 
   return (
     <div 

@@ -63,15 +63,18 @@ class FeedOperator extends BaseOperator {
                 success: false,
                 error: "Invalid feed data structure"
             };
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error fetching feed items:', error);
+            const errorMessage = error instanceof Error 
+                ? error.message 
+                : 'Failed to fetch feed items';
+            const responseError = error as { response?: { data?: { error?: string } } };
             return {
                 success: false,
-                error: error.response?.data?.error || error.message || 'Failed to fetch feed items'
+                error: responseError.response?.data?.error || errorMessage
             };
         }
     }
 }
 
 export const feedOperator = new FeedOperator();
-export default feedOperator; 

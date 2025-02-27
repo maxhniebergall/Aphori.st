@@ -50,8 +50,13 @@ const PostPage: React.FC = (): JSX.Element => {
         { post: newPost }
       );
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to create post');
+    } catch (err: unknown) {
+      if (typeof err === 'object' && err !== null) {
+        const errorResponse = err as { response: { data: { message: string } } };
+        setError(errorResponse.response?.data?.message || 'Failed to create post');
+      } else {
+        setError('Failed to create post');
+      }
     } finally { 
       setIsSubmitting(false);
     }

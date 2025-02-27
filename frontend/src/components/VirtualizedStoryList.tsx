@@ -165,7 +165,6 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
             >
               {({ onItemsRendered, ref }) => {
                 const refSetter = (list: VariableSizeList | null) => {
-                  console.log("VirtualizedStoryList: Setting list ref:", { hasRef: !!list });
                   listRef.current = list;
                   if (typeof ref === 'function') {
                     ref(list);

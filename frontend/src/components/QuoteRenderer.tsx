@@ -5,7 +5,6 @@
  * - Handle null checks
  * - Support accessibility
  * - Use text for quote text
- * - Link to source post
  * - Proper styling
  * - Error handling
  * - Performance optimization
@@ -21,9 +20,17 @@ interface QuoteRendererProps {
 }
 
 const QuoteRenderer: React.FC<QuoteRendererProps> = ({ quote }) => {
+  if (!quote?.text) {
+    return null;
+  }
   return (
     <div className="quote-container" role="blockquote">
       <blockquote className="quote-text">{quote.text}</blockquote>
+      {quote.sourcePostId && (
+        <Link to={`/post/${quote.sourcePostId}`} className="quote-source">
+          View source post
+        </Link>
+      )}
     </div>
   );
 };

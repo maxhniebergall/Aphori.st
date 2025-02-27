@@ -33,13 +33,6 @@ const Row: React.FC<RowProps> = React.memo(
     setSize, 
     shouldHide
   }) => {
-    console.log("Row: Rendering with props:", {
-      hasStyle: !!style,
-      levelNumber: levelData?.levelNumber,
-      shouldHide,
-      siblings: levelData?.siblings?.levelsMap?.size
-    });
-
     // Determine if the node should be hidden based on reply mode
 
     // Memoize the user's style and merge necessary absolute positioning
@@ -82,6 +75,16 @@ const Row: React.FC<RowProps> = React.memo(
     );
   },
   (prevProps, nextProps) => {
+    // Check if the selected node's quote counts have changed
+    const prevQuoteCounts = prevProps.levelData?.selectedNode?.quoteCounts;
+    const nextQuoteCounts = nextProps.levelData?.selectedNode?.quoteCounts;
+    
+    // If quote counts changed, we should re-render
+    if (prevQuoteCounts !== nextQuoteCounts) {
+      return false; // Return false to trigger re-render
+    }
+    
+    // Otherwise, use the existing checks
     const shouldUpdate = (
       prevProps.levelData?.rootNodeId === nextProps.levelData?.rootNodeId &&
       prevProps.index === nextProps.index &&

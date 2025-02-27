@@ -19,13 +19,6 @@ export interface RowContainerProps {
 function RowContainer({ setSize, shouldHide = false, children, style }: RowContainerProps) {
   const rowRef = useRef<HTMLDivElement>(null);
 
-  console.log("RowContainer: Initializing with props:", {
-    hasSetSize: !!setSize,
-    shouldHide,
-    hasChildren: !!children,
-    style
-  });
-
   // Use the hook to update height and cleanup
   useDynamicRowHeight({
     rowRef,
@@ -47,8 +40,6 @@ function RowContainer({ setSize, shouldHide = false, children, style }: RowConta
     opacity: shouldHide ? 0 : 1,
     transition: 'opacity 0.2s ease-in-out'
   };
-
-  console.log("RowContainer: Computed final style:", computedStyle);
 
   return (
     <div

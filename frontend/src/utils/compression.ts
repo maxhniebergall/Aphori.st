@@ -9,7 +9,7 @@ export class DatabaseCompression {
      * @param value - The value to compress.
      * @returns A promise that resolves to the Base64 encoded compressed string.
      */
-    async compress(value: unknown): Promise<string> {
+    compress(value: unknown): string {
         let stringValue: string;
         if (typeof value !== 'string') {
             stringValue = JSON.stringify(value);
@@ -28,7 +28,7 @@ export class DatabaseCompression {
      * @param value - The Base64 encoded compressed string (or null/undefined).
      * @returns A promise that resolves to the parsed object, the raw decompressed string, or null.
      */
-    async decompress<T = unknown, V = unknown>(value: Compressed<T>): Promise<V | null> {
+    decompress<T = unknown, V = unknown>(value: Compressed<T>): V | null {
         try {
             console.log("Compression: Decompressing value:", value," type: ", typeof value);
             if (!value) {
@@ -36,7 +36,10 @@ export class DatabaseCompression {
             }
             if (value.c === false) {
                 console.log("Compression: Value is not compressed, returning as is");
-                return value as V;
+                if (typeof value === 'object' && value !== null) {
+                    return value as V;
+                }
+                throw new Error('Value is not of expected type');
             }
             if (!value.d) {
                 throw new Error('No compressed data found');
@@ -67,11 +70,14 @@ export class DatabaseCompression {
      * @param value - A Base64 encoded string or already decoded value.
      * @returns A promise that resolves to the decoded value.
      */
-    async unencode<T>(value: T): Promise<T>;
-    async unencode<T>(value: string): Promise<T>;
-    async unencode<T>(value: string | T): Promise<T> {
+     unencode<T>(value: T): T;
+     unencode<T>(value: string): T;
+     unencode<T>(value: string | T): T {
         if (typeof value !== 'string') {
-            return value as T;
+            if (typeof value === 'object' && value !== null) {
+                return value as T;
+            }
+            throw new Error('Value is not of expected type');        
         }
         const encoded = Buffer.from(value, 'base64');
         const text = new TextDecoder().decode(encoded);

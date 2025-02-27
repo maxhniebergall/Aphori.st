@@ -1,11 +1,21 @@
-// components/Feed.js
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import './Feed.css';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
-import feedOperator from '../operators/FeedOperator';
+import { feedOperator } from '../operators/FeedOperator';
 import { FeedItem, Pagination, FeedResponse, FetchResult } from '../types/types';
+
+// Define regex patterns
+const PATTERNS = {
+  FORMATTING: /[*~_]{1,2}([^*~_]+)[*~_]{1,2}/g,
+  LINKS: /\[([^\]]+)\]\([^)]+\)/g,
+  CODE: /`([^`]+)`/g,
+  HEADERS: /^#+\s+/gm,
+  NEWLINES: /\n+/g,
+  REMAINING: /[*~_`#[\]()]/g,
+  SPACES: /\s+/g
+};
 
 // Helper function to strip markdown and truncate text
 const truncateText = (text: string | undefined, maxLength = 150): string => {
@@ -14,19 +24,19 @@ const truncateText = (text: string | undefined, maxLength = 150): string => {
   // Strip markdown characters and replace newlines with spaces
   let processedText = text
     // Remove bold/italic/strikethrough
-    .replace(/[*~_]{1,2}([^*~_]+)[*~_]{1,2}/g, '$1')
+    .replace(PATTERNS.FORMATTING, '$1')
     // Remove links
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(PATTERNS.LINKS, '$1')
     // Remove code blocks
-    .replace(/`([^`]+)`/g, '$1')
+    .replace(PATTERNS.CODE, '$1')
     // Remove headers
-    .replace(/^#+\s+/gm, '')
+    .replace(PATTERNS.HEADERS, '')
     // Replace newlines with spaces
-    .replace(/\n+/g, ' ')
+    .replace(PATTERNS.NEWLINES, ' ')
     // Remove any remaining markdown characters
-    .replace(/[*~_`#[\]()]/g, '')
+    .replace(PATTERNS.REMAINING, '')
     // Collapse multiple spaces
-    .replace(/\s+/g, ' ')
+    .replace(PATTERNS.SPACES, ' ')
     .trim();
   
   if (processedText.length <= maxLength) return processedText;
@@ -41,6 +51,19 @@ const truncateText = (text: string | undefined, maxLength = 150): string => {
   return truncated + '...';
 };
 
+function isFeedResponse(response: any): response is FeedResponse {
+  return (
+    response &&
+    response.success === true &&
+    Array.isArray(response.items) &&
+    response.pagination &&
+    typeof response.pagination.nextCursor === 'string' &&
+    typeof response.pagination.prevCursor === 'string' &&
+    typeof response.pagination.hasMore === 'boolean' &&
+    typeof response.pagination.totalCount === 'number'
+  );
+}
+
 function Feed(): JSX.Element {
   const navigate = useNavigate();
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -48,14 +71,16 @@ function Feed(): JSX.Element {
     nextCursor: undefined,
     prevCursor: undefined,
     hasMore: false,
-    matchingRepliesCount: 0
+    totalCount: 0
   });
 
   const fetchFeedItems = useCallback(async (cursor?: string): Promise<FetchResult> => {
     try {
-      // Make sure cursor is a string when passed to the API
-      const response = await feedOperator.getFeedItems(cursor || "") as FeedResponse;
-      
+      const response = await feedOperator.getFeedItems(cursor || "");
+      if (!isFeedResponse(response)) {
+        throw new Error('Invalid response format');
+      }
+
       if (!response.success) {
         throw new Error(response.error || 'Unknown error');
       }
@@ -68,10 +93,10 @@ function Feed(): JSX.Element {
       return {
         data: response.items,
         pagination: {
-          nextCursor: response.pagination?.nextCursor,
-          prevCursor: response.pagination?.prevCursor,
-          hasMore: response.pagination?.hasMore || false,
-          matchingRepliesCount: response.pagination?.matchingRepliesCount || response.items.length
+          nextCursor: response.pagination.nextCursor,
+          prevCursor: response.pagination.prevCursor,
+          hasMore: response.pagination.hasMore,
+          totalCount: response.pagination.totalCount
         }
       };
     } catch (error) {
@@ -137,7 +162,7 @@ function Feed(): JSX.Element {
             layoutId={item.id}
             onClick={() => {
               if(!item?.id) {
-                console.log("placeholder item, skipping");
+                console.warn("Encountered item with missing ID - navigation skipped");
               } else {
                 navigateToStoryTree(item.id);
               }

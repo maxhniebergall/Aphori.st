@@ -23,6 +23,15 @@ const NormalRowContent: React.FC<NormalRowContentProps> = memo(({
     </div>
   );
 }, (prevProps, nextProps) => {
+  // Check if the selected node's quote counts have changed
+  const prevQuoteCounts = prevProps.levelData?.selectedNode?.quoteCounts;
+  const nextQuoteCounts = nextProps.levelData?.selectedNode?.quoteCounts;
+  
+  // If quote counts changed, we should re-render
+  if (prevQuoteCounts !== nextQuoteCounts) {
+    return false; // Return false to trigger re-render
+  }
+  
   // Only re-render if the levelData's key properties have changed
   return (
     prevProps.levelData.rootNodeId === nextProps.levelData.rootNodeId &&

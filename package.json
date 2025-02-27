@@ -8,7 +8,7 @@
   },
   "keywords": [],
   "author": "Max Hniebergall <max@hniebergall.com>",
-  "license": "copyrighted @ Max Hniebergall 2024e",
+  "license": "copyrighted @ Max Hniebergall 2024",
   "description": "for aphorists",
   "dependencies": {
     "@use-gesture/react": "^10.3.1",

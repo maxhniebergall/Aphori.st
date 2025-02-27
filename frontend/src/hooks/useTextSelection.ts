@@ -47,30 +47,31 @@ const removeExistingHighlights = (element: HTMLElement): void => {
   });
 };
 
+const findNodeAndOffset = (element: HTMLElement, offset: number) => {
+  let currentOffset = 0;
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const length = node.textContent ? node.textContent.length : 0;
+    if (currentOffset + length >= offset) {
+      return {
+        node,
+        offset: offset - currentOffset,
+      };
+    }
+    currentOffset += length;
+  }
+  return null;
+};
+
 const highlightText = (element: HTMLElement, startOffset: number, endOffset: number): void => {
   removeExistingHighlights(element);
 
-  const findNodeAndOffset = (offset: number) => {
-    let currentOffset = 0;
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      const length = node.textContent ? node.textContent.length : 0;
-      if (currentOffset + length >= offset) {
-        return {
-          node,
-          offset: offset - currentOffset,
-        };
-      }
-      currentOffset += length;
-    }
-    return null;
-  };
-
   const minOffset = Math.min(startOffset, endOffset);
   const maxOffset = Math.max(startOffset, endOffset);
-  const start = findNodeAndOffset(minOffset);
-  const end = findNodeAndOffset(maxOffset);
+  const start = findNodeAndOffset(element, minOffset);
+  const end = findNodeAndOffset(element, maxOffset);
+
   if (!start || !end) return;
 
   const range = document.createRange();
@@ -87,46 +88,137 @@ const highlightText = (element: HTMLElement, startOffset: number, endOffset: num
   }
 };
 
-const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts, storeQuote: (quote: Quote) => number): void => {
+const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts, storeQuote: (quote: Quote) => number) => {
+  // Skip if no quotes or no quoteCounts
+  if (!quotes || !quotes.quoteCounts) {
+    console.log('useTextSelection: No quotes to highlight', {
+      hasQuotes: !!quotes,
+      hasQuoteCounts: !!quotes?.quoteCounts
+    });
+    return;
+  }
+
   removeExistingHighlights(element);
-  if (!quotes.quoteCounts) return;
+
+  console.log('useTextSelection: Highlighting quotes', {
+    quotesMapSize: quotes.quoteCounts?.size || 0,
+    element: element.textContent?.substring(0, 30) + '...',
+    hasQuoteCounts: !!quotes.quoteCounts,
+    isMap: quotes.quoteCounts instanceof Map
+  });
+
+  // Ensure we're working with a proper Map
+  let quotesMap: Map<Quote, number>;
+  
+  if (quotes.quoteCounts instanceof Map) {
+    quotesMap = quotes.quoteCounts;
+  } else if (Array.isArray(quotes.quoteCounts)) {
+    // If quoteCounts is an array of entries, convert it to a Map
+    quotesMap = new Map();
+    (quotes.quoteCounts as Array<[any, number]>).forEach(([quoteData, count]) => {
+      try {
+        // Ensure we have a proper Quote instance
+        let quote: Quote;
+        if (quoteData instanceof Quote) {
+          quote = quoteData;
+        } else {
+          quote = new Quote(
+            (quoteData as any).text || "", 
+            (quoteData as any).sourcePostId || "", 
+            (quoteData as any).selectionRange || { start: 0, end: 0 }
+          );
+        }
+        quotesMap.set(quote, count);
+      } catch (e) {
+        console.error('Failed to process quote entry:', e, quoteData);
+      }
+    });
+  } else {
+    console.error('useTextSelection: quoteCounts is neither a Map nor an array', quotes.quoteCounts);
+    return;
+  }
 
   // Sort quotes by reply count descending and process top 10 only
-  const sortedQuotes = Array.from(quotes.quoteCounts.entries())
+  const sortedQuotes = Array.from(quotesMap.entries())
     .sort(([, count1], [, count2]) => count2 - count1)
     .slice(0, 10);
 
-  sortedQuotes.forEach(([quote, count]) => {
+  console.log('useTextSelection: Sorted quotes for highlighting', {
+    sortedQuotesLength: sortedQuotes.length,
+    firstQuote: sortedQuotes.length > 0 ? {
+      text: sortedQuotes[0][0].text?.substring(0, 30) + '...',
+      count: sortedQuotes[0][1],
+      range: sortedQuotes[0][0].selectionRange
+    } : null
+  });
+
+  sortedQuotes.forEach(([quoteObj, count], index) => {
+    console.log(`useTextSelection: Processing quote ${index + 1}/${sortedQuotes.length}`, {
+      text: quoteObj.text?.substring(0, 30) + '...',
+      count,
+      range: quoteObj.selectionRange,
+      isQuoteInstance: quoteObj instanceof Quote
+    });
+
+    // Ensure quote is a valid Quote instance or convert it
+    let quote: Quote;
+    if (quoteObj instanceof Quote) {
+      quote = quoteObj;
+    } else if (typeof quoteObj === 'object' && quoteObj !== null) {
+      try {
+        quote = new Quote(
+          (quoteObj as any).text || "",
+          (quoteObj as any).sourcePostId || "",
+          (quoteObj as any).selectionRange || { start: 0, end: 0 }
+        );
+      } catch (e) {
+        console.error('Failed to create Quote from object:', e, quoteObj);
+        return;
+      }
+    } else {
+      console.error('useTextSelection: Invalid quote object:', quoteObj);
+      return;
+    }
+
     // Here, 'quote' should already be a Quote object that contains the selectionRange.
     const { start, end } = quote.selectionRange;
-    const findNodeAndOffset = (offset: number) => {
-      let currentOffset = 0;
-      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-      while (walker.nextNode()) {
-        const node = walker.currentNode;
-        const length = node.textContent ? node.textContent.length : 0;
-        if (currentOffset + length >= offset) {
-          return { node, offset: offset - currentOffset };
-        }
-        currentOffset += length;
-      }
-      return null;
-    };
-
-    const startPos = findNodeAndOffset(start);
-    const endPos = findNodeAndOffset(end);
-    if (!startPos || !endPos) return;
+    const startPos = findNodeAndOffset(element, start);
+    const endPos = findNodeAndOffset(element, end);
+    
+    if (!startPos || !endPos) {
+      console.warn('useTextSelection: Could not find start or end position for quote', {
+        start,
+        end,
+        hasStartPos: !!startPos,
+        hasEndPos: !!endPos,
+        elementLength: element.textContent?.length || 0
+      });
+      return;
+    }
 
     const range = document.createRange();
     range.setStart(startPos.node, startPos.offset);
     range.setEnd(endPos.node, endPos.offset);
 
     const span = document.createElement('span');
-    span.style.backgroundColor = `rgba(0, 255, 0, ${Math.min(0.1 + count * 0.05, 0.5)})`;
+    // Make highlights more visible with a stronger color and border
+    span.style.backgroundColor = `rgba(50, 205, 50, ${Math.min(0.2 + count * 0.1, 0.7)})`;
+    span.style.borderBottom = '2px solid #228B22';
+    span.style.padding = '0 2px';
+    span.style.borderRadius = '2px';
     span.dataset.quoteId = storeQuote(quote).toString();
+    // Add the reply count as a data attribute for potential styling
+    span.dataset.replyCount = count.toString();
     // TODO add styling to display the reply count
     try {
       range.surroundContents(span);
+      console.log(`useTextSelection: Successfully highlighted quote ${index + 1}`, {
+        backgroundColor: span.style.backgroundColor,
+        text: quote.text.substring(0, 30) + '...',
+        domNode: 'Span element created',
+        quoteId: span.dataset.quoteId,
+        replyCount: span.dataset.replyCount
+      });
     } catch (e) {
       console.warn('Could not highlight quote:', e);
     }
@@ -355,6 +447,13 @@ export function useTextSelection({
   // Effect: highlight quotes if provided (e.g. based on reply counts)
   useEffect(() => {
     if (containerRef.current && existingSelectableQuotes) {
+      console.log('useTextSelection: Effect triggered for highlighting quotes', {
+        hasContainer: !!containerRef.current,
+        existingSelectableQuotes: {
+          hasQuoteCounts: !!existingSelectableQuotes.quoteCounts,
+          size: existingSelectableQuotes.quoteCounts?.size || 0
+        }
+      });
       highlightQuotes(containerRef.current, existingSelectableQuotes, storeQuote);
     }
   }, [existingSelectableQuotes, storeQuote]);

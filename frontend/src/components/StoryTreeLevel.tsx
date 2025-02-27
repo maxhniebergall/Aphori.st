@@ -376,7 +376,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
             />
             <MemoizedNodeFooter
               currentIndex={currentIndex}
-              totalSiblings={pagination.matchingRepliesCount}
+              totalSiblings={pagination.totalCount}
               onReplyClick={handleReplyButtonClick}
               isReplyTarget={isReplyTarget(nodeToRender.rootNodeId)}
               onNextSibling={navigateToNextSibling}

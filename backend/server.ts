@@ -256,7 +256,7 @@ app.get('/api/feed', async (req: Request, res: Response<ApiResponse<FeedItemsRes
                 nextCursor: endIndex < totalItems ? createCursor(endIndex.toString(), Date.now(), 'story') : undefined,
                 prevCursor: cursor > 0 ? createCursor(Math.max(0, cursor - limit).toString(), Date.now(), 'story') : undefined,
                 hasMore: endIndex < totalItems,
-                matchingRepliesCount: totalItems // TOOD the semantics are a bit off here, we should refactor later
+                totalCount: totalItems
             }
         } as FeedItemsResponse;
         logger.info('Response object: %O', data);
@@ -856,7 +856,7 @@ app.get('/api/getRepliesFeed', async (req: Request, res: Response<ApiResponse<Re
                 nextCursor: scanResult.cursor,
                 prevCursor: cursor,
                 hasMore: scanResult.cursor !== '0',
-                matchingRepliesCount: repliesCount
+                totalCount: repliesCount
             }
         } as RepliesFeedResponse;
 
@@ -915,7 +915,7 @@ app.get<{
 
         // Generate a unique key for the quote using its properties.
         const quoteKey = getQuoteKey(quoteObj);
-
+        
         // Cursor-based pagination handling via query parameters.
         const limit = parseInt(req.query.limit as string) || 10;
         // If no cursor is provided, use a high value to start from the newest score.
@@ -960,7 +960,7 @@ app.get<{
                 limit,
                 nextCursor,
                 hasMore: nextCursor !== null,
-                matchingRepliesCount: matchingRepliesCount || 0
+                totalCount: matchingRepliesCount || 0
             }
         };
 
@@ -980,17 +980,6 @@ app.get<{
         };
         res.status(500).json(errorResponse);
     }
-});
-
-// Get existing selectable quotes for a given node
-app.get<{ uuid: string }, ApiResponse<ExistingSelectableQuotes>>('/api/getExistingSelectableQuotes/:uuid', async (req, res) => {
-    const { uuid } = req.params;
-    const existingSelectableQuotesAndCounts = await db.hGetAll(`${uuid}:`, { returnCompressed: true }) as ExistingSelectableQuotes;
-    const apiResponse: ApiResponse<ExistingSelectableQuotes> = {
-        success: true,
-        compressedData: existingSelectableQuotesAndCounts
-    };
-    res.json(apiResponse);
 });
 
 /**

@@ -26,11 +26,17 @@ const PrimaryNodeSelection = ({ text, replyTarget }) => {
   useEffect(() => {
     if (replyTarget && selectedText === '') {
       const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(new Range(0, text.length));
-      setSelectedText(text);
-      setSelectionStart(0);
-      setSelectionEnd(text.length);
+      const range = document.createRange();
+      const textNode = document.querySelector('.primary-node-selection')?.firstChild;
+      if (textNode) {
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, text.length);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        setSelectedText(text);
+        setSelectionStart(0);
+        setSelectionEnd(text.length);
+      }
     }
   }, [replyTarget, text, selectedText]);
 

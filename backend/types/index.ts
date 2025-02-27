@@ -6,22 +6,22 @@ export interface DatabaseClient {
     disconnect?: () => Promise<void>;
     isConnected?: () => boolean;
     isReady?: () => boolean;
-    hGet: (key: string, field: string, options?: { returnCompressed: boolean }) => Promise<any>;
-    hGetAll: (key: string, options?: { returnCompressed: boolean }) => Promise<Record<string, any>>;
+    hGet: <T = any>(key: string, field: string, options?: { returnCompressed: boolean }) => Promise<T>;
+    hGetAll: <T = any>(key: string, options?: { returnCompressed: boolean }) => Promise<Record<string, T>>;
     hSet: (key: string, field: string, value: any) => Promise<void>;
     hIncrBy: (key: string, field: string, increment: number) => Promise<number>;
-    get: (key: string) => Promise<any>;
+    get: <T = any>(key: string) => Promise<T>;
     set: (key: string, value: any) => Promise<void>;
     lPush: (key: string, value: any) => Promise<void>;
-    lRange: (key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<any[]>;
+    lRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<T[]>;
     lSet: (key: string, index: number, value: any) => Promise<void>;
     sAdd: (key: string, value: string) => Promise<void>;
     zAdd: (key: string, score: number, value: string) => Promise<void>;
-    zRange: (key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<any[]>;
+    zRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<T[]>;
     zCard: (key: string) => Promise<number>;
     encodeKey: (id: string, prefix: string) => string;
-    compress: (data: any) => Promise<any>;
-    decompress: (data: any) => Promise<any>;
+    compress: <T = any>(data: T) => Promise<T>;
+    decompress: <T = any>(data: T) => Promise<T>;
     zRevRangeByScore: <T = string>(key: string, max: number, min: number, options?: { limit?: number }) => Promise<RedisSortedSetItem<T>[]>;
     zscan: (key: string, cursor: string, options?: { match?: string; count?: number }) => Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }>;
     keys: (pattern: string) => Promise<string[]>;
@@ -35,8 +35,6 @@ export interface User {
 }
 
 export interface ExistingUser extends User {
-    id: string;
-    email: string;
     createdAt: string;
 }
 
@@ -151,7 +149,7 @@ export interface Pagination {
     nextCursor?: string;
     prevCursor?: string;
     hasMore: boolean;
-    matchingRepliesCount: number;
+    totalCount: number;
 }
 
 export interface CursorPaginatedResponse<T> extends ApiResponse {
