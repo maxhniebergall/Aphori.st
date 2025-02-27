@@ -102,10 +102,10 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Update StoryTreeOperator when current node changes
   useEffect(() => {
-    if (currentNode) {
+    if (currentNode && (!levelData.selectedNode || currentNode.id !== levelData.selectedNode.id)) {
       storyTreeOperator.setSelectedNode(currentNode);
     }
-  }, [currentNode]);
+  }, [currentNode, levelData.selectedNode]);
 
   // Get siblings from levelData using the correct key
   const siblings = useMemo(() => {
