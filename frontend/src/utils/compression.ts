@@ -30,12 +30,11 @@ export class DatabaseCompression {
      */
     decompress<T>(value: Compressed<T>): T | null {
         try {
-            console.log("Compression: Decompressing value:", value," type: ", typeof value);
             if (!value) {
                 throw new Error('No value provided');
             }
             if (value.c === false) {
-                console.log("Compression: Value is not compressed, returning as is");
+                console.warn("Compression: Value is not compressed, returning as is");
                 if (typeof value === 'object' && value !== null) {
                     return value.d as T;
                 }
