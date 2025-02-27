@@ -119,11 +119,6 @@ async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
     }
 }
 
-// TODO FIXME: No quotes found for parentId: 7f7874e2-3fe3-413a-b3b4-8f26c1d8299c, no more levels to load
-// we need to check why we are not getting quotes for the story tree
-// are we not storing the quotes?
-// is there an error in our backend API or in the frontend request or parsing of the response?
-
 async function seedTestReplies(storyIds: string[], storyContents: string[]): Promise<void> {
     try {
         logger.info("Seeding test replies...");
