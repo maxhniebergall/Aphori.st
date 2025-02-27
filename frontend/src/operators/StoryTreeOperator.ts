@@ -537,6 +537,7 @@ class StoryTreeOperator extends BaseOperator {
           }
         }
         let siblingsForQuote: StoryTreeNode[] = [];
+        console.log("state.storyTree.levels[levelNumber - 1]", state.storyTree.levels[levelNumber - 1], levelNumber);
         // Find siblings for the selected quote in the levelsMap array
         const levelsMapEntry = state.storyTree.levels[levelNumber - 1].siblings.levelsMap.find(
           ([quote]) => quote && quote.toString() === selectedQuote.toString()
@@ -548,6 +549,12 @@ class StoryTreeOperator extends BaseOperator {
         {// get the siblings for the selected quote
           if (siblingsForQuote && siblingsForQuote.length > 0) {
             throw new StoryTreeError(`New level already has siblings, but shouldn't`);
+            /// TODO FIX ME: This is checking the siblings of the previous level???
+            // This is causing the siblings to get pushed into the wrong levell
+            // seems ot be caused by looking at [levelNumber - 1]
+            // not sure why we are doing that at all?
+            // were we trying to achieve something witht hat?
+            // maybe we can just not do that...
           }
           const sortingCriteria = 'mostRecent';
             // this call to getReplies will fetch the replies and update the state, including the quoteCounts
