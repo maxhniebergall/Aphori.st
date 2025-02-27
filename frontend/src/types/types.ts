@@ -154,10 +154,8 @@ export interface Reply {
   text: string;
   parentId: string[];
   quote: Quote;
-  metadata: {
-    authorId: string;
-    createdAt: string;
-  };
+  authorId: string;
+  createdAt: string;
 }
 
 export const ACTIONS = {

@@ -50,7 +50,7 @@ export class DatabaseCompression {
 
         const buf = Buffer.from(parsed.d, 'base64');
         
-        if (!parsed.c) {
+        if (parsed.c === false) {
             return JSON.parse(buf.toString());
         }
 

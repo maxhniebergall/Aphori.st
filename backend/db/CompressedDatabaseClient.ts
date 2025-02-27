@@ -327,10 +327,16 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             if (!result || !result.items) {
                 return { cursor: '0', items: [] };
             }
+            let uncompressedItems :RedisSortedSetItem<string>[] = [];
+            if (result.items.length > 0) {
+                uncompressedItems = await Promise.all(result.items.map(async (item) => {
+                    return {score: item.score, value: await this.compression.decompress(item.value)};
+                }));
+            }
 
             return {
                 cursor: result.cursor,
-                items: result.items
+                items: uncompressedItems
             };
         } catch (err) {
             logger.error('Error in zscan:', err);

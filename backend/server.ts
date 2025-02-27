@@ -952,7 +952,7 @@ app.get<{
             // If there are more items to scan, set the next cursor
             nextCursor = scanResult.cursor;
         }
-
+        console.log("scanResult", scanResult);
         // Step 2: Fetch the actual reply data for each ID
         const replies = await Promise.all(
             scanResult.items.map(async (item: RedisSortedSetItem<string>) => {
@@ -967,6 +967,7 @@ app.get<{
             })
         );
 
+        console.log("replies", replies);
         // Filter out any null values from failed fetches
         const validReplies = replies.filter((reply: Reply | null): reply is Reply => reply !== null);
         

@@ -230,8 +230,8 @@ class StoryTreeOperator extends BaseOperator {
                 parentId: reply.parentId,
                 levelNumber: level.levelNumber,
                 textContent: reply.text,
-                authorId: reply.metadata.authorId,
-                createdAt: reply.metadata.createdAt.toString(),
+                authorId: reply.authorId,
+                createdAt: reply.createdAt,
                 repliedToQuote: reply.quote,
                 quoteCounts: quoteCountsMap.get(reply.quote)
               } as StoryTreeNode
@@ -265,8 +265,6 @@ class StoryTreeOperator extends BaseOperator {
 
   private async   fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
     const encodedSelectedQuoteString = new Quote(selectedQuote.text, selectedQuote.sourcePostId, selectedQuote.selectionRange).toString();
-    console.log("fetchFirstRepliesForLevel", encodedSelectedQuoteString);
-
     const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId}/${encodedSelectedQuoteString}/${sortingCriteria}?limit=${limit}`;
     try {
       const compressedPaginatedResponse = await this.retryApiCallSimplified<Compressed<CursorPaginatedResponse<Reply>>>(
@@ -274,7 +272,9 @@ class StoryTreeOperator extends BaseOperator {
           validateStatus: status => status === 200
         })
       );
+      console.log("fetchFirstRepliesForLevel compressedPaginatedResponse", compressedPaginatedResponse);
       const decompressedPaginatedData = await compression.decompress<CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
+      console.log("fetchFirstRepliesForLevel decompressedPaginatedData", decompressedPaginatedData);
       return decompressedPaginatedData;
 
     } catch (err) {
@@ -575,8 +575,8 @@ class StoryTreeOperator extends BaseOperator {
               textContent: reply.text,
               repliedToQuote: selectedQuote,
               quoteCounts: quoteCountsMap.get(reply.quote),
-              authorId: reply.metadata.authorId,
-              createdAt: reply.metadata.createdAt.toString(),
+              authorId: reply.authorId,
+              createdAt: reply.createdAt,
             } as StoryTreeNode);
           });
         }
