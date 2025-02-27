@@ -28,7 +28,7 @@ export class DatabaseCompression {
      * @param value - The Base64 encoded compressed string (or null/undefined).
      * @returns A promise that resolves to the parsed object, the raw decompressed string, or null.
      */
-    decompress<T = unknown, V = unknown>(value: Compressed<T>): V | null {
+    decompress<T>(value: Compressed<T>): T | null {
         try {
             console.log("Compression: Decompressing value:", value," type: ", typeof value);
             if (!value) {
@@ -37,7 +37,7 @@ export class DatabaseCompression {
             if (value.c === false) {
                 console.log("Compression: Value is not compressed, returning as is");
                 if (typeof value === 'object' && value !== null) {
-                    return value as V;
+                    return value.d as T;
                 }
                 throw new Error('Value is not of expected type');
             }
@@ -51,7 +51,7 @@ export class DatabaseCompression {
             const decompressed = pako.inflate(compressed);
             const text = new TextDecoder().decode(decompressed);
             try {
-                return JSON.parse(text) as V;
+                return JSON.parse(text) as T;
             } catch (e) {
                 console.error('Compression: Failed to parse decompressed JSON:', e);
                 throw e;

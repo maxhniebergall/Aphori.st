@@ -47,13 +47,13 @@ class FeedOperator extends BaseOperator {
             }
             
             console.log("FeedOperator: Decompressing feed items:", compressedFeedItems);
-            const decompressedFeedItems = await compression.decompress<Compressed<FeedItemsResponse>, FeedItemsResponse>(compressedFeedItems);
+            const decompressedFeedItems = await compression.decompress<FeedItemsResponse>(compressedFeedItems);
 
             // If response is already decompressed by BaseOperator
-            if (decompressedFeedItems?.feedItems && Array.isArray(decompressedFeedItems.feedItems) && decompressedFeedItems.pagination) {
+            if (decompressedFeedItems?.data && Array.isArray(decompressedFeedItems.data) && decompressedFeedItems.pagination) {
                 return {
                     success: true,
-                    items: decompressedFeedItems.feedItems,
+                    data: decompressedFeedItems.data,
                     pagination: decompressedFeedItems.pagination
                 };
             }

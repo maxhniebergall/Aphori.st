@@ -55,10 +55,10 @@ function isFeedResponse(response: any): response is FeedResponse {
   return (
     response &&
     response.success === true &&
-    Array.isArray(response.items) &&
+    Array.isArray(response.data) &&
     response.pagination &&
-    typeof response.pagination.nextCursor === 'string' &&
-    typeof response.pagination.prevCursor === 'string' &&
+    (typeof response.pagination.nextCursor === 'string' || response.pagination.nextCursor === undefined) &&
+    (typeof response.pagination.prevCursor === 'string' || response.pagination.prevCursor === undefined) &&
     typeof response.pagination.hasMore === 'boolean' &&
     typeof response.pagination.totalCount === 'number'
   );
@@ -78,7 +78,7 @@ function Feed(): JSX.Element {
     try {
       const response = await feedOperator.getFeedItems(cursor || "");
       if (!isFeedResponse(response)) {
-        throw new Error('Invalid response format');
+        throw new Error('Invalid response format: ' + JSON.stringify(response));
       }
 
       if (!response.success) {
@@ -86,12 +86,12 @@ function Feed(): JSX.Element {
       }
       
       // Validate response data
-      if (!response.items || !Array.isArray(response.items)) {
-        throw new Error('Invalid response format');
+      if (!response.data || !Array.isArray(response.data)) {
+        throw new Error('Invalid response format: ' + JSON.stringify(response));
       }
 
       return {
-        data: response.items,
+        data: response.data,
         pagination: {
           nextCursor: response.pagination.nextCursor,
           prevCursor: response.pagination.prevCursor,

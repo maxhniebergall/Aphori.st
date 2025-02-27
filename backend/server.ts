@@ -268,7 +268,7 @@ app.get('/api/feed', async (req: Request, res: Response<CompressedApiResponse<Fe
         
         // Create the response object with cursor-based pagination
         const data = {
-            feedItems: feedItems,
+            data: feedItems,
             pagination: {
                 nextCursor: endIndex < totalItems ? createCursor(endIndex.toString(), Date.now(), 'story') : undefined,
                 prevCursor: cursor > 0 ? createCursor(Math.max(0, cursor - limit).toString(), Date.now(), 'story') : undefined,
@@ -868,7 +868,7 @@ app.get('/api/getRepliesFeed', async (req: Request, res: Response<CompressedApiR
 
         // Create the response object
         const data = {
-            replies: replies,
+            data: replies,
             pagination: {
                 nextCursor: scanResult.cursor,
                 prevCursor: cursor,
@@ -972,7 +972,7 @@ app.get<{
         
         // Prepare the response object with cursor pagination info
         const response = {
-            replies: validReplies,
+            data: validReplies,
             pagination: {
                 limit,
                 nextCursor,

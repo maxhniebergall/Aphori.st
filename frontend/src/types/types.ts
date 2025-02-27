@@ -53,7 +53,7 @@ export interface FeedItem {
 }
 
 export interface FeedItemsResponse{
-    feedItems: FeedItem[];
+    data: FeedItem[];
     pagination: Pagination;
 }
 
@@ -61,7 +61,7 @@ export interface FeedItemsResponse{
 export interface FeedResponse {
   success: boolean;
   error?: string;
-  items: FeedItem[];
+  data: FeedItem[];
   pagination?: Partial<Pagination>;
 }
 
@@ -138,7 +138,12 @@ export interface CreateReplyResponse {
   };
 }
 
-export interface CursorPaginatedResponse<T> extends CompressedApiResponse<T[]> {
+export interface CursorPaginatedResponse<T> {
+  pagination: Pagination;
+  data: T[]; 
+}
+
+export interface DecompressedCursorPaginatedResponse<T> extends ApiResponse<T[]> {
   pagination: Pagination;
 }
 
