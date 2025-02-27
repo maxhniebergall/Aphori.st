@@ -24,7 +24,7 @@ const QuoteRenderer: React.FC<QuoteRendererProps> = ({ quote }) => {
     return null;
   }
   return (
-    <div className="quote-container" role="blockquote">
+    <div className="quote-container">
       <blockquote className="quote-text">{quote.text}</blockquote>
       {quote.sourcePostId && (
         <Link to={`/post/${quote.sourcePostId}`} className="quote-source">
