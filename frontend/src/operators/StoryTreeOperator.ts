@@ -27,7 +27,7 @@
  * - Implement caching with CacheService
  */
 
-import { ACTIONS, StoryTreeNode, StoryTreeState, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, ApiResponse, CreateReplyResponse, ExistingSelectableQuotesApiFormat, Post, Pagination } from '../types/types';
+import { ACTIONS, StoryTreeNode, StoryTreeState, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, ExistingSelectableQuotesApiFormat, Post, Pagination } from '../types/types';
 import { Quote } from '../types/quote';
 import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
@@ -99,7 +99,7 @@ class StoryTreeOperator extends BaseOperator {
     const url = `${process.env.REACT_APP_API_URL}/api/getPost/${uuid}`;
     try {
       const compressedPost = await this.retryApiCallSimplified<Compressed<Post>>(
-        () => axios.get<ApiResponse<Compressed<Post>>>(url, {
+        () => axios.get<CompressedApiResponse<Compressed<Post>>>(url, {
             validateStatus: status => status === 200
         })
       );

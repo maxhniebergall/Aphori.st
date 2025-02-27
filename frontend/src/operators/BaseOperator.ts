@@ -11,7 +11,7 @@
 
 import compression from '../utils/compression';
 import { AxiosResponse } from 'axios';
-import { ApiResponse } from '../types/types';
+import { CompressedApiResponse } from '../types/types';
 import { Compressed } from '../types/compressed';
 
 // Interface to represent objects with an 'items' property.
@@ -140,10 +140,10 @@ export class BaseOperator {
    * @returns A promise that resolves to the processed response data of type T.
    * 
    */
-  async retryApiCallSimplified<T = unknown>(apiCall: () => Promise<AxiosResponse<ApiResponse<T>>>, retries = 3, delay = 1000): Promise<Compressed<T>> {
+  async retryApiCallSimplified<T = unknown>(apiCall: () => Promise<AxiosResponse<CompressedApiResponse<T>>>, retries = 3, delay = 1000): Promise<Compressed<T>> {
     for (let i = 0; i < retries; i++) {
       try {
-        const response: AxiosResponse<ApiResponse<T>> = await apiCall();
+        const response: AxiosResponse<CompressedApiResponse<T>> = await apiCall();
         console.log("BaseOperator: Retry API call simplified response:", response);
         if (response.data.success && response.data.compressedData) {
           if (typeof response.data.compressedData === 'string') {

@@ -115,11 +115,18 @@ export interface CacheKey {
 }
 
 // API Response Types
-export interface ApiResponse<T = unknown> {
+export interface CompressedApiResponse<T = unknown> {
   success: boolean;
   error?: string;
   message?: string;
   compressedData?: Compressed<T>;
+}
+
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  error?: string;
+  message?: string;
+  data?: T;
 }
 
 // Specific response type for createReply endpoint
@@ -131,8 +138,7 @@ export interface CreateReplyResponse {
   };
 }
 
-export interface CursorPaginatedResponse<T> extends ApiResponse {
-  data: T[];
+export interface CursorPaginatedResponse<T> extends ApiResponse<T[]> {
   pagination: Pagination;
 }
 
