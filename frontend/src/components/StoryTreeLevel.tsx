@@ -27,7 +27,11 @@ interface StoryTreeLevelProps {
 const MemoizedNodeFooter = React.memo(NodeFooter);
 
 // Create a memoized NodeContent component to prevent unnecessary re-renders
-const MemoizedNodeContent = React.memo(NodeContent);
+const MemoizedNodeContent = React.memo(NodeContent, (prevProps, nextProps) => {
+  return prevProps.node === nextProps.node &&
+    prevProps.quote === nextProps.quote &&
+    prevProps.existingSelectableQuotes === nextProps.existingSelectableQuotes;
+});
 
 export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ 
   levelData,
@@ -116,9 +120,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // Update current node when siblings or currentIndex changes
   useEffect(() => {
     // Update currentIndex if it's out of bounds
-    if (currentIndex >= siblings.length && siblings.length > 0) {
+    if ((currentIndex >= siblings.length && siblings.length > 0) || (currentIndex < 0)) {
       setCurrentIndex(Math.max(0, siblings.length - 1));
-      return;
     }
     
     const node = siblings[currentIndex];
@@ -371,7 +374,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
             <MemoizedNodeContent
               node={nodeToRender}
               quote={(isReplyTarget(nodeToRender.id) && replyQuote) ? replyQuote : undefined}
-              existingSelectableQuotes={nodeToRender.quoteCounts || {quoteCounts: new Map()}}
+              existingSelectableQuotes={nodeToRender.quoteCounts ?? undefined}
               onSelectionComplete={handleTextSelectionCompleted}
             />
             <MemoizedNodeFooter

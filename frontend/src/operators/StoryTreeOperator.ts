@@ -118,7 +118,7 @@ class StoryTreeOperator extends BaseOperator {
       // Add the root post content and fetch its quote counts
       // updates storyTree.levels as a side effect
       // fetches quote counts async, so we don't immediately have quote counts after this runs
-      this.addPostContentToLevelZero(storyTree, decompressedPost); // this part seems to be working
+      await this.addPostContentToLevelZero(storyTree, decompressedPost); // this part seems to be working
 
       return storyTree;
     } catch (error) {
@@ -139,7 +139,7 @@ class StoryTreeOperator extends BaseOperator {
    * @param storyTree - The StoryTree object being built.
    * @param post - The post data received from the API.
    */
-  private addPostContentToLevelZero(storyTree: StoryTree, post: Post): void {
+  private async addPostContentToLevelZero(storyTree: StoryTree, post: Post): Promise<void> {
     console.log("StoryTreeOperator: Adding post content to level zero:", {
       postId: post.id,
       postContent: post.content,
@@ -195,7 +195,7 @@ class StoryTreeOperator extends BaseOperator {
     storyTree.levels = [...storyTree.levels, contentLevel];
 
     // Asynchronously update the root node's quoteCounts
-    this.fetchQuoteCounts(storyTree.post.id)
+    await this.fetchQuoteCounts(storyTree.post.id)
       .then((quoteCounts: QuoteCounts) => {
         // Locate the content level (assumed at index 0).
         const contentLevel = storyTree.levels[0];
