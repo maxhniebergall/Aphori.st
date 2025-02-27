@@ -88,7 +88,8 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   /**
-   * Fetches the entire story tree for a given UUID.
+   * Fetches the root node of the story tree for a given UUID and initializes the story tree structure.
+   * The rest of the story tree nodes are fetched asynchronously as needed.
    *
    * @param uuid - The unique identifier for the root node of the story tree.
    * @returns A promise that resolves to the fully constructed StoryTree object.
@@ -179,7 +180,7 @@ class StoryTreeOperator extends BaseOperator {
         nextCursor: undefined,
         prevCursor: undefined,
         hasMore: false,
-        matchingRepliesCount: 0  // Root node always counts as 1
+        totalCount: 0  // Root node always counts as 1
       }
     };
 
@@ -195,7 +196,7 @@ class StoryTreeOperator extends BaseOperator {
 
     // Asynchronously update the root node's quoteCounts
     this.fetchQuoteCounts(storyTree.post.id)
-      .then(quoteCounts => {
+      .then((quoteCounts: QuoteCounts) => {
         // Locate the content level (assumed at index 0).
         const contentLevel = storyTree.levels[0];
         if (contentLevel) {
@@ -203,15 +204,29 @@ class StoryTreeOperator extends BaseOperator {
           const nodes = contentLevel.siblings.levelsMap.get(null);
           if (nodes && nodes.length > 0) {
             // Create an updated copy of the content node, following immutable update patterns.
-            const updatedNode: StoryTreeNode = { ...nodes[0], quoteCounts }; // we can use nodes[0] because we know there is only one node at level 0
+            const updatedNode: StoryTreeNode = { 
+              ...nodes[0], 
+              quoteCounts 
+            }; // we can use nodes[0] because we know there is only one node at level 0
+            
+            // Log the quote counts for debugging
+            console.log("StoryTreeOperator: Quote counts fetched:", {
+              size: quoteCounts.quoteCounts.size,
+              isMap: quoteCounts.quoteCounts instanceof Map,
+              firstEntry: quoteCounts.quoteCounts.size > 0 ? Array.from(quoteCounts.quoteCounts.entries())[0] : null
+            });
+            
             // Update the levelsMap (overrides the existing root node)
             contentLevel.siblings.levelsMap.set(null, [updatedNode]);
             // Reuse the existing action to update the level data.
             if (this.store && this.store.dispatch) {
-              console.log("StoryTreeOperator: Dispatching updated node with quote counts:", {
-                nodeId: updatedNode.id,
-                quoteCounts: updatedNode.quoteCounts?.quoteCounts
-              });
+
+              if (updatedNode.quoteCounts?.quoteCounts && updatedNode.quoteCounts?.quoteCounts.size > 0) {
+                console.log("StoryTreeOperator: Dispatching updated node with quote counts:", {nodeId: updatedNode.id, quoteCounts: Array.from(updatedNode.quoteCounts?.quoteCounts.entries())[0]});
+              } else {
+                console.log("StoryTreeOperator: Dispatching updated node with no quote counts:", {nodeId: updatedNode.id});
+              }
+
               this.store.dispatch({
                 type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
                 payload: [contentLevel]
@@ -223,7 +238,7 @@ class StoryTreeOperator extends BaseOperator {
       .catch(error => {
         console.error("Failed to update quote counts for root node:", error);
       });
-      }
+  }
 
   private async fetchAndDispatchReplies(level: StoryTreeLevel, sortingCriteria: string, limit: number, cursor: string | undefined = undefined) {
     let cursorString = cursor;
@@ -329,14 +344,31 @@ class StoryTreeOperator extends BaseOperator {
         validateStatus: status => status === 200
       })
     );
-    console.log("StoryTreeOperator: Fetched quote counts, compressed response:", compressedResponse);
     const decompressedResponse = await compression.decompress<Compressed<ExistingSelectableQuotesApiFormat>, ExistingSelectableQuotesApiFormat>(compressedResponse);
     if (!decompressedResponse || !decompressedResponse.quoteCounts) {
       console.error('Invalid data received for quote counts:', decompressedResponse);
       throw new StoryTreeError('Invalid data received for quote counts');
     }
-    const quoteCounts = new Map(decompressedResponse.quoteCounts) as Map<Quote, number>;
-    console.log("StoryTreeOperator: Fetched quote counts:", quoteCounts);
+    
+    // Convert the API response to a proper Map
+    // Make sure to properly reconstruct Quote objects from serialized data
+    const quoteCounts = new Map();
+    decompressedResponse.quoteCounts.forEach(([quoteData, count]) => {
+      // Create a proper Quote instance from the serialized data
+      const quote = new Quote(
+        quoteData.text || "", 
+        quoteData.sourcePostId || "", 
+        quoteData.selectionRange || { start: 0, end: 0 }
+      );
+      quoteCounts.set(quote, count);
+    });
+    
+    console.log("StoryTreeOperator: Fetched quote counts size:", quoteCounts.size);
+    if (quoteCounts.size > 0) {
+      console.log("StoryTreeOperator: First quote count:", Array.from(quoteCounts.entries())[0]);
+      console.log("StoryTreeOperator: Is quoteCounts a Map?", quoteCounts instanceof Map);
+    }
+    
     return { quoteCounts };
   }
 

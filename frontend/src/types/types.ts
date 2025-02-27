@@ -40,7 +40,7 @@ export interface Pagination {
   nextCursor?: string;
   prevCursor?: string;
   hasMore: boolean;
-  matchingRepliesCount: number;
+  totalCount: number;
 }
 
 
@@ -115,7 +115,7 @@ export interface CacheKey {
 }
 
 // API Response Types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   error?: string;
   message?: string;

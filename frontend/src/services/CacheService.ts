@@ -22,23 +22,33 @@ class LRUCache<T> {
         this.time = 0;
     }
 
+    private getNodeType(key: string): 'story' | 'reply' {
+        if (!key.includes(':')) {
+            throw new Error('Invalid key format: missing type prefix');
+        }
+        const [type] = key.split(':');
+        if (type !== 'story' && type !== 'reply') {
+            throw new Error(`Invalid node type: ${type}`);
+        }
+        return type as 'story' | 'reply';
+    }
+
     get(key: string): T | null {
+        this.getNodeType(key); // Validate key format
         if (!this.cache.has(key)) return null;
         this.usage.set(key, ++this.time);
         return this.cache.get(key)!;
     }
 
     set(key: string, value: T): void {
+        this.getNodeType(key); // Validate key format
         if (this.cache.size >= this.capacity && !this.cache.has(key)) {
-            // Find least recently used
-            let lruKey = '';
-            let lruTime = Infinity;
-            this.usage.forEach((time, k) => {
-                if (time < lruTime) {
-                    lruKey = k;
-                    lruTime = time;
-                }
-            });
+            // More efficient way to find LRU item
+            const entries = Array.from(this.usage.entries());
+            const lruEntry = entries.reduce((min, entry) => 
+                entry[1] < min[1] ? entry : min
+            );
+            const lruKey = lruEntry[0];
             this.cache.delete(lruKey);
             this.usage.delete(lruKey);
         }

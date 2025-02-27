@@ -34,11 +34,6 @@ const useDynamicRowHeight = ({
       
       // Ensure a minimum height of 100px for visibility
       const finalHeight = Math.max(totalHeight, 100);
-      console.log("useDynamicRowHeight: Calculated height:", {
-        scrollHeight: element.scrollHeight,
-        offsetHeight: element.offsetHeight,
-        finalHeight
-      });
       
       setSize(finalHeight);
     };
@@ -47,16 +42,30 @@ const useDynamicRowHeight = ({
     calculateHeight();
 
     // Set up a ResizeObserver for element changes
+    let resizeTimeout: number | null = null;
     const resizeObserver = new ResizeObserver(() => {
       if (!shouldHide) {
-        requestAnimationFrame(calculateHeight);
+        if (resizeTimeout) {
+          cancelAnimationFrame(resizeTimeout);
+        }
+        resizeTimeout = requestAnimationFrame(() => {
+          calculateHeight();
+          resizeTimeout = null;
+        });
       }
     });
     resizeObserver.observe(element);
 
     // Set up a MutationObserver to detect dynamic addition/removal of children
+    let mutationTimeout: number | null = null;
     const mutationObserver = new MutationObserver(() => {
-      requestAnimationFrame(calculateHeight);
+      if (mutationTimeout) {
+        cancelAnimationFrame(mutationTimeout);
+      }
+      mutationTimeout = requestAnimationFrame(() => {
+        calculateHeight();
+        mutationTimeout = null;
+      });
     });
     mutationObserver.observe(element, { childList: true, subtree: true });
 
@@ -67,4 +76,4 @@ const useDynamicRowHeight = ({
   }, [rowRef, setSize, shouldHide]);
 };
 
-export default useDynamicRowHeight; 
+export default useDynamicRowHeight;

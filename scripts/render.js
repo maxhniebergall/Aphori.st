@@ -108,7 +108,7 @@ import puppeteer from 'puppeteer';
     });
 
     console.log("Loading website...");
-    await page.goto('http://localhost:3000/storyTree/02d6f35d-4ce4-48f3-b646-b143888ca39d', { 
+    await page.goto('http://localhost:3000/storyTree/7f7874e2-3fe3-413a-b3b4-8f26c1d8299c', { 
         waitUntil: ['networkidle0', 'domcontentloaded', 'load']
     });
 

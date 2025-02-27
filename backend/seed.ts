@@ -119,6 +119,11 @@ async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
     }
 }
 
+// TODO FIXME: No quotes found for parentId: 7f7874e2-3fe3-413a-b3b4-8f26c1d8299c, no more levels to load
+// we need to check why we are not getting quotes for the story tree
+// are we not storing the quotes?
+// is there an error in our backend API or in the frontend request or parsing of the response?
+
 async function seedTestReplies(storyIds: string[], storyContents: string[]): Promise<void> {
     try {
         logger.info("Seeding test replies...");
@@ -191,38 +196,43 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
         throw error;
     }
 
-    async function storeReply(reply: Reply) {
-        const replyId = reply.id;
-        const quote = reply.quote;
-        const timestamp = parseInt(reply.createdAt);
-        const storyId = reply.parentId[0];
+ async function storeReply(reply: Reply) {
+     const replyId = reply.id;
+     const quote = reply.quote;
+     const timestamp = parseInt(reply.createdAt);
+     const storyId = reply.parentId[0];
 
-        // Store the reply itself
-        await db.hSet(replyId, 'reply', reply);
+     // Create a Redis transaction
+     const multi = client.multi();
+     // Store the reply itself
+     multi.hSet(replyId, 'reply', JSON.stringify(reply));
 
-        // Add to various indices
-        const quoteKey = getQuoteKey(quote);
+     // Add to various indices
+     const quoteKey = getQuoteKey(quote);
 
-        // 1. Global replies feed
-        await db.zAdd('replies:feed:mostRecent', timestamp, replyId);
+     // 1. Global replies feed
+     multi.zAdd('replies:feed:mostRecent', { score: timestamp, value: replyId });
 
-        // 2. Replies by Quote (General)
-        await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, timestamp, replyId);
+     // 2. Replies by Quote (General)
+     multi.zAdd(`replies:quote:${quoteKey}:mostRecent`, { score: timestamp, value: replyId });
 
-        // 3. Replies by Parent ID and Detailed Quote
-        await db.zAdd(`replies:uuid:${storyId}:quote:${quoteKey}:mostRecent`, timestamp, replyId);
+     // 3. Replies by Parent ID and Detailed Quote
+     multi.zAdd(`replies:uuid:${storyId}:quote:${quoteKey}:mostRecent`, { score: timestamp, value: replyId });
 
-        // 4. Replies by Parent ID and Quote Text
-        await db.zAdd(`replies:${storyId}:${quote.text}:mostRecent`, timestamp, replyId);
+     // 4. Replies by Parent ID and Quote Text
+     multi.zAdd(`replies:${storyId}:${quote.text}:mostRecent`, { score: timestamp, value: replyId });
 
-        // 5. Conditional Replies by Quote Text Only
-        await db.zAdd(`replies:quote:${quote.text}:mostRecent`, timestamp, replyId);
+     // 5. Conditional Replies by Quote Text Only
+     multi.zAdd(`replies:quote:${quote.text}:mostRecent`, { score: timestamp, value: replyId });
 
-        // Increment the quote count
-        await db.hIncrBy(`${storyId}:quoteCounts`, JSON.stringify(quote), 1);
+     // Increment the quote count
+     multi.hIncrBy(`${storyId}:quoteCounts`, JSON.stringify(quote), 1);
+    
+     // Execute all operations atomically
+     await multi.exec();
 
-        logger.info(`Created test reply with ID: ${replyId} for story: ${storyId}`);
-    }
+     logger.info(`Created test reply with ID: ${replyId} for story: ${storyId}`);
+ }    
 }
 
 export { seedDevStories }; 
