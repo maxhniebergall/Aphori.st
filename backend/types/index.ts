@@ -159,8 +159,7 @@ export interface Pagination {
     totalCount: number;
 }
 
-export interface CursorPaginatedResponse<T> extends ApiResponse {
-    data: T[];
+export interface CursorPaginatedResponse<T> extends CompressedApiResponse<T[]> {
     pagination: Pagination;
 }
 

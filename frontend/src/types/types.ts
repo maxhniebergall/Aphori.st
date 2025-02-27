@@ -138,7 +138,7 @@ export interface CreateReplyResponse {
   };
 }
 
-export interface CursorPaginatedResponse<T> extends ApiResponse<T[]> {
+export interface CursorPaginatedResponse<T> extends CompressedApiResponse<T[]> {
   pagination: Pagination;
 }
 

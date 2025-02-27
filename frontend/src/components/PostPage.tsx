@@ -7,6 +7,8 @@ Requirements:
 - Display error messages if submission fails
 - Require authentication to create posts
 - Preview markdown while editing
+
+// TODO: we need to add requirements about the length of the post, both min and max length. 
 */
 
 import React, { useState, useEffect } from 'react';
