@@ -101,45 +101,15 @@ const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts, storeQuote: 
   removeExistingHighlights(element);
 
   console.log('useTextSelection: Highlighting quotes', {
-    quotesMapSize: quotes.quoteCounts?.size || 0,
+    quotesMapSize: Array.isArray(quotes.quoteCounts) ? quotes.quoteCounts.length : 0,
     element: element.textContent?.substring(0, 30) + '...',
     hasQuoteCounts: !!quotes.quoteCounts,
-    isMap: quotes.quoteCounts instanceof Map
+    isArray: Array.isArray(quotes.quoteCounts)
   });
 
-  // Ensure we're working with a proper Map
-  let quotesMap: Map<Quote, number>;
-  
-  if (quotes.quoteCounts instanceof Map) {
-    quotesMap = quotes.quoteCounts;
-  } else if (Array.isArray(quotes.quoteCounts)) {
-    // If quoteCounts is an array of entries, convert it to a Map
-    quotesMap = new Map();
-    (quotes.quoteCounts as Array<[any, number]>).forEach(([quoteData, count]) => {
-      try {
-        // Ensure we have a proper Quote instance
-        let quote: Quote;
-        if (quoteData instanceof Quote) {
-          quote = quoteData;
-        } else {
-          quote = new Quote(
-            (quoteData as any).text || "", 
-            (quoteData as any).sourcePostId || "", 
-            (quoteData as any).selectionRange || { start: 0, end: 0 }
-          );
-        }
-        quotesMap.set(quote, count);
-      } catch (e) {
-        console.error('Failed to process quote entry:', e, quoteData);
-      }
-    });
-  } else {
-    console.error('useTextSelection: quoteCounts is neither a Map nor an array', quotes.quoteCounts);
-    return;
-  }
 
   // Sort quotes by reply count descending and process top 10 only
-  const sortedQuotes = Array.from(quotesMap.entries())
+  const sortedQuotes = quotes.quoteCounts
     .sort(([, count1], [, count2]) => count2 - count1)
     .slice(0, 10);
 
@@ -451,7 +421,7 @@ export function useTextSelection({
         hasContainer: !!containerRef.current,
         existingSelectableQuotes: {
           hasQuoteCounts: !!existingSelectableQuotes.quoteCounts,
-          size: existingSelectableQuotes.quoteCounts?.size || 0
+          size: existingSelectableQuotes.quoteCounts.length
         }
       });
       highlightQuotes(containerRef.current, existingSelectableQuotes, storeQuote);

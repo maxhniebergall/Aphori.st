@@ -109,7 +109,11 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Get siblings from levelData using the correct key
   const siblings = useMemo(() => {
-    return levelData.siblings.levelsMap.get(levelData.selectedQuote) || [];
+    // Find the entry in the levelsMap array that matches the selectedQuote
+    const entry = levelData.siblings.levelsMap.find(
+      ([quote]) => quote && levelData.selectedQuote && quote.toString() === levelData.selectedQuote.toString()
+    );
+    return entry ? entry[1] : [];
   }, [levelData.siblings.levelsMap, levelData.selectedQuote]);
 
   // Update pagination state based on levelData
@@ -154,7 +158,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     }
     
     // Fallback to the first sibling from the map
-    return siblings[0] || levelData.siblings.levelsMap.get(null)?.[0];
+    const nullEntry = levelData.siblings.levelsMap.find(([quote]) => quote === null);
+    return siblings[0] || (nullEntry ? nullEntry[1][0] : undefined);
   }, [currentNode, levelData.selectedNode, siblings, levelData.siblings.levelsMap]);
 
   // Check if a node is the reply target more efficiently
