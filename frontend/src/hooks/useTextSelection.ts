@@ -100,36 +100,12 @@ const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts, storeQuote: 
 
   removeExistingHighlights(element);
 
-  console.log('useTextSelection: Highlighting quotes', {
-    quotesMapSize: Array.isArray(quotes.quoteCounts) ? quotes.quoteCounts.length : 0,
-    element: element.textContent?.substring(0, 30) + '...',
-    hasQuoteCounts: !!quotes.quoteCounts,
-    isArray: Array.isArray(quotes.quoteCounts)
-  });
-
-
   // Sort quotes by reply count descending and process top 10 only
   const sortedQuotes = quotes.quoteCounts
     .sort(([, count1], [, count2]) => count2 - count1)
     .slice(0, 10);
 
-  console.log('useTextSelection: Sorted quotes for highlighting', {
-    sortedQuotesLength: sortedQuotes.length,
-    firstQuote: sortedQuotes.length > 0 ? {
-      text: sortedQuotes[0][0].text?.substring(0, 30) + '...',
-      count: sortedQuotes[0][1],
-      range: sortedQuotes[0][0].selectionRange
-    } : null
-  });
-
   sortedQuotes.forEach(([quoteObj, count], index) => {
-    console.log(`useTextSelection: Processing quote ${index + 1}/${sortedQuotes.length}`, {
-      text: quoteObj.text?.substring(0, 30) + '...',
-      count,
-      range: quoteObj.selectionRange,
-      isQuoteInstance: quoteObj instanceof Quote
-    });
-
     // Ensure quote is a valid Quote instance or convert it
     let quote: Quote;
     if (quoteObj instanceof Quote) {
@@ -182,13 +158,6 @@ const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts, storeQuote: 
     // TODO add styling to display the reply count
     try {
       range.surroundContents(span);
-      console.log(`useTextSelection: Successfully highlighted quote ${index + 1}`, {
-        backgroundColor: span.style.backgroundColor,
-        text: quote.text.substring(0, 30) + '...',
-        domNode: 'Span element created',
-        quoteId: span.dataset.quoteId,
-        replyCount: span.dataset.replyCount
-      });
     } catch (e) {
       console.warn('Could not highlight quote:', e);
     }
@@ -417,13 +386,6 @@ export function useTextSelection({
   // Effect: highlight quotes if provided (e.g. based on reply counts)
   useEffect(() => {
     if (containerRef.current && existingSelectableQuotes) {
-      console.log('useTextSelection: Effect triggered for highlighting quotes', {
-        hasContainer: !!containerRef.current,
-        existingSelectableQuotes: {
-          hasQuoteCounts: !!existingSelectableQuotes.quoteCounts,
-          size: existingSelectableQuotes.quoteCounts.length
-        }
-      });
       highlightQuotes(containerRef.current, existingSelectableQuotes, storeQuote);
     }
   }, [existingSelectableQuotes, storeQuote]);

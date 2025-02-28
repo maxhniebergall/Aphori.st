@@ -98,9 +98,15 @@ export interface StoryTreeLevel {
   pagination: Pagination;
 }
 
+export interface LastLevel {
+  // a LastLevel valued level indicates that there are no replies for that level, and further levels will not be loaded
+  levelNumber: number;
+  rootNodeId: string;
+}
+
 export interface StoryTree { // this is the story tree we assemble as the user navigates
   post: Post;
-  levels: StoryTreeLevel[];
+  levels: Array<StoryTreeLevel | LastLevel>; 
   error: string | null;
 }
 
@@ -163,6 +169,7 @@ export const ACTIONS = {
   SET_INITIAL_STORY_TREE_DATA: 'SET_INITIAL_STORY_TREE_DATA',
   INCLUDE_NODES_IN_LEVELS: 'INCLUDE_NODES_IN_LEVELS',
   SET_SELECTED_NODE: 'SET_SELECTED_NODE',
+  SET_LAST_LEVEL: 'SET_LAST_LEVEL',
   SET_ERROR: 'SET_ERROR',
   CLEAR_ERROR: 'CLEAR_ERROR'
 } as const;
@@ -172,5 +179,7 @@ export type Action =
   | { type: typeof ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { storyTree: StoryTree } }
   | { type: typeof ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: StoryTreeLevel[] }
   | { type: typeof ACTIONS.SET_SELECTED_NODE; payload: StoryTreeNode }
+  | { type: typeof ACTIONS.SET_LAST_LEVEL; payload: { levelNumber: number } } 
+      // levelNumber is the number of the level immediately after the last level that has replies, will be filled with nulls
   | { type: typeof ACTIONS.SET_ERROR; payload: string }
   | { type: typeof ACTIONS.CLEAR_ERROR };

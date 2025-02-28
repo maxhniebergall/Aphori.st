@@ -144,7 +144,6 @@ export class BaseOperator {
     for (let i = 0; i < retries; i++) {
       try {
         const response: AxiosResponse<CompressedApiResponse<T>> = await apiCall();
-        console.log("BaseOperator: Retry API call simplified response:", response);
         if (response.data.success && response.data.compressedData) {
           if (typeof response.data.compressedData === 'string') {
             return JSON.parse(response.data.compressedData) as Compressed<T>;
