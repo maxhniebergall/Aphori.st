@@ -53,6 +53,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   const listRef = useRef<VariableSizeList>(null);
   const sizeMap = useRef<{ [key: number]: number }>({});
   const [levels, setLevels] = useState<Array<StoryTreeLevel | LastLevel>>([]);
+  const [listSize, setListSize] = useState<number>(Number.MAX_SAFE_INTEGER);
   
   // Use our selective hook to prevent unnecessary re-renders
   const { replyTarget } = useReplyContextForList();
@@ -87,6 +88,13 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
       levelsLength: state?.storyTree?.levels?.length
     });
     setLevels(state?.storyTree?.levels || []);
+
+    // check if we've loaded the last level
+    const lastLevel : StoryTreeLevel | LastLevel | undefined = state?.storyTree?.levels?.[state?.storyTree?.levels?.length - 1];
+    if (lastLevel && !lastLevel.hasOwnProperty("pagination")) {
+      console.log("VirtualizedStoryList: Last Level has no pagination, no more levels to load. Setting list size to [" + (lastLevel.levelNumber - 1) + "]");
+      setListSize(lastLevel.levelNumber - 1);
+    }
   }, [postRootId, state?.storyTree?.levels]);
 
   // Set error
@@ -160,7 +168,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
                 console.log("VirtualizedStoryList: Checking if item is loaded:", { index, isLoaded, levelsLength: levels.length });
                 return isLoaded;
               }}
-              itemCount={Number.MAX_SAFE_INTEGER} // we don't know how many levels there are. According to the documentation, in this case we can use an arbitrary large number. TODO: once we know that there aren't more levels, we can update this to the actual number of levels.
+              itemCount={listSize} 
               loadMoreItems={async (startIndex: number, stopIndex: number) => {
                 console.log("VirtualizedStoryList: Loading more items:", { startIndex, stopIndex });
                 return storyTreeOperator.loadMoreLevels(startIndex, stopIndex);

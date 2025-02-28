@@ -263,7 +263,7 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
-  private async   fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
+  private async fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
     const encodedSelectedQuoteString = new Quote(selectedQuote.text, selectedQuote.sourcePostId, selectedQuote.selectionRange).toString();
     const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId}/${encodedSelectedQuoteString}/${sortingCriteria}?limit=${limit}`;
     try {
@@ -272,9 +272,7 @@ class StoryTreeOperator extends BaseOperator {
           validateStatus: status => status === 200
         })
       );
-      console.log("fetchFirstRepliesForLevel compressedPaginatedResponse", compressedPaginatedResponse);
       const decompressedPaginatedData = await compression.decompress<CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
-      console.log("fetchFirstRepliesForLevel decompressedPaginatedData", decompressedPaginatedData);
       return decompressedPaginatedData;
 
     } catch (err) {
@@ -307,13 +305,6 @@ class StoryTreeOperator extends BaseOperator {
     if (!decompressedResponse || !decompressedResponse.quoteCounts) {
       console.error('Invalid data received for quote counts:', decompressedResponse);
       throw new StoryTreeError('Invalid data received for quote counts');
-    }
-    
-    // Create a new array of quote counts with properly reconstructed Quote objects
-    
-    console.log("StoryTreeOperator: Fetched quote counts size:", decompressedResponse.quoteCounts.length);
-    if (decompressedResponse.quoteCounts.length > 0) {
-      console.log("StoryTreeOperator: First quote count:", decompressedResponse.quoteCounts[0]);
     }
     
     return {quoteCounts: decompressedResponse.quoteCounts};
@@ -425,7 +416,8 @@ class StoryTreeOperator extends BaseOperator {
         return { error: response.data.error || 'Unknown error occurred' };
       }
 
-      // After successful reply, reload the story tree data
+      // After successful reply, reload the story tree data 
+      // TODO: this is a hack, we should only reload the necessary data
       const state = this.getState();
       if (state.storyTree) {
         await this.initializeStoryTree(state.storyTree.post.id);
@@ -446,14 +438,15 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
-  public loadMoreLevels = async (startLevelNumber: number, endLevelNumber: number): Promise<void> => {
-    console.log("StoryTreeOperator: Loading more levels:", { startLevelNumber, endLevelNumber });
+  public loadMoreLevels = async (startIndex: number, endIndex: number): Promise<void> => {
+    console.log("StoryTreeOperator: Loading more levels:", { startIndex, endIndex });
     
     // Load each level sequentially
-    const countOfNewLevelsToLoad = endLevelNumber - startLevelNumber;
+    const countOfNewLevelsToLoad = endIndex - startIndex;
     for (let i = 0; i < countOfNewLevelsToLoad; i++) {
-      const levelNumber = startLevelNumber + i;
-      const state = this.getState(); 
+      const levelNumber = startIndex + i; 
+
+      const state = this.getState();  
       // get the current state for each iteration, 
       // we will dispatch the new level and load the items for each iteration
 
@@ -463,35 +456,38 @@ class StoryTreeOperator extends BaseOperator {
           console.error(errorMsg);
           throw new StoryTreeError(errorMsg);
         }
-      }
-      const parentLevel = state.storyTree.levels[startLevelNumber - 1];
-      const parentLevelAsLevel : StoryTreeLevel = parentLevel as StoryTreeLevel;
-      const rootNodeId = state.storyTree.post.id;
-      { // continue validation
-        if (startLevelNumber < 1) {
-          const errorMsg = `Start level number ${startLevelNumber} is less than 1, which is not allowed`;
+        if (startIndex < 1) {
+          const errorMsg = `Start level number ${startIndex} is less than 1, which is not allowed`;
           console.error(errorMsg);
           throw new StoryTreeError(errorMsg);
         }
-        
-        if (startLevelNumber > state.storyTree.levels.length) {
-          const errorMsg = `Start level number ${startLevelNumber} is too big, max is ${state.storyTree.levels.length}`;
+        if (startIndex > state.storyTree.levels.length) {
+          const errorMsg = `Start level number ${startIndex} is too big, max is ${state.storyTree.levels.length}`;
           console.error(errorMsg);
           throw new StoryTreeError(errorMsg);
-        }
-
-        // Get the parent level for the first level we want to load
-        if (!parentLevelAsLevel || parentLevelAsLevel.hasOwnProperty("selectedNode")) {
-          if (!parentLevelAsLevel.selectedNode) {
-            const errorMsg = `Selected node not found for level ${startLevelNumber - 1}`;
-            console.error(errorMsg);
-            throw new StoryTreeError(errorMsg);
-          }
         }
         // Skip root level (level 0) since it doesn't have any siblings
         if (levelNumber === 0) {
           console.log("Skipping root level (level 0) since it doesn't have any siblings");
           continue;
+        }
+      }
+      const parentLevel = state.storyTree.levels[levelNumber-1];
+      const parentLevelAsLevel : StoryTreeLevel = parentLevel as StoryTreeLevel;
+      const rootNodeId = state.storyTree.post.id;
+      { // continue validation
+        // Get the parent level for the first level we want to load
+        if (!parentLevel || !parentLevelAsLevel.hasOwnProperty("selectedNode")) {
+          // is last level
+          console.log("Parent level is last level. No more levels to load");
+          break;
+        }
+        if (!parentLevel || parentLevel.hasOwnProperty("selectedNode")) {
+          if (!parentLevel || !parentLevelAsLevel.selectedNode) {
+            const errorMsg = `Selected node not found for level ${levelNumber}; parentLevel: ${parentLevel}; levels: ${JSON.stringify(state.storyTree.levels)}`;
+            console.error(errorMsg);
+            throw new StoryTreeError(errorMsg);
+          }
         }
       }
       const parentId = parentLevelAsLevel.selectedNode.id;
