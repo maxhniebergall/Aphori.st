@@ -183,7 +183,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           console.error("StoryTree is not initialized");
           return state;
         }
-        const updatedLevels = mergeLevels(state.storyTree.levels, action.payload); // TODO verify that this can handle a null value of existing level (for new levels)
+        const updatedLevels = mergeLevels(state.storyTree.levels, action.payload);
         return {
           ...state,
           storyTree: { ...state.storyTree, levels: updatedLevels },
