@@ -537,24 +537,20 @@ class StoryTreeOperator extends BaseOperator {
           }
         }
         let siblingsForQuote: StoryTreeNode[] = [];
-        console.log("state.storyTree.levels[levelNumber - 1]", state.storyTree.levels[levelNumber - 1], levelNumber);
         // Find siblings for the selected quote in the levelsMap array
-        const levelsMapEntry = state.storyTree.levels[levelNumber - 1].siblings.levelsMap.find(
-          ([quote]) => quote && quote.toString() === selectedQuote.toString()
-        );
-        if (levelsMapEntry) {
-          siblingsForQuote = levelsMapEntry[1];
+        const existingLevel = state.storyTree.levels[levelNumber];
+        let existingLevelPagination : Pagination | null = null;
+        if (existingLevel) {
+          const levelsMapEntry = existingLevel.siblings.levelsMap.find(
+            ([quote]) => quote && quote.toString() === selectedQuote.toString()
+          );
+          if (levelsMapEntry) {
+            siblingsForQuote = levelsMapEntry[1];
+          }
+          existingLevelPagination = existingLevel.pagination;
         }
-        let pagination: Pagination = state.storyTree.levels[levelNumber - 1].pagination;
-        {// get the siblings for the selected quote
-          if (siblingsForQuote && siblingsForQuote.length > 0) {
-            throw new StoryTreeError(`New level already has siblings, but shouldn't`);
-            /// TODO FIX ME: This is checking the siblings of the previous level???
-            // This is causing the siblings to get pushed into the wrong levell
-            // seems ot be caused by looking at [levelNumber - 1]
-            // not sure why we are doing that at all?
-            // were we trying to achieve something witht hat?
-            // maybe we can just not do that...
+          if (siblingsForQuote && siblingsForQuote.length > 0 || !!existingLevelPagination) {
+            throw new StoryTreeError(`New level already has siblings or pagination, but shouldn't [${existingLevel.levelNumber}] [${siblingsForQuote.length}] [${existingLevelPagination}]`);
           }
           const sortingCriteria = 'mostRecent';
             // this call to getReplies will fetch the replies and update the state, including the quoteCounts
@@ -563,7 +559,7 @@ class StoryTreeOperator extends BaseOperator {
             console.log(`No replies found for level ${levelNumber}, no more levels to load`);
             break;
           } 
-          pagination = maybeFirstReplies.pagination;
+          const pagination = maybeFirstReplies.pagination;
 
           const firstReplies: Reply[] = maybeFirstReplies.data;
           console.log("firstReplies", firstReplies);
@@ -586,7 +582,6 @@ class StoryTreeOperator extends BaseOperator {
               createdAt: reply.createdAt,
             } as StoryTreeNode);
           });
-        }
         
         // Create the fully initialized new level
         const level: StoryTreeLevel = {
