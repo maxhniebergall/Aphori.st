@@ -313,12 +313,8 @@ export function useTextSelection({
       if (!isDraggingRef.current) {
         // If click occurred on a quote highlight 
         const target = event.target as HTMLElement;
-        if (target.dataset.quoteRange) {
+        if (target.dataset.quoteId) {
           try {
-            if (!target.dataset.quoteId) {
-              console.warn('No quote ID found for target', target);
-              return;
-            }
             const quoteId = parseInt(target.dataset.quoteId);
             const quote = quoteIdToQuoteMap.get(quoteId);
             if (quote) {
@@ -330,6 +326,7 @@ export function useTextSelection({
           mouseIsDownRef.current = false;
           return;
         }
+        
         // Otherwise do a word selection based on the initial offset
         const offset = initialOffsetRef.current;
         if (offset !== null) {
