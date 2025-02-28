@@ -24,7 +24,15 @@ interface StoryTreeLevelProps {
 }
 
 // Create a memoized NodeFooterWrapper component to prevent unnecessary re-renders
-const MemoizedNodeFooter = React.memo(NodeFooter);
+const MemoizedNodeFooter = React.memo(NodeFooter,
+  (prevProps, nextProps) => {
+    return prevProps.currentIndex === nextProps.currentIndex &&
+      prevProps.totalSiblings === nextProps.totalSiblings &&
+      prevProps.isReplyTarget === nextProps.isReplyTarget &&
+      prevProps.isReplyActive === nextProps.isReplyActive &&
+      prevProps.replyError === nextProps.replyError;
+  }
+);
 
 // Create a memoized NodeContent component to prevent unnecessary re-renders
 const MemoizedNodeContent = React.memo(NodeContent, (prevProps, nextProps) => {
@@ -125,6 +133,9 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   useEffect(() => {
     // Update currentIndex if it's out of bounds
     if ((currentIndex >= siblings.length && siblings.length > 0) || (currentIndex < 0)) {
+      console.error(
+        `Current index (${currentIndex}) is out of bounds (siblings length: ${siblings.length}). Resetting index to ${Math.max(0, siblings.length - 1)}.`
+      );
       setCurrentIndex(Math.max(0, siblings.length - 1));
     }
     
@@ -132,12 +143,19 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     
     // Handle case when there are no siblings but we have a root node
     if (!node && levelData.levelNumber === 0 && levelData.rootNodeId) {
+      const rootEntry = levelData.siblings.levelsMap.find(([quote]) => quote === null);
+      if (rootEntry){
+        setCurrentNode(rootEntry[1][0]);
+        return;
+      }
+      console.warn(`No sibling node found at currentIndex (${currentIndex}) for root level; setting currentNode to null. [${JSON.stringify(levelData) }]`);
       setCurrentNode(null);
       return;
     }
     
-    // Handle case when there is no valid node
+    // Warn if node is present but invalid (missing rootNodeId)
     if (!node?.rootNodeId) {
+      console.warn(`Sibling node at index ${currentIndex} is invalid (missing rootNodeId). Setting currentNode to null.`);
       setCurrentNode(null);
       return;
     }
@@ -149,7 +167,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   const nodeToRender = useMemo(() => {
     // If we have a selected node from the current data, use it directly
     if (currentNode) {
-      return currentNode;
+      return currentNode; // TODO this is a bit sus
     }
     
     // If we don't have a current node but the levelData has a selectedNode, use that
@@ -276,6 +294,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         );
         // StoryTreeOperator will update the levelData, which will update siblings
         // We'll increment the index to show the newly loaded sibling
+        // TODO we should check that the sibings were loaded (i.e., they exist) and if not, then we should not increment the index
         setCurrentIndex(currentIndex + 1);
       } catch (error) {
         console.error('Failed to load more siblings:', error);
@@ -362,7 +381,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       }}
     >
       <AnimatePresence mode="wait">
-        <div {...bind()}>
+        <div {...bind()} style={{ touchAction: 'none' }}>
           <motion.div
             className={`story-tree-node ${isReplyTarget(nodeToRender.rootNodeId) ? 'reply-target' : ''}`}
             initial={{ opacity: 0, x: currentIndex === 0 ? -50 : 50 }}
@@ -400,18 +419,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
             {isLoading && (
               <div className="loading-indicator" aria-live="polite">
                 Loading...
-              </div>
-            )}
-            
-            {/* Navigation indicators */}
-            {(currentIndex > 0 || pagination.prevCursor !== undefined) && (
-              <div className="nav-indicator prev-indicator" aria-hidden="true">
-                ←
-              </div>
-            )}
-            {(currentIndex < siblings.length - 1 || pagination.hasMore) && (
-              <div className="nav-indicator next-indicator" aria-hidden="true">
-                →
               </div>
             )}
           </motion.div>
