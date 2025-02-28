@@ -332,13 +332,6 @@ class StoryTreeOperator extends BaseOperator {
    * // TODO we need to introduce the cache here so that requesting existing items doesn't trigger a new fetch (for those items)
    */
   public async loadMoreItems(parentId: string, levelNumber: number, quote: Quote, startIndex: number, stopIndex: number): Promise<void> {
-    console.log("StoryTreeOperator: Loading more items:", { 
-      parentId, 
-      levelNumber, 
-      quote: quote ? quote.toString() : 'undefined', 
-      startIndex, 
-      stopIndex 
-    });
 
     // Validate the quote
     if (!quote) {
@@ -512,13 +505,13 @@ class StoryTreeOperator extends BaseOperator {
       const quoteCounts = parentLevelAsLevel.selectedNode.quoteCounts;
       { // continue validation
         if (!quoteCounts || !quoteCounts.quoteCounts || quoteCounts.quoteCounts.length === 0) {
-          console.log(`No quotes found for parentId: ${parentId}, no more levels to load`);
-          
+          console.log(`No quotes found for parentId: ${parentId}, no more levels to load, level ${levelNumber} is last level`);
+          this.dispatchLastLevel(levelNumber);
           break;
         }
       }
       try {
-        let selectedQuote = fullQuoteFromText(parentText, parentId);
+        let selectedQuote = this.fullQuoteFromText(parentText, parentId);
         { // for new levels, we assume there isn't a selected quote yet
           // we start by checking if there are any replies to the default quote
           // otherwise, we select the quote with the most replies
@@ -531,6 +524,7 @@ class StoryTreeOperator extends BaseOperator {
             const maybeQuote = this.mostQuoted(quoteCounts);
             if (!maybeQuote) {
               console.log(`No quotes with replies found for level ${levelNumber}, no more levels to load`);
+              this.dispatchLastLevel(levelNumber);
               break;
             } else {
               selectedQuote = maybeQuote;
@@ -551,7 +545,7 @@ class StoryTreeOperator extends BaseOperator {
           }
           existingLevelPagination = existingLevelAsLevel.pagination;
         }
-        
+
         if (siblingsForQuote && siblingsForQuote.length > 0 || !!existingLevelPagination) {
           throw new StoryTreeError(`New level already has siblings or pagination, but shouldn't [${existingLevel.levelNumber}] [${siblingsForQuote.length}] [${existingLevelPagination}]`);
         }
@@ -560,6 +554,7 @@ class StoryTreeOperator extends BaseOperator {
         const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, selectedQuote, sortingCriteria, 5); 
         if (!maybeFirstReplies) {
           console.log(`No replies found for level ${levelNumber}, no more levels to load`);
+          this.dispatchLastLevel(levelNumber);
           break;
         } 
         const pagination = maybeFirstReplies.pagination;
@@ -649,7 +644,7 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
-  public async dispatchNewLevel(level: StoryTreeLevel): Promise<void> {
+  public dispatchNewLevel(level: StoryTreeLevel): void {
     if (!this.store || !this.store.dispatch) {
       throw new StoryTreeError('Dispatch not initialized in StoryTreeOperator.');
     }
@@ -662,24 +657,34 @@ class StoryTreeOperator extends BaseOperator {
     }
     this.store.dispatch({ type: ACTIONS.SET_SELECTED_NODE, payload: node });
   }
+
+  private dispatchLastLevel(levelNumber: number): void {
+    if (!this.store || !this.store.dispatch) {
+      throw new StoryTreeError('Dispatch not initialized in StoryTreeOperator.');
+    }
+    this.store.dispatch({ type: ACTIONS.SET_LAST_LEVEL, payload: { levelNumber: levelNumber } });
+  }
+
+  private fullQuoteFromText(parentText: string, parentId: string): Quote {
+    if (!parentText || !parentId) {
+      throw new StoryTreeError('Invalid parent text or parent ID');
+    }
+    if (parentText.length === 0) {
+      throw new StoryTreeError('Parent text is empty, but must not be');
+    }
+    if (parentId.length === 0) {
+      throw new StoryTreeError('Parent ID is empty, but must not be');
+    }
+    return new Quote(parentText, parentId, {
+      start: 0,
+      end: parentText.length
+    });
+  }
+  
 }
 
 // Create and export a single instance
 const storyTreeOperator = new StoryTreeOperator();
 export default storyTreeOperator;
 
-function fullQuoteFromText(parentText: string, parentId: string): Quote {
-  if (!parentText || !parentId) {
-    throw new StoryTreeError('Invalid parent text or parent ID');
-  }
-  if (parentText.length === 0) {
-    throw new StoryTreeError('Parent text is empty, but must not be');
-  }
-  if (parentId.length === 0) {
-    throw new StoryTreeError('Parent ID is empty, but must not be');
-  }
-  return new Quote(parentText, parentId, {
-    start: 0,
-    end: parentText.length
-  });
-}
+
