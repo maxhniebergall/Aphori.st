@@ -382,7 +382,12 @@ class StoryTreeOperator extends BaseOperator {
           }
         const currentLevel = state.storyTree.levels[levelNumber];
         // this call to getReplies will fetch the replies and update the state, including the quoteCounts
-        await this.fetchAndDispatchReplies(currentLevel, sortingCriteria, limit); 
+        if (currentLevel.hasOwnProperty("siblings")) {
+          const currentLevelAsLevel : StoryTreeLevel = currentLevel as StoryTreeLevel;
+          await this.fetchAndDispatchReplies(currentLevelAsLevel, sortingCriteria, limit); 
+        } else {
+          return Promise.resolve();
+        }
       }
       
     } catch (error) {
@@ -448,8 +453,6 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
-  // TODO verify that we are only dispatching state once per iteration
-  // TODO -- this is the problem right now
   public loadMoreLevels = async (startLevelNumber: number, endLevelNumber: number): Promise<void> => {
     console.log("StoryTreeOperator: Loading more levels:", { startLevelNumber, endLevelNumber });
     
@@ -469,6 +472,7 @@ class StoryTreeOperator extends BaseOperator {
         }
       }
       const parentLevel = state.storyTree.levels[startLevelNumber - 1];
+      const parentLevelAsLevel : StoryTreeLevel = parentLevel as StoryTreeLevel;
       const rootNodeId = state.storyTree.post.id;
       { // continue validation
         if (startLevelNumber < 1) {
@@ -484,35 +488,32 @@ class StoryTreeOperator extends BaseOperator {
         }
 
         // Get the parent level for the first level we want to load
-        if (!parentLevel || !parentLevel.selectedNode) {
-          const errorMsg = `Selected node not found for level ${startLevelNumber - 1}`;
-          console.error(errorMsg);
-          throw new StoryTreeError(errorMsg);
+        if (!parentLevelAsLevel || parentLevelAsLevel.hasOwnProperty("selectedNode")) {
+          if (!parentLevelAsLevel.selectedNode) {
+            const errorMsg = `Selected node not found for level ${startLevelNumber - 1}`;
+            console.error(errorMsg);
+            throw new StoryTreeError(errorMsg);
+          }
         }
         // Skip root level (level 0) since it doesn't have any siblings
         if (levelNumber === 0) {
           console.log("Skipping root level (level 0) since it doesn't have any siblings");
           continue;
         }
-      
-        // Ensure parent level and selected node exist
-        if (!parentLevel || !parentLevel.selectedNode) {
-          console.log(`No selected node for level ${levelNumber - 1}, stopping level loading`);
-          break;
-        }
       }
-      const parentId = parentLevel.selectedNode.id;
-      const parentText = parentLevel.selectedNode.textContent;
+      const parentId = parentLevelAsLevel.selectedNode.id;
+      const parentText = parentLevelAsLevel.selectedNode.textContent;
       { // continue validation
         if (!parentId || !parentText) {
-          console.error(`Invalid parent node at level ${levelNumber - 1}:`, parentLevel.selectedNode);
+          console.error(`Invalid parent node at level ${levelNumber - 1}:`, parentLevelAsLevel.selectedNode);
           break;
         }
       }
-      const quoteCounts = parentLevel.selectedNode.quoteCounts;
+      const quoteCounts = parentLevelAsLevel.selectedNode.quoteCounts;
       { // continue validation
         if (!quoteCounts || !quoteCounts.quoteCounts || quoteCounts.quoteCounts.length === 0) {
           console.log(`No quotes found for parentId: ${parentId}, no more levels to load`);
+          
           break;
         }
       }
@@ -540,48 +541,50 @@ class StoryTreeOperator extends BaseOperator {
         // Find siblings for the selected quote in the levelsMap array
         const existingLevel = state.storyTree.levels[levelNumber];
         let existingLevelPagination : Pagination | null = null;
-        if (existingLevel) {
-          const levelsMapEntry = existingLevel.siblings.levelsMap.find(
+        if (existingLevel && existingLevel.hasOwnProperty("siblings")) {
+          const existingLevelAsLevel : StoryTreeLevel = existingLevel as StoryTreeLevel;
+          const levelsMapEntry = existingLevelAsLevel.siblings.levelsMap.find(
             ([quote]) => quote && quote.toString() === selectedQuote.toString()
           );
           if (levelsMapEntry) {
             siblingsForQuote = levelsMapEntry[1];
           }
-          existingLevelPagination = existingLevel.pagination;
+          existingLevelPagination = existingLevelAsLevel.pagination;
         }
-          if (siblingsForQuote && siblingsForQuote.length > 0 || !!existingLevelPagination) {
-            throw new StoryTreeError(`New level already has siblings or pagination, but shouldn't [${existingLevel.levelNumber}] [${siblingsForQuote.length}] [${existingLevelPagination}]`);
-          }
-          const sortingCriteria = 'mostRecent';
-            // this call to getReplies will fetch the replies and update the state, including the quoteCounts
-          const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, selectedQuote, sortingCriteria, 5); 
-          if (!maybeFirstReplies) {
-            console.log(`No replies found for level ${levelNumber}, no more levels to load`);
-            break;
-          } 
-          const pagination = maybeFirstReplies.pagination;
+        
+        if (siblingsForQuote && siblingsForQuote.length > 0 || !!existingLevelPagination) {
+          throw new StoryTreeError(`New level already has siblings or pagination, but shouldn't [${existingLevel.levelNumber}] [${siblingsForQuote.length}] [${existingLevelPagination}]`);
+        }
+        const sortingCriteria = 'mostRecent';
+          // this call to getReplies will fetch the replies and update the state, including the quoteCounts
+        const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, selectedQuote, sortingCriteria, 5); 
+        if (!maybeFirstReplies) {
+          console.log(`No replies found for level ${levelNumber}, no more levels to load`);
+          break;
+        } 
+        const pagination = maybeFirstReplies.pagination;
 
-          const firstReplies: Reply[] = maybeFirstReplies.data;
-          console.log("firstReplies", firstReplies);
-          const quoteCountsMap = new Map<Quote, QuoteCounts>();
-          await Promise.all(firstReplies.map(async (reply: Reply) => {
-            const quoteCounts = await this.fetchQuoteCounts(reply.id);
-            quoteCountsMap.set(reply.quote, quoteCounts);
-          }));
+        const firstReplies: Reply[] = maybeFirstReplies.data;
+        console.log("firstReplies", firstReplies);
+        const quoteCountsMap = new Map<Quote, QuoteCounts>();
+        await Promise.all(firstReplies.map(async (reply: Reply) => {
+          const quoteCounts = await this.fetchQuoteCounts(reply.id);
+          quoteCountsMap.set(reply.quote, quoteCounts);
+        }));
 
-          firstReplies.forEach(reply => {
-            siblingsForQuote.push({
-              id: reply.id,
-              rootNodeId: rootNodeId,
-              parentId: [parentId],
-              levelNumber: levelNumber,
-              textContent: reply.text,
-              repliedToQuote: selectedQuote,
-              quoteCounts: quoteCountsMap.get(reply.quote),
-              authorId: reply.authorId,
-              createdAt: reply.createdAt,
-            } as StoryTreeNode);
-          });
+        firstReplies.forEach(reply => {
+          siblingsForQuote.push({
+            id: reply.id,
+            rootNodeId: rootNodeId,
+            parentId: [parentId],
+            levelNumber: levelNumber,
+            textContent: reply.text,
+            repliedToQuote: selectedQuote,
+            quoteCounts: quoteCountsMap.get(reply.quote),
+            authorId: reply.authorId,
+            createdAt: reply.createdAt,
+          } as StoryTreeNode);
+        });
         
         // Create the fully initialized new level
         const level: StoryTreeLevel = {

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useLayoutEffect, ReactNode } from 'react';
-import { StoryTreeState, Action, StoryTreeLevel, StoryTree, StoryTreeNode, Siblings } from '../types/types';
+import { StoryTreeState, Action, StoryTreeLevel, StoryTree, StoryTreeNode, Siblings, LastLevel } from '../types/types';
 import { ACTIONS } from '../types/types';
 import StoryTreeErrorBoundary from './StoryTreeErrorBoundary';
 import storyTreeOperator from '../operators/StoryTreeOperator';
@@ -32,7 +32,7 @@ const initialState: StoryTreeState = {
   error: null,
 };
 
-function getLevelIndex(existingLevels: StoryTreeLevel[], level: StoryTreeLevel): number {
+function getLevelIndex(existingLevels: Array<StoryTreeLevel | LastLevel>, level: StoryTreeLevel | LastLevel): number {
   return existingLevels.findIndex(existingLevel => 
     existingLevel.rootNodeId === level.rootNodeId && 
     existingLevel.levelNumber === level.levelNumber
@@ -85,7 +85,7 @@ function updateSiblingsForQuote(siblings: Siblings, quote: Quote | null, nodes: 
   return { levelsMap: newLevelsMap };
 }
 
-export function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTreeLevel[]): StoryTreeLevel[] {
+export function mergeLevels(existingLevels: Array<StoryTreeLevel | LastLevel>, newLevels: Array<StoryTreeLevel | LastLevel>): Array<StoryTreeLevel | LastLevel> {
   const returnableLevels = [...existingLevels];
 
   for (const levelWithNewItems of newLevels) { 
@@ -93,44 +93,50 @@ export function mergeLevels(existingLevels: StoryTreeLevel[], newLevels: StoryTr
     
     if (levelIndex === -1) {
       returnableLevels.push(levelWithNewItems);
+    } else if (levelWithNewItems.hasOwnProperty("pagination") === false) {
+      returnableLevels[levelIndex] = levelWithNewItems;
+    } else if (returnableLevels[levelIndex].hasOwnProperty("siblings") === false) {
+      throw new Error("attempting to merge a LastLevel with a new level [" + levelWithNewItems.levelNumber + "]"  + JSON.stringify({levelWithNewItems, returnableLevels, levelIndex}));
     } else {
       // Update the pagination information with cursor based details
-      returnableLevels[levelIndex].pagination = {
-        ...returnableLevels[levelIndex].pagination,
-        ...levelWithNewItems.pagination
+      const returableLevelAsLevel : StoryTreeLevel = returnableLevels[levelIndex] as StoryTreeLevel;
+      const levelWithNewItemsAsLevel : StoryTreeLevel = levelWithNewItems as StoryTreeLevel;
+      returableLevelAsLevel.pagination = {
+        ...returableLevelAsLevel.pagination,
+        ...levelWithNewItemsAsLevel.pagination
       };
 
       // Merge siblings map using cursor based pagination.
       // Instead of using an index for insertion, check for the existence of prevCursor:
       // if prevCursor exists, the new nodes are from an earlier page and should be prepended;
       // otherwise, they are appended.
-      if (levelWithNewItems.siblings?.levelsMap) {
-        for (const [quote, newNodesAtLevel] of levelWithNewItems.siblings.levelsMap) {
-          const existingSiblings = findSiblingsForQuote(returnableLevels[levelIndex].siblings, quote);
+      if (levelWithNewItemsAsLevel.siblings?.levelsMap) {
+        for (const [quote, newNodesAtLevel] of levelWithNewItemsAsLevel.siblings.levelsMap) {
+          const existingSiblings = findSiblingsForQuote(returableLevelAsLevel.siblings, quote);
           
           // Filter out nodes that already exist
           const existingIds = existingSiblings ? new Set(existingSiblings.map((node: StoryTreeNode) => node.id)) : new Set();
           const uniqueNewNodes = newNodesAtLevel.filter((node: StoryTreeNode) => !existingIds.has(node.id));
           
           if (existingSiblings && existingSiblings.length > 0) {
-            if (levelWithNewItems.pagination.prevCursor) {
+            if (levelWithNewItemsAsLevel.pagination.prevCursor) {
               // Prepend new nodes if pagination indicates loading a previous page.
-              returnableLevels[levelIndex].siblings = updateSiblingsForQuote(
-                returnableLevels[levelIndex].siblings,
+              returableLevelAsLevel.siblings = updateSiblingsForQuote(
+                returableLevelAsLevel.siblings,
                 quote,
                 [...uniqueNewNodes, ...existingSiblings]
               );
             } else {
               // Otherwise, append new nodes.
-              returnableLevels[levelIndex].siblings = updateSiblingsForQuote(
-                returnableLevels[levelIndex].siblings,
+              returableLevelAsLevel.siblings = updateSiblingsForQuote(
+                returableLevelAsLevel.siblings,
                 quote,
                 [...existingSiblings, ...uniqueNewNodes]
               );
             }
           } else {
-            returnableLevels[levelIndex].siblings = updateSiblingsForQuote(
-              returnableLevels[levelIndex].siblings,
+            returableLevelAsLevel.siblings = updateSiblingsForQuote(
+              returableLevelAsLevel.siblings,
               quote,
               uniqueNewNodes
             );
@@ -221,7 +227,29 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           }
         };
       }
-    
+
+    case ACTIONS.SET_LAST_LEVEL:
+      {
+        if (!state.storyTree) {
+          console.error("StoryTree is not initialized");
+          return state;
+        }
+        const lastLevelNumberInStoryTree = state.storyTree.levels.length - 1;
+        const lastLevelNumberInPayload = action.payload.levelNumber;
+        if (lastLevelNumberInStoryTree + 1 !== lastLevelNumberInPayload) {
+          console.error(`Last level in story tree (${lastLevelNumberInStoryTree + 1}) does not match last level in payload (${lastLevelNumberInPayload})`);
+          return state;
+        }
+        const lastLevel : LastLevel = {
+          levelNumber: lastLevelNumberInPayload,
+          rootNodeId: state.storyTree.post.id,
+        };
+        const newLevels : Array<StoryTreeLevel | LastLevel> = [...state.storyTree.levels, lastLevel];
+        return {
+          ...state,
+          storyTree: { ...state.storyTree, levels: newLevels }
+        };
+      }
     
     case ACTIONS.SET_ERROR:
       {

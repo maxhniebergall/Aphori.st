@@ -49,19 +49,6 @@ const NodeContent: React.FC<NodeContentProps> = ({
   // Memoize the existingSelectableQuotes to prevent unnecessary re-renders
   const memoizedExistingSelectableQuotes = useMemo(() => {
     // Log the node's quote counts for debugging
-    console.log('NodeContent: Node quote counts details', {
-      nodeId: node.id,
-      hasQuoteCounts: !!node.quoteCounts,
-      quotesCountsType: node.quoteCounts ? typeof node.quoteCounts.quoteCounts : 'undefined',
-      isMap: node.quoteCounts?.quoteCounts instanceof Map,
-      size: node.quoteCounts?.quoteCounts?.length || 0,
-      entries: node.quoteCounts?.quoteCounts && node.quoteCounts.quoteCounts.length > 0 ? 
-        node.quoteCounts.quoteCounts.slice(0, 1).map(([q, c]) => ({
-          text: q.text?.substring(0, 30) + '...',
-          count: c
-        })) : 'no entries'
-    });
-    
     return node.quoteCounts ?? { quoteCounts: [] };
   }, [node.quoteCounts, node.id]);
 

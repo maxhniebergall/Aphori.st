@@ -22,7 +22,7 @@ import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { useStoryTree } from '../context/StoryTreeContext';
 import { useReplyContext } from '../context/ReplyContext';
-import { StoryTreeLevel } from '../types/types';
+import { LastLevel, StoryTreeLevel } from '../types/types';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import Row from './Row';
 
@@ -52,7 +52,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<VariableSizeList>(null);
   const sizeMap = useRef<{ [key: number]: number }>({});
-  const [levels, setLevels] = useState<StoryTreeLevel[]>([]);
+  const [levels, setLevels] = useState<Array<StoryTreeLevel | LastLevel>>([]);
   
   // Use our selective hook to prevent unnecessary re-renders
   const { replyTarget } = useReplyContextForList();
@@ -118,18 +118,23 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   const itemRenderer = useMemo(() => {
     return ({ index, style }: { index: number, style: React.CSSProperties }) => {
       const level = levels[index];
-      console.log("VirtualizedStoryList: Rendering level:", { 
-        index, 
-        hasLevel: !!level,
-        levelNumber: level?.levelNumber,
-        stringifiedSiblings: JSON.stringify(level?.siblings?.levelsMap)
-      });
+
+      if (!level.hasOwnProperty("siblings")) {
+        console.log("VirtualizedStoryList: Rendering last level:", { 
+          index, 
+          hasLevel: !!level,
+          levelNumber: level?.levelNumber,
+        });
+        return null;
+      }
       if (!level) return null;
+
+      const levelAsLevel : StoryTreeLevel = level as StoryTreeLevel;
 
       return (
         <MemoizedRow
           style={style}
-          levelData={level}
+          levelData={levelAsLevel}
           setSize={(height) => {
             sizeMap.current[index] = height;
             if (listRef.current) {
