@@ -62,7 +62,7 @@ export interface FeedResponse {
   success: boolean;
   error?: string;
   data: FeedItem[];
-  pagination?: Partial<Pagination>;
+  pagination?: Pagination;
 }
 
 export interface FetchResult {

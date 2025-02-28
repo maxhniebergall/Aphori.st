@@ -84,7 +84,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
 
     // check if we've loaded the last level
     const lastLevel : StoryTreeLevel | LastLevel | undefined = state?.storyTree?.levels?.[state?.storyTree?.levels?.length - 1];
-    if (lastLevel && !lastLevel.hasOwnProperty("pagination")) {
+    if (lastLevel && !Object.hasOwn(lastLevel, "pagination")) {
       console.log("VirtualizedStoryList: Last Level has no pagination, no more levels to load. Setting list size to [" + (lastLevel.levelNumber) + "]");
       setListSize(lastLevel.levelNumber);
     }
@@ -119,7 +119,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     return ({ index, style }: { index: number, style: React.CSSProperties }) => {
       const level = levels[index];
 
-      if (!level.hasOwnProperty("siblings")) {
+      if (!Object.hasOwn(level, "siblings")) {
         return null;
       }
       if (!level) return null;

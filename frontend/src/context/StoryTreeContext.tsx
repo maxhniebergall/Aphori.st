@@ -93,9 +93,9 @@ export function mergeLevels(existingLevels: Array<StoryTreeLevel | LastLevel>, n
     
     if (levelIndex === -1) {
       returnableLevels.push(levelWithNewItems);
-    } else if (levelWithNewItems.hasOwnProperty("pagination") === false) {
+    } else if (Object.hasOwn(levelWithNewItems, "pagination") === false) {
       returnableLevels[levelIndex] = levelWithNewItems;
-    } else if (returnableLevels[levelIndex].hasOwnProperty("siblings") === false) {
+    } else if (Object.hasOwn(returnableLevels[levelIndex], "siblings") === false) {
       throw new Error("attempting to merge a LastLevel with a new level [" + levelWithNewItems.levelNumber + "]"  + JSON.stringify({levelWithNewItems, returnableLevels, levelIndex}));
     } else {
       // Update the pagination information with cursor based details

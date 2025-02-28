@@ -366,7 +366,7 @@ class StoryTreeOperator extends BaseOperator {
           }
         const currentLevel = state.storyTree.levels[levelNumber];
         // this call to getReplies will fetch the replies and update the state, including the quoteCounts
-        if (currentLevel.hasOwnProperty("siblings")) {
+        if (Object.hasOwn(currentLevel, "siblings")) {
           const currentLevelAsLevel : StoryTreeLevel = currentLevel as StoryTreeLevel;
           await this.fetchAndDispatchReplies(currentLevelAsLevel, sortingCriteria, limit); 
         } else {
@@ -477,13 +477,13 @@ class StoryTreeOperator extends BaseOperator {
       const rootNodeId = state.storyTree.post.id;
       { // continue validation
         // Get the parent level for the first level we want to load
-        if (!parentLevel || !parentLevelAsLevel.hasOwnProperty("selectedNode")) {
+        if (!parentLevel || !Object.hasOwn(parentLevelAsLevel, "selectedNode")) {
           // is last level
           console.log("Parent level is last level. No more levels to load");
           break;
         }
-        if (!parentLevel || parentLevel.hasOwnProperty("selectedNode")) {
-          if (!parentLevel || !parentLevelAsLevel.selectedNode) {
+        if (!parentLevel || Object.hasOwn(parentLevel, "selectedNode")) {
+          if (!parentLevel || !Object.hasOwn(parentLevelAsLevel, "selectedNode")) {
             const errorMsg = `Selected node not found for level ${levelNumber}; parentLevel: ${parentLevel}; levels: ${JSON.stringify(state.storyTree.levels)}`;
             console.error(errorMsg);
             throw new StoryTreeError(errorMsg);
@@ -531,7 +531,7 @@ class StoryTreeOperator extends BaseOperator {
         // Find siblings for the selected quote in the levelsMap array
         const existingLevel = state.storyTree.levels[levelNumber];
         let existingLevelPagination : Pagination | null = null;
-        if (existingLevel && existingLevel.hasOwnProperty("siblings")) {
+        if (!!existingLevel && Object.hasOwn(existingLevel, "siblings")) {
           const existingLevelAsLevel : StoryTreeLevel = existingLevel as StoryTreeLevel;
           const levelsMapEntry = existingLevelAsLevel.siblings.levelsMap.find(
             ([quote]) => quote && quote.toString() === selectedQuote.toString()
