@@ -69,7 +69,6 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   // useEffects
   // Load initial data
   useEffect(() => {
-    console.log("VirtualizedStoryList: postRootId changed:", { postRootId, isLocalLoading });
     if (!postRootId) {
       setIsLocalLoading(true);
       return;
@@ -81,33 +80,26 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   // Load more levels
   useEffect(() => {
     if (!postRootId) return;
-    console.log("VirtualizedStoryList: Updating levels from state:", {
-      storyTreeLevels: state?.storyTree?.levels,
-      storyTreeState: state?.storyTree,
-      hasLevels: Boolean(state?.storyTree?.levels),
-      levelsLength: state?.storyTree?.levels?.length
-    });
     setLevels(state?.storyTree?.levels || []);
 
     // check if we've loaded the last level
     const lastLevel : StoryTreeLevel | LastLevel | undefined = state?.storyTree?.levels?.[state?.storyTree?.levels?.length - 1];
     if (lastLevel && !lastLevel.hasOwnProperty("pagination")) {
-      console.log("VirtualizedStoryList: Last Level has no pagination, no more levels to load. Setting list size to [" + (lastLevel.levelNumber - 1) + "]");
-      setListSize(lastLevel.levelNumber - 1);
+      console.log("VirtualizedStoryList: Last Level has no pagination, no more levels to load. Setting list size to [" + (lastLevel.levelNumber) + "]");
+      setListSize(lastLevel.levelNumber);
     }
   }, [postRootId, state?.storyTree?.levels]);
 
   // Set error
   useEffect(() => {
     if (state?.error) {
-      console.log("VirtualizedStoryList: Error from state:", state.error);
+      console.warn("VirtualizedStoryList: Error from state:", state.error);
       setError(state.error);
     }
   }, [state?.error]);
 
   // Show initial loading state
   if (isLocalLoading && !levels.length) {
-    console.log("VirtualizedStoryList: Showing initial loading state");
     return (
       <div className="loading" role="alert" aria-busy="true">
         <div className="loading-spinner"></div>
@@ -118,7 +110,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
 
   // Show error state
   if (error) {
-    console.log("VirtualizedStoryList: Showing error state:", error);
+    console.warn("VirtualizedStoryList: Showing error state:", error);
     return <div className="error" role="alert">Error: {error}</div>;
   }
 
@@ -128,11 +120,6 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
       const level = levels[index];
 
       if (!level.hasOwnProperty("siblings")) {
-        console.log("VirtualizedStoryList: Rendering last level:", { 
-          index, 
-          hasLevel: !!level,
-          levelNumber: level?.levelNumber,
-        });
         return null;
       }
       if (!level) return null;
@@ -165,12 +152,10 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
             <InfiniteLoader
               isItemLoaded={(index) => {
                 const isLoaded = index < levels.length;
-                console.log("VirtualizedStoryList: Checking if item is loaded:", { index, isLoaded, levelsLength: levels.length });
                 return isLoaded;
               }}
               itemCount={listSize} 
               loadMoreItems={async (startIndex: number, stopIndex: number) => {
-                console.log("VirtualizedStoryList: Loading more items:", { startIndex, stopIndex });
                 return storyTreeOperator.loadMoreLevels(startIndex, stopIndex);
               }}
               minimumBatchSize={10}
