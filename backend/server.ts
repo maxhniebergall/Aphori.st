@@ -62,7 +62,8 @@ import {
     RepliesFeedResponse,
     SortingCriteria,
     Post,
-    PostCreationRequest
+    PostCreationRequest,
+    AuthenticatedRouteHandler
 } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { createCursor, decodeCursor } from './utils/cursorUtils.js';
@@ -524,7 +525,7 @@ app.post('/api/auth/verify-magic-link', async (req: Request, res: Response): Pro
 
         if (!userResult.success) {
             logger.warn('User not found for email:', decoded.email);
-            res.status(300).json({ 
+            res.status(401).json({ 
                 success: false,
                 error: 'User not found',
                 email: decoded.email
@@ -682,7 +683,7 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         logger.error('Error creating StoryTree:', err);
         res.status(500).json({ error: 'Server error' });
     }
-}) as unknown as RequestHandler)); // TODO: fix this, we should be able to use the correct type directly
+}) as unknown as RequestHandler));
 
 /**
  * @route   GET /api/check-user-id/:id
