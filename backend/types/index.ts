@@ -20,7 +20,7 @@ export interface DatabaseClient {
     zRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<T[]>;
     zCard: (key: string) => Promise<number>;
     encodeKey: (id: string, prefix: string) => string;
-    compress: <T = any>(data: T) => Promise<T>;
+    compress: <T = any>(data: T) => Promise<Compressed<T>>;
     decompress: <T = any>(data: T) => Promise<T>;
     zRevRangeByScore: <T = string>(key: string, max: number, min: number, options?: { limit?: number }) => Promise<RedisSortedSetItem<T>[]>;
     zscan: (key: string, cursor: string, options?: { match?: string; count?: number }) => Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }>;
@@ -83,6 +83,13 @@ export interface FeedItem {
 export interface AuthenticatedRequest extends Request {
     user: User;
 }
+
+export interface Compressed<T> {
+    v: number;
+    c: boolean;
+    d: string;
+  }
+  
 
 // API Response Types
 export interface CompressedApiResponse<T = any> {
