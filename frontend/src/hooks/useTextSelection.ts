@@ -25,10 +25,9 @@ interface UseTextSelectionProps {
 }
 
 interface UseTextSelectionReturn {
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.RefObject<HTMLDivElement> & ((node: HTMLDivElement | null) => void);
   eventHandlers: {
     onMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
-    onTouchStart: (event: React.TouchEvent<HTMLDivElement>) => void;
     onMouseUp: (event: React.MouseEvent<HTMLDivElement>) => void;
     onTouchEnd: (event: React.TouchEvent<HTMLDivElement>) => void;
   };
@@ -401,11 +400,28 @@ export function useTextSelection({
     handleMouseUp(event.nativeEvent);
   };
 
+  // Define a native touchstart handler
+  const handleTouchStartNative = (event: TouchEvent) => {
+    event.preventDefault();
+    handleMouseDown(event);
+  };
+
+  // Create a callback ref that attaches the native listener as soon as the container is set
+  const setContainerRef = (node: HTMLDivElement | null) => {
+    if (containerRef.current) {
+      // Remove existing listener if containerRef was set before
+      containerRef.current.removeEventListener('touchstart', handleTouchStartNative);
+    }
+    containerRef.current = node;
+    if (node) {
+      node.addEventListener('touchstart', handleTouchStartNative, { passive: false, capture: true });
+    }
+  };
+
   return {
-    containerRef: containerRef as React.RefObject<HTMLDivElement>,
+    containerRef: setContainerRef as React.RefObject<HTMLDivElement> & ((node: HTMLDivElement | null) => void),
     eventHandlers: {
       onMouseDown: onMouseDownHandler,
-      onTouchStart: onTouchStartHandler,
       onMouseUp: onMouseUpHandler,
       onTouchEnd: onTouchEndHandler,
     },
