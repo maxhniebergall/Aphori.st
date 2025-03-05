@@ -243,6 +243,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Navigation functions with pagination
   const navigateToNextSibling = useCallback(async () => {
+    if (isReplyTarget(nodeToRender)) { return; } // Disable navigation if node is reply target
     const currentIndex = siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id);
     let didNavigate = false;
 
@@ -277,10 +278,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     siblings,
     levelData.parentId, levelData.levelNumber, levelData.selectedQuote,
     navigateToNextSiblingCallback,
-    levelData.selectedNode
+    levelData.selectedNode,
+    isReplyTarget,
+    nodeToRender
   ]);
 
   const navigateToPreviousSibling = useCallback(async () => {
+    if (isReplyTarget(nodeToRender)) { return; } // Disable navigation if node is reply target
     const currentIndex = siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id);
 
     if (currentIndex > 0) {
@@ -290,7 +294,9 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   }, [
     siblings,
     navigateToPreviousSiblingCallback,
-    levelData.selectedNode
+    levelData.selectedNode,
+    isReplyTarget,
+    nodeToRender
   ]);
 
   // Setup gesture handling for swipe navigation
