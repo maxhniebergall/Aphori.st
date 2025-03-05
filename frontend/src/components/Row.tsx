@@ -1,77 +1,150 @@
 /**
- * Requirements:
- * - Memory efficient row rendering with React.memo
- * - Hide descendant nodes when in reply mode using row indices
- * - Render loading, fallback, or normal node states as appropriate
- * - Delegate dynamic height and ref handling to RowContainer
- * - TypeScript support with strict typing
- * - Yarn for package management
- * - Proper error handling
- * - Loading state management
- * - Accessibility compliance
- * - Performance optimization
- * - Proper null checks and fallbacks
- * - Consistent component rendering
+ * Unified Row Component
+ * This file contains a single component that handles all row functionality:
+ * - Dynamic height management with resize observation
+ * - StoryTreeLevel rendering with navigation callbacks
+ * - Virtualization support for react-window
  */
 
-import React, { useMemo } from 'react';
+import React, { useRef, useMemo, memo, useCallback, useState } from 'react';
 import { ListChildComponentProps } from 'react-window';
-import RowContainer from './RowContainer';
-import NormalRowContent from './NormalRowContent';
+import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
+import StoryTreeLevelComponent from './StoryTreeLevel';
 import { StoryTreeLevel } from '../types/types';
 
+// Row Component Props - combines all previous component props
 interface RowProps extends Omit<ListChildComponentProps, 'data'> {
   levelData: StoryTreeLevel;
   setSize: (visualHeight: number) => void;
   shouldHide: boolean;
 }
 
-const Row: React.FC<RowProps> = React.memo(
+/**
+ * Unified Row component that handles all row-related functionality
+ * - Dynamic height management
+ * - Content rendering
+ * - Style computation
+ */
+const Row: React.FC<RowProps> = memo(
   ({
     style, 
     levelData, 
     setSize, 
     shouldHide
   }) => {
-    // Determine if the node should be hidden based on reply mode
+    // Reference to the row element for measuring height
+    const rowRef = useRef<HTMLDivElement>(null);
 
-    // Memoize the user's style and merge necessary absolute positioning
-    const containerStyle = useMemo(() => {
-      const mergedStyle = {
-        ...style,
-      };
-      return mergedStyle;
-    }, [style]);
+    // Added dummy state to force re-render
+    const [reRender, setReRender] = useState(0);
 
-    // Create content component
-    const content = useMemo(() => {
-      return (
-        <NormalRowContent
-          levelData={levelData}
-        />
-      );
-    }, [
+    // Use the dynamic height hook directly in the Row component
+    useDynamicRowHeight({
+      rowRef,
+      setSize,
       shouldHide,
-      levelData,
-    ]);
+    });
 
-    // Create wrapper div for accessibility attributes
-    const wrappedContent = useMemo(() => {
+    // Compute the final style for the row
+    const computedStyle: React.CSSProperties = useMemo(() => {
+      return {
+        ...style,
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        width: '100%',
+        padding: shouldHide ? 0 : '20px',
+        boxSizing: 'border-box',
+        display: shouldHide ? 'none' : 'block',
+        minHeight: shouldHide ? 0 : 100,
+        overflow: 'visible',
+        opacity: shouldHide ? 0 : 1,
+        transition: 'opacity 0.2s ease-in-out'
+      };
+    }, [style, shouldHide]);
+
+    // Create navigation callbacks for StoryTreeLevel
+    const navigateToNextSiblingCallback = useCallback(() => {
+      console.log('Row: Navigate to next sibling');
+      if (!levelData.selectedQuote) {
+        throw new Error('No selected quote');
+      }
+      const siblingsForQuote = levelData.siblings.levelsMap.find(
+        ([quote]) => quote && levelData.selectedQuote && quote.toString() === levelData.selectedQuote.toString()
+      );
+      if (!siblingsForQuote){
+        throw new Error('No siblings for quote');
+      }
+      const currentIndex = siblingsForQuote[1].findIndex(sibling => { 
+        return sibling.id === levelData.selectedNode?.id;
+      });
+  
+      if (currentIndex + 1 > siblingsForQuote[1].length - 1) {
+        throw new Error('No next sibling');
+      }
+      const nextSibling = siblingsForQuote[1][currentIndex + 1];
+      if (!nextSibling) {
+        throw new Error('No next sibling');
+      }
+      levelData.selectedNode = nextSibling;
+      // Force re-render by updating dummy state
+      setReRender(prev => prev + 1);
+    }, [levelData.selectedQuote, levelData.siblings.levelsMap, levelData.selectedNode]);
+
+    const navigateToPreviousSiblingCallback = useCallback(() => {
+      console.log('Row: Navigate to previous sibling');
+      if (!levelData.selectedQuote) {
+        throw new Error('No selected quote');
+      }
+      const siblingsForQuote = levelData.siblings.levelsMap.find(
+        ([quote]) => quote && levelData.selectedQuote && quote.toString() === levelData.selectedQuote.toString()
+      );
+      if (!siblingsForQuote){
+        throw new Error('No siblings for quote');
+      }
+      const currentIndex = siblingsForQuote[1].findIndex(sibling => { 
+        return sibling.id === levelData.selectedNode?.id;
+      });
+  
+      if (currentIndex - 1 < 0) {
+        throw new Error('No previous sibling');
+      }
+      const previousSibling = siblingsForQuote[1][currentIndex - 1];
+      if (!previousSibling) {
+        throw new Error('No previous sibling');
+      }
+      levelData.selectedNode = previousSibling;
+      // Force re-render by updating dummy state
+      setReRender(prev => prev + 1);
+    }, [levelData.selectedQuote, levelData.siblings.levelsMap, levelData.selectedNode]);
+
+    // Create content component directly within Row
+    const content = useMemo(() => {
+      if (shouldHide) {
+        return null;
+      }
+      
       return (
-        <div role="listitem" aria-label="Story content">
-          {content}
+        <div className="normal-row-content">
+          <StoryTreeLevelComponent
+            levelData={levelData}
+            navigateToNextSiblingCallback={navigateToNextSiblingCallback}
+            navigateToPreviousSiblingCallback={navigateToPreviousSiblingCallback}
+          />
         </div>
       );
-    }, [content]);
+    }, [levelData, shouldHide, navigateToNextSiblingCallback, navigateToPreviousSiblingCallback]);
 
     return (
-      <RowContainer
-        setSize={setSize}
-        shouldHide={shouldHide}
-        style={containerStyle}
+      <div
+        ref={rowRef}
+        style={computedStyle}
+        className="row-container"
+        role="listitem"
+        aria-label="Story content"
       >
-        {wrappedContent}
-      </RowContainer>
+        {content}
+      </div>
     );
   },
   (prevProps, nextProps) => {
@@ -84,14 +157,13 @@ const Row: React.FC<RowProps> = React.memo(
       return false; // Return false to trigger re-render
     }
     
-    // Otherwise, use the existing checks
-    const shouldUpdate = (
+    // Otherwise, use existing checks to determine if we should update
+    return (
       prevProps.levelData?.rootNodeId === nextProps.levelData?.rootNodeId &&
       prevProps.index === nextProps.index &&
       prevProps.style.top === nextProps.style.top &&
       prevProps.shouldHide === nextProps.shouldHide
     );
-    return shouldUpdate;
   }
 );
 

@@ -76,7 +76,7 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
       {hasSiblings && (
         <div className="sibling-indicator">
           {validCurrentIndex + 1} / {validTotalSiblings}
-          <span className="swipe-hint">
+          <div className="swipe-hint">
             {validCurrentIndex > 0 && (
               <span className="swipe-hint-previous" onClick={onPreviousSibling}>
                 (Swipe right for previous)
@@ -88,7 +88,7 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
                 (Swipe left for next)
               </span>
             )}
-          </span>
+          </div>
         </div>
       )}
     </div>

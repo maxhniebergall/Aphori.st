@@ -1,7 +1,7 @@
 /*
 Requirements:
 - Seed script must clear existing feed items before adding new ones
-- Each story must have a unique UUID
+- Each story must have a unique v7 (timestamp sortable) UUID
 - Stories must be stored in Redis with proper metadata
 - Must use backend server's database client for compression support
 - Must be exportable as a function for programmatic seeding
@@ -9,7 +9,8 @@ Requirements:
 */
 
 import { createClient, RedisClientType } from 'redis';
-import crypto from "crypto";
+import { uuidv7obj } from "uuidv7";
+import { Uuid25 } from "uuid25";
 import newLogger from './logger.js';
 import { createDatabaseClient } from './db/index.js';
 import { DatabaseClient, FeedItem, Post, Reply, Quote } from './types/index.js';
@@ -80,7 +81,7 @@ async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
 
         // Create each story
         for (const story of sampleStories) {
-            const uuid = crypto.randomUUID();
+            const uuid = Uuid25.fromBytes(uuidv7obj().bytes).value;
             storyIds.push(uuid);
             storyContents.push(story.content);
             
@@ -125,7 +126,7 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
         for (const storyId of storyIds) {
             const storyContent = storyContents[storyIds.indexOf(storyId)];
             for (let storyIdReplyNumber = 0; storyIdReplyNumber < 10; storyIdReplyNumber++) {
-                const replyId = crypto.randomUUID();
+                const rootReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
                 // Create a test reply for each story
                 const timestamp = Date.now();
                 const replyText = `This is a test reply (to a story tree) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}].`;
@@ -140,9 +141,9 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                     }
                 } as Quote;
 
-                // Create the reply object
+                // Create the reply object using rootReplyId
                 const reply = {
-                    id: replyId,
+                    id: rootReplyId,
                     text: replyText,
                     parentId: [storyId],
                     quote: quote,
@@ -154,15 +155,14 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                 await storeReply(reply);
                 // create replies to the reply
                 for (let replyReplyNumber = 0; replyReplyNumber < 4; replyReplyNumber++) {
-                    // Create a test reply for each story
-                    const replyReplyId = crypto.randomUUID();
+                    const replyReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
                     const timestamp = Date.now();
                     const replyReplyText = `This is a test reply (to a reply) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}], replyReplyNumber: [${replyReplyNumber}].`;
 
                     // Create a test quote targeting the entire text of the parent post
                     const quote = {
                         text: replyText,
-                        sourcePostId: replyId,
+                        sourcePostId: rootReplyId,
                         selectionRange: {
                             start: 0,
                             end: replyText.length
@@ -173,14 +173,14 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                     const replyReply = {
                         id: replyReplyId,
                         text: replyReplyText,
-                        parentId: [replyId],
+                        parentId: [rootReplyId],
                         quote: quote,
                         authorId: 'seed_user',
                         createdAt: timestamp.toString()
                     } as Reply;
 
                     // Store the reply in Redis
-                        await storeReply(replyReply);
+                    await storeReply(replyReply);
                 }
             }
         }
@@ -193,36 +193,36 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
 }
 
 async function storeReply(reply: Reply) {
-    const replyId = reply.id;
+    const replyUniqueId = reply.id;
     const quote = reply.quote;
     const timestamp = parseInt(reply.createdAt);
     const storyId = reply.parentId[0];
 
     // Store the reply itself
-    await db.hSet(replyId, 'reply', reply);
+    await db.hSet(replyUniqueId, 'reply', reply);
 
     // Add to various indices
     const quoteKey = getQuoteKey(quote);
 
     // 1. Global replies feed
-    await db.zAdd('replies:feed:mostRecent', timestamp, replyId);
+    await db.zAdd('replies:feed:mostRecent', timestamp, replyUniqueId);
 
     // 2. Replies by Quote (General)
-    await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, timestamp, replyId);
+    await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, timestamp, replyUniqueId);
 
     // 3. Replies by Parent ID and Detailed Quote
-    await db.zAdd(`replies:uuid:${storyId}:quote:${quoteKey}:mostRecent`, timestamp, replyId);
+    await db.zAdd(`replies:uuid:${storyId}:quote:${quoteKey}:mostRecent`, timestamp, replyUniqueId);
 
     // 4. Replies by Parent ID and Quote Text
-    await db.zAdd(`replies:${storyId}:${quote.text}:mostRecent`, timestamp, replyId);
+    await db.zAdd(`replies:${storyId}:${quote.text}:mostRecent`, timestamp, replyUniqueId);
 
     // 5. Conditional Replies by Quote Text Only
-    await db.zAdd(`replies:quote:${quote.text}:mostRecent`, timestamp, replyId);
+    await db.zAdd(`replies:quote:${quote.text}:mostRecent`, timestamp, replyUniqueId);
 
     // Increment the quote count
     await db.hIncrBy(`${storyId}:quoteCounts`, JSON.stringify(quote), 1);
 
-    logger.info(`Created test reply with ID: ${replyId} for story: ${storyId}`);
+    logger.info(`Created test reply with ID: ${replyUniqueId} for story: ${storyId}`);
 }
 
 export { seedDevStories }; 

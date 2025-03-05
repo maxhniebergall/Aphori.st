@@ -313,7 +313,7 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         }
     }
 
-    async zscan(key: string, cursor: string = '0', options?: { match?: string; count?: number }): Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }> {
+    async zscan(key: string, cursor: string = '0', options?: { match?: string; count?: number }): Promise<{ cursor: string | null; items: RedisSortedSetItem<string>[] }> {
         logger.info(`CompressedDatabaseClient zscan called with:`, {
             key,
             cursor,
@@ -322,10 +322,9 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
 
         try {
             const result = await this.db.zscan(key, cursor, options);
-            console.log("result", result);
             
             if (!result || !result.items) {
-                return { cursor: '0', items: [] };
+                return { cursor: null, items: [] };
             }
             let uncompressedItems :RedisSortedSetItem<string>[] = [];
             if (result.items.length > 0) {
@@ -339,6 +338,9 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
                 items: uncompressedItems
             };
         } catch (err) {
+            if (err instanceof Error && err.message.includes("ERR invalid cursor")) {
+                return { cursor: null, items: [] };
+            }
             logger.error('Error in zscan:', err);
             throw err;
         }

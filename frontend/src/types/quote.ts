@@ -17,7 +17,7 @@ export class Quote {
     public sourcePostId: string,
     public selectionRange: SelectionState
   ) {
-    if (!this.isValid()) {
+    if (!Quote.isValid(this)) {
       console.error('Invalid Quote created:', {
         text: this.text,
         sourcePostId: this.sourcePostId,
@@ -29,25 +29,25 @@ export class Quote {
   /**
    * Validates that the quote has all required fields with non-empty values
    */
-  public isValid(): boolean {
-    if (!this.text){
+  public static isValid(quote: Quote): boolean {
+    if (!quote.text){
       console.error('Quote text is required');
       return false;
     }
-    if (!this.sourcePostId){
+    if (!quote.sourcePostId){
       console.error('Source post ID is required');
       return false;
     }
-    if (!this.selectionRange){
+    if (!quote.selectionRange){
       console.error('Selection range is required');
       return false;
     }
-    if (typeof this.selectionRange.start !== 'number' || typeof this.selectionRange.end !== 'number'){
-      console.error('Invalid   selection range:', this.selectionRange);
+    if (typeof quote.selectionRange.start !== 'number' || typeof quote.selectionRange.end !== 'number'){
+      console.error('Invalid   selection range:', quote.selectionRange);
       return false;
     }
-    if (this.selectionRange.end <= this.selectionRange.start){
-      console.error('Invalid selection range:', this.selectionRange);
+    if (quote.selectionRange.end <= quote.selectionRange.start){
+      console.error('Invalid selection range:', quote.selectionRange);
       return false;
     }
     
@@ -59,21 +59,21 @@ export class Quote {
    * We use encodeURIComponent and JSON.stringify to ensure that the resulting string
    * can be safely used in a URL if required.
    */
-  toString(): string {
-    if (!this.isValid()) {
+  public static toEncodedString(quote: Quote): string {
+    if (!Quote.isValid(quote)) {
       console.error('Attempting to serialize invalid Quote:', {
-        text: this.text,
-        sourcePostId: this.sourcePostId,
-        selectionRange: this.selectionRange
+        text: quote.text,
+        sourcePostId: quote.sourcePostId,
+        selectionRange: quote.selectionRange
       });
       throw new Error('Cannot serialize invalid Quote');
     }
 
     return encodeURIComponent(
       JSON.stringify({
-        text: this.text,
-        sourcePostId: this.sourcePostId,
-        selectionRange: this.selectionRange,
+        text: quote.text,
+        sourcePostId: quote.sourcePostId,
+        selectionRange: quote.selectionRange,
       })
     );
   }
