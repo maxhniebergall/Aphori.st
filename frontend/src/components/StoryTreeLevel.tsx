@@ -148,9 +148,9 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Check if a node is the reply target more efficiently
   const isReplyTarget = useCallback(
-    (id: string): boolean => {
+    (nodeToRender: StoryTreeNode): boolean => {
       if (!replyTarget) return false;
-      return replyTarget.rootNodeId === id || replyTarget.id === id;
+      return replyTarget.rootNodeId === nodeToRender.rootNodeId && replyTarget.id === nodeToRender.id && replyTarget.levelNumber === nodeToRender.levelNumber;
     },
     [replyTarget]
   );
@@ -192,7 +192,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     
     try {
       // Check if we're already in reply mode for this node
-      if (isReplyActive && isReplyTarget(nodeToRender.rootNodeId)) {
+      if (isReplyActive && isReplyTarget(nodeToRender)) {
         // If already in reply mode, exit reply mode
         clearReplyState();
       } else {
@@ -335,7 +335,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       <AnimatePresence mode="wait">
         <div {...bind()} style={{ touchAction: 'none' }}>
           <motion.div
-            className={`story-tree-node ${isReplyTarget(nodeToRender.rootNodeId) ? 'reply-target' : ''}`}
+            className={`story-tree-node ${isReplyTarget(nodeToRender) ? 'reply-target' : ''}`}
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0 }}
@@ -349,7 +349,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
           >
             <MemoizedNodeContent
               node={nodeToRender}
-              quote={(isReplyTarget(nodeToRender.id) && replyQuote) ? replyQuote : undefined}
+              quote={(isReplyTarget(nodeToRender) && replyQuote) ? replyQuote : undefined}
               existingSelectableQuotes={nodeToRender.quoteCounts ?? undefined}
               onSelectionComplete={handleTextSelectionCompleted}
             />
@@ -357,7 +357,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               currentIndex={siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id)}
               totalSiblings={pagination.totalCount}
               onReplyClick={handleReplyButtonClick}
-              isReplyTarget={isReplyTarget(nodeToRender.rootNodeId)}
+              isReplyTarget={isReplyTarget(nodeToRender)}
               onNextSibling={navigateToNextSibling}
               onPreviousSibling={navigateToPreviousSibling}
               isReplyActive={isReplyActive}
