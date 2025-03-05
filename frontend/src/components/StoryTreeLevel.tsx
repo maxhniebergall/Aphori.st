@@ -20,6 +20,8 @@ import storyTreeOperator from '../operators/StoryTreeOperator';
 
 interface StoryTreeLevelProps {
   levelData: LevelData;
+  navigateToNextSiblingCallback: () => void;
+  navigateToPreviousSiblingCallback: () => void;
   reportHeight?: (height: number) => void;
 }
 
@@ -43,11 +45,11 @@ const MemoizedNodeContent = React.memo(NodeContent, (prevProps, nextProps) => {
 
 export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ 
   levelData,
-  reportHeight 
+  navigateToNextSiblingCallback,
+  navigateToPreviousSiblingCallback,
+  reportHeight,
 }) => {
   // Core state
-  const [currentIndex, setCurrentIndex] = useState<number>(0);
-  const [currentNode, setCurrentNode] = useState<StoryTreeNode | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -70,7 +72,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   } = useReplyContextSelective();
 
   // Report height to parent virtualized list when container size changes
-  useEffect(() => {
+  useMemo(() => {
     if (containerRef.current && reportHeight) {
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
@@ -96,7 +98,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Update dimensions on window resize
   const [dimensionValues, setDimensionValues] = useState(dimensions);
-  useEffect(() => {
+  useMemo(() => {
     const handleResize = () => {
       setDimensionValues({
         height: Math.max(window.innerHeight * 0.8, 400),
@@ -108,12 +110,15 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Update StoryTreeOperator when current node changes
-  useEffect(() => {
-    if (currentNode && (!levelData.selectedNode || currentNode.id !== levelData.selectedNode.id)) {
-      storyTreeOperator.setSelectedNode(currentNode);
-    }
-  }, [currentNode, levelData.selectedNode]);
+  // // Update StoryTreeOperator when current node changes 
+  // // TODO FIXME: we shouldn't be updating global state in the level which depends on that state
+  // // we should use move this up to the parent component which doesn't depend on the state
+  // // this will avoid unnecessary re-renders
+  // useEffect(() => {
+  //   if (currentNode && (!levelData.selectedNode || currentNode.id !== levelData.selectedNode.id)) {
+  //     storyTreeOperator.setSelectedNode(currentNode);
+  //   }
+  // }, [currentNode, levelData.selectedNode]);
 
   // Get siblings from levelData using the correct key
   const siblings = useMemo(() => {
@@ -125,51 +130,12 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   }, [levelData.siblings.levelsMap, levelData.selectedQuote]);
 
   // Update pagination state based on levelData
-  useEffect(() => {
+  useMemo(() => {
     setPagination(levelData.pagination);
   }, [levelData.pagination]);
 
-  // Update current node when siblings or currentIndex changes
-  useEffect(() => {
-    // Update currentIndex if it's out of bounds
-    if ((currentIndex >= siblings.length && siblings.length > 0) || (currentIndex < 0)) {
-      console.error(
-        `Current index (${currentIndex}) is out of bounds (siblings length: ${siblings.length}). Resetting index to ${Math.max(0, siblings.length - 1)}.`
-      );
-      setCurrentIndex(Math.max(0, siblings.length - 1));
-    }
-    
-    const node = siblings[currentIndex];
-    
-    // Handle case when there are no siblings but we have a root node
-    if (!node && levelData.levelNumber === 0 && levelData.rootNodeId) {
-      const rootEntry = levelData.siblings.levelsMap.find(([quote]) => quote === null);
-      if (rootEntry){
-        setCurrentNode(rootEntry[1][0]);
-        return;
-      }
-      console.warn(`No sibling node found at currentIndex (${currentIndex}) for root level; setting currentNode to null. [${JSON.stringify(levelData) }]`);
-      setCurrentNode(null);
-      return;
-    }
-    
-    // Warn if node is present but invalid (missing rootNodeId)
-    if (!node?.rootNodeId) {
-      console.warn(`Sibling node at index ${currentIndex} is invalid (missing rootNodeId). Setting currentNode to null.`);
-      setCurrentNode(null);
-      return;
-    }
-    
-    setCurrentNode(node);
-  }, [siblings, currentIndex, levelData.rootNodeId, levelData.levelNumber, levelData.parentId]);
-
   // Get the current node to render
-  const nodeToRender = useMemo(() => {
-    // If we have a selected node from the current data, use it directly
-    if (currentNode) {
-      return currentNode; // TODO this is a bit sus
-    }
-    
+  const nodeToRender = useMemo(() => {    
     // If we don't have a current node but the levelData has a selectedNode, use that
     if (levelData.selectedNode) {
       return levelData.selectedNode;
@@ -178,7 +144,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     // Fallback to the first sibling from the map
     const nullEntry = levelData.siblings.levelsMap.find(([quote]) => quote === null);
     return siblings[0] || (nullEntry ? nullEntry[1][0] : undefined);
-  }, [currentNode, levelData.selectedNode, siblings, levelData.siblings.levelsMap]);
+  }, [levelData.selectedNode, siblings, levelData.siblings.levelsMap]);
 
   // Check if a node is the reply target more efficiently
   const isReplyTarget = useCallback(
@@ -248,7 +214,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
           }
         );
 
-        if (!quote.isValid()) {
+        if (Quote.isValid(quote) === false) {
           throw new Error('Failed to create valid quote for reply');
         }
 
@@ -277,25 +243,30 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Navigation functions with pagination
   const navigateToNextSibling = useCallback(async () => {
+    const currentIndex = siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id);
+    let didNavigate = false;
+
     if (currentIndex < siblings.length - 1) {
       // We have the next sibling loaded already
-      setCurrentIndex(currentIndex + 1);
-    } else if (pagination.hasMore) {
-      // Need to load more siblings
-      setIsLoading(true);
-      try {
-        // Use loadMoreItems instead of the non-existent loadMoreSiblings
-        await storyTreeOperator.loadMoreItems(
-          levelData.parentId[0],
-          levelData.levelNumber,
-          levelData.selectedQuote,
-          siblings.length,  // startIndex
-          siblings.length + 5  // stopIndex (load 5 more)
-        );
-        // StoryTreeOperator will update the levelData, which will update siblings
-        // We'll increment the index to show the newly loaded sibling
-        // TODO we should check that the sibings were loaded (i.e., they exist) and if not, then we should not increment the index
-        setCurrentIndex(currentIndex + 1);
+      console.log('STL: Navigate to next sibling');
+      navigateToNextSiblingCallback();
+      didNavigate = true;
+    }
+    
+    // prefetch next 3 siblings
+    if (currentIndex >= siblings.length - 3) {
+        try {
+          await storyTreeOperator.loadMoreItems(
+            levelData.parentId[0],
+            levelData.levelNumber,
+            levelData.selectedQuote,
+            siblings.length,  
+            siblings.length + 3 
+          );
+          if (!didNavigate) {
+            // if we somehow didn't have the next sibling loaded, navigate to it now that we have it
+            navigateToNextSiblingCallback();
+          }
       } catch (error) {
         console.error('Failed to load more siblings:', error);
       } finally {
@@ -303,35 +274,23 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       }
     }
   }, [
-    currentIndex, siblings.length, pagination.hasMore,
-    levelData.parentId, levelData.levelNumber, levelData.selectedQuote
+    siblings,
+    levelData.parentId, levelData.levelNumber, levelData.selectedQuote,
+    navigateToNextSiblingCallback,
+    levelData.selectedNode
   ]);
 
   const navigateToPreviousSibling = useCallback(async () => {
+    const currentIndex = siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id);
+
     if (currentIndex > 0) {
-      // We have the previous sibling loaded already
-      setCurrentIndex(currentIndex - 1);
-    } else if (pagination.prevCursor !== undefined) {
-      // Need to load more siblings
-      setIsLoading(true);
-      try {
-        // For previous siblings, we don't have a direct way to load them with the current API
-        // This is a placeholder - in a real implementation, you'd need to implement a method
-        // to load previous siblings using the prevCursor
-        console.warn('Loading previous siblings is not fully implemented');
-        
-        // Simulate loading previous by just resetting to the first available sibling
-        // In a real implementation, you'd load the previous page of siblings
-        setCurrentIndex(0);
-      } catch (error) {
-        console.error('Failed to load more siblings:', error);
-      } finally {
-        setIsLoading(false);
-      }
+      // We have the previous sibling loaded already because we always start loading from zero
+      navigateToPreviousSiblingCallback();
     }
   }, [
-    currentIndex, pagination.prevCursor,
-    levelData.parentId, levelData.levelNumber, levelData.selectedQuote
+    siblings,
+    navigateToPreviousSiblingCallback,
+    levelData.selectedNode
   ]);
 
   // Setup gesture handling for swipe navigation
@@ -340,14 +299,10 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       if (!down) {
         try {
           if (mx < -100 || (vx < -0.5 && mx < -50)) {
-            if ((currentIndex < siblings.length - 1) || pagination.hasMore) {
-              navigateToNextSibling();
-            }
+            navigateToNextSibling();
             cancel?.();
           } else if (mx > 100 || (vx > 0.5 && mx > 50)) {
-            if ((currentIndex > 0) || pagination.prevCursor !== undefined) {
-              navigateToPreviousSibling();
-            }
+            navigateToPreviousSibling();
             cancel?.();
           }
         } catch (error) {
@@ -358,10 +313,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   }, {
     drag: {
       axis: 'x',
-      enabled: Boolean(nodeToRender?.rootNodeId) && (
-        (currentIndex < siblings.length - 1 || pagination.hasMore) ||
-        (currentIndex > 0 || pagination.prevCursor !== undefined)
-      ),
+      enabled: Boolean(nodeToRender?.rootNodeId),
       threshold: 5,
     }
   });
@@ -384,7 +336,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         <div {...bind()} style={{ touchAction: 'none' }}>
           <motion.div
             className={`story-tree-node ${isReplyTarget(nodeToRender.rootNodeId) ? 'reply-target' : ''}`}
-            initial={{ opacity: 0, x: currentIndex === 0 ? -50 : 50 }}
+            initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
@@ -402,7 +354,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               onSelectionComplete={handleTextSelectionCompleted}
             />
             <MemoizedNodeFooter
-              currentIndex={currentIndex}
+              currentIndex={siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id)}
               totalSiblings={pagination.totalCount}
               onReplyClick={handleReplyButtonClick}
               isReplyTarget={isReplyTarget(nodeToRender.rootNodeId)}

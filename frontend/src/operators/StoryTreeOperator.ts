@@ -200,7 +200,8 @@ class StoryTreeOperator extends BaseOperator {
     if (cursor === undefined) {
       cursorString = level.pagination.nextCursor;
     }
-    const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${level.parentId[0]}/${encodeURIComponent(level.selectedQuote.toString())}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
+    // http://localhost:5050/api/getReplies/afc24d31-dd8c-485a-aa80-1915b36ff074/[object%20Object]/mostRecent?limit=5
+    const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${level.parentId[0]}/${Quote.toEncodedString(level.selectedQuote)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
     try {
       const compressedPaginatedResponse = await this.retryApiCallSimplified<Compressed<CursorPaginatedResponse<Reply>>>(
         () => axios.get(url, {
@@ -264,7 +265,7 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   private async fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
-    const encodedSelectedQuoteString = new Quote(selectedQuote.text, selectedQuote.sourcePostId, selectedQuote.selectionRange).toString();
+    const encodedSelectedQuoteString = Quote.toEncodedString(selectedQuote);
     const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId}/${encodedSelectedQuoteString}/${sortingCriteria}?limit=${limit}`;
     try {
       const compressedPaginatedResponse = await this.retryApiCallSimplified<Compressed<CursorPaginatedResponse<Reply>>>(
@@ -331,7 +332,7 @@ class StoryTreeOperator extends BaseOperator {
     }
 
     // Ensure quote has isValid method
-    if (typeof quote.isValid !== 'function') {
+    if (!Quote.isValid(quote)) {
       console.error('Invalid quote object provided to loadMoreItems:', quote);
       // Try to recreate the quote if possible
       if (quote.text && quote.sourcePostId && quote.selectionRange) {
@@ -342,7 +343,7 @@ class StoryTreeOperator extends BaseOperator {
     }
 
     // Now check if the quote is valid
-    if (!quote.isValid()) {
+    if (!Quote.isValid(quote)) {
       console.error('Invalid quote provided to loadMoreItems:', {
         parentId,
         levelNumber,

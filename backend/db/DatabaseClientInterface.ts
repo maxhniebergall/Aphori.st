@@ -89,7 +89,7 @@ export abstract class DatabaseClientInterface {
     throw new Error('Method not implemented');
   }
 
-  zscan(key: string, cursor: string, options?: { match?: string; count?: number }): Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }> {
+  zscan(key: string, cursor: string, options?: { match?: string; count?: number }): Promise<{ cursor: string | null; items: RedisSortedSetItem<string>[] }> {
     throw new Error('Method not implemented');
   }
 } 

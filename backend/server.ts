@@ -67,6 +67,8 @@ import {
 } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { createCursor, decodeCursor } from './utils/cursorUtils.js';
+import { uuidv7obj } from 'uuidv7';
+import { Uuid25 } from 'uuid25';
 
 dotenv.config();
 
@@ -415,6 +417,13 @@ const magicLinkLimiter = rateLimit({
     message: 'Too many magic link requests from this IP, please try again later.',
 });
 
+// Helper function to generate compressed 25-digit UUID v7
+const generateCondensedUuid = (): string => {
+  const uuidObj = uuidv7obj();
+  const uuid25Instance = Uuid25.fromBytes(uuidObj.bytes);
+  return uuid25Instance.value;
+};
+
 // Routes
 
 /**
@@ -652,7 +661,7 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         }
 
         // Generate a new UUID for the story tree
-        const uuid = crypto.randomUUID();
+        const uuid = generateCondensedUuid();
         
         // Create the full object following new schema structure
         const formattedStoryTree = {
@@ -796,7 +805,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
 
         // Create the new reply object adhering to the unified node structure.
         const newReply = {
-            id: crypto.randomUUID(), // Using crypto for unique ID generation
+            id: generateCondensedUuid(),
             text,
             parentId, // Expecting an array of parent IDs
             quote,    // Store the complete quote object
@@ -950,11 +959,11 @@ app.get<{
         const matchingRepliesCount = await db.zCard(sortedSetKey);
         
         let nextCursor: string | null = null;
-        if (scanResult.cursor !== '0') {
+        if (scanResult.cursor !== null) {
             // If there are more items to scan, set the next cursor
             nextCursor = scanResult.cursor;
         }
-        console.log("scanResult", scanResult);
+        console.log("server: scanResult", scanResult);
         // Step 2: Fetch the actual reply data for each ID
         const replies = await Promise.all(
             scanResult.items.map(async (item: RedisSortedSetItem<string>) => {
@@ -969,7 +978,7 @@ app.get<{
             })
         );
 
-        console.log("replies", replies);
+        console.log("server: replies", replies);
         // Filter out any null values from failed fetches
         const validReplies = replies.filter((reply: Reply | null): reply is Reply => reply !== null);
         
@@ -1007,7 +1016,7 @@ app.get<{
  * @desc    Retrieves a post, a top level storyTree element
  * @access  Public
  */
-app.get<{ uuid: string }, CompressedApiResponse<Post>>('/api/getPost/:uuid', async (req, res) => {
+app.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/api/getPost/:uuid', async (req, res) => {
     const { uuid } = req.params;
     if (!uuid) {
         res.status(400).json({ success: false, error: 'UUID is required' });
@@ -1015,7 +1024,7 @@ app.get<{ uuid: string }, CompressedApiResponse<Post>>('/api/getPost/:uuid', asy
     }
     try {
         // Try fetching as a story node first
-        let maybePost = await db.hGet(uuid, 'post', { returnCompressed: true });
+        let maybePost = await db.hGet(uuid, 'post', { returnCompressed: false });
         if (!maybePost) {
             res.status(404).json({ success: false, error: 'Node not found' });
             return;
@@ -1038,9 +1047,9 @@ app.get<{ uuid: string }, CompressedApiResponse<Post>>('/api/getPost/:uuid', asy
             res.status(500).json({ success: false, error: 'Invalid post data' });
             return;
         }
-        const post = maybePost;
+        const post = await db.compress(maybePost) as Compressed<Post>;
     
-        const CompressedApiResponse: CompressedApiResponse<Post> = {
+        const CompressedApiResponse: CompressedApiResponse<Compressed<Post>> = {
             success: true,
             compressedData: post
         };
