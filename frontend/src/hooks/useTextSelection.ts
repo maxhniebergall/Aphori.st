@@ -292,12 +292,19 @@ export function useTextSelection({
       cleanupEventListeners();
       if (!containerRef.current) return null;
       finalOffsetRef.current = getCurrentOffset(containerRef.current, event);
+      let startOffset = initialOffsetRef.current ?? 0;
+      let endOffset = finalOffsetRef.current ?? 0;
+      if (startOffset > endOffset) {
+        const temp = startOffset;
+        startOffset = endOffset;
+        endOffset = temp;
+      }
       const quote: Quote = new Quote(
-        containerRef.current.textContent?.slice(initialOffsetRef.current ?? 0, finalOffsetRef.current ?? 0) || '',
-        containerRef.current.id,
+        containerRef.current.textContent?.slice(startOffset, endOffset) || '',
+        containerRef.current.id, 
         {
-          start: initialOffsetRef.current ?? 0,
-          end: finalOffsetRef.current ?? 0,
+          start: startOffset,
+          end: endOffset
         },
       );
       return quote;

@@ -60,6 +60,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
     >
       <div className="text-content" role="region" aria-label="Main content">
         <MemoizedTextSelection
+          node={node}
           onSelectionCompleted={memoizedOnSelectionComplete}
           selectedQuote={quote}
           existingSelectableQuotes={memoizedExistingSelectableQuotes}

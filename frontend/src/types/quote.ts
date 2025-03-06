@@ -17,12 +17,18 @@ export class Quote {
     public sourcePostId: string,
     public selectionRange: SelectionState
   ) {
+    if (selectionRange.start > selectionRange.end) {
+      const end = selectionRange.end;
+      selectionRange.end = selectionRange.start;
+      selectionRange.start = end;
+    }
+
     if (!Quote.isValid(this)) {
-      console.error('Invalid Quote created:', {
+      throw new Error('Invalid Quote created:' + JSON.stringify({
         text: this.text,
         sourcePostId: this.sourcePostId,
         selectionRange: this.selectionRange
-      });
+      }));
     }
   }
 

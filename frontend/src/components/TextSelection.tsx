@@ -10,13 +10,10 @@ import React, { useMemo, CSSProperties } from 'react';
 import { useTextSelection } from '../hooks/useTextSelection';
 import './TextSelection.css';
 import { Quote } from '../types/quote';
-import { QuoteCounts } from '../types/types';
-interface Selection {
-  start: number;
-  end: number;
-}
+import { QuoteCounts, StoryTreeNode } from '../types/types';
 
 interface TextSelectionProps {
+  node: StoryTreeNode;
   children: React.ReactNode;
   onSelectionCompleted: (quote: Quote) => void;
   selectAll?: boolean;
@@ -26,6 +23,7 @@ interface TextSelectionProps {
 }
 
 const TextSelection: React.FC<TextSelectionProps> = ({
+  node,
   children,
   onSelectionCompleted,
   selectAll = false,
@@ -54,6 +52,7 @@ const TextSelection: React.FC<TextSelectionProps> = ({
     <div
       ref={containerRef}
       className="selection-container"
+      id={node.id}
       style={containerStyle}
       {...eventHandlers}
       {...restProps}
