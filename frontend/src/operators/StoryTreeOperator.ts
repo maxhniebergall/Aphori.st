@@ -483,11 +483,13 @@ class StoryTreeOperator extends BaseOperator {
           console.log("Parent level is last level. No more levels to load");
           break;
         }
-        if (!parentLevel || Object.hasOwn(parentLevel, "selectedNode")) {
-          if (!parentLevel || !Object.hasOwn(parentLevelAsLevel, "selectedNode")) {
-            const errorMsg = `Selected node not found for level ${levelNumber}; parentLevel: ${parentLevel}; levels: ${JSON.stringify(state.storyTree.levels)}`;
+        if (!parentLevel || !Object.hasOwn(parentLevel, "selectedNode") || !parentLevelAsLevel.selectedNode) {
+          if (!parentLevel || !Object.hasOwn(parentLevelAsLevel, "selectedNode") || !parentLevelAsLevel.selectedNode) {
+            const errorMsg = `Selected node not found for level ${levelNumber};\n parentLevel: ${JSON.stringify(parentLevel)};\n levels: ${JSON.stringify(state.storyTree.levels)}`;
             console.error(errorMsg);
             throw new StoryTreeError(errorMsg);
+          } else {  
+            throw new StoryTreeError(`Fell through ${levelNumber};\n parentLevel: ${JSON.stringify(parentLevel)};\n levels: ${JSON.stringify(state.storyTree.levels)}`);
           }
         }
       }

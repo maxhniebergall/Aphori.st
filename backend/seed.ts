@@ -129,15 +129,17 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                 const rootReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
                 // Create a test reply for each story
                 const timestamp = Date.now();
+                const excerptWords = storyContent.split(' ');
+                const excerpt = excerptWords.slice(0, 5).join(' ');
                 const replyText = `This is a test reply (to a story tree) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}].`;
 
                 // Create a test quote targeting the entire text of the parent post
                 const quote = {
-                    text: storyContent,
+                    text: excerpt,
                     sourcePostId: storyId,
                     selectionRange: {
                         start: 0,
-                        end: storyContent.length
+                        end: excerpt.length
                     }
                 } as Quote;
 
@@ -157,15 +159,17 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                 for (let replyReplyNumber = 0; replyReplyNumber < 4; replyReplyNumber++) {
                     const replyReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
                     const timestamp = Date.now();
+                    const excerptWords = replyText.split(' ');
+                    const excerpt = excerptWords.slice(0, 5).join(' ');
                     const replyReplyText = `This is a test reply (to a reply) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}], replyReplyNumber: [${replyReplyNumber}].`;
 
                     // Create a test quote targeting the entire text of the parent post
                     const quote = {
-                        text: replyText,
+                        text: excerpt,
                         sourcePostId: rootReplyId,
                         selectionRange: {
                             start: 0,
-                            end: replyText.length
+                            end: excerpt.length
                         }
                     } as Quote;
 
