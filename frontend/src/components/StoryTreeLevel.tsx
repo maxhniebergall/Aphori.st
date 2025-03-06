@@ -301,7 +301,11 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Setup gesture handling for swipe navigation
   const bind = useGesture({
-    onDrag: ({ down, movement: [mx], cancel, velocity: [vx] }) => {
+    onDrag: ({ down, movement: [mx], cancel, velocity: [vx], event }) => {
+      // If the event originated within the TextSelection container, disable navigation
+      if (event && (event.target instanceof HTMLElement) && event.target.closest('.selection-container')) {
+        return;
+      }
       if (!down) {
         try {
           if (mx < -100 || (vx < -0.5 && mx < -50)) {
