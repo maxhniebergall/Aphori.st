@@ -15,6 +15,7 @@ import newLogger from './logger.js';
 import { createDatabaseClient } from './db/index.js';
 import { DatabaseClient, FeedItem, Post, Reply, Quote } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
+import { randomInt } from 'crypto';
 
 const logger = newLogger("seed.ts");
 
@@ -130,7 +131,11 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                 // Create a test reply for each story
                 const timestamp = Date.now();
                 const excerptWords = storyContent.split(' ');
-                const excerpt = excerptWords.slice(0, 5).join(' ');
+                const startWords = randomInt(excerptWords.length - 5);
+                const endWords = startWords + randomInt(excerptWords.length - startWords);
+                const excerpt = excerptWords.slice(startWords, endWords).join(' ');
+                const startCharacterIndex = storyContent.indexOf(excerpt);
+                const endCharacterIndex = startCharacterIndex + excerpt.length;
                 const replyText = `This is a test reply (to a story tree) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}].`;
 
                 // Create a test quote targeting the entire text of the parent post
@@ -138,8 +143,8 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                     text: excerpt,
                     sourcePostId: storyId,
                     selectionRange: {
-                        start: 0,
-                        end: excerpt.length
+                        start: startCharacterIndex,
+                        end: endCharacterIndex
                     }
                 } as Quote;
 
@@ -160,7 +165,11 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                     const replyReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
                     const timestamp = Date.now();
                     const excerptWords = replyText.split(' ');
-                    const excerpt = excerptWords.slice(0, 5).join(' ');
+                    const startWords = randomInt(excerptWords.length - 5);
+                    const endWords = startWords + randomInt(excerptWords.length - startWords);
+                    const excerpt = excerptWords.slice(startWords, endWords).join(' ');
+                    const startCharacterIndex = storyContent.indexOf(excerpt);
+                    const endCharacterIndex = startCharacterIndex + excerpt.length;
                     const replyReplyText = `This is a test reply (to a reply) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}], replyReplyNumber: [${replyReplyNumber}].`;
 
                     // Create a test quote targeting the entire text of the parent post
@@ -168,8 +177,8 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                         text: excerpt,
                         sourcePostId: rootReplyId,
                         selectionRange: {
-                            start: 0,
-                            end: excerpt.length
+                            start: startCharacterIndex,
+                            end: endCharacterIndex
                         }
                     } as Quote;
 
