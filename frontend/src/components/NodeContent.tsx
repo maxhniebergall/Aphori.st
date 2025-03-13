@@ -17,8 +17,10 @@
 import React, { useMemo, useCallback } from 'react';
 import TextSelection from './TextSelection';
 import QuoteRenderer from './QuoteRenderer';
-import { QuoteCounts, StoryTreeNode } from '../types/types';
+import { QuoteCounts } from '../types/types';
+import { StoryTreeNode } from '../types/storyTreeNode';
 import { Quote } from '../types/quote';
+
 interface NodeContentProps {
   node: StoryTreeNode;
   onSelectionComplete?: (quote: Quote) => void;
@@ -38,8 +40,12 @@ const NodeContent: React.FC<NodeContentProps> = ({
 
   // Memoize the text content to prevent unnecessary re-renders
   const textContent = useMemo(() => {
-    return node.textContent || '';
-  }, [node.textContent]);
+    // Only branch nodes have textContent
+    if (node.isLeafNode) {
+      throw new Error('Cannot create quote: leaf node has no text content');
+    }
+    return node.branchNode?.textContent || '';
+  }, [node.isLeafNode, node.branchNode?.textContent]);
 
   // Memoize the callback to prevent unnecessary re-renders
   const memoizedOnSelectionComplete = useCallback((selectedQuote: Quote) => {
@@ -49,8 +55,17 @@ const NodeContent: React.FC<NodeContentProps> = ({
   // Memoize the existingSelectableQuotes to prevent unnecessary re-renders
   const memoizedExistingSelectableQuotes = useMemo(() => {
     // Log the node's quote counts for debugging
-    return node.quoteCounts ?? { quoteCounts: [] };
-  }, [node.quoteCounts, node.id]);
+    // Only branch nodes have quoteCounts
+    if (node.isLeafNode) {
+      throw new Error('Cannot create quote: leaf node has no quote counts');
+    }
+    return node.branchNode?.quoteCounts || { quoteCounts: [] };
+  }, [node.isLeafNode, node.branchNode?.quoteCounts]);
+
+  // If it's a leaf node, we don't render content
+  if (node.isLeafNode) {
+    return null;
+  }
 
   return (
     <div 
