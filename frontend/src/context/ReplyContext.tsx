@@ -14,7 +14,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { StoryTreeNode } from '../types/types';      
+import { StoryTreeNode } from '../types/storyTreeNode';      
 import { Quote } from '../types/quote';
 
 interface ReplyContextType {

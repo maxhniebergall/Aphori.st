@@ -14,6 +14,7 @@
 
 import { Compressed } from "./compressed";
 import { Quote } from "./quote";
+import { StoryTreeNode } from "./storyTreeNode";
 
 export interface QuoteCounts {
   // the quoteCounts map is a map of quotes (of the node) to the number of replies to that quote
@@ -68,19 +69,6 @@ export interface FeedResponse {
 export interface FetchResult {
   data: FeedItem[];
   pagination: Pagination;
-}
-
-
-export interface StoryTreeNode { // this value only exists in the frontend. it combines the post and the levels of the story tree
-  id: string;
-  rootNodeId: string;
-  parentId: string[];
-  levelNumber: number;
-  textContent: string;
-  repliedToQuote: Quote | null;
-  quoteCounts: QuoteCounts | null;
-  authorId: string;
-  createdAt: string;
 }
 
 export interface Siblings {
