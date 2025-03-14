@@ -94,15 +94,7 @@ const ReplyEditor = () => {
       </div>
       <div className="reply-actions" role="group" aria-label="Reply actions">
         <button 
-          onClick={() => {
-            if (replyTarget.isLeafNode) {
-              throw new Error('Cannot submit reply: reply target is a leaf node');
-            }
-            if (!replyTarget.branchNode?.id) {
-              throw new Error('Cannot submit reply: reply target doesnt have branch node id');
-            }
-            StoryTreeOperator.submitReply(replyContent, replyTarget.branchNode?.id, replyQuote);
-          }}
+          onClick={() => StoryTreeOperator.submitReply(replyContent, replyTarget.id, replyQuote)}
           disabled={!replyContent.trim()}
           className="submit-reply-button"
           aria-label="Submit reply"

@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useReducer, useLayoutEffect, ReactNode } from 'react';
-import { StoryTreeState, Action, StoryTreeLevel, StoryTree, Siblings, LastLevel } from '../types/types';
-import { StoryTreeNode } from '../types/storyTreeNode';
+import { StoryTreeState, Action, StoryTreeLevel, StoryTree, StoryTreeNode, Siblings, LastLevel } from '../types/types';
 import { ACTIONS } from '../types/types';
 import StoryTreeErrorBoundary from './StoryTreeErrorBoundary';
 import storyTreeOperator from '../operators/StoryTreeOperator';
@@ -116,12 +115,8 @@ export function mergeLevels(existingLevels: Array<StoryTreeLevel | LastLevel>, n
           const existingSiblings = findSiblingsForQuote(returableLevelAsLevel.siblings, quote);
           
           // Filter out nodes that already exist
-          const existingIds = existingSiblings ? new Set(existingSiblings.map((node: StoryTreeNode) => 
-            node.isLeafNode ? node.leafNode?.id : node.branchNode?.id
-          )) : new Set();
-          const uniqueNewNodes = newNodesAtLevel.filter((node: StoryTreeNode) => 
-            !existingIds.has(node.isLeafNode ? node.leafNode?.id : node.branchNode?.id)
-          );
+          const existingIds = existingSiblings ? new Set(existingSiblings.map((node: StoryTreeNode) => node.id)) : new Set();
+          const uniqueNewNodes = newNodesAtLevel.filter((node: StoryTreeNode) => !existingIds.has(node.id));
           
           if (existingSiblings && existingSiblings.length > 0) {
             if (levelWithNewItemsAsLevel.pagination.prevCursor) {
@@ -203,10 +198,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         }
 
         const selectedNode: StoryTreeNode = action.payload;
-        const levelNumber = selectedNode.isLeafNode 
-          ? selectedNode.leafNode?.levelNumber 
-          : selectedNode.branchNode?.levelNumber;
-        const updatedLevel = state.storyTree.levels.find(level => level.levelNumber === levelNumber);
+        const updatedLevel = state.storyTree.levels.find(level => level.levelNumber === selectedNode.levelNumber);
 
         if (!updatedLevel) {
           console.error("Selected level not found");
@@ -217,23 +209,14 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         const newLevels = [...state.storyTree.levels];
         
         // Update the level with the selected node
-        const nodeLevel = selectedNode.isLeafNode 
-          ? selectedNode.leafNode?.levelNumber 
-          : selectedNode.branchNode?.levelNumber;
-        
-        if (nodeLevel === undefined) {
-          console.error("Node level is undefined");
-          return state;
-        }
-        
-        newLevels[nodeLevel] = {
+        newLevels[selectedNode.levelNumber] = {
           ...updatedLevel,
           selectedNode: selectedNode
         };
         
         // Truncate levels after the selected level if needed
-        if (nodeLevel < newLevels.length - 1) {
-          newLevels.length = nodeLevel + 1;
+        if (selectedNode.levelNumber < newLevels.length - 1) {
+          newLevels.length = selectedNode.levelNumber + 1;
         }
         
         return {

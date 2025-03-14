@@ -14,8 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
-import { StoryTreeLevel as LevelData, Pagination } from '../types/types';
-import { StoryTreeNode } from '../types/storyTreeNode';
+import { StoryTreeLevel as LevelData, StoryTreeNode, Pagination } from '../types/types';
 import { Quote } from '../types/quote';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 
@@ -151,16 +150,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   const isReplyTarget = useCallback(
     (nodeToRender: StoryTreeNode): boolean => {
       if (!replyTarget) return false;
-      
-      const nodeRootId = nodeToRender.isLeafNode ? nodeToRender.leafNode?.rootNodeId : nodeToRender.branchNode?.rootNodeId;
-      const nodeId = nodeToRender.isLeafNode ? nodeToRender.leafNode?.id : nodeToRender.branchNode?.id;
-      const nodeLevelNumber = nodeToRender.isLeafNode ? nodeToRender.leafNode?.levelNumber : nodeToRender.branchNode?.levelNumber;
-      
-      const targetRootId = replyTarget.isLeafNode ? replyTarget.leafNode?.rootNodeId : replyTarget.branchNode?.rootNodeId;
-      const targetId = replyTarget.isLeafNode ? replyTarget.leafNode?.id : replyTarget.branchNode?.id;
-      const targetLevelNumber = replyTarget.isLeafNode ? replyTarget.leafNode?.levelNumber : replyTarget.branchNode?.levelNumber;
-      
-      return targetRootId === nodeRootId && targetId === nodeId && targetLevelNumber === nodeLevelNumber;
+      return replyTarget.rootNodeId === nodeToRender.rootNodeId && replyTarget.id === nodeToRender.id && replyTarget.levelNumber === nodeToRender.levelNumber;
     },
     [replyTarget]
   );
@@ -210,23 +200,17 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         setReplyTarget(nodeToRender);
         
         // Only create quote if we have valid content
-        // Skip for leaf nodes as they don't have text content
-        if (nodeToRender.isLeafNode) {
-          throw new Error('Cannot create quote: leaf node has no text content');
-        }
-        
-        const textContent = nodeToRender.branchNode?.textContent;
-        if (!textContent || textContent.trim().length === 0) {
+        if (!nodeToRender.textContent || nodeToRender.textContent.trim().length === 0) {
           throw new Error('Cannot create quote: node has no text content');
         }
 
         // Create a quote that encompasses the entire node content
         const quote: Quote = new Quote(
-          textContent.trim(),
-          nodeToRender.branchNode?.rootNodeId || '',
+          nodeToRender.textContent.trim(),
+          nodeToRender.rootNodeId,
           {
             start: 0,
-            end: textContent.trim().length
+            end: nodeToRender.textContent.trim().length
           }
         );
 
@@ -260,18 +244,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // Navigation functions with pagination
   const navigateToNextSibling = useCallback(async () => {
     if (isReplyTarget(nodeToRender)) { return; } // Disable navigation if node is reply target
-    
-    // Get the ID of the selected node, accounting for the new structure
-    const selectedNodeId = levelData.selectedNode?.isLeafNode 
-      ? levelData.selectedNode?.leafNode?.id 
-      : levelData.selectedNode?.branchNode?.id;
-    
-    // Find the current index in siblings, accounting for the new structure
-    const currentIndex = siblings.findIndex(sibling => {
-      const siblingId = sibling.isLeafNode ? sibling.leafNode?.id : sibling.branchNode?.id;
-      return siblingId === selectedNodeId;
-    });
-    
+    const currentIndex = siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id);
     let didNavigate = false;
 
     if (currentIndex < siblings.length - 1) {
@@ -312,17 +285,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   const navigateToPreviousSibling = useCallback(async () => {
     if (isReplyTarget(nodeToRender)) { return; } // Disable navigation if node is reply target
-    
-    // Get the ID of the selected node, accounting for the new structure
-    const selectedNodeId = levelData.selectedNode?.isLeafNode 
-      ? levelData.selectedNode?.leafNode?.id 
-      : levelData.selectedNode?.branchNode?.id;
-    
-    // Find the current index in siblings, accounting for the new structure
-    const currentIndex = siblings.findIndex(sibling => {
-      const siblingId = sibling.isLeafNode ? sibling.leafNode?.id : sibling.branchNode?.id;
-      return siblingId === selectedNodeId;
-    });
+    const currentIndex = siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id);
 
     if (currentIndex > 0) {
       // We have the previous sibling loaded already because we always start loading from zero
@@ -360,22 +323,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   }, {
     drag: {
       axis: 'x',
-      enabled: Boolean(
-        nodeToRender && (
-          (nodeToRender.isLeafNode && nodeToRender.leafNode?.rootNodeId) || 
-          (!nodeToRender.isLeafNode && nodeToRender.branchNode?.rootNodeId)
-        )
-      ),
+      enabled: Boolean(nodeToRender?.rootNodeId),
       threshold: 5,
     }
   });
 
   // Early return if we don't have a valid node
-  const nodeRootId = nodeToRender?.isLeafNode 
-    ? nodeToRender?.leafNode?.rootNodeId 
-    : nodeToRender?.branchNode?.rootNodeId;
-  
-  if (!nodeRootId) {
+  if (!nodeToRender?.rootNodeId) {
     return null;
   }
 
@@ -406,21 +360,11 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
             <MemoizedNodeContent
               node={nodeToRender}
               quote={(isReplyTarget(nodeToRender) && replyQuote) ? replyQuote : undefined}
-              existingSelectableQuotes={
-                nodeToRender.isLeafNode 
-                  ? undefined 
-                  : nodeToRender.branchNode?.quoteCounts
-              }
+              existingSelectableQuotes={nodeToRender.quoteCounts ?? undefined}
               onSelectionComplete={handleTextSelectionCompleted}
             />
             <MemoizedNodeFooter
-              currentIndex={siblings.findIndex(sibling => {
-                const siblingId = sibling.isLeafNode ? sibling.leafNode?.id : sibling.branchNode?.id;
-                const selectedNodeId = levelData.selectedNode?.isLeafNode 
-                  ? levelData.selectedNode?.leafNode?.id 
-                  : levelData.selectedNode?.branchNode?.id;
-                return siblingId === selectedNodeId;
-              })}
+              currentIndex={siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id)}
               totalSiblings={pagination.totalCount}
               onReplyClick={handleReplyButtonClick}
               isReplyTarget={isReplyTarget(nodeToRender)}

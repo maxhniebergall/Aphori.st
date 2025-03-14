@@ -136,7 +136,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
               listRef.current.resetAfterIndex(index);
             }
           }}
-          shouldHide={!!(replyTarget?.branchNode?.levelNumber) && (replyTarget.branchNode?.levelNumber < levelAsLevel.levelNumber)}
+          shouldHide={!!(replyTarget?.levelNumber) && (replyTarget.levelNumber < level.levelNumber)}
           index={index}
         />
       );
