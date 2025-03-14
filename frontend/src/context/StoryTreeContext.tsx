@@ -5,6 +5,17 @@ import StoryTreeErrorBoundary from './StoryTreeErrorBoundary';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import { useUser } from './UserContext';
 import { Quote } from '../types/quote';
+import { 
+  getRootNodeId, 
+  getLevelNumber,
+  getSelectedNode,
+  getSelectedQuote,
+  getPagination,
+  getSiblings,
+  setSelectedNode,
+  createMidLevel,
+  createLastLevel
+} from '../utils/levelDataHelpers';
 
 /*
  * Requirements:
@@ -34,8 +45,8 @@ const initialState: StoryTreeState = {
 
 function getLevelIndex(existingLevels: Array<StoryTreeLevel | LastLevel>, level: StoryTreeLevel | LastLevel): number {
   return existingLevels.findIndex(existingLevel => 
-    existingLevel.rootNodeId === level.rootNodeId && 
-    existingLevel.levelNumber === level.levelNumber
+    getRootNodeId(existingLevel) === getRootNodeId(level) && 
+    getLevelNumber(existingLevel) === getLevelNumber(level)
   );
 }
 
@@ -85,7 +96,7 @@ function updateSiblingsForQuote(siblings: Siblings, quote: Quote | null, nodes: 
   return { levelsMap: newLevelsMap };
 }
 
-export function mergeLevels(existingLevels: Array<StoryTreeLevel | LastLevel>, newLevels: Array<StoryTreeLevel | LastLevel>): Array<StoryTreeLevel | LastLevel> {
+export function mergeLevels(existingLevels: Array<StoryTreeLevel>, newLevels: Array<StoryTreeLevel>): Array<StoryTreeLevel> {
   const returnableLevels = [...existingLevels];
 
   for (const levelWithNewItems of newLevels) { 
@@ -93,53 +104,92 @@ export function mergeLevels(existingLevels: Array<StoryTreeLevel | LastLevel>, n
     
     if (levelIndex === -1) {
       returnableLevels.push(levelWithNewItems);
-    } else if (Object.hasOwn(levelWithNewItems, "pagination") === false) {
+    } else if (!getPagination(levelWithNewItems as StoryTreeLevel)) {
       returnableLevels[levelIndex] = levelWithNewItems;
-    } else if (Object.hasOwn(returnableLevels[levelIndex], "siblings") === false) {
-      throw new Error("attempting to merge a LastLevel with a new level [" + levelWithNewItems.levelNumber + "]"  + JSON.stringify({levelWithNewItems, returnableLevels, levelIndex}));
+    } else if (!getSiblings(returnableLevels[levelIndex] as StoryTreeLevel)) {
+      throw new Error("attempting to merge a LastLevel with a new level [" + getLevelNumber(levelWithNewItems) + "]"  + JSON.stringify({levelWithNewItems, returnableLevels, levelIndex}));
     } else {
       // Update the pagination information with cursor based details
       const returableLevelAsLevel : StoryTreeLevel = returnableLevels[levelIndex] as StoryTreeLevel;
       const levelWithNewItemsAsLevel : StoryTreeLevel = levelWithNewItems as StoryTreeLevel;
-      returableLevelAsLevel.pagination = {
-        ...returableLevelAsLevel.pagination,
-        ...levelWithNewItemsAsLevel.pagination
+      
+      // Create a new level with updated pagination
+      const updatedLevel = {
+        ...returableLevelAsLevel,
+        midLevel: {
+          ...returableLevelAsLevel.midLevel!,
+          pagination: {
+            ...getPagination(returableLevelAsLevel)!,
+            ...getPagination(levelWithNewItemsAsLevel)!
+          }
+        }
       };
+      
+      returnableLevels[levelIndex] = updatedLevel;
 
       // Merge siblings map using cursor based pagination.
       // Instead of using an index for insertion, check for the existence of prevCursor:
       // if prevCursor exists, the new nodes are from an earlier page and should be prepended;
       // otherwise, they are appended.
-      if (levelWithNewItemsAsLevel.siblings?.levelsMap) {
-        for (const [quote, newNodesAtLevel] of levelWithNewItemsAsLevel.siblings.levelsMap) {
-          const existingSiblings = findSiblingsForQuote(returableLevelAsLevel.siblings, quote);
+      const newSiblings = getSiblings(levelWithNewItemsAsLevel);
+      if (newSiblings?.levelsMap) {
+        for (const [quote, newNodesAtLevel] of newSiblings.levelsMap) {
+          const existingSiblings = findSiblingsForQuote(getSiblings(updatedLevel)!, quote);
           
           // Filter out nodes that already exist
           const existingIds = existingSiblings ? new Set(existingSiblings.map((node: StoryTreeNode) => node.id)) : new Set();
           const uniqueNewNodes = newNodesAtLevel.filter((node: StoryTreeNode) => !existingIds.has(node.id));
           
           if (existingSiblings && existingSiblings.length > 0) {
-            if (levelWithNewItemsAsLevel.pagination.prevCursor) {
+            const pagination = getPagination(levelWithNewItemsAsLevel);
+            if (pagination?.prevCursor) {
               // Prepend new nodes if pagination indicates loading a previous page.
-              returableLevelAsLevel.siblings = updateSiblingsForQuote(
-                returableLevelAsLevel.siblings,
+              const updatedSiblings = updateSiblingsForQuote(
+                getSiblings(updatedLevel)!,
                 quote,
                 [...uniqueNewNodes, ...existingSiblings]
               );
+              
+              // Update the level with the new siblings
+              returnableLevels[levelIndex] = {
+                ...updatedLevel,
+                midLevel: {
+                  ...updatedLevel.midLevel!,
+                  siblings: updatedSiblings
+                }
+              };
             } else {
               // Otherwise, append new nodes.
-              returableLevelAsLevel.siblings = updateSiblingsForQuote(
-                returableLevelAsLevel.siblings,
+              const updatedSiblings = updateSiblingsForQuote(
+                getSiblings(updatedLevel)!,
                 quote,
                 [...existingSiblings, ...uniqueNewNodes]
               );
+              
+              // Update the level with the new siblings
+              returnableLevels[levelIndex] = {
+                ...updatedLevel,
+                midLevel: {
+                  ...updatedLevel.midLevel!,
+                  siblings: updatedSiblings
+                }
+              };
             }
           } else {
-            returableLevelAsLevel.siblings = updateSiblingsForQuote(
-              returableLevelAsLevel.siblings,
+            const updatedSiblings = updateSiblingsForQuote(
+              getSiblings(updatedLevel)!,
               quote,
               uniqueNewNodes
             );
+            
+            // Update the level with the new siblings
+            returnableLevels[levelIndex] = {
+              ...updatedLevel,
+              midLevel: {
+                ...updatedLevel.midLevel!,
+                siblings: updatedSiblings
+              }
+            };
           }
         }
       }
@@ -198,7 +248,9 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         }
 
         const selectedNode: StoryTreeNode = action.payload;
-        const updatedLevel = state.storyTree.levels.find(level => level.levelNumber === selectedNode.levelNumber);
+        const updatedLevel = state.storyTree.levels.find(level => 
+          getLevelNumber(level) === selectedNode.levelNumber
+        );
 
         if (!updatedLevel) {
           console.error("Selected level not found");
@@ -208,11 +260,8 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         // Create a new levels array
         const newLevels = [...state.storyTree.levels];
         
-        // Update the level with the selected node
-        newLevels[selectedNode.levelNumber] = {
-          ...updatedLevel,
-          selectedNode: selectedNode
-        };
+        // Update the level with the selected node using the helper function
+        newLevels[selectedNode.levelNumber] = setSelectedNode(updatedLevel as StoryTreeLevel, selectedNode);
         
         // Truncate levels after the selected level if needed
         if (selectedNode.levelNumber < newLevels.length - 1) {
@@ -221,10 +270,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         
         return {
           ...state,
-          storyTree: {
-            ...state.storyTree,
-            levels: newLevels
-          }
+          storyTree: { ...state.storyTree, levels: newLevels }
         };
       }
 
@@ -240,11 +286,8 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           console.error(`Last level in story tree (${lastLevelNumberInStoryTree + 1}) does not match last level in payload (${lastLevelNumberInPayload})`);
           return state;
         }
-        const lastLevel : LastLevel = {
-          levelNumber: lastLevelNumberInPayload,
-          rootNodeId: state.storyTree.post.id,
-        };
-        const newLevels : Array<StoryTreeLevel | LastLevel> = [...state.storyTree.levels, lastLevel];
+        const lastLevel : StoryTreeLevel = createLastLevel(state.storyTree.post.id, lastLevelNumberInPayload);
+        const newLevels : Array<StoryTreeLevel> = [...state.storyTree.levels, lastLevel];
         return {
           ...state,
           storyTree: { ...state.storyTree, levels: newLevels }

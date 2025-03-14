@@ -10,7 +10,16 @@ import React, { useRef, useMemo, memo, useCallback, useState } from 'react';
 import { ListChildComponentProps } from 'react-window';
 import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
 import StoryTreeLevelComponent from './StoryTreeLevel';
-import { StoryTreeLevel } from '../types/types';
+import { StoryTreeLevel, StoryTreeNode } from '../types/types';
+import { 
+  getSelectedQuote, 
+  getSiblings, 
+  getSelectedNode, 
+  setSelectedNode, 
+  getRootNodeId,
+  isMidLevel
+} from '../utils/levelDataHelpers';
+import { Quote } from '../types/quote';
 
 // Row Component Props - combines all previous component props
 interface RowProps extends Omit<ListChildComponentProps, 'data'> {
@@ -65,58 +74,115 @@ const Row: React.FC<RowProps> = memo(
 
     // Create navigation callbacks for StoryTreeLevel
     const navigateToNextSiblingCallback = useCallback(() => {
+      // Skip if not a MidLevel
+      if (!isMidLevel(levelData)) {
+        console.warn('Cannot navigate: not a MidLevel');
+        return;
+      }
+
       console.log('Row: Navigate to next sibling');
-      if (!levelData.selectedQuote) {
+      const selectedQuote = getSelectedQuote(levelData);
+      if (!selectedQuote) {
         throw new Error('No selected quote');
       }
-      const siblingsForQuote = levelData.siblings.levelsMap.find(
-        ([quote]) => quote && levelData.selectedQuote && quote.toString() === levelData.selectedQuote.toString()
+      
+      const siblings = getSiblings(levelData);
+      if (!siblings) {
+        throw new Error('No siblings found');
+      }
+      
+      const siblingsForQuote = siblings.levelsMap.find(
+        ([quote]) => quote && selectedQuote && quote.toString() === selectedQuote.toString()
       );
+      
       if (!siblingsForQuote){
         throw new Error('No siblings for quote');
       }
+      
+      const selectedNode = getSelectedNode(levelData);
+      if (!selectedNode) {
+        throw new Error('No selected node');
+      }
+      
       const currentIndex = siblingsForQuote[1].findIndex(sibling => { 
-        return sibling.id === levelData.selectedNode?.id;
+        return sibling.id === selectedNode.id;
       });
   
       if (currentIndex + 1 > siblingsForQuote[1].length - 1) {
         throw new Error('No next sibling');
       }
+      
       const nextSibling = siblingsForQuote[1][currentIndex + 1];
       if (!nextSibling) {
         throw new Error('No next sibling');
       }
-      levelData.selectedNode = nextSibling;
+      
+      // Update the levelData with the new selected node
+      const updatedLevelData = setSelectedNode(levelData, nextSibling);
+      // Since we're mutating a prop, we need to update the original object
+      if (levelData.midLevel) {
+        levelData.midLevel.selectedNode = nextSibling;
+      }
+      
       // Force re-render by updating dummy state
       setReRender(prev => prev + 1);
-    }, [levelData.selectedQuote, levelData.siblings.levelsMap, levelData.selectedNode]);
+    }, [levelData]);
 
     const navigateToPreviousSiblingCallback = useCallback(() => {
+      // Skip if not a MidLevel
+      if (!isMidLevel(levelData)) {
+        console.warn('Cannot navigate: not a MidLevel');
+        return;
+      }
+
       console.log('Row: Navigate to previous sibling');
-      if (!levelData.selectedQuote) {
+      const selectedQuote = getSelectedQuote(levelData);
+      if (!selectedQuote) {
         throw new Error('No selected quote');
       }
-      const siblingsForQuote = levelData.siblings.levelsMap.find(
-        ([quote]) => quote && levelData.selectedQuote && quote.toString() === levelData.selectedQuote.toString()
+      
+      const siblings = getSiblings(levelData);
+      if (!siblings) {
+        throw new Error('No siblings found');
+      }
+      
+      const siblingsForQuote = siblings.levelsMap.find(
+        ([quote]) => quote && selectedQuote && quote.toString() === selectedQuote.toString()
       );
+      
       if (!siblingsForQuote){
         throw new Error('No siblings for quote');
       }
+      
+      const selectedNode = getSelectedNode(levelData);
+      if (!selectedNode) {
+        throw new Error('No selected node');
+      }
+      
       const currentIndex = siblingsForQuote[1].findIndex(sibling => { 
-        return sibling.id === levelData.selectedNode?.id;
+        return sibling.id === selectedNode.id;
       });
   
       if (currentIndex - 1 < 0) {
         throw new Error('No previous sibling');
       }
+      
       const previousSibling = siblingsForQuote[1][currentIndex - 1];
       if (!previousSibling) {
         throw new Error('No previous sibling');
       }
-      levelData.selectedNode = previousSibling;
+      
+      // Update the levelData with the new selected node
+      const updatedLevelData = setSelectedNode(levelData, previousSibling);
+      // TODO this isn't right, we need to use the updatedLevelData object
+      // Since we're mutating a prop, we need to update the original object
+      if (levelData.midLevel) {
+        levelData.midLevel.selectedNode = previousSibling;
+      }
+      
       // Force re-render by updating dummy state
       setReRender(prev => prev + 1);
-    }, [levelData.selectedQuote, levelData.siblings.levelsMap, levelData.selectedNode]);
+    }, [levelData]);
 
     // Create content component directly within Row
     const content = useMemo(() => {
@@ -149,8 +215,11 @@ const Row: React.FC<RowProps> = memo(
   },
   (prevProps, nextProps) => {
     // Check if the selected node's quote counts have changed
-    const prevQuoteCounts = prevProps.levelData?.selectedNode?.quoteCounts;
-    const nextQuoteCounts = nextProps.levelData?.selectedNode?.quoteCounts;
+    const prevSelectedNode = getSelectedNode(prevProps.levelData);
+    const nextSelectedNode = getSelectedNode(nextProps.levelData);
+    
+    const prevQuoteCounts = prevSelectedNode?.quoteCounts;
+    const nextQuoteCounts = nextSelectedNode?.quoteCounts;
     
     // If quote counts changed, we should re-render
     if (prevQuoteCounts !== nextQuoteCounts) {
@@ -159,7 +228,7 @@ const Row: React.FC<RowProps> = memo(
     
     // Otherwise, use existing checks to determine if we should update
     return (
-      prevProps.levelData?.rootNodeId === nextProps.levelData?.rootNodeId &&
+      getRootNodeId(prevProps.levelData) === getRootNodeId(nextProps.levelData) &&
       prevProps.index === nextProps.index &&
       prevProps.style.top === nextProps.style.top &&
       prevProps.shouldHide === nextProps.shouldHide

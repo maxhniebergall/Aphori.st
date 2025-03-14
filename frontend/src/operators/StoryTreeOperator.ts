@@ -27,13 +27,24 @@
  * - Implement caching with CacheService
  */
 
-import { ACTIONS, StoryTreeNode, StoryTreeState, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat } from '../types/types';
+import { ACTIONS, StoryTreeNode, StoryTreeState, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat, LastLevel } from '../types/types';
 import { Quote } from '../types/quote';
 import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
 import StoryTreeError from '../errors/StoryTreeError';
 import { Compressed } from '../types/compressed';
 import compression from '../utils/compression';
+import { 
+  createMidLevel, 
+  createLastLevel,
+  getSelectedQuote,
+  getParentId,
+  getLevelNumber,
+  getPagination,
+  getRootNodeId,
+  getSelectedNode,
+  getSiblings
+} from '../utils/levelDataHelpers';
 
 class StoryTreeOperator extends BaseOperator {
   // Introduce a store property to hold state and dispatch injected from a React component.
@@ -166,19 +177,19 @@ class StoryTreeOperator extends BaseOperator {
       levelsMap: [[null, [contentNode]]]
     };
 
-    // Create the content level
-    const contentLevel: StoryTreeLevel = {
-      rootNodeId: post.id,
-      parentId: [],
-      levelNumber: 0,
-      selectedQuote: null as unknown as Quote, // Type assertion to satisfy TypeScript
-      selectedNode: contentNode,
-      siblings: siblings,
-      pagination: { 
+    // Create the content level using the helper function
+    const contentLevel = createMidLevel(
+      post.id,
+      [],
+      0,
+      null as unknown as Quote, // Type assertion to satisfy TypeScript
+      contentNode,
+      siblings,
+      { 
         hasMore: false,
         totalCount: 1
       }
-    };
+    );
 
     // Dispatch the content level
     if (this.store && this.store.dispatch) {
@@ -189,29 +200,44 @@ class StoryTreeOperator extends BaseOperator {
     }
 
     console.log("StoryTreeOperator: Added post content to level zero:", {
-      levelNumber: contentLevel.levelNumber,
+      levelNumber: getLevelNumber(contentLevel),
       siblingsCount: siblings.levelsMap[0][1].length,
       firstNodeContent: siblings.levelsMap[0][1][0]?.textContent
     });
   }
 
-  private async fetchAndDispatchReplies(level: StoryTreeLevel, sortingCriteria: string, limit: number, cursor: string | undefined = undefined) {
+  private async fetchAndDispatchReplies(level: StoryTreeLevel, sortingCriteria: string, limit: number = 5, cursor: string | undefined = undefined) {
     let cursorString = cursor;
     if (cursor === undefined) {
-      cursorString = level.pagination.nextCursor;
+      const pagination = getPagination(level);
+      if (!pagination) {
+        console.error('No pagination found in level');
+        return;
+      }
+      cursorString = pagination.nextCursor;
     }
-    // http://localhost:5050/api/getReplies/afc24d31-dd8c-485a-aa80-1915b36ff074/[object%20Object]/mostRecent?limit=5
-    const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${level.parentId[0]}/${Quote.toEncodedString(level.selectedQuote)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
+    
+    const parentId = getParentId(level);
+    const levelNumber = getLevelNumber(level);
+    const selectedQuote = getSelectedQuote(level);
+    const rootNodeId = getRootNodeId(level);
+    
+    if (!parentId || !levelNumber || !selectedQuote || !rootNodeId) {
+      console.error('Missing required data for fetching replies');
+      return;
+    }
+    
+    const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId[0]}/${Quote.toEncodedString(selectedQuote)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
     try {
       const compressedPaginatedResponse = await this.retryApiCallSimplified<Compressed<CursorPaginatedResponse<Reply>>>(
         () => axios.get(url, {
           validateStatus: status => status === 200
         })
       );
-      console.log(`Fetched replies for level ${level.levelNumber}:`, compressedPaginatedResponse);
+      console.log(`Fetched replies for level ${getLevelNumber(level)}:`, compressedPaginatedResponse);
       const decompressedPaginatedData = await compression.decompress<CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
       if (decompressedPaginatedData && decompressedPaginatedData.pagination) {
-        console.log(`Fetched replies for level ${level.levelNumber}:`, decompressedPaginatedData);
+        console.log(`Fetched replies for level ${getLevelNumber(level)}:`, decompressedPaginatedData);
         const quoteCountsMap = new Map<Quote, QuoteCounts>();
         // Use only the standardized data field
         const repliesData = decompressedPaginatedData.data;
@@ -221,27 +247,34 @@ class StoryTreeOperator extends BaseOperator {
           quoteCountsMap.set(reply.quote, quoteCounts);
         }));
 
-        const newLevelData: StoryTreeLevel = {
-          ...level,
-          siblings: {
-            levelsMap: [[level.selectedQuote, repliesData.map((reply: Reply) => (
-              {
-                id: reply.id,
-                rootNodeId: level.rootNodeId,
-                parentId: reply.parentId,
-                levelNumber: level.levelNumber,
-                textContent: reply.text,
-                authorId: reply.authorId,
-                createdAt: reply.createdAt,
-                repliedToQuote: reply.quote,
-                quoteCounts: quoteCountsMap.get(reply.quote)
-              } as StoryTreeNode
-            ))]]
+        // Create StoryTreeNodes from replies
+        const replyNodes: StoryTreeNode[] = repliesData.map((reply: Reply) => ({
+          id: reply.id,
+          rootNodeId: rootNodeId,
+          parentId: reply.parentId,
+          levelNumber: levelNumber,
+          textContent: reply.text,
+          authorId: reply.authorId,
+          createdAt: reply.createdAt,
+          repliedToQuote: reply.quote,
+          quoteCounts: quoteCountsMap.get(reply.quote) || null // Use null as fallback instead of undefined
+        }));
+        
+        // When creating the new level data, use the helper function
+        const newLevelData = createMidLevel(
+          rootNodeId,
+          parentId,
+          levelNumber,
+          selectedQuote,
+          getSelectedNode(level) || replyNodes[0], // Fallback to first reply if no selected node
+          {
+            levelsMap: [[selectedQuote, replyNodes]]
           },
-          pagination: decompressedPaginatedData.pagination
-        };
-        console.log(`Fetched replies for level ${level.levelNumber}:`, newLevelData, "ready to dispatch");
-
+          decompressedPaginatedData.pagination
+        );
+        
+        console.log(`Fetched replies for level ${getLevelNumber(level)}:`, newLevelData, "ready to dispatch");
+        
         if (this.store && this.store.dispatch) {
           this.store.dispatch({
             type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
@@ -249,13 +282,13 @@ class StoryTreeOperator extends BaseOperator {
           });
         }
       } else {
-        console.warn(`No pagination data found for level ${level.levelNumber}.`);
+        console.warn(`No pagination data found for level ${getLevelNumber(level)}.`);
       }
     } catch (err) {
       const axiosErr = err as AxiosError;
       const statusCode = axiosErr.response?.status;
       const storyTreeErr = new StoryTreeError(
-        `Error fetching pagination for level ${level.levelNumber}`,
+        `Error fetching pagination for level ${getLevelNumber(level)}`,
         statusCode,
         url,
         err
@@ -485,26 +518,27 @@ class StoryTreeOperator extends BaseOperator {
           console.log(`Parent level (${levelNumber-1}) is last level. No more levels to load`);
           break;
         }
-        if (!parentLevel || !Object.hasOwn(parentLevel, "selectedNode") || !parentLevelAsLevel.selectedNode) {
-          if (!parentLevel || !Object.hasOwn(parentLevelAsLevel, "selectedNode") || !parentLevelAsLevel.selectedNode) {
-            const errorMsg = `Selected node not found for level ${levelNumber};\n parentLevel: ${JSON.stringify(parentLevel)};\n levels: ${JSON.stringify(state.storyTree.levels)}`;
-            console.error(errorMsg);
-            throw new StoryTreeError(errorMsg);
-          } else {  
-            throw new StoryTreeError(`Fell through ${levelNumber};\n parentLevel: ${JSON.stringify(parentLevel)};\n levels: ${JSON.stringify(state.storyTree.levels)}`);
-          }
+        const selectedNode = getSelectedNode(parentLevelAsLevel);
+        if (!parentLevel || !selectedNode) {
+          const errorMsg = `Selected node not found for level ${levelNumber};\n parentLevel: ${JSON.stringify(parentLevel)};\n levels: ${JSON.stringify(state.storyTree.levels)}`;
+          console.error(errorMsg);
+          throw new StoryTreeError(errorMsg);
         }
       }
-      const parentId = parentLevelAsLevel.selectedNode.id;
-      const parentText = parentLevelAsLevel.selectedNode.textContent;
+      const selectedNode = getSelectedNode(parentLevelAsLevel);
+      if (!selectedNode) {
+        throw new StoryTreeError(`Selected node not found for level ${levelNumber-1}`);
+      }
+      const parentId = selectedNode.id;
+      const parentText = selectedNode.textContent;
       { // continue validation
         if (!parentId || !parentText) {
-          console.error(`Invalid parent node at level ${levelNumber - 1}:`, parentLevelAsLevel.selectedNode);
+          console.error(`Invalid parent node at level ${levelNumber - 1}:`, selectedNode);
           break;
         }
       }
-      const quoteCounts = parentLevelAsLevel.selectedNode.quoteCounts;
-      console.log("StoryTreeOperator: parentLevelAsLevel.selectedNode.quoteCounts", quoteCounts, " for level ", levelNumber);
+      const quoteCounts = selectedNode.quoteCounts;
+      console.log("StoryTreeOperator: parentLevelAsLevel selectedNode quoteCounts", quoteCounts, " for level ", levelNumber);
       { // continue validation
         if (!quoteCounts || !quoteCounts.quoteCounts || quoteCounts.quoteCounts.length === 0) {
           console.log(`No quotes found for parentId: ${parentId}, no more levels to load, level ${levelNumber} is last level`);
@@ -518,8 +552,11 @@ class StoryTreeOperator extends BaseOperator {
           // we start by checking if there are any replies to the default quote
           // otherwise, we select the quote with the most replies
           // Check if the default quote has replies
-          const hasRepliesForDefaultQuote = quoteCounts.quoteCounts.some(([quote, count]) => 
-            quote.toString() === selectedQuote.toString() && count > 0
+          const hasRepliesForDefaultQuote = quoteCounts.quoteCounts.some(
+            (quoteCountPair: [Quote, number]) => {
+              const [quote, count] = quoteCountPair;
+              return quote.toString() === selectedQuote.toString() && count > 0;
+            }
           );
           if (!hasRepliesForDefaultQuote) {
             console.log("No replies for default quote, selecting quote with most replies instead");
@@ -570,15 +607,15 @@ class StoryTreeOperator extends BaseOperator {
         });
         
         // Create the fully initialized new level
-        const level: StoryTreeLevel = {
-          rootNodeId: rootNodeId,
-          parentId: [parentId],
-          levelNumber: levelNumber,
-          selectedQuote: selectedQuote,
-          siblings: { levelsMap: [[selectedQuote, siblingsForQuote]] },
-          selectedNode: siblingsForQuote[0],
-          pagination: pagination
-        };
+        const level: StoryTreeLevel = createMidLevel(
+          rootNodeId,
+          [parentId],
+          levelNumber,
+          selectedQuote,
+          siblingsForQuote[0],
+          { levelsMap: [[selectedQuote, siblingsForQuote]] },
+          pagination
+        );
         
         // Dispatch the new level to the store
         await this.dispatchNewLevel(level);
@@ -648,10 +685,12 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   private dispatchLastLevel(levelNumber: number): void {
-    if (!this.store || !this.store.dispatch) {
-      throw new StoryTreeError('Dispatch not initialized in StoryTreeOperator.');
+    if (this.store && this.store.dispatch) {
+      this.store.dispatch({
+        type: ACTIONS.SET_LAST_LEVEL,
+        payload: { levelNumber }
+      });
     }
-    this.store.dispatch({ type: ACTIONS.SET_LAST_LEVEL, payload: { levelNumber: levelNumber } });
   }
 
   private fullQuoteFromText(parentText: string, parentId: string): Quote {

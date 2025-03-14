@@ -138,6 +138,11 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                 const endCharacterIndex = startCharacterIndex + excerpt.length;
                 const replyText = `This is a test reply (to a story tree) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}].`;
 
+                if (excerpt.length == 0) {
+                    console.log('excerpt is empty, skipping');
+                    continue;
+                }
+
                 // Create a test quote targeting the entire text of the parent post
                 const quote = {
                     text: excerpt,
@@ -171,6 +176,11 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                     const startCharacterIndex = storyContent.indexOf(excerpt);
                     const endCharacterIndex = startCharacterIndex + excerpt.length;
                     const replyReplyText = `This is a test reply (to a reply) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}], replyReplyNumber: [${replyReplyNumber}].`;
+
+                    if (excerpt.length == 0) {
+                        console.log('excerpt is empty, skipping');
+                        continue;
+                    }
 
                     // Create a test quote targeting the entire text of the parent post
                     const quote = {
