@@ -104,6 +104,11 @@ const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts, storeQuote: 
     .sort(([, count1], [, count2]) => count2 - count1)
     .slice(0, 10);
 
+  console.log('useTextSelection: Highlighting quotes', {
+    JSON: JSON.stringify(sortedQuotes),
+    elementId: element.id,
+  });
+
   sortedQuotes.forEach(([quoteObj, count], index) => {
     // Ensure quote is a valid Quote instance or convert it
     let quote: Quote;

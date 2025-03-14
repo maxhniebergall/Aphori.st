@@ -17,6 +17,17 @@ import NodeFooter from './NodeFooter';
 import { StoryTreeLevel as LevelData, StoryTreeNode, Pagination } from '../types/types';
 import { Quote } from '../types/quote';
 import storyTreeOperator from '../operators/StoryTreeOperator';
+import { 
+  getSelectedQuote, 
+  getSiblings, 
+  getSelectedNode, 
+  setSelectedNode, 
+  getRootNodeId,
+  getLevelNumber,
+  getParentId,
+  getPagination,
+  isMidLevel
+} from '../utils/levelDataHelpers';
 
 interface StoryTreeLevelProps {
   levelData: LevelData;
@@ -53,8 +64,25 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
   
+  // Skip rendering if not a MidLevel
+  if (!isMidLevel(levelData)) {
+    return (
+      <div ref={containerRef} className="story-tree-level-container">
+        <div className="last-level-indicator">
+          End of thread
+        </div>
+      </div>
+    );
+  }
+  
   // Pagination state - directly use the Pagination type from our types
-  const [pagination, setPagination] = useState<Pagination>(levelData.pagination);
+  const initialPagination = getPagination(levelData);
+  if (!initialPagination) {
+    console.error('No pagination found in level data');
+    return null;
+  }
+  
+  const [pagination, setPagination] = useState<Pagination>(initialPagination);
   
   // Use a custom hook to extract only the reply context values we need
   // This prevents re-renders when replyContent changes but doesn't affect this component
@@ -122,35 +150,67 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Get siblings from levelData using the correct key
   const siblings = useMemo(() => {
+    // Skip if not a MidLevel
+    if (!isMidLevel(levelData)) {
+      return [];
+    }
+    
+    const siblings = getSiblings(levelData);
+    if (!siblings) {
+      return [];
+    }
+    
+    const selectedQuote = getSelectedQuote(levelData);
+    if (!selectedQuote) {
+      return [];
+    }
+    
     // Find the entry in the levelsMap array that matches the selectedQuote
-    const entry = levelData.siblings.levelsMap.find(
-      ([quote]) => quote && levelData.selectedQuote && quote.toString() === levelData.selectedQuote.toString()
+    const entry = siblings.levelsMap.find(
+      // TODO the toStrings on quotes probably dont work. We should use the Quote object functions instead
+      ([quote]) => quote && selectedQuote && quote.toString() === selectedQuote.toString()
     );
     return entry ? entry[1] : [];
-  }, [levelData.siblings.levelsMap, levelData.selectedQuote]);
+  }, [levelData]);
 
   // Update pagination state based on levelData
   useMemo(() => {
-    setPagination(levelData.pagination);
-  }, [levelData.pagination]);
+    const newPagination = getPagination(levelData);
+    if (newPagination) {
+      setPagination(newPagination);
+    }
+  }, [levelData]);
 
   // Get the current node to render
   const nodeToRender = useMemo(() => {    
     // If we don't have a current node but the levelData has a selectedNode, use that
-    if (levelData.selectedNode) {
-      return levelData.selectedNode;
+    const selectedNode = getSelectedNode(levelData);
+    if (selectedNode) {
+      return selectedNode;
+    }
+    
+    // Skip if not a MidLevel
+    if (!isMidLevel(levelData)) {
+      return undefined;
+    }
+    
+    const siblings = getSiblings(levelData);
+    if (!siblings) {
+      return undefined;
     }
     
     // Fallback to the first sibling from the map
-    const nullEntry = levelData.siblings.levelsMap.find(([quote]) => quote === null);
-    return siblings[0] || (nullEntry ? nullEntry[1][0] : undefined);
-  }, [levelData.selectedNode, siblings, levelData.siblings.levelsMap]);
+    const nullEntry = siblings.levelsMap.find(([quote]) => quote === null);
+    return siblings.levelsMap[0]?.[1]?.[0] || (nullEntry ? nullEntry[1][0] : undefined);
+  }, [levelData]);
 
   // Check if a node is the reply target more efficiently
   const isReplyTarget = useCallback(
-    (nodeToRender: StoryTreeNode): boolean => {
+    (node: StoryTreeNode | undefined): boolean => {
+      if (!node) return false;
+      
       if (!replyTarget) return false;
-      return replyTarget.rootNodeId === nodeToRender.rootNodeId && replyTarget.id === nodeToRender.id && replyTarget.levelNumber === nodeToRender.levelNumber;
+      return replyTarget.rootNodeId === node.rootNodeId && replyTarget.id === node.id && replyTarget.levelNumber === node.levelNumber;
     },
     [replyTarget]
   );
@@ -244,48 +304,69 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // Navigation functions with pagination
   const navigateToNextSibling = useCallback(async () => {
     if (isReplyTarget(nodeToRender)) { return; } // Disable navigation if node is reply target
-    const currentIndex = siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id);
+    
+    if (!nodeToRender) {
+      console.error('No node to render');
+      return;
+    }
+    
+    const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNode(levelData)?.id);
     let didNavigate = false;
 
     if (currentIndex < siblings.length - 1) {
       // We have the next sibling loaded already
-      console.log('STL: Navigate to next sibling');
       navigateToNextSiblingCallback();
       didNavigate = true;
-    }
-    
-    // prefetch next 3 siblings
-    if (currentIndex >= siblings.length - 3) {
-        try {
-          await storyTreeOperator.loadMoreItems(
-            levelData.parentId[0],
-            levelData.levelNumber,
-            levelData.selectedQuote,
-            siblings.length,  
-            siblings.length + 3 
-          );
-          if (!didNavigate) {
-            // if we somehow didn't have the next sibling loaded, navigate to it now that we have it
-            navigateToNextSiblingCallback();
-          }
+    } else if (pagination.hasMore) {
+      // We need to load more siblings
+      setIsLoading(true);
+      try {
+        const parentId = getParentId(levelData);
+        const levelNumber = getLevelNumber(levelData);
+        const selectedQuote = getSelectedQuote(levelData);
+        
+        if (!parentId || !levelNumber || !selectedQuote) {
+          console.error('Missing required data for loading more items');
+          return;
+        }
+        
+        await storyTreeOperator.loadMoreItems(
+          parentId[0],
+          levelNumber,
+          selectedQuote,
+          siblings.length,  
+          siblings.length + 3 
+        );
+        // After loading, the callback will be called by the parent component
+        didNavigate = true;
       } catch (error) {
-        console.error('Failed to load more siblings:', error);
+        console.error('Error loading more siblings:', error);
       } finally {
         setIsLoading(false);
       }
     }
+
+    if (!didNavigate) {
+      console.log('No more siblings to navigate to');
+    }
   }, [
     siblings,
-    levelData.parentId, levelData.levelNumber, levelData.selectedQuote,
+    pagination.hasMore,
+    levelData,
     navigateToNextSiblingCallback,
-    levelData.selectedNode,
-    isReplyTarget,
-    nodeToRender
+    nodeToRender,
+    isReplyTarget
   ]);
 
   const navigateToPreviousSibling = useCallback(async () => {
     if (isReplyTarget(nodeToRender)) { return; } // Disable navigation if node is reply target
-    const currentIndex = siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id);
+    
+    if (!nodeToRender) {
+      console.error('No node to render');
+      return;
+    }
+    
+    const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNode(levelData)?.id);
 
     if (currentIndex > 0) {
       // We have the previous sibling loaded already because we always start loading from zero
@@ -294,7 +375,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   }, [
     siblings,
     navigateToPreviousSiblingCallback,
-    levelData.selectedNode,
+    levelData,
     isReplyTarget,
     nodeToRender
   ]);
@@ -364,7 +445,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               onSelectionComplete={handleTextSelectionCompleted}
             />
             <MemoizedNodeFooter
-              currentIndex={siblings.findIndex(sibling => sibling.id === levelData.selectedNode?.id)}
+              currentIndex={siblings.findIndex(sibling => sibling.id === getSelectedNode(levelData)?.id)}
               totalSiblings={pagination.totalCount}
               onReplyClick={handleReplyButtonClick}
               isReplyTarget={isReplyTarget(nodeToRender)}
@@ -376,11 +457,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
             {replyError && (
               <div className="reply-error" role="alert" aria-live="polite">
                 {replyError}
-              </div>
-            )}
-            {isLoading && (
-              <div className="loading-indicator" aria-live="polite">
-                Loading...
               </div>
             )}
           </motion.div>

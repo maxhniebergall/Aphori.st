@@ -16,7 +16,7 @@
  * - Clear loading state after data is loaded
  */
 
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { VariableSizeList } from 'react-window';
 import InfiniteLoader from 'react-window-infinite-loader';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -25,6 +25,8 @@ import { useReplyContext } from '../context/ReplyContext';
 import { LastLevel, StoryTreeLevel } from '../types/types';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import Row from './Row';
+import { getLevelNumber, isLastLevel } from '../utils/levelDataHelpers';
+import RowFallback from './RowFallback';
 
 interface VirtualizedStoryListProps {
   postRootId: string;
@@ -51,7 +53,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   const [isLocalLoading, setIsLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<VariableSizeList>(null);
-  const sizeMap = useRef<{ [key: number]: number }>({});
+  const sizeMap = useRef<Map<number, number>>(new Map());
   const [levels, setLevels] = useState<Array<StoryTreeLevel | LastLevel>>([]);
   const [listSize, setListSize] = useState<number>(Number.MAX_SAFE_INTEGER);
   
@@ -61,7 +63,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   // Reset size cache when levels change
   useEffect(() => {
     if (listRef.current) {
-      sizeMap.current = {};
+      sizeMap.current.clear();
       listRef.current.resetAfterIndex(0);
     }
   }, [levels]);
@@ -83,10 +85,15 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     setLevels(state?.storyTree?.levels || []);
 
     // check if we've loaded the last level
-    const lastLevel : StoryTreeLevel | LastLevel | undefined = state?.storyTree?.levels?.[state?.storyTree?.levels?.length - 1];
-    if (lastLevel && !Object.hasOwn(lastLevel, "pagination")) {
-      console.log("VirtualizedStoryList: Last Level has no pagination, no more levels to load. Setting list size to [" + (lastLevel.levelNumber) + "]");
-      setListSize(lastLevel.levelNumber);
+    const lastLevel = state?.storyTree?.levels?.[state?.storyTree?.levels?.length - 1];
+    if (lastLevel && isLastLevel(lastLevel)) {
+      const levelNumber = getLevelNumber(lastLevel);
+      if (levelNumber !== undefined) {
+      console.log("VirtualizedStoryList: Last Level has no pagination, no more levels to load. Setting list size to [" + levelNumber+ "]");
+      setListSize(levelNumber);
+      } else {
+        throw new Error("VirtualizedStoryList: Last Level has no level number");
+      }
     }
   }, [postRootId, state?.storyTree?.levels]);
 
@@ -117,31 +124,26 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   // Memoize the item renderer function to prevent unnecessary re-renders
   const itemRenderer = useMemo(() => {
     return ({ index, style }: { index: number, style: React.CSSProperties }) => {
-      const level = levels[index];
-
-      if (!Object.hasOwn(level, "siblings")) {
-        return null;
+      const level = state?.storyTree?.levels?.[index];
+      if (!level) {
+        return <RowFallback style={style} index={index} />;
       }
-      if (!level) return null;
-
-      const levelAsLevel : StoryTreeLevel = level as StoryTreeLevel;
-
+      
       return (
         <MemoizedRow
+          levelData={level}
           style={style}
-          levelData={levelAsLevel}
           setSize={(height) => {
-            sizeMap.current[index] = height;
-            if (listRef.current) {
-              listRef.current.resetAfterIndex(index);
+            if (height > 0) {
+              sizeMap.current.set(index, height);
             }
           }}
-          shouldHide={!!(replyTarget?.levelNumber) && (replyTarget.levelNumber < level.levelNumber)}
+          shouldHide={!!(replyTarget?.levelNumber) && !!(getLevelNumber(level)) && replyTarget.levelNumber < getLevelNumber(level)!}
           index={index}
         />
       );
     };
-  }, [levels, replyTarget]);
+  }, [state?.storyTree?.levels, replyTarget]);
 
   // Show content with potential loading more indicator
   return (
@@ -175,7 +177,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
                     width={width}
                     itemCount={levels.length}
                     itemSize={(index) => {
-                      const size = sizeMap.current[index] || 200;
+                      const size = sizeMap.current.get(index) || 200;
                       return size;
                     }}
                     overscanCount={5}

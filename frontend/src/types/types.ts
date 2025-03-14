@@ -89,6 +89,12 @@ export interface Siblings {
 }
 
 export interface StoryTreeLevel {
+  isLastLevel: boolean;
+  midLevel: MidLevel | null;
+  lastLevel: LastLevel | null;
+}
+
+export interface MidLevel {
   rootNodeId: string;
   parentId: string[];
   levelNumber: number;
@@ -106,7 +112,7 @@ export interface LastLevel {
 
 export interface StoryTree { // this is the story tree we assemble as the user navigates
   post: Post;
-  levels: Array<StoryTreeLevel | LastLevel>; 
+  levels: Array<StoryTreeLevel>; 
   error: string | null;
 }
 
