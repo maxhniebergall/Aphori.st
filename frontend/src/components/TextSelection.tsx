@@ -10,8 +10,7 @@ import React, { useMemo, CSSProperties } from 'react';
 import { useTextSelection } from '../hooks/useTextSelection';
 import './TextSelection.css';
 import { Quote } from '../types/quote';
-import { QuoteCounts } from '../types/types';
-import { StoryTreeNode } from '../types/storyTreeNode';
+import { QuoteCounts, StoryTreeNode } from '../types/types';
 
 interface TextSelectionProps {
   node: StoryTreeNode;
@@ -49,16 +48,11 @@ const TextSelection: React.FC<TextSelectionProps> = ({
     touchAction: 'none' as const 
   }), []);
 
-  // Get the appropriate ID based on node type
-  const nodeId = useMemo(() => {
-    return node.isLeafNode ? node.leafNode?.id : node.branchNode?.id;
-  }, [node]);
-
   return (
     <div
       ref={containerRef}
       className="selection-container"
-      id={nodeId}
+      id={node.id}
       style={containerStyle}
       {...eventHandlers}
       {...restProps}

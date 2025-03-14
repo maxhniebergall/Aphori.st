@@ -76,12 +76,7 @@ const Row: React.FC<RowProps> = memo(
         throw new Error('No siblings for quote');
       }
       const currentIndex = siblingsForQuote[1].findIndex(sibling => { 
-        // Access id based on whether it's a leaf or branch node
-        const siblingId = sibling.isLeafNode ? sibling.leafNode?.id : sibling.branchNode?.id;
-        const selectedNodeId = levelData.selectedNode?.isLeafNode 
-          ? levelData.selectedNode.leafNode?.id 
-          : levelData.selectedNode.branchNode?.id;
-        return siblingId === selectedNodeId;
+        return sibling.id === levelData.selectedNode?.id;
       });
   
       if (currentIndex + 1 > siblingsForQuote[1].length - 1) {
@@ -108,12 +103,7 @@ const Row: React.FC<RowProps> = memo(
         throw new Error('No siblings for quote');
       }
       const currentIndex = siblingsForQuote[1].findIndex(sibling => { 
-        // Access id based on whether it's a leaf or branch node
-        const siblingId = sibling.isLeafNode ? sibling.leafNode?.id : sibling.branchNode?.id;
-        const selectedNodeId = levelData.selectedNode?.isLeafNode 
-          ? levelData.selectedNode.leafNode?.id 
-          : levelData.selectedNode.branchNode?.id;
-        return siblingId === selectedNodeId;
+        return sibling.id === levelData.selectedNode?.id;
       });
   
       if (currentIndex - 1 < 0) {
@@ -159,12 +149,8 @@ const Row: React.FC<RowProps> = memo(
   },
   (prevProps, nextProps) => {
     // Check if the selected node's quote counts have changed
-    const prevQuoteCounts = prevProps.levelData?.selectedNode?.isLeafNode
-      ? undefined
-      : prevProps.levelData?.selectedNode?.branchNode?.quoteCounts;
-    const nextQuoteCounts = nextProps.levelData?.selectedNode?.isLeafNode
-      ? undefined
-      : nextProps.levelData?.selectedNode?.branchNode?.quoteCounts;
+    const prevQuoteCounts = prevProps.levelData?.selectedNode?.quoteCounts;
+    const nextQuoteCounts = nextProps.levelData?.selectedNode?.quoteCounts;
     
     // If quote counts changed, we should re-render
     if (prevQuoteCounts !== nextQuoteCounts) {

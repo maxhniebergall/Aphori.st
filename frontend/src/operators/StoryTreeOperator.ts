@@ -27,14 +27,13 @@
  * - Implement caching with CacheService
  */
 
-import { ACTIONS, StoryTreeState, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat } from '../types/types';
+import { ACTIONS, StoryTreeNode, StoryTreeState, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat } from '../types/types';
 import { Quote } from '../types/quote';
 import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
 import StoryTreeError from '../errors/StoryTreeError';
 import { Compressed } from '../types/compressed';
 import compression from '../utils/compression';
-import { StoryTreeNode } from '../types/storyTreeNode';
 
 class StoryTreeOperator extends BaseOperator {
   // Introduce a store property to hold state and dispatch injected from a React component.
@@ -145,25 +144,21 @@ class StoryTreeOperator extends BaseOperator {
     const quoteCounts = await this.fetchQuoteCounts(post.id);
 
     const contentNode: StoryTreeNode = {
-      isLeafNode: false,
-      leafNode: null,
-      branchNode: {
-        id: post.id,
-        rootNodeId: post.id,
-        parentId: [],
-        levelNumber: 0,
-        textContent: post.content,
-        authorId: post.authorId,
-        createdAt: post.createdAt,
-        repliedToQuote: null as unknown as Quote, // Root post isn't replying to anything
-        quoteCounts: quoteCounts
-      }
+      id: post.id,
+      rootNodeId: post.id,
+      parentId: [],
+      levelNumber: 0,
+      textContent: post.content,
+      authorId: post.authorId,
+      createdAt: post.createdAt,
+      repliedToQuote: null, // Root post isn't replying to anything
+      quoteCounts: quoteCounts,
     };
 
     console.log("StoryTreeOperator: Created content node:", {
-      nodeId: contentNode.branchNode?.id || '',
-      textContent: contentNode.branchNode?.textContent || '',
-      levelNumber: contentNode.branchNode?.levelNumber || 0
+      nodeId: contentNode.id,
+      textContent: contentNode.textContent,
+      levelNumber: contentNode.levelNumber
     });
 
     // For the root post, we use null as the key since it's not replying to any quote
@@ -196,7 +191,7 @@ class StoryTreeOperator extends BaseOperator {
     console.log("StoryTreeOperator: Added post content to level zero:", {
       levelNumber: contentLevel.levelNumber,
       siblingsCount: siblings.levelsMap[0][1].length,
-      firstNodeContent: siblings.levelsMap[0][1][0]?.isLeafNode === false ? siblings.levelsMap[0][1][0]?.branchNode?.textContent || '' : ''
+      firstNodeContent: siblings.levelsMap[0][1][0]?.textContent
     });
   }
 
@@ -229,10 +224,8 @@ class StoryTreeOperator extends BaseOperator {
         const newLevelData: StoryTreeLevel = {
           ...level,
           siblings: {
-            levelsMap: [[level.selectedQuote, repliesData.map((reply: Reply) => ({
-              isLeafNode: false,
-              leafNode: null,
-              branchNode: {
+            levelsMap: [[level.selectedQuote, repliesData.map((reply: Reply) => (
+              {
                 id: reply.id,
                 rootNodeId: level.rootNodeId,
                 parentId: reply.parentId,
@@ -241,9 +234,9 @@ class StoryTreeOperator extends BaseOperator {
                 authorId: reply.authorId,
                 createdAt: reply.createdAt,
                 repliedToQuote: reply.quote,
-                quoteCounts: quoteCountsMap.get(reply.quote) || { quoteCounts: [] }
-              }
-            } as StoryTreeNode))]]
+                quoteCounts: quoteCountsMap.get(reply.quote)
+              } as StoryTreeNode
+            ))]]
           },
           pagination: decompressedPaginatedData.pagination
         };
@@ -502,21 +495,15 @@ class StoryTreeOperator extends BaseOperator {
           }
         }
       }
-      const parentId = parentLevelAsLevel.selectedNode?.isLeafNode 
-        ? parentLevelAsLevel.selectedNode?.leafNode?.id 
-        : parentLevelAsLevel.selectedNode?.branchNode?.id;
-      const parentText = parentLevelAsLevel.selectedNode?.isLeafNode 
-        ? '' 
-        : parentLevelAsLevel.selectedNode?.branchNode?.textContent || '';
+      const parentId = parentLevelAsLevel.selectedNode.id;
+      const parentText = parentLevelAsLevel.selectedNode.textContent;
       { // continue validation
         if (!parentId || !parentText) {
           console.error(`Invalid parent node at level ${levelNumber - 1}:`, parentLevelAsLevel.selectedNode);
           break;
         }
       }
-      const quoteCounts = parentLevelAsLevel.selectedNode?.isLeafNode 
-        ? undefined 
-        : parentLevelAsLevel.selectedNode?.branchNode?.quoteCounts;
+      const quoteCounts = parentLevelAsLevel.selectedNode.quoteCounts;
       console.log("StoryTreeOperator: parentLevelAsLevel.selectedNode.quoteCounts", quoteCounts, " for level ", levelNumber);
       { // continue validation
         if (!quoteCounts || !quoteCounts.quoteCounts || quoteCounts.quoteCounts.length === 0) {
@@ -531,7 +518,7 @@ class StoryTreeOperator extends BaseOperator {
           // we start by checking if there are any replies to the default quote
           // otherwise, we select the quote with the most replies
           // Check if the default quote has replies
-          const hasRepliesForDefaultQuote = quoteCounts.quoteCounts.some(([quote, count]: [Quote, number]) => 
+          const hasRepliesForDefaultQuote = quoteCounts.quoteCounts.some(([quote, count]) => 
             quote.toString() === selectedQuote.toString() && count > 0
           );
           if (!hasRepliesForDefaultQuote) {
@@ -570,19 +557,15 @@ class StoryTreeOperator extends BaseOperator {
 
         firstReplies.forEach(reply => {
           siblingsForQuote.push({
-            isLeafNode: false,
-            leafNode: null,
-            branchNode: {
-              id: reply.id,
-              rootNodeId: rootNodeId,
-              parentId: [parentId],
-              levelNumber: levelNumber,
-              textContent: reply.text,
-              repliedToQuote: selectedQuote,
-              quoteCounts: quoteCountsMap.get(reply.quote) || { quoteCounts: [] },
-              authorId: reply.authorId,
-              createdAt: reply.createdAt
-            }
+            id: reply.id,
+            rootNodeId: rootNodeId,
+            parentId: [parentId],
+            levelNumber: levelNumber,
+            textContent: reply.text,
+            repliedToQuote: selectedQuote,
+            quoteCounts: quoteCountsMap.get(reply.quote),
+            authorId: reply.authorId,
+            createdAt: reply.createdAt,
           } as StoryTreeNode);
         });
         
