@@ -41,7 +41,9 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
     // Extract all boundary points from selections
     let boundaries: number[] = [0, text.length];
     selections.forEach(quote => {
-      boundaries.push(quote.selectionRange.start, quote.selectionRange.end);
+      if (quote && quote.selectionRange) {
+        boundaries.push(quote.selectionRange.start, quote.selectionRange.end);
+      }
     });
     
     // Sort and deduplicate boundaries
@@ -54,7 +56,9 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
       
       // Find all selections that overlap with this segment
       const overlappingSelections = selections.filter(
-        quote => quote.selectionRange.start <= start && quote.selectionRange.end >= end
+        quote => quote && quote.selectionRange && 
+        quote.selectionRange.start <= start && 
+        quote.selectionRange.end >= end
       );
       
       // Get quote IDs for this segment
