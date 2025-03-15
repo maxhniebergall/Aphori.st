@@ -4,14 +4,15 @@
  * - Use lodash throttle for efficient animation (60fps, ~16ms)
  * - Manage DOM event listeners (mousemove/touchmove) on the container element
  * - Provide event handlers for mouse and touch events
- * - Update text highlights dynamically using throttled animations
+ * - Use DOM manipulation during active selection for better performance
+ * - Use state-driven rendering for displaying existing quote highlights
  * - Perform proper cleanup of added event listeners on unmount
  * - Support integration with a supplied onSelectionCompleted callback
  * - Respond to external state via `selectAll`, `selectionState`, and highlight `quotes`
  * - Handle null safety for DOM operations
  */
 
-import { useRef, useCallback, useEffect, useState } from 'react';
+import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import { throttle } from 'lodash';
 import { getCurrentOffset, getWordBoundaries } from '../utils/selectionUtils';
 import { Quote } from '../types/quote';
@@ -31,13 +32,16 @@ interface UseTextSelectionReturn {
     onMouseUp: (event: React.MouseEvent<HTMLDivElement>) => void;
     onTouchEnd: (event: React.TouchEvent<HTMLDivElement>) => void;
   };
+  selections: Quote[];
+  containerText: string;
+  handleSegmentClick: (quote: Quote) => void;
+  isSelecting: boolean;
 }
 
-// Helper functions for DOM manipulations
-
-const removeExistingHighlights = (element: HTMLElement): void => {
-  const existingHighlights = element.querySelectorAll('span[style*="background-color"]');
-  existingHighlights.forEach((highlight) => {
+// Helper functions for DOM manipulation during active selection
+const removeTemporaryHighlights = (element: HTMLElement): void => {
+  const temporaryHighlights = element.querySelectorAll('span.temporary-highlight');
+  temporaryHighlights.forEach((highlight) => {
     const parent = highlight.parentNode;
     if (parent) {
       parent.replaceChild(document.createTextNode(highlight.textContent || ''), highlight);
@@ -63,8 +67,9 @@ const findNodeAndOffset = (element: HTMLElement, offset: number) => {
   return null;
 };
 
-const highlightText = (element: HTMLElement, startOffset: number, endOffset: number): void => {
-  removeExistingHighlights(element);
+const highlightTemporarySelection = (element: HTMLElement, startOffset: number, endOffset: number): void => {
+  // Remove any existing temporary highlights
+  removeTemporaryHighlights(element);
 
   const minOffset = Math.min(startOffset, endOffset);
   const maxOffset = Math.max(startOffset, endOffset);
@@ -79,107 +84,39 @@ const highlightText = (element: HTMLElement, startOffset: number, endOffset: num
 
   const span = document.createElement('span');
   span.style.backgroundColor = 'yellow';
+  span.className = 'temporary-highlight'; // Mark as temporary for easy cleanup
 
   try {
     range.surroundContents(span);
   } catch (e) {
     console.warn('Could not highlight selection:', e);
+    // Even if DOM manipulation fails, we'll continue with the selection process
+    // The user will still be able to complete the selection, just without visual feedback
   }
-};
-
-const highlightQuotes = (element: HTMLElement, quotes: QuoteCounts, storeQuote: (quote: Quote) => number) => {
-  // Skip if no quotes or no quoteCounts
-  if (!quotes || !quotes.quoteCounts) {
-    console.log('useTextSelection: No quotes to highlight', {
-      hasQuotes: !!quotes,
-      hasQuoteCounts: !!quotes?.quoteCounts
-    });
-    return;
-  }
-
-  removeExistingHighlights(element);
-
-  // Sort quotes by reply count descending and process top 10 only
-  const sortedQuotes = quotes.quoteCounts
-    .sort(([, count1], [, count2]) => count2 - count1)
-    .slice(0, 10);
-
-  console.log('useTextSelection: Highlighting quotes', {
-    JSON: JSON.stringify(sortedQuotes),
-    elementId: element.id,
-  });
-
-  sortedQuotes.forEach(([quoteObj, count], index) => {
-    // Ensure quote is a valid Quote instance or convert it
-    let quote: Quote;
-    if (quoteObj instanceof Quote) {
-      quote = quoteObj;
-    } else if (typeof quoteObj === 'object' && quoteObj !== null) {
-      try {
-        quote = new Quote(
-          (quoteObj as any).text || "",
-          (quoteObj as any).sourcePostId || "",
-          (quoteObj as any).selectionRange || { start: 0, end: 0 }
-        );
-      } catch (e) {
-        console.error('Failed to create Quote from object:', e, quoteObj);
-        return;
-      }
-    } else {
-      console.error('useTextSelection: Invalid quote object:', quoteObj);
-      return;
-    }
-
-    // Here, 'quote' should already be a Quote object that contains the selectionRange.
-    const { start, end } = quote.selectionRange;
-    const startPos = findNodeAndOffset(element, start);
-    const endPos = findNodeAndOffset(element, end);
-    
-    if (!startPos || !endPos) {
-      console.warn('useTextSelection: Could not find start or end position for quote', {
-        start,
-        end,
-        hasStartPos: !!startPos,
-        hasEndPos: !!endPos,
-        elementLength: element.textContent?.length || 0
-      });
-      return;
-    }
-
-    const range = document.createRange();
-    range.setStart(startPos.node, startPos.offset);
-    range.setEnd(endPos.node, endPos.offset);
-
-    const span = document.createElement('span');
-    // Make highlights more visible with a stronger color and border
-    span.style.backgroundColor = `rgba(50, 205, 50, ${Math.min(0.2 + count * 0.1, 0.7)})`;
-    span.style.borderBottom = '2px solid #228B22';
-    span.style.padding = '0 2px';
-    span.style.borderRadius = '2px';
-    span.dataset.quoteId = storeQuote(quote).toString();
-    // Add the reply count as a data attribute for potential styling
-    span.dataset.replyCount = count.toString();
-    // TODO add styling to display the reply count
-    try {
-      range.surroundContents(span);
-    } catch (e) {
-      console.warn('Could not highlight quote:', e);
-    }
-  });
 };
 
 // Throttled animation loop used during mouse/touch move
 const throttledAnimationLoop = throttle(
-  (event: Event, container: React.RefObject<HTMLDivElement | null>, startOffset: number, mouseDownRef: React.MutableRefObject<boolean>) => {
+  (
+    event: Event, 
+    container: React.RefObject<HTMLDivElement | null>, 
+    startOffset: number, 
+    mouseDownRef: React.MutableRefObject<boolean>
+  ) => {
     if (!mouseDownRef.current || !container.current) {
       if (container.current) {
-        removeExistingHighlights(container.current);
+        removeTemporaryHighlights(container.current);
       }
       return;
     }
+    
     const endOffset = getCurrentOffset(container.current, event);
     if (endOffset !== null) {
-      highlightText(container.current, startOffset, endOffset);
+      const minOffset = Math.min(startOffset, endOffset);
+      const maxOffset = Math.max(startOffset, endOffset);
+      
+      // Use DOM manipulation for active selection
+      highlightTemporarySelection(container.current, minOffset, maxOffset);
     }
   },
   16
@@ -190,7 +127,8 @@ const throttledAnimationLoop = throttle(
  *
  * This hook encapsulates the logic for:
  * - Tracking text selection and word boundaries.
- * - Rendering highlights with a throttled animation ensuring smooth visual updates (~60fps).
+ * - Using direct DOM manipulation during active selection for better performance.
+ * - Managing selection ranges in state for rendering existing highlights with HighlightedText.
  * - Handling both full container ("select all") and partial text selections.
  * - Applying dynamic quote-based highlights based on external counts.
  * - Cleaning up event listeners to prevent memory leaks.
@@ -207,29 +145,20 @@ const throttledAnimationLoop = throttle(
  *   containerRef: React.RefObject<HTMLDivElement>,
  *   eventHandlers: {
  *     onMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void,
- *     onTouchStart: (event: React.TouchEvent<HTMLDivElement>) => void,
  *     onMouseUp: (event: React.MouseEvent<HTMLDivElement>) => void,
  *     onTouchEnd: (event: React.TouchEvent<HTMLDivElement>) => void,
- *   }
+ *   },
+ *   selections: Quote[],
+ *   containerText: string,
+ *   handleSegmentClick: (quote: Quote) => void,
+ *   isSelecting: boolean
  * }} An object containing:
  *   - containerRef: a React ref to be attached to the container DOM element.
  *   - eventHandlers: event handler functions to manage text selection interactions.
- *
- * @example
- * // Example usage in a React component
- * function TextSelectionComponent() {
- *   const { containerRef, eventHandlers } = useTextSelection({
- *     onSelectionCompleted: (quote) => {
- *       console.log('Selected text:', quote.text);
- *     },
- *   });
- *
- *   return (
- *     <div ref={containerRef} {...eventHandlers}>
- *       This is a sample text that you can select to highlight.
- *     </div>
- *   );
- * }
+ *   - selections: array of quotes for rendering with HighlightedText.
+ *   - containerText: the text content of the container.
+ *   - handleSegmentClick: function to handle clicks on highlighted segments.
+ *   - isSelecting: boolean indicating if a selection is in progress.
  */
 export function useTextSelection({  
   onSelectionCompleted,
@@ -237,26 +166,28 @@ export function useTextSelection({
   selectedQuote,
   existingSelectableQuotes,
 }: UseTextSelectionProps): UseTextSelectionReturn {
-  const nextQuoteIdRef = useRef<number>(0);
-  const [quoteIdToQuoteMap, setQuoteIdToQuoteMap] = useState<Map<number, Quote>>(new Map());
-
-  const storeQuote = useCallback((quote: Quote): number => {
-    const currentQuoteId = nextQuoteIdRef.current;
-    setQuoteIdToQuoteMap(prevMap => {
-      const newMap = new Map(prevMap);
-      newMap.set(currentQuoteId, quote);
-      return newMap;
-    });
-    nextQuoteIdRef.current = currentQuoteId + 1;
-    return currentQuoteId;
-  }, []);
-
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerText, setContainerText] = useState<string>('');
+  const [selections, setSelections] = useState<Quote[]>([]);
+  const [isSelecting, setIsSelecting] = useState<boolean>(false);
+  
   const boundThrottledAnimationRef = useRef<((e: Event) => void) | null>(null);
   const mouseIsDownRef = useRef(false);
   const isDraggingRef = useRef(false);
   const initialOffsetRef = useRef<number | null>(null);
   const finalOffsetRef = useRef<number | null>(null);
+
+  // Update container text when the ref changes
+  useEffect(() => {
+    if (containerRef.current) {
+      setContainerText(containerRef.current.textContent || '');
+    }
+  }, []);
+
+  // Handle segment click (for existing highlights)
+  const handleSegmentClick = useCallback((quote: Quote) => {
+    onSelectionCompleted(quote);
+  }, [onSelectionCompleted]);
 
   const cleanupEventListeners = useCallback(() => {
     if (boundThrottledAnimationRef.current && containerRef.current) {
@@ -264,12 +195,22 @@ export function useTextSelection({
       containerRef.current.removeEventListener('touchmove', boundThrottledAnimationRef.current, { capture: true });
       boundThrottledAnimationRef.current = null;
     }
+    
+    // Also clean up any temporary highlights
+    if (containerRef.current) {
+      removeTemporaryHighlights(containerRef.current);
+    }
+    
+    // End selection mode
+    setIsSelecting(false);
   }, []);
 
   const handleMouseDown = useCallback((event: MouseEvent | TouchEvent) => {
     if (!containerRef.current) return;
     event.preventDefault();
 
+    // Start selection mode - this will hide existing highlights
+    setIsSelecting(true);
     mouseIsDownRef.current = true;
     isDraggingRef.current = false;
     initialOffsetRef.current = getCurrentOffset(containerRef.current, event);
@@ -278,7 +219,12 @@ export function useTextSelection({
       if (e.cancelable) e.preventDefault();
       isDraggingRef.current = true;
       // Safe to use non-null here because we set it above
-      throttledAnimationLoop(e, containerRef, initialOffsetRef.current!, mouseIsDownRef);
+      throttledAnimationLoop(
+        e, 
+        containerRef, 
+        initialOffsetRef.current!, 
+        mouseIsDownRef
+      );
     };
 
     if (event.type === 'touchstart') {
@@ -295,15 +241,19 @@ export function useTextSelection({
       mouseIsDownRef.current = false;
       isDraggingRef.current = false;
       cleanupEventListeners();
+      
       if (!containerRef.current) return null;
+      
       finalOffsetRef.current = getCurrentOffset(containerRef.current, event);
       let startOffset = initialOffsetRef.current ?? 0;
       let endOffset = finalOffsetRef.current ?? 0;
+      
       if (startOffset > endOffset) {
         const temp = startOffset;
         startOffset = endOffset;
         endOffset = temp;
       }
+      
       const quote: Quote = new Quote(
         containerRef.current.textContent?.slice(startOffset, endOffset) || '',
         containerRef.current.id, 
@@ -312,6 +262,7 @@ export function useTextSelection({
           end: endOffset
         },
       );
+      
       return quote;
     },
     [cleanupEventListeners]
@@ -322,44 +273,31 @@ export function useTextSelection({
       if (!mouseIsDownRef.current || !containerRef.current) return;
 
       if (!isDraggingRef.current) {
-        // If click occurred on a quote highlight 
-        const target = event.target as HTMLElement;
-        if (target.dataset.quoteId) {
-          try {
-            const quoteId = parseInt(target.dataset.quoteId);
-            const quote = quoteIdToQuoteMap.get(quoteId);
-            if (quote) {
-              onSelectionCompleted(quote);
-            }
-          } catch (err) {
-            console.warn('Error parsing quote range', err);
-          }
-          mouseIsDownRef.current = false;
-          return;
-        }
-        
-        // Otherwise do a word selection based on the initial offset
+        // If no dragging occurred, we'll do a word selection based on the initial offset
         const offset = initialOffsetRef.current;
         if (offset !== null) {
           const text = containerRef.current.textContent || '';
           const { start, end } = getWordBoundaries(text, offset);
-          removeExistingHighlights(containerRef.current);
-          highlightText(containerRef.current, start, end);
-          onSelectionCompleted(new Quote(
+          
+          const quote = new Quote(
             text.slice(start, end),
             containerRef.current.id,
             { start, end }
-          ));
+          );
+          
+          onSelectionCompleted(quote);
           mouseIsDownRef.current = false;
+          cleanupEventListeners(); // This will also set isSelecting to false
           return;
         }
       }
+      
       const quote = endAnimationLoop(event);
       if (quote) {
         onSelectionCompleted(quote);
       }
     },
-    [endAnimationLoop, onSelectionCompleted]
+    [endAnimationLoop, onSelectionCompleted, cleanupEventListeners]
   );
 
   // Global cleanup in case of lost mouseup/touchend events
@@ -378,25 +316,68 @@ export function useTextSelection({
     };
   }, [cleanupEventListeners]);
 
-  // Effect: update highlighting based on external selectAll / selectionState
+  // Effect: update selections based on external selectAll / selectedQuote
   useEffect(() => {
     if (containerRef.current) {
+      const text = containerRef.current.textContent || '';
+      setContainerText(text);
+      
+      let newSelections: Quote[] = [];
+      
       if (selectAll) {
-        highlightText(containerRef.current, 0, containerRef.current.textContent?.length || 0);
+        const quote = new Quote(text, containerRef.current.id, { start: 0, end: text.length });
+        newSelections.push(quote);
       } else if (selectedQuote) {
-        highlightText(containerRef.current, selectedQuote.selectionRange.start, selectedQuote.selectionRange.end);
-      } else {
-        removeExistingHighlights(containerRef.current);
+        newSelections.push(selectedQuote);
       }
+      
+      setSelections(newSelections);
     }
   }, [selectAll, selectedQuote]);
 
-  // Effect: highlight quotes if provided (e.g. based on reply counts)
+  // Effect: add quotes from existingSelectableQuotes to selections
   useEffect(() => {
-    if (containerRef.current && existingSelectableQuotes) {
-      highlightQuotes(containerRef.current, existingSelectableQuotes, storeQuote);
+    if (containerRef.current && existingSelectableQuotes?.quoteCounts) {
+      // Sort quotes by reply count descending and process top 10 only
+      const sortedQuotes = existingSelectableQuotes.quoteCounts
+        .sort(([, count1], [, count2]) => count2 - count1)
+        .slice(0, 10);
+      
+      const quoteSelections: Quote[] = sortedQuotes.map(([quoteObj, _]) => {
+        // Ensure quote is a valid Quote instance or convert it
+        let quote: Quote;
+        if (quoteObj instanceof Quote) {
+          quote = quoteObj;
+        } else if (typeof quoteObj === 'object' && quoteObj !== null) {
+          try {
+            quote = new Quote(
+              (quoteObj as any).text || "",
+              (quoteObj as any).sourcePostId || "",
+              (quoteObj as any).selectionRange || { start: 0, end: 0 }
+            );
+          } catch (e) {
+            console.error('Failed to create Quote from object:', e, quoteObj);
+            // Return a dummy quote that won't be rendered
+            return new Quote("", "", { start: -1, end: -1 });
+          }
+        } else {
+          console.error('useTextSelection: Invalid quote object:', quoteObj);
+          // Return a dummy quote that won't be rendered
+          return new Quote("", "", { start: -1, end: -1 });
+        }
+        
+        return quote;
+      }).filter(quote => 
+        quote.selectionRange.start >= 0 && 
+        quote.selectionRange.end > quote.selectionRange.start
+      ); // Filter out invalid selections
+      
+      setSelections(prevSelections => {
+        // Combine with any existing selections (from selectAll or selectedQuote)
+        return [...prevSelections, ...quoteSelections];
+      });
     }
-  }, [existingSelectableQuotes, storeQuote]);
+  }, [existingSelectableQuotes]);
 
   // Wrap our internal handlers for React events
   const onMouseDownHandler = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -427,6 +408,7 @@ export function useTextSelection({
     containerRef.current = node;
     if (node) {
       node.addEventListener('touchstart', handleTouchStartNative, { passive: false, capture: true });
+      setContainerText(node.textContent || '');
     }
   };
 
@@ -437,5 +419,9 @@ export function useTextSelection({
       onMouseUp: onMouseUpHandler,
       onTouchEnd: onTouchEndHandler,
     },
+    selections: selections,
+    containerText,
+    handleSegmentClick,
+    isSelecting,
   };
 } 
