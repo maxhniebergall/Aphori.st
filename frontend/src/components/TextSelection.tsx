@@ -57,7 +57,6 @@ const TextSelection: React.FC<TextSelectionProps> = ({
     touchAction: 'none' as const 
   }), []);
 
-  // For quote container, we simply display the text
   return (
     <div
       ref={containerRef}
