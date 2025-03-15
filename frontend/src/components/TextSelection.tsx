@@ -4,8 +4,7 @@
  * - Render children within a container that disables native text selection
  * - Maintain integration with ReplyContext via onSelectionCompleted
  * - Use proper styling for text selection (via TextSelection.css)
- * - Use HighlightedText component for rendering overlapping highlights
- * - Hide existing highlights during active selection
+ * - Used only for quote container display
  */
 
 import React, { useMemo, CSSProperties } from 'react';
@@ -13,7 +12,6 @@ import { useTextSelection } from '../hooks/useTextSelection';
 import './TextSelection.css';
 import { Quote } from '../types/quote';
 import { QuoteCounts, StoryTreeNode } from '../types/types';
-import HighlightedText from './HighlightedText';
 
 interface TextSelectionProps {
   node: StoryTreeNode;
@@ -25,6 +23,10 @@ interface TextSelectionProps {
   [key: string]: any; // For additional props like aria attributes
 }
 
+/**
+ * TextSelection component - now used only for the quote container
+ * The main content highlighting is handled directly in NodeContent
+ */
 const TextSelection: React.FC<TextSelectionProps> = ({
   node,
   children,
@@ -45,10 +47,7 @@ const TextSelection: React.FC<TextSelectionProps> = ({
   const { 
     containerRef, 
     eventHandlers, 
-    selections, 
-    containerText, 
-    handleSegmentClick,
-    isSelecting
+    containerText
   } = useTextSelection(memoizedProps);
 
   // Memoize styles to prevent re-renders - use proper TypeScript CSSProperties
@@ -58,12 +57,7 @@ const TextSelection: React.FC<TextSelectionProps> = ({
     touchAction: 'none' as const 
   }), []);
 
-  // Determine whether to render children directly or use HighlightedText
-  const shouldUseHighlightedText = useMemo(() => {
-    // If we have selections and we're not in active selection mode
-    return !isSelecting && (selections.length > 0 || typeof children === 'string');
-  }, [selections, children, isSelecting]);
-
+  // For quote container, we simply display the text
   return (
     <div
       ref={containerRef}
@@ -73,18 +67,10 @@ const TextSelection: React.FC<TextSelectionProps> = ({
       {...eventHandlers}
       {...restProps}
     >
-      {shouldUseHighlightedText ? (
-        <HighlightedText
-          text={containerText || (typeof children === 'string' ? children : '')}
-          selections={selections}
-          onSegmentClick={handleSegmentClick}
-        />
-      ) : (
-        children
-      )}
+      {containerText || (typeof children === 'string' ? children : '')}
     </div>
   );
 };
 
-// Export as memoized component to prevent unnecessary re-renders from parent
+// Export as memoized component to prevent unnecessary re-renders
 export default React.memo(TextSelection); 

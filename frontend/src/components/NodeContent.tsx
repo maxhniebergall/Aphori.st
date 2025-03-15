@@ -16,9 +16,11 @@
 
 import React, { useMemo, useCallback } from 'react';
 import TextSelection from './TextSelection';
-import QuoteRenderer from './QuoteRenderer';
+import HighlightedText from './HighlightedText';
 import { QuoteCounts, StoryTreeNode } from '../types/types';
 import { Quote } from '../types/quote';
+import { useTextSelection } from '../hooks/useTextSelection';
+
 interface NodeContentProps {
   node: StoryTreeNode;
   onSelectionComplete?: (quote: Quote) => void;
@@ -28,14 +30,15 @@ interface NodeContentProps {
 
 // Memoize the TextSelection component to prevent unnecessary re-renders
 const MemoizedTextSelection = React.memo(TextSelection);
-// Memoize the QuoteRenderer component to prevent unnecessary re-renders
-const MemoizedQuoteRenderer = React.memo(QuoteRenderer);
+// Memoize the HighlightedText component to prevent unnecessary re-renders
+const MemoizedHighlightedText = React.memo(HighlightedText);
 
 const NodeContent: React.FC<NodeContentProps> = ({
   node,
   onSelectionComplete = () => {},
-  quote}) => {
-
+  quote,
+  existingSelectableQuotes
+}) => {
   // Memoize the text content to prevent unnecessary re-renders
   const textContent = useMemo(() => {
     return node.textContent || '';
@@ -49,8 +52,21 @@ const NodeContent: React.FC<NodeContentProps> = ({
   // Memoize the existingSelectableQuotes to prevent unnecessary re-renders
   const memoizedExistingSelectableQuotes = useMemo(() => {
     // Log the node's quote counts for debugging
-    return node.quoteCounts ?? { quoteCounts: [] };
-  }, [node.quoteCounts, node.id]);
+    return existingSelectableQuotes ?? node.quoteCounts ?? { quoteCounts: [] };
+  }, [existingSelectableQuotes, node.quoteCounts, node.id]);
+
+  // Use the text selection hook directly in NodeContent
+  const { 
+    containerRef, 
+    eventHandlers, 
+    selections, 
+    containerText, 
+    handleSegmentClick,
+    isSelecting
+  } = useTextSelection({
+    onSelectionCompleted: memoizedOnSelectionComplete,
+    existingSelectableQuotes: memoizedExistingSelectableQuotes
+  });
 
   return (
     <div 
@@ -58,20 +74,35 @@ const NodeContent: React.FC<NodeContentProps> = ({
       role="article"
       aria-label={quote ? 'Selected content for reply' : 'Story content'}
     >
-      <div className="text-content" role="region" aria-label="Main content">
-        <MemoizedTextSelection
-          node={node}
-          onSelectionCompleted={memoizedOnSelectionComplete}
-          selectedQuote={quote}
-          existingSelectableQuotes={memoizedExistingSelectableQuotes}
-          aria-label={quote ? 'Selectable text for reply' : 'Story text'}
-        >
-          {textContent}
-        </MemoizedTextSelection>
+      <div 
+        className="text-content" 
+        role="region" 
+        aria-label="Main content"
+        ref={containerRef}
+        id={node.id}
+        style={{ 
+          userSelect: 'none', 
+          WebkitUserSelect: 'none', 
+          touchAction: 'none' 
+        }}
+        {...eventHandlers}
+      >
+        <MemoizedHighlightedText
+          text={containerText || textContent}
+          selections={selections}
+          onSegmentClick={handleSegmentClick}
+        />
       </div>
       {quote && (
         <div className="quote-container" role="region" aria-label="Quoted content">
-          <MemoizedQuoteRenderer quote={quote} />
+          <MemoizedTextSelection
+            node={node}
+            onSelectionCompleted={memoizedOnSelectionComplete}
+            selectedQuote={quote}
+            aria-label="Selectable text for reply"
+          >
+            {quote.text}
+          </MemoizedTextSelection>
         </div>
       )}
     </div>
