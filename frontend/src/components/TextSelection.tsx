@@ -4,6 +4,8 @@
  * - Render children within a container that disables native text selection
  * - Maintain integration with ReplyContext via onSelectionCompleted
  * - Use proper styling for text selection (via TextSelection.css)
+ * - Use HighlightedText component for rendering overlapping highlights
+ * - Hide existing highlights during active selection
  */
 
 import React, { useMemo, CSSProperties } from 'react';
@@ -11,6 +13,7 @@ import { useTextSelection } from '../hooks/useTextSelection';
 import './TextSelection.css';
 import { Quote } from '../types/quote';
 import { QuoteCounts, StoryTreeNode } from '../types/types';
+import HighlightedText from './HighlightedText';
 
 interface TextSelectionProps {
   node: StoryTreeNode;
@@ -39,7 +42,14 @@ const TextSelection: React.FC<TextSelectionProps> = ({
     existingSelectableQuotes,
   }), [onSelectionCompleted, selectAll, selectedQuote, existingSelectableQuotes]);
   
-  const { containerRef, eventHandlers } = useTextSelection(memoizedProps);
+  const { 
+    containerRef, 
+    eventHandlers, 
+    selections, 
+    containerText, 
+    handleSegmentClick,
+    isSelecting
+  } = useTextSelection(memoizedProps);
 
   // Memoize styles to prevent re-renders - use proper TypeScript CSSProperties
   const containerStyle = useMemo((): CSSProperties => ({ 
@@ -47,6 +57,12 @@ const TextSelection: React.FC<TextSelectionProps> = ({
     WebkitUserSelect: 'none' as const, 
     touchAction: 'none' as const 
   }), []);
+
+  // Determine whether to render children directly or use HighlightedText
+  const shouldUseHighlightedText = useMemo(() => {
+    // If we have selections and we're not in active selection mode
+    return !isSelecting && (selections.length > 0 || typeof children === 'string');
+  }, [selections, children, isSelecting]);
 
   return (
     <div
@@ -57,7 +73,15 @@ const TextSelection: React.FC<TextSelectionProps> = ({
       {...eventHandlers}
       {...restProps}
     >
-      {children}
+      {shouldUseHighlightedText ? (
+        <HighlightedText
+          text={containerText || (typeof children === 'string' ? children : '')}
+          selections={selections}
+          onSegmentClick={handleSegmentClick}
+        />
+      ) : (
+        children
+      )}
     </div>
   );
 };
