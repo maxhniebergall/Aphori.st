@@ -95,14 +95,16 @@ const NodeContent: React.FC<NodeContentProps> = ({
       </div>
       {quote && (
         <div className="quote-container" role="region" aria-label="Quoted content">
-          <MemoizedTextSelection
-            node={node}
-            onSelectionCompleted={memoizedOnSelectionComplete}
-            selectedQuote={quote}
-            aria-label="Selectable text for reply"
-          >
-            {quote.text}
-          </MemoizedTextSelection>
+          <blockquote className="story-tree-node-quote">
+            <MemoizedTextSelection
+              node={node}
+              onSelectionCompleted={memoizedOnSelectionComplete}
+              selectedQuote={quote}
+              aria-label="Selectable text for reply"
+            >
+              {quote.text}
+            </MemoizedTextSelection>
+          </blockquote>
         </div>
       )}
     </div>
