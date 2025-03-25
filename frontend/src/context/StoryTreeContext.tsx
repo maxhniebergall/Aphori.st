@@ -8,7 +8,7 @@ import { Quote } from '../types/quote';
 import { 
   getRootNodeId, 
   getLevelNumber,
-  getSelectedNode,
+  getSelectedNodeHelper,
   getSelectedQuote,
   getPagination,
   getSiblings,

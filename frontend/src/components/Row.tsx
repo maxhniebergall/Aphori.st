@@ -14,7 +14,7 @@ import { StoryTreeLevel, StoryTreeNode } from '../types/types';
 import { 
   getSelectedQuote, 
   getSiblings, 
-  getSelectedNode, 
+  getSelectedNodeHelper, 
   setSelectedNodeHelper, 
   getRootNodeId,
   isMidLevel
@@ -99,7 +99,7 @@ const Row: React.FC<RowProps> = memo(
         throw new Error('No siblings for quote');
       }
       
-      const selectedNode = getSelectedNode(levelData);
+      const selectedNode = getSelectedNodeHelper(levelData);
       if (!selectedNode) {
         throw new Error('No selected node');
       }
@@ -154,7 +154,7 @@ const Row: React.FC<RowProps> = memo(
         throw new Error('No siblings for quote');
       }
       
-      const selectedNode = getSelectedNode(levelData);
+      const selectedNode = getSelectedNodeHelper(levelData);
       if (!selectedNode) {
         throw new Error('No selected node');
       }
@@ -215,8 +215,8 @@ const Row: React.FC<RowProps> = memo(
   },
   (prevProps, nextProps) => {
     // Check if the selected node's quote counts have changed
-    const prevSelectedNode = getSelectedNode(prevProps.levelData);
-    const nextSelectedNode = getSelectedNode(nextProps.levelData);
+    const prevSelectedNode = getSelectedNodeHelper(prevProps.levelData);
+    const nextSelectedNode = getSelectedNodeHelper(nextProps.levelData);
     
     const prevQuoteCounts = prevSelectedNode?.quoteCounts;
     const nextQuoteCounts = nextSelectedNode?.quoteCounts;

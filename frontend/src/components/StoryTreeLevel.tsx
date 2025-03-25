@@ -20,7 +20,7 @@ import storyTreeOperator from '../operators/StoryTreeOperator';
 import { 
   getSelectedQuote, 
   getSiblings, 
-  getSelectedNode, 
+  getSelectedNodeHelper, 
   getLevelNumber,
   getParentId,
   getPagination,
@@ -172,7 +172,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // Get the current node to render
   const nodeToRender = useMemo(() => {    
     // If we don't have a current node but the levelData has a selectedNode, use that
-    const selectedNode = getSelectedNode(levelData);
+    const selectedNode = getSelectedNodeHelper(levelData);
     if (selectedNode) {
       return selectedNode;
     }
@@ -210,8 +210,9 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         if (!nodeToRender) {
           throw new Error('Cannot create reply: no valid node selected');
         }
+        console.log("highlighted quote selected", quote);
         storyTreeOperator.setSelectedQuoteForNodeInLevel(quote, nodeToRender, levelData);
-        
+        console.log("highlighted quote set for node in level", quote, nodeToRender, levelData);
         // Trigger resize to ensure UI updates correctly
         window.dispatchEvent(new Event('resize'));
       } catch (error) {
@@ -289,7 +290,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       return;
     }
     
-    const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNode(levelData)?.id);
+    const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id);
     let didNavigate = false;
 
     if (currentIndex < siblings.length - 1) {
@@ -345,7 +346,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       return;
     }
     
-    const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNode(levelData)?.id);
+    const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id);
 
     if (currentIndex > 0) {
       // We have the previous sibling loaded already because we always start loading from zero
@@ -424,7 +425,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
             />
             <MemoizedNodeFooter
-              currentIndex={siblings.findIndex(sibling => sibling.id === getSelectedNode(levelData)?.id)}
+              currentIndex={siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id)}
               totalSiblings={pagination.totalCount}
               onReplyClick={handleReplyButtonClick}
               isReplyTarget={isReplyTarget(nodeToRender)}
