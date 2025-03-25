@@ -11,62 +11,79 @@ import React, { useMemo, CSSProperties } from 'react';
 import { useTextSelection } from '../hooks/useTextSelection';
 import './TextSelection.css';
 import { Quote } from '../types/quote';
-import { QuoteCounts, StoryTreeNode } from '../types/types';
+import { StoryTreeNode } from '../types/types';
 
 interface TextSelectionProps {
   node: StoryTreeNode;
   children: React.ReactNode;
-  onSelectionCompleted: (quote: Quote) => void;
   selectAll?: boolean;
   selectedQuote?: Quote;
-  existingSelectableQuotes?: QuoteCounts;
   [key: string]: any; // For additional props like aria attributes
 }
 
 /**
- * TextSelection component - now used only for the quote container
- * The main content highlighting is handled directly in NodeContent
+ * TextSelection component - used ONLY for the quote container to allow text selection
+ * The main content highlighting is handled separately by HighlightedText component
+ * 
+ * IMPORTANT: This component has NO INFLUENCE on the HighlightedText display.
+ * It only creates new text selections within the quote container.
  */
 const TextSelection: React.FC<TextSelectionProps> = ({
   node,
   children,
-  onSelectionCompleted,
   selectAll = false,
   selectedQuote,
-  existingSelectableQuotes,
   ...restProps
 }) => {
   // Memoize the props to prevent unnecessary re-renders
   const memoizedProps = useMemo(() => ({
-    onSelectionCompleted,
     selectAll,
     selectedQuote,
-    existingSelectableQuotes,
-  }), [onSelectionCompleted, selectAll, selectedQuote, existingSelectableQuotes]);
+  }), [selectAll, selectedQuote]);
   
+  // Use the text selection hook with minimal functionality for the quote container
   const { 
     containerRef, 
     eventHandlers, 
-    containerText
+    containerText,
+    isSelecting
   } = useTextSelection(memoizedProps);
 
   // Memoize styles to prevent re-renders - use proper TypeScript CSSProperties
   const containerStyle = useMemo((): CSSProperties => ({ 
-    userSelect: 'none' as const, 
-    WebkitUserSelect: 'none' as const, 
-    touchAction: 'none' as const 
+    position: 'relative' as const,
+    // We'll let the browser handle the text selection visually
+    // The useTextSelection hook will manage the programmatic selection
   }), []);
 
+  // Extract event handlers safely
+  const { onMouseDown, onMouseUp, onTouchEnd } = eventHandlers || {};
+
+  // Get the text content to display
+  const displayText = useMemo(() => {
+    // First priority: children as string
+    if (typeof children === 'string') return children;
+    
+    // Second priority: containerText from the hook
+    if (containerText) return containerText;
+    
+    // Fallback: empty string
+    return '';
+  }, [containerText, children]);
+
+  // For quote container, we simply display the text with selection functionality
   return (
     <div
       ref={containerRef}
-      className="selection-container"
+      className={`selection-container quote-text ${isSelecting ? 'is-selecting' : ''}`}
       id={node.id}
       style={containerStyle}
-      {...eventHandlers}
+      onMouseDown={onMouseDown}
+      onMouseUp={onMouseUp}
+      onTouchEnd={onTouchEnd}
       {...restProps}
     >
-      {containerText || (typeof children === 'string' ? children : '')}
+      {displayText}
     </div>
   );
 };

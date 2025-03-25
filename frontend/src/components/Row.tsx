@@ -15,7 +15,7 @@ import {
   getSelectedQuote, 
   getSiblings, 
   getSelectedNode, 
-  setSelectedNode, 
+  setSelectedNodeHelper, 
   getRootNodeId,
   isMidLevel
 } from '../utils/levelDataHelpers';
@@ -118,7 +118,7 @@ const Row: React.FC<RowProps> = memo(
       }
       
       // Update the levelData with the new selected node
-      const updatedLevelData = setSelectedNode(levelData, nextSibling);
+      const updatedLevelData = setSelectedNodeHelper(levelData, nextSibling);
       // Since we're mutating a prop, we need to update the original object
       if (levelData.midLevel) {
         levelData.midLevel.selectedNode = nextSibling;
@@ -173,7 +173,7 @@ const Row: React.FC<RowProps> = memo(
       }
       
       // Update the levelData with the new selected node
-      const updatedLevelData = setSelectedNode(levelData, previousSibling);
+      const updatedLevelData = setSelectedNodeHelper(levelData, previousSibling);
       // TODO this isn't right, we need to use the updatedLevelData object
       // Since we're mutating a prop, we need to update the original object
       if (levelData.midLevel) {

@@ -14,19 +14,38 @@
  * - Proper markdown rendering
  */
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useRef, useEffect, useState } from 'react';
 import TextSelection from './TextSelection';
 import HighlightedText from './HighlightedText';
 import { QuoteCounts, StoryTreeNode } from '../types/types';
 import { Quote } from '../types/quote';
-import { useTextSelection } from '../hooks/useTextSelection';
+import { useHighlighting } from '../hooks/useHighlighting';
 
 interface NodeContentProps {
   node: StoryTreeNode;
-  onSelectionComplete?: (quote: Quote) => void;
+  onExistingQuoteSelectionComplete?: (quote: Quote) => void;
   quote?: Quote;
   existingSelectableQuotes?: QuoteCounts;
 }
+
+/**
+ * NodeContent has a clear separation of concerns between two distinct areas:
+ * 
+ * 1. Main Content Area (non-selectable):
+ *    - Uses HighlightedText to display static highlights of existing quotes
+ *    - Managed by useHighlighting hook
+ *    - Shows most popular quotes and current selection
+ *    - No user text selection allowed (non-selectable)
+ *
+ * 2. Quote Container (selectable):
+ *    - Uses TextSelection to allow the user to create new selections
+ *    - Managed by useTextSelection hook (internal to TextSelection)
+ *    - Only shown when a quote is being displayed/edited
+ *    - Allows user text selection for creating new quotes
+ *
+ * These two areas are completely separate and don't influence each other.
+ * TextSelection doesn't affect the highlights shown in HighlightedText.
+ */
 
 // Memoize the TextSelection component to prevent unnecessary re-renders
 const MemoizedTextSelection = React.memo(TextSelection);
@@ -35,7 +54,7 @@ const MemoizedHighlightedText = React.memo(HighlightedText);
 
 const NodeContent: React.FC<NodeContentProps> = ({
   node,
-  onSelectionComplete = () => {},
+  onExistingQuoteSelectionComplete: onExistingQuoteSelectionComplete = () => {},
   quote,
   existingSelectableQuotes
 }) => {
@@ -44,29 +63,43 @@ const NodeContent: React.FC<NodeContentProps> = ({
     return node.textContent || '';
   }, [node.textContent]);
 
+  // Reference to the main content container
+  const mainContentRef = useRef<HTMLDivElement>(null);
+  const [containerText, setContainerText] = useState<string>('');
+
+  // Update container text when the ref changes
+  useEffect(() => {
+    if (mainContentRef.current) {
+      setContainerText(mainContentRef.current.textContent || '');
+    }
+  }, [textContent]);
+
   // Memoize the callback to prevent unnecessary re-renders
-  const memoizedOnSelectionComplete = useCallback((selectedQuote: Quote) => {
-    onSelectionComplete(selectedQuote);
-  }, [onSelectionComplete]);
+  const memoizedOnExistingQuoteSelectionComplete = useCallback((selectedQuote: Quote) => {
+    onExistingQuoteSelectionComplete(selectedQuote);
+  }, [onExistingQuoteSelectionComplete]);
 
   // Memoize the existingSelectableQuotes to prevent unnecessary re-renders
   const memoizedExistingSelectableQuotes = useMemo(() => {
-    // Log the node's quote counts for debugging
     return existingSelectableQuotes ?? node.quoteCounts ?? { quoteCounts: [] };
   }, [existingSelectableQuotes, node.quoteCounts, node.id]);
 
-  // Use the text selection hook directly in NodeContent
-  const { 
-    containerRef, 
-    eventHandlers, 
-    selections, 
-    containerText, 
-    handleSegmentClick,
-    isSelecting
-  } = useTextSelection({
-    onSelectionCompleted: memoizedOnSelectionComplete,
-    existingSelectableQuotes: memoizedExistingSelectableQuotes
+  // Use the highlighting hook ONLY for managing highlights in the main content
+  // This has nothing to do with the TextSelection component in the quote container
+  const {
+    selections,
+    handleSegmentClick
+  } = useHighlighting({
+    text: containerText || textContent,
+    selectedQuote: quote,
+    existingSelectableQuotes: memoizedExistingSelectableQuotes,
+    onSegmentClick: memoizedOnExistingQuoteSelectionComplete
   });
+
+  // Safely handle the quote text
+  const quoteText = useMemo(() => {
+    return quote?.text || '';
+  }, [quote]);
 
   return (
     <div 
@@ -74,18 +107,13 @@ const NodeContent: React.FC<NodeContentProps> = ({
       role="article"
       aria-label={quote ? 'Selected content for reply' : 'Story content'}
     >
+      {/* Main content area - ONLY for displaying highlights, never selectable */}
       <div 
-        className="text-content" 
+        className="text-content non-selectable" 
         role="region" 
         aria-label="Main content"
-        ref={containerRef}
+        ref={mainContentRef}
         id={node.id}
-        style={{ 
-          userSelect: 'none', 
-          WebkitUserSelect: 'none', 
-          touchAction: 'none' 
-        }}
-        {...eventHandlers}
       >
         <MemoizedHighlightedText
           text={containerText || textContent}
@@ -93,16 +121,19 @@ const NodeContent: React.FC<NodeContentProps> = ({
           onSegmentClick={handleSegmentClick}
         />
       </div>
+
+      {/* Quote container area - ALWAYS selectable */}
+      {/* This is completely separate from the main content and has no influence on the highlights */}
       {quote && (
         <div className="quote-container" role="region" aria-label="Quoted content">
           <blockquote className="story-tree-node-quote">
             <MemoizedTextSelection
               node={node}
-              onSelectionCompleted={memoizedOnSelectionComplete}
               selectedQuote={quote}
+              selectAll={true}
               aria-label="Selectable text for reply"
             >
-              {quote.text}
+              {quoteText}
             </MemoizedTextSelection>
           </blockquote>
         </div>

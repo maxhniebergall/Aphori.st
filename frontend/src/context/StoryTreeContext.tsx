@@ -12,7 +12,7 @@ import {
   getSelectedQuote,
   getPagination,
   getSiblings,
-  setSelectedNode,
+  setSelectedNodeHelper,
   createMidLevel,
   createLastLevel
 } from '../utils/levelDataHelpers';
@@ -261,7 +261,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         const newLevels = [...state.storyTree.levels];
         
         // Update the level with the selected node using the helper function
-        newLevels[selectedNode.levelNumber] = setSelectedNode(updatedLevel as StoryTreeLevel, selectedNode);
+        newLevels[selectedNode.levelNumber] = setSelectedNodeHelper(updatedLevel as StoryTreeLevel, selectedNode);
         
         // Truncate levels after the selected level if needed
         if (selectedNode.levelNumber < newLevels.length - 1) {

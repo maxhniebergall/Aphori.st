@@ -21,12 +21,10 @@ import {
   getSelectedQuote, 
   getSiblings, 
   getSelectedNode, 
-  setSelectedNode, 
-  getRootNodeId,
   getLevelNumber,
   getParentId,
   getPagination,
-  isMidLevel
+  isMidLevel,
 } from '../utils/levelDataHelpers';
 
 interface StoryTreeLevelProps {
@@ -138,16 +136,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // // Update StoryTreeOperator when current node changes 
-  // // TODO FIXME: we shouldn't be updating global state in the level which depends on that state
-  // // we should use move this up to the parent component which doesn't depend on the state
-  // // this will avoid unnecessary re-renders
-  // useEffect(() => {
-  //   if (currentNode && (!levelData.selectedNode || currentNode.id !== levelData.selectedNode.id)) {
-  //     storyTreeOperator.setSelectedNode(currentNode);
-  //   }
-  // }, [currentNode, levelData.selectedNode]);
-
   // Get siblings from levelData using the correct key
   const siblings = useMemo(() => {
     // Skip if not a MidLevel
@@ -216,22 +204,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   );
 
   // Handle text selection for replies with improved error handling
-  const handleTextSelectionCompleted = useCallback(
+  const handleExistingQuoteSelectionCompleted = useCallback(
     (quote: Quote): void => {
       try {
         if (!nodeToRender) {
           throw new Error('Cannot create reply: no valid node selected');
         }
-        
-        // Clear any previous errors
-        setReplyError(null);
-        
-        // Set the reply target and quote
-        setReplyTarget(nodeToRender);
-        setReplyQuote(quote);
-        
-        // Open the reply interface
-        setIsReplyOpen(true);
+        storyTreeOperator.setSelectedQuoteForNodeInLevel(quote, nodeToRender, levelData);
         
         // Trigger resize to ensure UI updates correctly
         window.dispatchEvent(new Event('resize'));
@@ -442,7 +421,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               node={nodeToRender}
               quote={(isReplyTarget(nodeToRender) && replyQuote) ? replyQuote : undefined}
               existingSelectableQuotes={nodeToRender.quoteCounts ?? undefined}
-              onSelectionComplete={handleTextSelectionCompleted}
+              onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
             />
             <MemoizedNodeFooter
               currentIndex={siblings.findIndex(sibling => sibling.id === getSelectedNode(levelData)?.id)}

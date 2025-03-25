@@ -36,14 +36,14 @@ import { Compressed } from '../types/compressed';
 import compression from '../utils/compression';
 import { 
   createMidLevel, 
-  createLastLevel,
   getSelectedQuote,
   getParentId,
   getLevelNumber,
   getPagination,
   getRootNodeId,
   getSelectedNode,
-  getSiblings
+  isMidLevel,
+  setSelectedQuoteHelper
 } from '../utils/levelDataHelpers';
 
 class StoryTreeOperator extends BaseOperator {
@@ -682,6 +682,37 @@ class StoryTreeOperator extends BaseOperator {
       throw new StoryTreeError('Dispatch not initialized in StoryTreeOperator.');
     }
     this.store.dispatch({ type: ACTIONS.SET_SELECTED_NODE, payload: node });
+  }
+
+  public setSelectedQuoteForNodeInLevel(quote: Quote, node: StoryTreeNode, level: StoryTreeLevel): void {
+    // Validate inputs
+    if (!this.store || !this.store.dispatch) {
+      throw new StoryTreeError('Dispatch not initialized in StoryTreeOperator.');
+    }
+
+    // Validate the quote
+    if (!quote || !Quote.isValid(quote)) {
+      throw new StoryTreeError('Invalid quote provided');
+    }
+
+    // Validate the node
+    if (!node || !node.id) {
+      throw new StoryTreeError('Invalid node provided');
+    }
+
+    // Validate the level is a MidLevel
+    if (!level || !isMidLevel(level)) {
+      throw new StoryTreeError('Invalid level provided: must be a MidLevel');
+    }
+
+    // Create an updated level with the new selected quote
+    const updatedLevel: StoryTreeLevel = setSelectedQuoteHelper(level, quote);
+    
+    // Dispatch the updated level to update the state
+    this.store.dispatch({
+      type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
+      payload: [updatedLevel]
+    });
   }
 
   private dispatchLastLevel(levelNumber: number): void {

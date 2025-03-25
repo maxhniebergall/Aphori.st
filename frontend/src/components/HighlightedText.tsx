@@ -8,6 +8,7 @@
 
 import React, { useMemo } from 'react';
 import { Quote } from '../types/quote';
+import './HighlightedText.css';
 
 interface TextSegment {
   start: number;
@@ -26,6 +27,9 @@ interface HighlightedTextProps {
 /**
  * Renders text with overlapping highlights based on selection ranges.
  * The intensity of the highlight increases with the number of overlapping selections.
+ * 
+ * This component is used in NodeContent for the main content display,
+ * while TextSelection is used for the quote container.
  */
 export const HighlightedText: React.FC<HighlightedTextProps> = ({ 
   text, 
@@ -88,8 +92,9 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
     }
   };
 
+  // Render text segments with appropriate highlighting based on overlap count
   return (
-    <>
+    <div className="highlighted-text" data-testid="highlighted-text">
       {segments.map((segment, idx) => {
         // Calculate background color based on overlap count
         // More overlaps = more intense color
@@ -101,6 +106,7 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
         const style: React.CSSProperties = {
           backgroundColor,
           cursor: segment.overlapCount > 0 ? 'pointer' : 'inherit',
+          display: 'inline',
           ...(segment.overlapCount > 0 ? {
             borderBottom: '2px solid #228B22',
             padding: '0 2px',
@@ -114,12 +120,13 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
             style={style}
             onClick={() => handleSegmentClick(segment)}
             data-overlap-count={segment.overlapCount}
+            className={segment.overlapCount > 0 ? 'highlighted-segment' : ''}
           >
             {segment.text}
           </span>
         );
       })}
-    </>
+    </div>
   );
 };
 

@@ -9,14 +9,27 @@
 
 .selection-container {
   position: relative;
+  padding: 8px;
+  border-radius: 4px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
   cursor: text;
-  -webkit-tap-highlight-color: transparent;
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
 }
 
-.selection-highlight {
-  background-color: rgba(0, 120, 215, 0.2);
-  position: relative;
-  display: inline;
+/* When selecting, add a subtle indication of selection mode */
+.selection-container.is-selecting {
+  background-color: rgba(0, 120, 215, 0.05);
+}
+
+/* Style for temporary highlight spans added during selection */
+.selection-container .temporary-highlight {
+  background-color: rgba(255, 255, 0, 0.4);
+  transition: background-color 0.1s ease;
 }
 
 /* Style for native text selection */
@@ -40,4 +53,17 @@
 
 .selection-container span[data-quote-range]:hover {
   filter: brightness(1.1);
+}
+
+.quote-text {
+  font-style: italic;
+  color: #495057;
+}
+
+/* Remove the selection indicator since we're using browser's native selection */
+/* Instead, add styles for the temporary highlights during active selection */
+.temporary-highlight {
+  background-color: rgba(255, 255, 0, 0.4) !important;
+  border-radius: 2px;
+  padding: 0 1px;
 } 
