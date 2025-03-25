@@ -102,7 +102,7 @@ export function setSelectedQuoteHelper(level: StoryTreeLevel, quote: Quote): Sto
 /**
  * Get the selectedNode from a StoryTreeLevel
  */
-export function getSelectedNode(level: StoryTreeLevel): StoryTreeNode | undefined {
+export function getSelectedNodeHelper(level: StoryTreeLevel): StoryTreeNode | undefined {
   if (isMidLevel(level) && level.midLevel) {
     return level.midLevel.selectedNode;
   }

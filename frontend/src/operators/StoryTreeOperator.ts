@@ -41,7 +41,7 @@ import {
   getLevelNumber,
   getPagination,
   getRootNodeId,
-  getSelectedNode,
+  getSelectedNodeHelper,
   isMidLevel,
   setSelectedQuoteHelper
 } from '../utils/levelDataHelpers';
@@ -266,7 +266,7 @@ class StoryTreeOperator extends BaseOperator {
           parentId,
           levelNumber,
           selectedQuote,
-          getSelectedNode(level) || replyNodes[0], // Fallback to first reply if no selected node
+          getSelectedNodeHelper(level) || replyNodes[0], // Fallback to first reply if no selected node
           {
             levelsMap: [[selectedQuote, replyNodes]]
           },
@@ -512,20 +512,20 @@ class StoryTreeOperator extends BaseOperator {
       const parentLevelAsLevel : StoryTreeLevel = parentLevel as StoryTreeLevel;
       const rootNodeId = state.storyTree.post.id;
       { // continue validation
-        // Get the parent level for the first level we want to load
-        if (!parentLevel || !Object.hasOwn(parentLevelAsLevel, "selectedNode")) {
-          // is last level
-          console.log(`Parent level (${levelNumber-1}) is last level. No more levels to load`);
-          break;
+        if (!parentLevel) {
+          const errorMsg = `Parent level not found for level ${levelNumber}`;
+          console.error(errorMsg);
+          throw new StoryTreeError(errorMsg);
         }
-        const selectedNode = getSelectedNode(parentLevelAsLevel);
+        // Get the parent level for the first level we want to load
+        const selectedNode = getSelectedNodeHelper(parentLevelAsLevel);
         if (!parentLevel || !selectedNode) {
           const errorMsg = `Selected node not found for level ${levelNumber};\n parentLevel: ${JSON.stringify(parentLevel)};\n levels: ${JSON.stringify(state.storyTree.levels)}`;
           console.error(errorMsg);
           throw new StoryTreeError(errorMsg);
         }
       }
-      const selectedNode = getSelectedNode(parentLevelAsLevel);
+      const selectedNode = getSelectedNodeHelper(parentLevelAsLevel);
       if (!selectedNode) {
         throw new StoryTreeError(`Selected node not found for level ${levelNumber-1}`);
       }
