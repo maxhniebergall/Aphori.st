@@ -473,3 +473,32 @@ h2 {
     font-size: 11px;
   }
 }
+
+/* Add this to the existing CSS file */
+
+.non-selectable {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  cursor: default !important;
+}
+
+.text-content {
+  margin-bottom: 16px;
+  padding: 8px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.quote-container {
+  margin-top: 16px;
+  padding: 8px;
+  border-radius: 4px;
+  background-color: rgba(0, 122, 255, 0.05);
+  /* Ensure quotes are selectable */
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}

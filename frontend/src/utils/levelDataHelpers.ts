@@ -4,6 +4,7 @@ import { Quote } from '../types/quote';
 /**
  * Helper functions to access properties from the new StoryTreeLevel structure
  * These functions handle the new factorization of StoryTreeLevel into MidLevel and LastLevel
+ * They are pure functions without side effects.
  */
 
 /**
@@ -79,6 +80,26 @@ export function getSelectedQuote(level: StoryTreeLevel): Quote | undefined {
 }
 
 /**
+ * Set the selectedQuote in a StoryTreeLevel
+  
+ * Pure Function
+ */
+export function setSelectedQuoteHelper(level: StoryTreeLevel, quote: Quote): StoryTreeLevel {
+  if (isMidLevel(level) && level.midLevel) {
+    const newLevel = {
+      ...level,
+      midLevel: {
+      ...level.midLevel,
+      selectedQuote: quote
+      }
+    }
+    return newLevel;
+  } else {
+    throw new Error("Invalid level");
+  }
+}
+
+/**
  * Get the selectedNode from a StoryTreeLevel
  */
 export function getSelectedNode(level: StoryTreeLevel): StoryTreeNode | undefined {
@@ -89,10 +110,12 @@ export function getSelectedNode(level: StoryTreeLevel): StoryTreeNode | undefine
 }
 
 /**
- * Pure Function
  * Set the selectedNode in a StoryTreeLevel
+ * Pure Function
+ * (No side effects; does not dispatch)
+ * Should be used to create a larger value which will be dispatched
  */
-export function setSelectedNode(level: StoryTreeLevel, node: StoryTreeNode): StoryTreeLevel {
+export function setSelectedNodeHelper(level: StoryTreeLevel, node: StoryTreeNode): StoryTreeLevel {
   if (isMidLevel(level) && level.midLevel) {
     return {
       ...level,
@@ -127,6 +150,10 @@ export function getPagination(level: StoryTreeLevel): Pagination | undefined {
 
 /**
  * Create a MidLevel StoryTreeLevel
+
+ * Pure Function
+ * (No side effects; does not dispatch)
+ * Should be used to create a larger value which will be dispatched
  */
 export function createMidLevel(
   rootNodeId: string,
@@ -154,6 +181,9 @@ export function createMidLevel(
 
 /**
  * Create a LastLevel StoryTreeLevel
+ * Pure Function
+ * (No side effects; does not dispatch)
+ * Should be used to create a larger value which will be dispatched
  */
 export function createLastLevel(
   rootNodeId: string,

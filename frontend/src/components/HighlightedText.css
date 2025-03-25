@@ -1,0 +1,19 @@
+.highlighted-text {
+  display: inline;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.highlighted-segment {
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+}
+
+.highlighted-segment:hover {
+  background-color: rgba(50, 205, 50, 0.8) !important;
+} 
