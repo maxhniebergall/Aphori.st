@@ -28,7 +28,7 @@
  */
 
 import { ACTIONS, StoryTreeNode, StoryTreeState, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat, LastLevel } from '../types/types';
-import { Quote } from '../types/quote';
+import { compareQuotes, Quote } from '../types/quote';
 import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
 import StoryTreeError from '../errors/StoryTreeError';
@@ -401,13 +401,7 @@ class StoryTreeOperator extends BaseOperator {
             return;
           }
         const currentLevel = state.storyTree.levels[levelNumber];
-        // this call to getReplies will fetch the replies and update the state, including the quoteCounts
-        if (Object.hasOwn(currentLevel, "siblings")) {
-          const currentLevelAsLevel : StoryTreeLevel = currentLevel as StoryTreeLevel;
-          await this.fetchAndDispatchReplies(currentLevelAsLevel, sortingCriteria, limit); 
-        } else {
-          return Promise.resolve();
-        }
+        await this.fetchAndDispatchReplies(currentLevel, sortingCriteria, limit); 
       }
       
     } catch (error) {
@@ -513,9 +507,9 @@ class StoryTreeOperator extends BaseOperator {
       const rootNodeId = state.storyTree.post.id;
       { // continue validation
         if (!parentLevel) {
-          const errorMsg = `Parent level not found for level ${levelNumber}`;
-          console.error(errorMsg);
-          throw new StoryTreeError(errorMsg);
+          // if the parent level is not found, we're past the end of the story tree
+          this.dispatchLastLevel(levelNumber);
+          break;
         }
         // Get the parent level for the first level we want to load
         const selectedNode = getSelectedNodeHelper(parentLevelAsLevel);
@@ -525,60 +519,69 @@ class StoryTreeOperator extends BaseOperator {
           throw new StoryTreeError(errorMsg);
         }
       }
-      const selectedNode = getSelectedNodeHelper(parentLevelAsLevel);
-      if (!selectedNode) {
+      const selectedNodeOfParentLevel = getSelectedNodeHelper(parentLevelAsLevel);
+      if (!selectedNodeOfParentLevel) {
         throw new StoryTreeError(`Selected node not found for level ${levelNumber-1}`);
       }
-      const parentId = selectedNode.id;
-      const parentText = selectedNode.textContent;
+      const parentId = selectedNodeOfParentLevel.id;
+      const parentText = selectedNodeOfParentLevel.textContent;
       { // continue validation
         if (!parentId || !parentText) {
-          console.error(`Invalid parent node at level ${levelNumber - 1}:`, selectedNode);
+          console.error(`Invalid parent node at level ${levelNumber - 1}:`, selectedNodeOfParentLevel);
           break;
         }
       }
-      const quoteCounts = selectedNode.quoteCounts;
-      console.log("StoryTreeOperator: parentLevelAsLevel selectedNode quoteCounts", quoteCounts, " for level ", levelNumber);
+      const quoteCountsFromParent = selectedNodeOfParentLevel.quoteCounts;
+      console.log("StoryTreeOperator: parentLevelAsLevel selectedNode quoteCounts", quoteCountsFromParent, " for level ", levelNumber);
       { // continue validation
-        if (!quoteCounts || !quoteCounts.quoteCounts || quoteCounts.quoteCounts.length === 0) {
+        if (!quoteCountsFromParent || !quoteCountsFromParent.quoteCounts || quoteCountsFromParent.quoteCounts.length === 0) {
           console.log(`No quotes found for parentId: ${parentId}, no more levels to load, level ${levelNumber} is last level`);
           this.dispatchLastLevel(levelNumber);
           break;
         }
       }
       try {
-        let selectedQuote = this.fullQuoteFromText(parentText, parentId);
+        let selectedQuoteFromParent = this.fullQuoteFromText(parentText, parentId);
+        if (parentLevel.isLastLevel || !parentLevel.midLevel ){
+          throw new StoryTreeError(`Level ${levelNumber} is the last level, but shouldnt be?`);
+        } else {
+          if (!!parentLevel.midLevel.selectedQuote) {
+            selectedQuoteFromParent = parentLevel.midLevel.selectedQuote;
+          }
+        }
+
         { // for new levels, we assume there isn't a selected quote yet
           // we start by checking if there are any replies to the default quote
           // otherwise, we select the quote with the most replies
           // Check if the default quote has replies
-          const hasRepliesForDefaultQuote = quoteCounts.quoteCounts.some(
+          const hasRepliesForDefaultQuote = quoteCountsFromParent.quoteCounts.some(
             (quoteCountPair: [Quote, number]) => {
               const [quote, count] = quoteCountPair;
-              return quote.toString() === selectedQuote.toString() && count > 0;
+        
+              return count > 0 && compareQuotes(quote, selectedQuoteFromParent);
             }
           );
-          if (!hasRepliesForDefaultQuote) {
-            console.log("No replies for default quote, selecting quote with most replies instead");
-            const maybeQuote = this.mostQuoted(quoteCounts);
+          if (hasRepliesForDefaultQuote === false) {
+            console.log("StoryTreeOperator: No replies for default quote, selecting quote with most replies instead");
+            const maybeQuote = this.mostQuoted(quoteCountsFromParent);
             if (maybeQuote === null) {
-              console.log(`No quotes with replies found for level ${levelNumber}, no more levels to load`);
+              console.log(`StoryTreeOperator: No quotes with replies found for level ${levelNumber}, no more levels to load`);
               this.dispatchLastLevel(levelNumber);
               break;
             } else {
-              selectedQuote = maybeQuote;
+              selectedQuoteFromParent = maybeQuote;
             }
           }
         }
         
         const sortingCriteria = 'mostRecent';
           // this call to getReplies will fetch the replies and update the state, including the quoteCounts
-        const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, selectedQuote, sortingCriteria, 5); 
+        const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, selectedQuoteFromParent, sortingCriteria, 5); 
         if (!maybeFirstReplies) {
           console.log(`No replies found for level ${levelNumber}, no more levels to load`);
           this.dispatchLastLevel(levelNumber);
           break;
-        } 
+        }
         const pagination = maybeFirstReplies.pagination;
 
         const firstReplies: Reply[] = maybeFirstReplies.data;
@@ -599,7 +602,7 @@ class StoryTreeOperator extends BaseOperator {
             parentId: [parentId],
             levelNumber: levelNumber,
             textContent: reply.text,
-            repliedToQuote: selectedQuote,
+            repliedToQuote: selectedQuoteFromParent,
             quoteCounts: quoteCountsMap.get(reply.quote),
             authorId: reply.authorId,
             createdAt: reply.createdAt,
@@ -611,9 +614,9 @@ class StoryTreeOperator extends BaseOperator {
           rootNodeId,
           [parentId],
           levelNumber,
-          selectedQuote,
+          selectedQuoteFromParent,
           siblingsForQuote[0],
-          { levelsMap: [[selectedQuote, siblingsForQuote]] },
+          { levelsMap: [[selectedQuoteFromParent, siblingsForQuote]] },
           pagination
         );
         
