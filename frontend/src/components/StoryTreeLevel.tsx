@@ -52,7 +52,7 @@ const MemoizedNodeContent = React.memo(NodeContent, (prevProps, nextProps) => {
     prevProps.existingSelectableQuotes === nextProps.existingSelectableQuotes;
 });
 
-export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({ 
+export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   levelData,
   navigateToNextSiblingCallback,
   navigateToPreviousSiblingCallback,
@@ -84,7 +84,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   
   // Use a custom hook to extract only the reply context values we need
   // This prevents re-renders when replyContent changes but doesn't affect this component
-  const { 
+  const {
     setReplyTarget, 
     replyTarget, 
     setReplyQuote, 

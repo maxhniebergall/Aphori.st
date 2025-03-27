@@ -43,7 +43,7 @@ const initialState: StoryTreeState = {
   error: null,
 };
 
-function getLevelIndex(existingLevels: Array<StoryTreeLevel | LastLevel>, level: StoryTreeLevel | LastLevel): number {
+function getIndexOfNewLevelInExistingLevels(existingLevels: Array<StoryTreeLevel | LastLevel>, level: StoryTreeLevel | LastLevel): number {
   return existingLevels.findIndex(existingLevel => 
     getRootNodeId(existingLevel) === getRootNodeId(level) && 
     getLevelNumber(existingLevel) === getLevelNumber(level)
@@ -99,8 +99,8 @@ function updateSiblingsForQuote(siblings: Siblings, quote: Quote | null, nodes: 
 export function mergeLevels(existingLevels: Array<StoryTreeLevel>, newLevels: Array<StoryTreeLevel>): Array<StoryTreeLevel> {
   const returnableLevels = [...existingLevels];
 
-  for (const levelWithNewItems of newLevels) { 
-    const levelIndex = getLevelIndex(existingLevels, levelWithNewItems);
+  for (const levelWithNewItems of newLevels) {
+    const levelIndex = getIndexOfNewLevelInExistingLevels(existingLevels, levelWithNewItems);
     
     if (levelIndex === -1) {
       returnableLevels.push(levelWithNewItems);
@@ -227,7 +227,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
     }
     
     case ACTIONS.INCLUDE_NODES_IN_LEVELS:
-      // should be able to handle new levels and new nodes, and other updates to levels and nodes
+      // should be able to handle new levels and new nodes, and updates to existing levels and nodes
       {
         if (!state.storyTree) {
           console.error("StoryTree is not initialized");
