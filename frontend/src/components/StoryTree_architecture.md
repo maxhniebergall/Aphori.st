@@ -1,86 +1,97 @@
 ### Component Hierarchy and Responsibilities
 
-#### StoryTreePage.js  
-**Theme:** Simple Router Component  
-- Acts as a basic wrapper component.  
-- Only renders `StoryTreeHolder`.  
-- Handles route-level concerns.
+#### StoryTreePage.js
+**Theme:** Simple Router Component
+- Acts as a wrapper rendering the main story tree holder.
+- Handles route‑level concerns (e.g., reading URL params).
+- Imports and renders `StoryTreeHolder.tsx`.
 
-#### StoryTreeHolder.js  
-**Theme:** Main Container & Layout Orchestrator  
-- Serves as the primary container component.  
-- Manages layout and component composition.  
-- Integrates `StoryTreeOperator`, `StoryTreeHeader`, and `EditingOverlay`.  
-- Provides an error boundary wrapper.
+#### StoryTreeHolder.tsx
+**Theme:** Container & Provider Setup
+- Wraps children with `StoryTreeProvider` and `ReplyProvider`.
+- Renders the `StoryTreeContent` component.
 
-#### StoryTreeOperator.js  
-**Theme:** Data and State Management  
-- Connects to `StoryTreeContext`.  
-- Handles data fetching, caching, and node operations.  
-- **Asynchronously updates node quote counts:**  
-  Utilizes the dedicated `/api/getQuoteCounts/:id` endpoint to fetch quote reply counts. Once retrieved, `StoryTreeOperator` updates the corresponding node's `quoteCounts` field using immutable state updates and dispatches the updated node details via the existing `ACTIONS.INCLUDE_NODES_IN_LEVELS` action.  
-- Provides data and callbacks to child components.  
-- Controls loading states and error handling.
+#### StoryTreeContent (inside StoryTreeHolder.tsx)
+**Theme:** Initialization & Layout
+- Uses React Router's `useParams` to extract the root UUID.
+- Calls `StoryTreeOperator.initializeStoryTree` to fetch initial data.
+- Renders `Header.js` for the top bar (logo, title, navigation).
+- Renders `VirtualizedStoryList.tsx` for the tree display.
+- Renders the `ReplyEditor` (conditional) for composing replies.
 
-#### VirtualizedStoryList.js  
-**Theme:** List Virtualization  
-- Handles all virtualization logic.  
-- Manages infinite scrolling implementation.  
-- Controls dynamic sizing of nodes.  
-- Uses `react-window` for efficient list rendering.  
-- Manages row measurement and caching.
+#### VirtualizedStoryList.tsx
+**Theme:** Virtualized List & Dynamic Row Management
+- Implements infinite-loading virtualization with `react-window` and `InfiniteLoader`.
+- Adapts to container size via `AutoSizer`.
+- Memoizes row components for performance.
+- Uses `useDynamicRowHeight.ts` to measure and cache row heights.
+- Renders `Row.tsx` for each visible level.
 
-#### StoryTreeContext.js  
-**Theme:** Centralized State Management  
-- Manages global application state.  
-- Provides state and dispatch to components.  
-- Implements the context provider pattern.  
-- Handles error boundaries and loading states.
+#### Row.tsx
+**Theme:** Row Wrapper
+- Observes and reports height changes to the list using `useDynamicRowHeight`.
+- Applies conditional styles (hidden/visible) based on reply state.
+- Renders `StoryTreeLevelComponent`.
 
-#### StoryTreeActions.js  
-**Theme:** Action Creators & Data Operations  
-- Contains all action creators.  
-- Handles API interactions and complex state updates.  
-- Provides error handling for data operations.  
-- Controls loading states during operations.
+#### StoryTreeLevel.tsx
+**Theme:** Level Display & Navigation
+- Differentiates between `MidLevel` (active thread) and `LastLevel` (end indicator).
+- Manages pagination and swipe/arrow navigation among siblings.
+- Renders:
+  - `NodeContent.tsx` for content display and highlights.
+  - `NodeFooter.tsx` for reply button and navigation controls.
 
-#### StoryTreeNode.js  
-**Theme:** Interactive Node Display  
-- Renders individual story nodes.  
-- Uses custom hooks such as `useSiblingNavigation`.  
-- Handles node-level interactions and animations.  
-- Focuses on presentation logic.
+#### NodeContent.tsx
+**Theme:** Content & Highlighting
+- Displays static highlights of existing quotes via `useHighlighting.ts`.
+- Provides a selectable region for new quotes using `useTextSelection.ts`.
 
-#### StoryTreeHeader.js  
-**Theme:** Header UI Component  
-- Displays application logo and menu.  
-- Shows story title and author information.  
-- Handles header-specific interactions.  
-- Contains isolated header styles.
+#### NodeFooter.tsx
+**Theme:** Actions & Navigation
+- Renders the "Reply" action button and sibling navigation arrows.
+- Invokes `StoryTreeOperator.submitReply` to post replies.
 
-#### Custom Hooks
+#### Header.js
+**Theme:** Top Bar UI
+- Displays application logo, title, and subtitle.
+- Handles click events for returning to the feed.
 
-##### useSiblingNavigation.js  
-- Manages sibling navigation logic.  
-- Handles sibling state and loading.  
-- Provides navigation methods.  
-- Controls sibling-related animations.
+#### ReplyEditor (inside StoryTreeHolder.tsx)
+**Theme:** Reply Input UI
+- Uses `@uiw/react-md-editor` for Markdown authoring.
+- Controlled by `ReplyContext.tsx` state.
+- Provides Submit and Cancel buttons tied to operator methods.
+
+
+#### Context & State Management
+- `StoryTreeContext.tsx`: Manages core story tree state (levels, loading, errors).
+- `ReplyContext.tsx`: Manages reply‑specific state (selected quote, content, errors).
+
+#### Operators
+- `frontend/src/operators/StoryTreeOperator.ts`: Singleton orchestrator for data fetching, pagination, quote counts, and reply submission.
+
 
 ### Component Hierarchy:
 ```
-StoryTreePage
-└── StoryTreeHolder
-    ├── StoryTreeHeader
-    ├── StoryTreeOperator
-    │   └── VirtualizedStoryList
-    │       └── StoryTreeNode (multiple instances)
-    └── EditingOverlay (conditional)
+StoryTreePage.js
+└── StoryTreeHolder.tsx
+    └── StoryTreeContent
+        ├── Header.js
+        ├── VirtualizedStoryList.tsx
+        │   └── Row.tsx
+        │       └── StoryTreeLevelComponent
+        │           ├── NodeContent.tsx
+        │           └── NodeFooter.tsx
+        └── ReplyEditor (conditional)
 ```
 
 ### Data Flow:
-1. `StoryTreeContext` provides the global state.
-2. `StoryTreeOperator` manages data operations—including asynchronous updates via the quote counts API.
-3. Components dispatch actions through context.
-4. `StoryTreeActions` handle complex state updates.
-5. Data flows down through props.
-6. User interactions flow up through callbacks.
+1. `StoryTreeProvider` and `ReplyProvider` wrap the content in `StoryTreeHolder.tsx`.
+2. `StoryTreeContent` reads the root ID and initializes data via `StoryTreeOperator`.
+3. `StoryTreeOperator` fetches levels and updates `StoryTreeContext`.
+4. `VirtualizedStoryList` subscribes to context state for levels and renders rows.
+5. Each `Row.tsx` measures size and renders `StoryTreeLevelComponent` for that level.
+6. `StoryTreeLevelComponent` uses `NodeContent.tsx` and `NodeFooter.tsx` for display, navigation, and reply actions.
+7. `useHighlighting.ts` and `useTextSelection.ts` manage highlights and new quote selections in `NodeContent.tsx`.
+8. Reply actions update `ReplyContext` and invoke operator methods, causing state updates.
+9. Context dispatches propagate changes, triggering UI re‑renders.
