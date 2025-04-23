@@ -89,8 +89,8 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     if (lastLevel && isLastLevel(lastLevel)) {
       const levelNumber = getLevelNumber(lastLevel);
       if (levelNumber !== undefined) {
-      console.log("VirtualizedStoryList: Last Level has no pagination, no more levels to load. Setting list size to [" + levelNumber+ "]");
-      setListSize(levelNumber);
+        console.log("VirtualizedStoryList: no more levels to load. Setting list size to [" + levelNumber+ "]");
+        setListSize(levelNumber);
       } else {
         throw new Error("VirtualizedStoryList: Last Level has no level number");
       }

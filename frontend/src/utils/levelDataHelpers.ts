@@ -197,4 +197,33 @@ export function createLastLevel(
       levelNumber
     }
   };
-} 
+}
+
+// Helper function to update siblings for a quote in the array-based structure
+export function updateSiblingsForQuoteHelper(siblings: Siblings, quote: Quote | null, nodes: StoryTreeNode[]): Siblings {
+  const index = siblings.levelsMap.findIndex(([key]) => {
+    if (key === null && quote === null) {
+      return true;
+    }
+    if (!key || !quote) {
+      return false;
+    }
+    return key.sourcePostId === quote.sourcePostId &&
+      key.text === quote.text &&
+      key.selectionRange.start === quote.selectionRange.start &&
+      key.selectionRange.end === quote.selectionRange.end;
+  });
+
+  const newLevelsMap = [...siblings.levelsMap];
+
+  if (index >= 0) {
+    // Replace the existing entry
+    newLevelsMap[index] = [quote, nodes];
+  } else {
+    // Add a new entry
+    newLevelsMap.push([quote, nodes]);
+  }
+
+  return { levelsMap: newLevelsMap };
+}
+ 

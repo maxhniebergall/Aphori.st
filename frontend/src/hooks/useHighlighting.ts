@@ -65,11 +65,6 @@ export function useHighlighting({
   useEffect(() => {
     let newSelections: Quote[] = [];
     
-    // Add the currently selected quote if it exists
-    if (selectedQuote) {
-      newSelections.push(selectedQuote);
-    }
-    
     // Add quotes from existingSelectableQuotes
     if (existingSelectableQuotes?.quoteCounts) {
       // Sort quotes by reply count descending and process top 10 only

@@ -18,13 +18,14 @@ import React, { useMemo, useCallback, useRef, useEffect, useState } from 'react'
 import TextSelection from './TextSelection';
 import HighlightedText from './HighlightedText';
 import { QuoteCounts, StoryTreeNode } from '../types/types';
-import { Quote } from '../types/quote';
+import { Quote, areQuotesEqual } from '../types/quote';
 import { useHighlighting } from '../hooks/useHighlighting';
 
 interface NodeContentProps {
   node: StoryTreeNode;
   onExistingQuoteSelectionComplete?: (quote: Quote) => void;
   quote?: Quote;
+  levelSelectedQuote?: Quote;
   existingSelectableQuotes?: QuoteCounts;
 }
 
@@ -56,6 +57,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
   node,
   onExistingQuoteSelectionComplete: onExistingQuoteSelectionComplete = () => {},
   quote,
+  levelSelectedQuote,
   existingSelectableQuotes
 }) => {
   // Memoize the text content to prevent unnecessary re-renders
@@ -74,8 +76,10 @@ const NodeContent: React.FC<NodeContentProps> = ({
     }
   }, [textContent]);
 
-  // Memoize the callback to prevent unnecessary re-renders
+  // Memoize the callback passed down from StoryTreeLevelComponent
   const memoizedOnExistingQuoteSelectionComplete = useCallback((selectedQuote: Quote) => {
+    // This log confirms what NodeContent passes up to StoryTreeLevelComponent
+    console.log("NodeContent: memoizedOnExistingQuoteSelectionComplete forwarding quote:", selectedQuote);
     onExistingQuoteSelectionComplete(selectedQuote);
   }, [onExistingQuoteSelectionComplete]);
 
@@ -85,16 +89,26 @@ const NodeContent: React.FC<NodeContentProps> = ({
   }, [existingSelectableQuotes, node.quoteCounts, node.id]);
 
   // Use the highlighting hook ONLY for managing highlights in the main content
-  // This has nothing to do with the TextSelection component in the quote container
   const {
     selections,
-    handleSegmentClick
+    handleSegmentClick // This is the function passed *down* to HighlightedText
   } = useHighlighting({
     text: containerText || textContent,
-    selectedQuote: quote,
+    selectedQuote: levelSelectedQuote,
     existingSelectableQuotes: memoizedExistingSelectableQuotes,
-    onSegmentClick: memoizedOnExistingQuoteSelectionComplete
+    // Wrap the callback passed *to* the hook to log the quote received from HighlightedText/useHighlighting
+    onSegmentClick: useCallback((quoteFromHighlighting: Quote) => {
+      // This log shows what quote useHighlighting's handleSegmentClick received
+      console.log("NodeContent: Received quote from useHighlighting's onSegmentClick:", quoteFromHighlighting);
+      // Pass it up to the next level callback
+      memoizedOnExistingQuoteSelectionComplete(quoteFromHighlighting);
+    }, [memoizedOnExistingQuoteSelectionComplete]) // Add dependency
   });
+
+  // Log the selections array passed to HighlightedText whenever it changes
+  useEffect(() => {
+    console.log("NodeContent for level ", node.levelNumber, ": Selections array passed to HighlightedText:", selections);
+  }, [selections]);
 
   // Safely handle the quote text
   const quoteText = useMemo(() => {
@@ -105,7 +119,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
     <div 
       className="node-content"
       role="article"
-      aria-label={quote ? 'Selected content for reply' : 'Story content'}
+      aria-label={quote ? 'Content being replied to' : 'Story content'}
     >
       {/* Main content area - ONLY for displaying highlights, never selectable */}
       <div 
@@ -123,9 +137,9 @@ const NodeContent: React.FC<NodeContentProps> = ({
       </div>
 
       {/* Quote container area - ALWAYS selectable */}
-      {/* This is completely separate from the main content and has no influence on the highlights */}
+      {/* This renders the quote being actively replied to, if any */}
       {quote && (
-        <div className="quote-container" role="region" aria-label="Quoted content">
+        <div className="quote-container" role="region" aria-label="Quoted content for reply">
           <blockquote className="story-tree-node-quote">
             <MemoizedTextSelection
               node={node}

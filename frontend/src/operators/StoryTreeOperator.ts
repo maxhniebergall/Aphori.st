@@ -28,7 +28,7 @@
  */
 
 import { ACTIONS, StoryTreeNode, StoryTreeState, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat, LastLevel } from '../types/types';
-import { compareQuotes, Quote } from '../types/quote';
+import { areQuotesEqual, Quote } from '../types/quote';
 import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
 import StoryTreeError from '../errors/StoryTreeError';
@@ -145,13 +145,6 @@ class StoryTreeOperator extends BaseOperator {
    * @param post - The post data received from the API.
    */
   private async addPostContentToLevelZero(post: Post): Promise<void> {
-    console.log("StoryTreeOperator: Adding post content to level zero:", {
-      postId: post.id,
-      postContent: post.content,
-      authorId: post.authorId,
-      createdAt: post.createdAt
-    });
-
     const quoteCounts = await this.fetchQuoteCounts(post.id);
 
     const contentNode: StoryTreeNode = {
@@ -165,12 +158,6 @@ class StoryTreeOperator extends BaseOperator {
       repliedToQuote: null, // Root post isn't replying to anything
       quoteCounts: quoteCounts,
     };
-
-    console.log("StoryTreeOperator: Created content node:", {
-      nodeId: contentNode.id,
-      textContent: contentNode.textContent,
-      levelNumber: contentNode.levelNumber
-    });
 
     // For the root post, we use null as the key since it's not replying to any quote
     const siblings: Siblings = {
@@ -198,12 +185,6 @@ class StoryTreeOperator extends BaseOperator {
         payload: [contentLevel]
       });
     }
-
-    console.log("StoryTreeOperator: Added post content to level zero:", {
-      levelNumber: getLevelNumber(contentLevel),
-      siblingsCount: siblings.levelsMap[0][1].length,
-      firstNodeContent: siblings.levelsMap[0][1][0]?.textContent
-    });
   }
 
   private async fetchAndDispatchReplies(level: StoryTreeLevel, sortingCriteria: string, limit: number = 5, cursor: string | undefined = undefined) {
@@ -298,7 +279,6 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   private async fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
-    console.log(`fetchFirstReplies: levelNumber:[${levelNumber}]; selectedQuote: [${JSON.stringify(selectedQuote)}]`)
     const encodedSelectedQuoteString = Quote.toEncodedString(selectedQuote);
     const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId}/${encodedSelectedQuoteString}/${sortingCriteria}?limit=${limit}`;
     try {
@@ -308,7 +288,6 @@ class StoryTreeOperator extends BaseOperator {
         })
       );
       const decompressedPaginatedData = await compression.decompress<CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
-      console.log(`fetchFirstRepliesForLevel: decompressedPaginatedData: [${JSON.stringify(decompressedPaginatedData)}]`)
       return decompressedPaginatedData;
 
     } catch (err) {
@@ -532,7 +511,6 @@ class StoryTreeOperator extends BaseOperator {
         }
       }
       const quoteCountsFromParent = selectedNodeOfParentLevel.quoteCounts;
-      console.log("StoryTreeOperator: parentLevelAsLevel selectedNode quoteCounts", quoteCountsFromParent, " for level ", levelNumber);
       { // continue validation
         if (!quoteCountsFromParent || !quoteCountsFromParent.quoteCounts || quoteCountsFromParent.quoteCounts.length === 0) {
           console.log(`No quotes found for parentId: ${parentId}, no more levels to load, level ${levelNumber} is last level`);
@@ -558,7 +536,7 @@ class StoryTreeOperator extends BaseOperator {
             (quoteCountPair: [Quote, number]) => {
               const [quote, count] = quoteCountPair;
         
-              return count > 0 && compareQuotes(quote, selectedQuoteFromParent);
+              return count > 0 && areQuotesEqual(quote, selectedQuoteFromParent);
             }
           );
           if (hasRepliesForDefaultQuote === false) {
@@ -585,11 +563,9 @@ class StoryTreeOperator extends BaseOperator {
         const pagination = maybeFirstReplies.pagination;
 
         const firstReplies: Reply[] = maybeFirstReplies.data;
-        console.log("StoryTreeOperator: firstReplies", firstReplies, " for level ", levelNumber);
         const quoteCountsMap = new Map<Quote, QuoteCounts>();
         await Promise.all(firstReplies.map(async (reply: Reply) => {
           const quoteCounts = await this.fetchQuoteCounts(reply.id);
-          console.log("StoryTreeOperator: quoteCounts", quoteCounts, " for level ", levelNumber);
           quoteCountsMap.set(reply.quote, quoteCounts);
         }));
 

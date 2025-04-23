@@ -15,7 +15,7 @@ import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
 import { StoryTreeLevel as LevelData, StoryTreeNode, Pagination } from '../types/types';
-import { Quote } from '../types/quote';
+import { areQuotesEqual, Quote } from '../types/quote';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import { 
   getSelectedQuote, 
@@ -25,6 +25,7 @@ import {
   getParentId,
   getPagination,
   isMidLevel,
+  getSelectedQuote as getLevelSelectedQuote 
 } from '../utils/levelDataHelpers';
 
 interface StoryTreeLevelProps {
@@ -47,9 +48,18 @@ const MemoizedNodeFooter = React.memo(NodeFooter,
 
 // Create a memoized NodeContent component to prevent unnecessary re-renders
 const MemoizedNodeContent = React.memo(NodeContent, (prevProps, nextProps) => {
-  return prevProps.node === nextProps.node &&
-    prevProps.quote === nextProps.quote &&
-    prevProps.existingSelectableQuotes === nextProps.existingSelectableQuotes;
+  // Check if nodes are the same reference or have the same ID
+  const nodeChanged = prevProps.node !== nextProps.node && prevProps.node?.id !== nextProps.node?.id;
+  
+  // Use areQuotesEqual for quote comparison, handling undefined cases
+  const quoteChanged = prevProps.quote && nextProps.quote && !areQuotesEqual(prevProps.quote, nextProps.quote);
+  const levelSelectedQuoteChanged = prevProps.levelSelectedQuote && nextProps.levelSelectedQuote && !areQuotesEqual(prevProps.levelSelectedQuote, nextProps.levelSelectedQuote);
+
+  // Simple comparison for existingSelectableQuotes (can be refined if needed)
+  const existingQuotesChanged = prevProps.existingSelectableQuotes !== nextProps.existingSelectableQuotes;
+
+  // Return true if none of the relevant props have changed
+  return !nodeChanged && !quoteChanged && !levelSelectedQuoteChanged && !existingQuotesChanged;
 });
 
 export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
@@ -149,17 +159,17 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     }
     
     const selectedQuote = getSelectedQuote(levelData);
+    console.log("StoryTreeLevel: selectedQuote", selectedQuote);
     if (!selectedQuote) {
       return [];
     }
     
     // Find the entry in the levelsMap array that matches the selectedQuote
     const entry = siblings.levelsMap.find(
-      // TODO the toStrings on quotes probably dont work. We should use the Quote object functions instead
-      ([quote]) => quote && selectedQuote && quote.toString() === selectedQuote.toString()
+      ([quote]) => quote && selectedQuote && areQuotesEqual(quote, selectedQuote)
     );
     return entry ? entry[1] : [];
-  }, [levelData]);
+  }, [levelData, levelData.midLevel?.selectedQuote]);
 
   // Update pagination state based on levelData
   useMemo(() => {
@@ -205,7 +215,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Handle text selection for replies with improved error handling
   const handleExistingQuoteSelectionCompleted = useCallback(
-    (quote: Quote): void => {
+    async (quote: Quote): Promise<void> => {
       try {
         if (!nodeToRender) {
           throw new Error('Cannot create reply: no valid node selected');
@@ -213,6 +223,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         console.log("highlighted quote selected", quote);
         storyTreeOperator.setSelectedQuoteForNodeInLevel(quote, nodeToRender, levelData);
         console.log("highlighted quote set for node in level", quote, nodeToRender, levelData);
+        // Truncate any deeper levels by resetting selected node at this level
+        await storyTreeOperator.setSelectedNode(nodeToRender);
+        // Load the next level (level N+1) for the new quote
+        if (levelData.midLevel) {
+          const nextLevel = levelData.midLevel.levelNumber + 1;
+          await storyTreeOperator.loadMoreLevels(nextLevel, nextLevel + 1);
+        }
         // Trigger resize to ensure UI updates correctly
         window.dispatchEvent(new Event('resize'));
       } catch (error) {
@@ -220,7 +237,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         console.error('Selection error:', error);
       }
     },
-    [nodeToRender, setReplyTarget, setReplyQuote, setReplyError, setIsReplyOpen]
+    [nodeToRender, levelData, setReplyError]
   );
 
   // Handle reply button click with improved functionality
@@ -389,6 +406,9 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     }
   });
 
+  // Get the actual selected quote for this level
+  const levelSelectedQuote = useMemo(() => getLevelSelectedQuote(levelData), [levelData]);
+
   // Early return if we don't have a valid node
   if (!nodeToRender?.rootNodeId) {
     return null;
@@ -420,6 +440,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
           >
             <MemoizedNodeContent
               node={nodeToRender}
+              levelSelectedQuote={levelSelectedQuote}
               quote={(isReplyTarget(nodeToRender) && replyQuote) ? replyQuote : undefined}
               existingSelectableQuotes={nodeToRender.quoteCounts ?? undefined}
               onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
