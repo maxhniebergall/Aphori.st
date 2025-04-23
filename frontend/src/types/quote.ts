@@ -85,7 +85,7 @@ export class Quote {
   }
 }
 
-export function compareQuotes(q1: Quote, q2: Quote): boolean {
+export function areQuotesEqual(q1: Quote, q2: Quote): boolean {
   return (
     q1.text === q2.text &&
     q1.sourcePostId === q2.sourcePostId &&

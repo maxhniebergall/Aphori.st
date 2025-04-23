@@ -15,7 +15,7 @@ interface TextSegment {
   end: number;
   text: string;
   overlapCount: number;
-  quoteIds: number[];
+  overlappingQuoteOriginalIndices: number[];
 }
 
 interface HighlightedTextProps {
@@ -39,7 +39,7 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
   // Compute text segments with overlap information
   const segments = useMemo(() => {
     if (!text || !selections.length) {
-      return [{ start: 0, end: text.length, text, overlapCount: 0, quoteIds: [] }];
+      return [{ start: 0, end: text.length, text, overlapCount: 0, overlappingQuoteOriginalIndices: [] }];
     }
 
     // Extract all boundary points from selections
@@ -58,37 +58,36 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
       const end = boundaries[index + 1];
       const segmentText = text.slice(start, end);
       
-      // Find all selections that overlap with this segment
-      const overlappingSelections = selections.filter(
-        quote => quote && quote.selectionRange && 
-        quote.selectionRange.start <= start && 
-        quote.selectionRange.end >= end
-      );
-      
-      // Get quote IDs for this segment
-      const quoteIds = overlappingSelections.map((_, index) => index);
+      // Find the original indices of selections that overlap with this segment
+      const overlappingQuoteOriginalIndices: number[] = [];
+      selections.forEach((quote, originalIndex) => {
+        if (quote && quote.selectionRange && 
+            quote.selectionRange.start <= start && 
+            quote.selectionRange.end >= end) {
+          overlappingQuoteOriginalIndices.push(originalIndex);
+        }
+      });
       
       return {
         start,
         end,
         text: segmentText,
-        overlapCount: overlappingSelections.length,
-        quoteIds
+        overlapCount: overlappingQuoteOriginalIndices.length,
+        overlappingQuoteOriginalIndices
       };
     });
   }, [text, selections]);
 
   // Handle click on a highlighted segment
   const handleSegmentClick = (segment: TextSegment) => {
-    if (!onSegmentClick || segment.overlapCount === 0 || segment.quoteIds.length === 0) {
+    if (!onSegmentClick || segment.overlapCount === 0 || segment.overlappingQuoteOriginalIndices.length === 0) {
       return;
     }
     
-    // If multiple quotes overlap this segment, use the first one
-    // A more sophisticated approach could show a menu of options
-    const quoteIndex = segment.quoteIds[0];
-    if (quoteIndex >= 0 && quoteIndex < selections.length) {
-      onSegmentClick(selections[quoteIndex]);
+    // If multiple quotes overlap this segment, use the first one's original index
+    const originalQuoteIndex = segment.overlappingQuoteOriginalIndices[0];
+    if (originalQuoteIndex >= 0 && originalQuoteIndex < selections.length) {
+      onSegmentClick(selections[originalQuoteIndex]);
     }
   };
 
