@@ -89,7 +89,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     if (lastLevel && isLastLevel(lastLevel)) {
       const levelNumber = getLevelNumber(lastLevel);
       if (levelNumber !== undefined) {
-        console.log("VirtualizedStoryList: no more levels to load. Setting list size to [" + levelNumber+ "]");
+        // console.log("VirtualizedStoryList: no more levels to load. Setting list size to [" + levelNumber+ "]");
         setListSize(levelNumber);
       } else {
         throw new Error("VirtualizedStoryList: Last Level has no level number");
@@ -100,7 +100,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   // Set error
   useEffect(() => {
     if (state?.error) {
-      console.warn("VirtualizedStoryList: Error from state:", state.error);
+      // console.warn("VirtualizedStoryList: Error from state:", state.error);
       setError(state.error);
     }
   }, [state?.error]);
@@ -117,7 +117,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
 
   // Show error state
   if (error) {
-    console.warn("VirtualizedStoryList: Showing error state:", error);
+    // console.warn("VirtualizedStoryList: Showing error state:", error);
     return <div className="error" role="alert">Error: {error}</div>;
   }
 
@@ -128,7 +128,8 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
       if (!level) {
         return <RowFallback style={style} index={index} />;
       }
-      
+      // Log the props passed to Row for debugging propagation
+      // console.log('VirtualizedStoryList: Rendering Row', { index, levelData: level });
       return (
         <MemoizedRow
           levelData={level}

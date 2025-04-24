@@ -100,7 +100,6 @@ function Feed(): JSX.Element {
         }
       };
     } catch (error) {
-      console.error('Error in fetchFeedItems:', error);
       throw error;
     }
   }, []);
@@ -113,7 +112,7 @@ function Feed(): JSX.Element {
         setItems(result.data);
         setPagination(result.pagination);
       } catch (error) {
-        console.error('Failed to load feed items:', error);
+        
       }
     };
     
@@ -132,7 +131,7 @@ function Feed(): JSX.Element {
       setItems(prevItems => [...prevItems, ...result.data]);
       setPagination(result.pagination);
     } catch (error) {
-      console.error('Failed to load more items:', error);
+      
     }
   }, [fetchFeedItems, pagination.hasMore, pagination.nextCursor]);
 
@@ -142,11 +141,6 @@ function Feed(): JSX.Element {
     },
     [navigate]
   );
-
-  console.log('Feed: Current state:', {
-    itemsCount: items.length,
-    pagination
-  });
 
   return (
     <>

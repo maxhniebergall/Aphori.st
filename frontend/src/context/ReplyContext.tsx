@@ -40,11 +40,33 @@ interface ReplyProviderProps {
 }
 
 export function ReplyProvider({ children }: ReplyProviderProps) {
-  const [replyTarget, setReplyTarget] = useState<StoryTreeNode | null>(null);
-  const [replyContent, setReplyContent] = useState<string>('');
-  const [replyQuote, setReplyQuote] = useState<Quote | null>(null);
-  const [replyError, setReplyError] = useState<string | null>(null);
-  const [isReplyOpen, setIsReplyOpen] = useState<boolean>(false);
+  const [replyTarget, setReplyTargetState] = useState<StoryTreeNode | null>(null);
+  const [replyContent, setReplyContentState] = useState<string>('');
+  const [replyQuote, setReplyQuoteState] = useState<Quote | null>(null);
+  const [replyError, setReplyErrorState] = useState<string | null>(null);
+  const [isReplyOpen, setIsReplyOpenState] = useState<boolean>(false);
+
+  // Logging wrappers
+  const setReplyTarget = (target: StoryTreeNode | null) => {
+    console.log('ReplyContext: setReplyTarget', target);
+    setReplyTargetState(target);
+  };
+  const setReplyContent = (content: string) => {
+    console.log('ReplyContext: setReplyContent', content);
+    setReplyContentState(content);
+  };
+  const setReplyQuote = (quote: Quote | null) => {
+    console.log('ReplyContext: setReplyQuote', quote);
+    setReplyQuoteState(quote);
+  };
+  const setReplyError = (error: string | null) => {
+    console.log('ReplyContext: setReplyError', error);
+    setReplyErrorState(error);
+  };
+  const setIsReplyOpen = (isOpen: boolean) => {
+    console.log('ReplyContext: setIsReplyOpen', isOpen);
+    setIsReplyOpenState(isOpen);
+  };
 
   const clearReplyState = useCallback(() => {
     setReplyTarget(null);

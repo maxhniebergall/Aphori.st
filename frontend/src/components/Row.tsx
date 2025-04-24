@@ -26,6 +26,7 @@ interface RowProps extends Omit<ListChildComponentProps, 'data'> {
   levelData: StoryTreeLevel;
   setSize: (visualHeight: number) => void;
   shouldHide: boolean;
+  index: number;
 }
 
 /**
@@ -39,7 +40,8 @@ const Row: React.FC<RowProps> = memo(
     style, 
     levelData, 
     setSize, 
-    shouldHide
+    shouldHide,
+    index
   }) => {
     // Reference to the row element for measuring height
     const rowRef = useRef<HTMLDivElement>(null);
@@ -76,11 +78,11 @@ const Row: React.FC<RowProps> = memo(
     const navigateToNextSiblingCallback = useCallback(() => {
       // Skip if not a MidLevel
       if (!isMidLevel(levelData)) {
-        console.warn('Cannot navigate: not a MidLevel');
+        
         return;
       }
 
-      console.log('Row: Navigate to next sibling');
+      
       const selectedQuote = getSelectedQuote(levelData);
       if (!selectedQuote) {
         throw new Error('No selected quote');
@@ -131,11 +133,11 @@ const Row: React.FC<RowProps> = memo(
     const navigateToPreviousSiblingCallback = useCallback(() => {
       // Skip if not a MidLevel
       if (!isMidLevel(levelData)) {
-        console.warn('Cannot navigate: not a MidLevel');
+        
         return;
       }
 
-      console.log('Row: Navigate to previous sibling');
+      
       const selectedQuote = getSelectedQuote(levelData);
       if (!selectedQuote) {
         throw new Error('No selected quote');
@@ -189,6 +191,7 @@ const Row: React.FC<RowProps> = memo(
       if (shouldHide) {
         return null;
       }
+      // Log the props passed to StoryTreeLevelComponent
       
       return (
         <div className="normal-row-content">
@@ -200,6 +203,9 @@ const Row: React.FC<RowProps> = memo(
         </div>
       );
     }, [levelData, shouldHide, navigateToNextSiblingCallback, navigateToPreviousSiblingCallback]);
+
+    // Log the props received by Row for debugging propagation
+    
 
     return (
       <div

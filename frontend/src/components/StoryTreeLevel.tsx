@@ -68,6 +68,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   navigateToPreviousSiblingCallback,
   reportHeight,
 }) => {
+  // Log the props received by StoryTreeLevelComponent for debugging propagation
+  
   // Core state
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,7 +88,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // Pagination state - directly use the Pagination type from our types
   const initialPagination = getPagination(levelData);
   if (!initialPagination) {
-    console.error('No pagination found in level data');
+    
     return null;
   }
   
@@ -159,7 +161,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     }
     
     const selectedQuote = getSelectedQuote(levelData);
-    console.log("StoryTreeLevel: selectedQuote", selectedQuote);
+    
     if (!selectedQuote) {
       return [];
     }
@@ -220,21 +222,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         if (!nodeToRender) {
           throw new Error('Cannot create reply: no valid node selected');
         }
-        console.log("highlighted quote selected", quote);
-        storyTreeOperator.setSelectedQuoteForNodeInLevel(quote, nodeToRender, levelData);
-        console.log("highlighted quote set for node in level", quote, nodeToRender, levelData);
-        // Truncate any deeper levels by resetting selected node at this level
-        await storyTreeOperator.setSelectedNode(nodeToRender);
-        // Load the next level (level N+1) for the new quote
-        if (levelData.midLevel) {
-          const nextLevel = levelData.midLevel.levelNumber + 1;
-          await storyTreeOperator.loadMoreLevels(nextLevel, nextLevel + 1);
-        }
-        // Trigger resize to ensure UI updates correctly
+        
+        await storyTreeOperator.setSelectedQuoteForNodeInLevel(quote, nodeToRender, levelData);
+        
         window.dispatchEvent(new Event('resize'));
       } catch (error) {
         setReplyError(error instanceof Error ? error.message : 'Failed to set reply target');
-        console.error('Selection error:', error);
+        
       }
     },
     [nodeToRender, levelData, setReplyError]
@@ -285,7 +279,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       }
     } catch (error) {
       setReplyError(error instanceof Error ? error.message : 'Failed to handle reply action');
-      console.error('Reply error:', error);
+      
     }
   }, [
     clearReplyState,
@@ -303,7 +297,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     if (isReplyTarget(nodeToRender)) { return; } // Disable navigation if node is reply target
     
     if (!nodeToRender) {
-      console.error('No node to render');
+      
       return;
     }
     
@@ -323,7 +317,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         const selectedQuote = getSelectedQuote(levelData);
         
         if (!parentId || !levelNumber || !selectedQuote) {
-          console.error('Missing required data for loading more items');
+          
           return;
         }
         
@@ -337,14 +331,14 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         // After loading, the callback will be called by the parent component
         didNavigate = true;
       } catch (error) {
-        console.error('Error loading more siblings:', error);
+        
       } finally {
         setIsLoading(false);
       }
     }
 
     if (!didNavigate) {
-      console.log('No more siblings to navigate to');
+      
     }
   }, [
     siblings,
@@ -359,7 +353,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     if (isReplyTarget(nodeToRender)) { return; } // Disable navigation if node is reply target
     
     if (!nodeToRender) {
-      console.error('No node to render');
+      
       return;
     }
     
@@ -394,7 +388,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
             cancel?.();
           }
         } catch (error) {
-          console.error('Navigation error:', error);
+          
         }
       }
     }
@@ -414,6 +408,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     return null;
   }
 
+  // Log the props passed to NodeContent for debugging propagation
+  
   return (
     <div
       ref={containerRef}
@@ -442,7 +438,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               node={nodeToRender}
               levelSelectedQuote={levelSelectedQuote}
               quote={(isReplyTarget(nodeToRender) && replyQuote) ? replyQuote : undefined}
-              existingSelectableQuotes={nodeToRender.quoteCounts ?? undefined}
+              existingSelectableQuotes={nodeToRender?.quoteCounts ?? undefined}
               onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
             />
             <MemoizedNodeFooter

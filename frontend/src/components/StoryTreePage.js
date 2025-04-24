@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import StoryTreeHolder from './StoryTreeHolder';
 import './StoryTree.css';
 import { useUser } from '../context/UserContext';
 
 function StoryTreePage() {
   const { state } = useUser();
-  console.log("user is logged in:", state?.user?.email);
+
+  useEffect(() => {
+    // Check if user is logged in
+    
+  }, [state?.user]);
 
   return (
     <div className="story-tree-page">

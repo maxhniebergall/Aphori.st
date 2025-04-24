@@ -60,6 +60,8 @@ const NodeContent: React.FC<NodeContentProps> = ({
   levelSelectedQuote,
   existingSelectableQuotes
 }) => {
+  // Log the props received by NodeContent for debugging propagation
+  
   // Memoize the text content to prevent unnecessary re-renders
   const textContent = useMemo(() => {
     return node.textContent || '';
@@ -79,7 +81,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
   // Memoize the callback passed down from StoryTreeLevelComponent
   const memoizedOnExistingQuoteSelectionComplete = useCallback((selectedQuote: Quote) => {
     // This log confirms what NodeContent passes up to StoryTreeLevelComponent
-    console.log("NodeContent: memoizedOnExistingQuoteSelectionComplete forwarding quote:", selectedQuote);
+    
     onExistingQuoteSelectionComplete(selectedQuote);
   }, [onExistingQuoteSelectionComplete]);
 
@@ -99,7 +101,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
     // Wrap the callback passed *to* the hook to log the quote received from HighlightedText/useHighlighting
     onSegmentClick: useCallback((quoteFromHighlighting: Quote) => {
       // This log shows what quote useHighlighting's handleSegmentClick received
-      console.log("NodeContent: Received quote from useHighlighting's onSegmentClick:", quoteFromHighlighting);
+      
       // Pass it up to the next level callback
       memoizedOnExistingQuoteSelectionComplete(quoteFromHighlighting);
     }, [memoizedOnExistingQuoteSelectionComplete]) // Add dependency
@@ -107,7 +109,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
 
   // Log the selections array passed to HighlightedText whenever it changes
   useEffect(() => {
-    console.log("NodeContent for level ", node.levelNumber, ": Selections array passed to HighlightedText:", selections);
+    
   }, [selections]);
 
   // Safely handle the quote text
