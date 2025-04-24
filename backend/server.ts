@@ -943,6 +943,8 @@ app.get<{
 
         // Generate a unique key for the quote using its properties.
         const quoteKey = getQuoteKey(quoteObj);
+        logger.info('[getReplies] Decoded quote:', quoteObj);
+        logger.info('[getReplies] Constructed Redis key:', `replies:uuid:${uuid}:quote:${quoteKey}:${sortingCriteria}`);
         
         // Cursor-based pagination handling via query parameters.
         const limit = parseInt(req.query.limit as string) || 10;
@@ -955,6 +957,7 @@ app.get<{
         // Step 1: Get reply IDs from the sorted set using ZSCAN
         const scanCursor = cursor || '0';
         const scanResult = await db.zscan(sortedSetKey, scanCursor, { count: limit });
+        logger.info('[getReplies] Number of reply IDs found:', scanResult.items.length);
         
         const matchingRepliesCount = await db.zCard(sortedSetKey);
         
@@ -963,13 +966,14 @@ app.get<{
             // If there are more items to scan, set the next cursor
             nextCursor = scanResult.cursor;
         }
-        console.log("server: scanResult", scanResult);
+        logger.info('[getReplies] scanResult:', scanResult);
         // Step 2: Fetch the actual reply data for each ID
         const replies = await Promise.all(
             scanResult.items.map(async (item: RedisSortedSetItem<string>) => {
                 try {
                     // Fetch the actual reply data using the ID
                     const reply = await db.hGet(item.value, 'reply');
+                    logger.info(`[getReplies] Reply data for ID ${item.value}:`, reply);
                     return reply;
                 } catch (err) {
                     logger.error(`Error fetching reply ${item.value}:`, err);
@@ -978,7 +982,7 @@ app.get<{
             })
         );
 
-        console.log("server: replies", replies);
+        logger.info('[getReplies] All fetched replies:', replies);
         // Filter out any null values from failed fetches
         const validReplies = replies.filter((reply: Reply | null): reply is Reply => reply !== null);
         
