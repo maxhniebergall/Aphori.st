@@ -23,7 +23,6 @@ function VerifyMagicLink() {
         try {
             setIsLoading(true);
             const result = await verifyMagicLink(token);
-            console.log("verifyMagicLink result:", result);
             
             if (result.success) {
                 navigate('/feed');
@@ -32,25 +31,21 @@ function VerifyMagicLink() {
             
             // Check for user not found case with email in query params
             if (result.error === 'User not found' && query.get('email') && retryCount < 2) {
-                console.log(`Retry attempt ${retryCount + 1} - waiting ${(retryCount + 2)}s`);
                 await sleep((retryCount + 1) * 1000);
                 return attemptVerification(retryCount + 1);
             }
             
             // Check for new user case (300 status)
             if (result?.result?.email) {
-                console.log("Redirecting to signup with email:", result.result.email);
                 setIsNewUser(true);
                 setEmail(result.result.email);
                 navigate(`/signup?email=${encodeURIComponent(result.result.email)}&token=${token}`);
                 return;
             }
 
-            console.log("Verification failed with result:", result);
             setVerifyFailed(true);
             setErrorMessage(result.error || 'Verification failed. Please try again.');
         } catch (error) {
-            console.error('Unexpected error during verification:', error);
             setVerifyFailed(true);
             setErrorMessage('An unexpected error occurred. Please try again.');
         } finally {

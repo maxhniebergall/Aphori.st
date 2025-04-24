@@ -19,10 +19,8 @@ class UserOperator extends BaseOperator {
       const data = await this.retryApiCall(
         () => axios.post(`${this.baseURL}/api/auth/verify-token`, { token })
       );
-      console.log('Verify token success response (operator):', data);
       return data;
     } catch (error) {
-      console.error('Token verification error:', error);
       return { 
         success: false, 
         error: error.response?.data?.error || 'Token verification failed' 
@@ -35,24 +33,17 @@ class UserOperator extends BaseOperator {
       const data = await this.retryApiCall(
         () => axios.post(`${this.baseURL}/api/auth/verify-magic-link`, { token })
       );
-      console.log('Verify magic link success response (operator):', data);
       return data;
     } catch (error) {
-      console.log('Verify magic link error response (operator):', error.response?.data);
-      
-      // For 300 status (user not found), pass through the response data
       if (error.response?.data?.error === 'User not found') {
-        console.log('Verify magic link error response (operator) is User not found:', error.response.data);
         return {
           success: false,
-          ...error.response.data,  // This spreads all fields from the response
+          ...error.response.data,
           error: error.response.data.error,
           email: error.response.data.email,
           status: error.response.status
         };
       }
-
-      // Handle other errors
       return { 
         success: false,
         error: error.response?.data?.error || error.message || 'Verification failed',
@@ -68,7 +59,6 @@ class UserOperator extends BaseOperator {
       );
       return { success: true };
     } catch (error) {
-      console.error('Send magic link error:', error);
       return { 
         success: false, 
         error: error.response?.data?.error || 'Failed to send magic link' 
@@ -76,7 +66,6 @@ class UserOperator extends BaseOperator {
     }
   }
 
-  // Method to manually clear the cache for a specific token or all tokens
   clearCache(token = null) {
     if (token) {
       this.clearTokenCache(token);
@@ -97,7 +86,6 @@ class UserOperator extends BaseOperator {
       );
       return { success: true, data };
     } catch (error) {
-      console.error('Error fetching profile:', error);
       return { 
         success: false, 
         error: error.response?.data?.error || 'Failed to fetch profile' 

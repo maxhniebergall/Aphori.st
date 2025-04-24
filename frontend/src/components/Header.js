@@ -8,10 +8,17 @@ function Header({ title, subtitle, onLogoClick }) {
   const { state, logout, sendMagicLink } = useUser();
   const [isModalOpen, setModalOpen] = useState(false);
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
+  const [message, setMessage] = useState('');
 
   const handleSignIn = async (email) => {
-    console.log('Attempting to sign in with email:', email);
-    return await sendMagicLink(email);
+    // Attempt to sign in
+    try {
+      await sendMagicLink(email); // Call the method from context
+      setMessage('Magic link sent! Check your email.');
+    } catch (error) {
+      console.error('Error sending magic link:', error);
+      setMessage('Failed to send magic link. Please try again later.');
+    }
   };
 
   const toggleMenu = () => {

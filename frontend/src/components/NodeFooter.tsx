@@ -7,7 +7,7 @@
  * - Yarn for package management
  */
 
-import React from 'react';
+import React, { useCallback } from 'react';
 
 interface NodeFooterProps {
   currentIndex: number;
@@ -61,12 +61,30 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
     return baseClass;
   };
 
+  const replyButtonClicked = useCallback(() => {
+    // Add logs or state updates for debugging
+    
+  }, [isReplyTarget, isReplyActive]);
+
+  const previousSiblingClicked = useCallback(() => {
+    // Add logs or state updates for debugging
+    
+  }, [currentIndex, totalSiblings]);
+
+  const nextSiblingClicked = useCallback(() => {
+    // Add logs or state updates for debugging
+    
+  }, [currentIndex, totalSiblings]);
+
   return (
     <div className="story-tree-node-footer">
       <div className="footer-left">
         <button 
           className={getReplyButtonClass()} 
-          onClick={onReplyClick} 
+          onClick={() => { 
+            replyButtonClicked();
+            onReplyClick();
+          }} 
           aria-label={`${getReplyButtonText()} to this message`}
         >
           {getReplyButtonText()}
@@ -78,13 +96,19 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
           {validCurrentIndex + 1} / {validTotalSiblings}
           <div className="swipe-hint">
             { validCurrentIndex > 0 && (
-              <span className="swipe-hint-previous" onClick={onPreviousSibling}>
+              <span className="swipe-hint-previous" onClick={() => { 
+                previousSiblingClicked();
+                onPreviousSibling();
+              }}>
                 (Swipe right for previous)
               </span>
             )}
             { validCurrentIndex > 0 && validCurrentIndex < validTotalSiblings - 1 && ' | ' }
             { validCurrentIndex < validTotalSiblings - 1 && (
-              <span className="swipe-hint-next" onClick={onNextSibling}>
+              <span className="swipe-hint-next" onClick={() => { 
+                nextSiblingClicked();
+                onNextSibling();
+              }}>
                 (Swipe left for next)
               </span>
             )}

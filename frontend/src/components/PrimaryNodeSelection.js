@@ -21,6 +21,7 @@ const PrimaryNodeSelection = ({ text, replyTarget }) => {
   const [isSelectionMode] = useState(true);
   const [selectionStart, setSelectionStart] = useState(0);
   const [selectionEnd, setSelectionEnd] = useState(0);
+  const [error, setError] = useState('');
 
   // When entering reply mode, select all text by default (only once)
   useEffect(() => {
@@ -41,7 +42,6 @@ const PrimaryNodeSelection = ({ text, replyTarget }) => {
   }, [replyTarget, text, selectedText]);
 
   useEffect(() => {
-    console.log("selectedText: ", selectedText);
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(new Range(selectionStart, selectionEnd));
@@ -51,7 +51,6 @@ const PrimaryNodeSelection = ({ text, replyTarget }) => {
     if (replyTarget && isSelectionMode) {
       const selection = window.getSelection();
       const selectedText = selection.toString().trim();
-      console.log("selectedText: ", selectedText);
       if (selectedText) {
         const range = selection.getRangeAt(0);
         const preSelectionRange = range.cloneRange();
@@ -63,7 +62,7 @@ const PrimaryNodeSelection = ({ text, replyTarget }) => {
   };
 
   const handleClick = (e) => {
-        // once we have some replies, this will allow the user to display replies for a speciifc selection in the reply
+    // once we have some replies, this will allow the user to display replies for a speciifc selection in the reply
   };
 
   return (
