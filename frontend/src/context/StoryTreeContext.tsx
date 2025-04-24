@@ -205,10 +205,11 @@ export function mergeLevels(existingLevels: Array<StoryTreeLevel>, newLevels: Ar
 }
 
 function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {
+  let nextState: StoryTreeState = state;
   switch (action.type) {
     case ACTIONS.START_STORY_TREE_LOAD:
       {
-        return {
+        nextState = {
           ...state,
           storyTree: {
             post: {
@@ -221,28 +222,33 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
             error: null
           } as StoryTree
         };
+        break;
       }
     
     case ACTIONS.SET_INITIAL_STORY_TREE_DATA:
     {
-      return {
+      nextState = {
         ...state,
         storyTree: action.payload.storyTree,
       };
+      break;
     }
     
     case ACTIONS.INCLUDE_NODES_IN_LEVELS:
-      // should be able to handle new levels and new nodes, and updates to existing levels and nodes
       {
         if (!state.storyTree) {
           console.error("StoryTree is not initialized");
           return state;
         }
         const updatedLevels = mergeLevels(state.storyTree.levels, action.payload);
-        return {
+        const updatedLevelNumbers = action.payload.map(lvl => getLevelNumber(lvl)).filter((n): n is number => typeof n === 'number');
+        const maxUpdatedLevel = updatedLevelNumbers.length > 0 ? Math.max(...updatedLevelNumbers) : updatedLevels.length - 1;
+        const truncatedLevels = updatedLevels.slice(0, maxUpdatedLevel + 1);
+        nextState = {
           ...state,
-          storyTree: { ...state.storyTree, levels: updatedLevels },
+          storyTree: { ...state.storyTree, levels: truncatedLevels },
         };
+        break;
       }
 
     case ACTIONS.SET_SELECTED_NODE:
@@ -273,10 +279,11 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           newLevels.length = selectedNode.levelNumber + 1;
         }
         
-        return {
+        nextState = {
           ...state,
           storyTree: { ...state.storyTree, levels: newLevels }
         };
+        break;
       }
 
     case ACTIONS.SET_LAST_LEVEL:
@@ -293,10 +300,11 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         }
         const lastLevel : StoryTreeLevel = createLastLevel(state.storyTree.post.id, lastLevelNumberInPayload);
         const newLevels : Array<StoryTreeLevel> = [...state.storyTree.levels, lastLevel];
-        return {
+        nextState = {
           ...state,
           storyTree: { ...state.storyTree, levels: newLevels }
         };
+        break;
       }
     
     case ACTIONS.SET_ERROR:
@@ -305,23 +313,92 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         if (typeof action.payload === 'string') {
           error = action.payload;
         }
-        return {
+        nextState = {
           ...state,
           error: error
         };
+        break;
       }
     
     case ACTIONS.CLEAR_ERROR:
       {
-        return {
+        nextState = {
           ...state,
           error: null
         };
+        break;
+      }
+
+    case ACTIONS.REPLACE_LEVEL_DATA:
+      {
+        if (!state.storyTree) {
+          console.error("REPLACE_LEVEL_DATA: StoryTree is not initialized");
+          return state;
+        }
+        const newLevel = action.payload;
+        const levelNumberToReplace = getLevelNumber(newLevel);
+        if (levelNumberToReplace === null) {
+          console.error("REPLACE_LEVEL_DATA: Invalid level number in payload", newLevel);
+          return state;
+        }
+
+        const currentLevels = state.storyTree.levels;
+        const levelIndex = currentLevels.findIndex(level => getLevelNumber(level) === levelNumberToReplace);
+
+        let updatedLevels;
+        if (levelIndex !== -1) {
+          // Replace existing level
+          updatedLevels = [
+            ...currentLevels.slice(0, levelIndex),
+            newLevel,
+            ...currentLevels.slice(levelIndex + 1)
+          ];
+        } else if (levelNumberToReplace === currentLevels.length) {
+          // Append new level if it's the next one
+          updatedLevels = [...currentLevels, newLevel];
+        } else {
+          console.error(`REPLACE_LEVEL_DATA: Cannot replace level ${levelNumberToReplace}. It does not exist and is not the next level (${currentLevels.length}).`);
+          return state; // Or set an error state
+        }
+
+        nextState = {
+          ...state,
+          storyTree: { ...state.storyTree, levels: updatedLevels },
+        };
+        break;
+      }
+
+    case ACTIONS.CLEAR_LEVELS_AFTER:
+      {
+        if (!state.storyTree) {
+          console.error("CLEAR_LEVELS_AFTER: StoryTree is not initialized");
+          return state;
+        }
+        const targetLevelNumber = action.payload.levelNumber;
+        const filteredLevels = state.storyTree.levels.filter(level => {
+          const levelNum = getLevelNumber(level);
+          // Use explicit if/else for clearer type narrowing
+          if (levelNum === null || levelNum === undefined) {
+            // If levelNum is null, this level should not be kept
+            return false;
+          } else {
+            // Now levelNum is confirmed to be a number
+            // Keep levels up to and including the target level number
+            return levelNum <= targetLevelNumber;
+          }
+        });
+
+        nextState = {
+          ...state,
+          storyTree: { ...state.storyTree, levels: filteredLevels },
+        };
+        break;
       }
     
     default:
-      return state;
+      nextState = state;
   }
+  return nextState;
 }
 
 interface StoryTreeContextType {
