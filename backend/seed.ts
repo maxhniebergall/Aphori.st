@@ -121,86 +121,163 @@ async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
     }
 }
 
+/**
+ * Calculates the start and end character indices for a selection of words in a text.
+ * @param text The source text.
+ * @param startWordIndex The index of the first word in the selection.
+ * @param endWordIndex The index *after* the last word in the selection.
+ * @returns An object with start/end character indices and the extracted excerpt, or null if indices are invalid.
+ */
+function calculateCharIndices(text: string, startWordIndex: number, endWordIndex: number): { start: number; end: number; excerpt: string } | null {
+    const words = text.split(/\s+/); // Split by whitespace
+    if (startWordIndex < 0 || endWordIndex > words.length || startWordIndex >= endWordIndex || words.length === 0) {
+        return null; // Invalid indices or empty text
+    }
+
+    let currentPos = 0;
+    let startChar = -1;
+    let endChar = -1;
+    let firstWordStartIndex = -1;
+
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        const wordStart = text.indexOf(word, currentPos); // Find word start index from current position
+        if (wordStart === -1) {
+            // Should not happen if split is correct, but safeguard
+            logger.error(`Word '${word}' not found in text starting from position ${currentPos}`);
+            return null;
+        }
+        const wordEnd = wordStart + word.length;
+
+        if (i === startWordIndex) {
+            startChar = wordStart;
+        }
+        // We need the end index *after* the last character of the last selected word
+        if (i === endWordIndex - 1) {
+            endChar = wordEnd;
+        }
+
+        currentPos = wordEnd; // Update current position for next search
+    }
+
+    // If selection goes to the very end of the text
+    if (endWordIndex === words.length && startChar !== -1) {
+         endChar = text.length;
+    }
+
+    if (startChar === -1 || endChar === -1) {
+        logger.warn(`Could not determine valid character indices for word range ${startWordIndex}-${endWordIndex}`);
+        return null;
+    }
+
+    const excerptText = text.substring(startChar, endChar);
+
+    return { start: startChar, end: endChar, excerpt: excerptText };
+}
+
 async function seedTestReplies(storyIds: string[], storyContents: string[]): Promise<void> {
     try {
         logger.info("Seeding test replies...");
         for (const storyId of storyIds) {
             const storyContent = storyContents[storyIds.indexOf(storyId)];
+            const storyWords = storyContent.split(/\s+/); // Split by whitespace
+            const storyWordCount = storyWords.length;
+
             for (let storyIdReplyNumber = 0; storyIdReplyNumber < 10; storyIdReplyNumber++) {
                 const rootReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
-                // Create a test reply for each story
                 const timestamp = Date.now();
-                const excerptWords = storyContent.split(' ');
-                const startWords = randomInt(excerptWords.length - 5);
-                const endWords = startWords + randomInt(excerptWords.length - startWords);
-                const excerpt = excerptWords.slice(startWords, endWords).join(' ');
-                const startCharacterIndex = storyContent.indexOf(excerpt);
-                const endCharacterIndex = startCharacterIndex + excerpt.length;
-                const replyText = `This is a test reply (to a story tree) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}].`;
 
-                if (excerpt.length == 0) {
-                    console.log('excerpt is empty, skipping');
-                    continue;
+                // --- Refactored Excerpt/Quote Generation for Story Content ---
+                let quoteResult: { start: number; end: number; excerpt: string } | null = null;
+                if (storyWordCount > 0) {
+                    const maxExcerptLength = Math.min(storyWordCount, 15); // Limit excerpt length
+                    const excerptLength = randomInt(1, maxExcerptLength + 1); // Ensure length is at least 1
+                    const startWordIndex = randomInt(0, storyWordCount - excerptLength + 1); // Ensure start index allows for excerpt length
+                    const endWordIndex = startWordIndex + excerptLength;
+
+                    quoteResult = calculateCharIndices(storyContent, startWordIndex, endWordIndex);
                 }
 
-                // Create a test quote targeting the entire text of the parent post
-                const quote = {
-                    text: excerpt,
+                if (!quoteResult || quoteResult.excerpt.length === 0) {
+                    logger.warn(`Could not generate valid excerpt for story ${storyId}, skipping reply ${storyIdReplyNumber}`);
+                    continue;
+                }
+                // --- End Refactored Excerpt/Quote Generation ---
+
+
+                const replyText = `This is a test reply (to a story tree) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}].`;
+
+                // Create a test quote targeting the calculated excerpt of the parent story
+                const quote: Quote = {
+                    text: quoteResult.excerpt,
                     sourcePostId: storyId,
                     selectionRange: {
-                        start: startCharacterIndex,
-                        end: endCharacterIndex
+                        start: quoteResult.start,
+                        end: quoteResult.end
                     }
-                } as Quote;
+                };
 
                 // Create the reply object using rootReplyId
-                const reply = {
+                const reply: Reply = {
                     id: rootReplyId,
                     text: replyText,
                     parentId: [storyId],
                     quote: quote,
                     authorId: 'seed_user',
-                    createdAt: timestamp.toString()
-                } as Reply;
+                    createdAt: timestamp.toString() // Consider using toISOString() for consistency
+                };
 
                 // Store the reply in Redis
                 await storeReply(reply);
+
                 // create replies to the reply
+                const replyWords = replyText.split(/\s+/); // Split by whitespace
+                const replyWordCount = replyWords.length;
+
                 for (let replyReplyNumber = 0; replyReplyNumber < 4; replyReplyNumber++) {
                     const replyReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
-                    const timestamp = Date.now();
-                    const excerptWords = replyText.split(' ');
-                    const startWords = randomInt(excerptWords.length - 5);
-                    const endWords = startWords + randomInt(excerptWords.length - startWords);
-                    const excerpt = excerptWords.slice(startWords, endWords).join(' ');
-                    const startCharacterIndex = storyContent.indexOf(excerpt);
-                    const endCharacterIndex = startCharacterIndex + excerpt.length;
-                    const replyReplyText = `This is a test reply (to a reply) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}], replyReplyNumber: [${replyReplyNumber}].`;
+                    const timestampReply = Date.now(); // Use a new timestamp
 
-                    if (excerpt.length == 0) {
-                        console.log('excerpt is empty, skipping');
-                        continue;
+                     // --- Refactored Excerpt/Quote Generation for Reply Content ---
+                    let quoteResultReply: { start: number; end: number; excerpt: string } | null = null;
+                    if (replyWordCount > 0) {
+                         const maxExcerptLengthReply = Math.min(replyWordCount, 10); // Limit excerpt length
+                         const excerptLengthReply = randomInt(1, maxExcerptLengthReply + 1); // Ensure length is at least 1
+                         const startWordIndexReply = randomInt(0, replyWordCount - excerptLengthReply + 1); // Ensure start index allows for excerpt length
+                         const endWordIndexReply = startWordIndexReply + excerptLengthReply;
+
+                        quoteResultReply = calculateCharIndices(replyText, startWordIndexReply, endWordIndexReply);
                     }
 
-                    // Create a test quote targeting the entire text of the parent post
-                    const quote = {
-                        text: excerpt,
-                        sourcePostId: rootReplyId,
+                     if (!quoteResultReply || quoteResultReply.excerpt.length === 0) {
+                        logger.warn(`Could not generate valid excerpt for reply ${rootReplyId}, skipping reply-reply ${replyReplyNumber}`);
+                        continue;
+                     }
+                     // --- End Refactored Excerpt/Quote Generation ---
+
+
+                    const replyReplyText = `This is a test reply (to a reply) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}], replyReplyNumber: [${replyReplyNumber}].`;
+
+
+                    // Create a test quote targeting the calculated excerpt of the parent reply
+                    const quoteReply: Quote = {
+                        text: quoteResultReply.excerpt,
+                        sourcePostId: rootReplyId, // Parent is the root reply
                         selectionRange: {
-                            start: startCharacterIndex,
-                            end: endCharacterIndex
+                            start: quoteResultReply.start,
+                            end: quoteResultReply.end
                         }
-                    } as Quote;
+                    };
 
                     // Create the reply object
-                    const replyReply = {
+                    const replyReply: Reply = {
                         id: replyReplyId,
                         text: replyReplyText,
-                        parentId: [rootReplyId],
-                        quote: quote,
+                        parentId: [rootReplyId], // Parent is the root reply
+                        quote: quoteReply,
                         authorId: 'seed_user',
-                        createdAt: timestamp.toString()
-                    } as Reply;
+                        createdAt: timestampReply.toString() // Consider using toISOString()
+                    };
 
                     // Store the reply in Redis
                     await storeReply(replyReply);
@@ -208,7 +285,7 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
             }
         }
 
-        logger.info(`Successfully seeded ${storyIds.length} test replies`);
+        logger.info(`Successfully seeded test replies for ${storyIds.length} stories`);
     } catch (error) {
         logger.error('Error seeding test replies:', error);
         throw error;
