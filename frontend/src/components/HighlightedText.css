@@ -10,10 +10,12 @@
 }
 
 .highlighted-segment {
-  transition: background-color 0.2s ease;
   cursor: pointer;
 }
 
+/* Remove the hover pseudo-class as it's handled by JS state */
+/*
 .highlighted-segment:hover {
   background-color: rgba(50, 205, 50, 0.8) !important;
 } 
+*/ 
