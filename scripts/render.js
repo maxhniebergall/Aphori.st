@@ -108,7 +108,7 @@ import puppeteer from 'puppeteer';
     });
 
     console.log("Loading website...");
-    await page.goto('http://localhost:3000/storyTree/03dk4q3iqpku2x9ikay6h0al0', { 
+    await page.goto('http://localhost:3000/storyTree/03dmk12gciydjae22h4phan7w', { 
         waitUntil: ['networkidle0', 'domcontentloaded', 'load']
     });
 
@@ -190,6 +190,17 @@ import puppeteer from 'puppeteer';
 
     } catch (error) {
         console.error('Error inspecting content:', error);
+    }
+
+    // Click on a highlighted segment
+    try {
+        const highlightedSegmentSelector = '.highlighted-segment';
+        await page.waitForSelector(highlightedSegmentSelector, { timeout: 5000 });
+        console.log('Found highlighted-segment element');
+        await page.click(highlightedSegmentSelector);
+        console.log('Clicked on highlighted-segment element');
+    } catch (error) {
+        console.error('Could not find or click on highlighted-segment element:', error);
     }
 
     // Keep browser open for manual inspection
