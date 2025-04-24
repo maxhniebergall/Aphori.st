@@ -3,6 +3,7 @@
   word-wrap: break-word;
   overflow-wrap: break-word;
   white-space: pre-wrap;
+  line-height: 1.5; /* Increase line spacing */
   user-select: none;
   -webkit-user-select: none;
   -moz-user-select: none;
