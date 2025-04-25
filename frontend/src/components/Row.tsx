@@ -7,8 +7,6 @@
  */
 
 import React, { useRef, useMemo, memo, useCallback, useEffect } from 'react';
-import { ListChildComponentProps } from 'react-window';
-import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
 import StoryTreeLevelComponent from './StoryTreeLevel';
 import { StoryTreeLevel, StoryTreeNode } from '../types/types';
 import { 
@@ -19,28 +17,32 @@ import {
 } from '../utils/levelDataHelpers';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 
-// Row Component Props - combines all previous component props
-interface RowProps extends Omit<ListChildComponentProps, 'data'> {
+// Row Component Props - update to remove react-window and sizing props
+interface RowProps {
   levelData: StoryTreeLevel;
-  setSize: (visualHeight: number) => void;
   shouldHide: boolean;
   index: number;
 }
 
 /**
  * Unified Row component that handles all row-related functionality
- * - Dynamic height management
- * - Content rendering
- * - Style computation
+ * - Content rendering (height managed by content + Virtuoso)
+ * - Style computation simplified
  */
 const Row: React.FC<RowProps> = memo(
   ({
-    style, 
     levelData, 
-    setSize, 
     shouldHide,
     index
   }) => {
+    // Check if hidden first
+    if (shouldHide) {
+      console.log(`Row rendering HIDDEN placeholder - index: ${index}`);
+      // Return a minimal placeholder div with explicit small height
+      return <div style={{ height: '1px', overflow: 'hidden' }} aria-hidden="true" />;
+    }
+
+    // --- If NOT hidden, render the actual row content --- 
     console.log(`Row rendering/mounting - index: ${index}`);
 
     // --- BEGIN: Added logging for levelData reference change at index 0 ---
@@ -67,34 +69,6 @@ const Row: React.FC<RowProps> = memo(
         console.log(`Row unmounting - index: ${index}`);
       };
     }, [index]);
-
-    // Reference to the row element for measuring height
-    const rowRef = useRef<HTMLDivElement>(null);
-
-    // Use the dynamic height hook directly in the Row component
-    useDynamicRowHeight({
-      rowRef,
-      setSize,
-      shouldHide,
-    });
-
-    // Compute the final style for the row
-    const computedStyle: React.CSSProperties = useMemo(() => {
-      return {
-        ...style,
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        width: '100%',
-        padding: shouldHide ? 0 : '20px',
-        boxSizing: 'border-box',
-        display: shouldHide ? 'none' : 'block',
-        minHeight: shouldHide ? 0 : 100,
-        overflow: 'visible',
-        opacity: shouldHide ? 0 : 1,
-        transition: 'opacity 0.2s ease-in-out'
-      };
-    }, [style, shouldHide]);
 
     // Create navigation callbacks for StoryTreeLevel
     const navigateToNextSiblingCallback = useCallback(async () => {
@@ -217,11 +191,10 @@ const Row: React.FC<RowProps> = memo(
 
     // Create content component directly within Row
     const content = useMemo(() => {
-      if (shouldHide) {
-        return null;
-      }
+      // No need to check shouldHide here, handled above
+      console.log(`Row content memo: Rendering actual content - index: ${index}`);
       return (
-        <div className="normal-row-content">
+        <div className="normal-row-content" style={{ margin: 0 }}>
           <StoryTreeLevelComponent
             levelData={levelData}
             navigateToNextSiblingCallback={navigateToNextSiblingCallback}
@@ -229,15 +202,21 @@ const Row: React.FC<RowProps> = memo(
           />
         </div>
       );
-    }, [levelData, shouldHide, navigateToNextSiblingCallback, navigateToPreviousSiblingCallback]);
+    }, [levelData, navigateToNextSiblingCallback, navigateToPreviousSiblingCallback]);
 
+    // Render the container div for a visible row
+    // REMOVE minHeight and conditional height/opacity/overflow/pointerEvents
     return (
       <div
-        ref={rowRef}
-        style={computedStyle}
+        style={{
+            padding: '20px', // Apply padding only when visible
+            boxSizing: 'border-box',
+            // No minHeight, height, opacity, overflow, pointerEvents here
+        }}
         className="row-container"
         role="listitem"
         aria-label="Story content"
+        // aria-hidden is removed as we return placeholder when hidden
       >
         {content}
       </div>
@@ -247,5 +226,8 @@ const Row: React.FC<RowProps> = memo(
 
 // Add display name for better debugging
 Row.displayName = 'Row';
+
+// Memoize the Row component
+export const MemoizedRow = React.memo(Row);
 
 export default Row; 

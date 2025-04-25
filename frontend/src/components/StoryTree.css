@@ -76,16 +76,6 @@ html, body, #root {
   min-height: 0;
 }
 
-.row-container {
-  position: absolute;
-  left: 0;
-  right: 0;
-  width: 100%;
-  box-sizing: border-box;
-  overflow-y: visible;
-  padding: 8px 20px;
-}
-
 .story-tree-node {
   cursor: pointer;
   width: 100%;
@@ -110,7 +100,6 @@ html, body, #root {
 }
 
 .story-node {
-  margin-bottom: 16px;
   position: relative;
   background-color: #fff;
   padding: 12px;
@@ -220,15 +209,6 @@ button {
 .story-list {
   flex: 1;
   min-height: 0;
-}
-
-/* Row styles from StoryTreeRootNode.js */
-.row-container {
-  position: absolute;
-  left: 0;
-  right: 0;
-  width: 100%;
-  box-sizing: border-box;
 }
 
 /* Logo container styles */

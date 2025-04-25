@@ -17,16 +17,13 @@
  */
 
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
-import { VariableSizeList } from 'react-window';
-import InfiniteLoader from 'react-window-infinite-loader';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { Virtuoso } from 'react-virtuoso';
 import { useStoryTree } from '../context/StoryTreeContext';
 import { useReplyContext } from '../context/ReplyContext';
 import { LastLevel, StoryTreeLevel } from '../types/types';
 import storyTreeOperator from '../operators/StoryTreeOperator';
-import Row from './Row';
+import { MemoizedRow } from './Row';
 import { getLevelNumber, isLastLevel } from '../utils/levelDataHelpers';
-import RowFallback from './RowFallback';
 
 interface VirtualizedStoryListProps {
   postRootId: string;
@@ -45,28 +42,13 @@ function useReplyContextForList() {
   ]);
 }
 
-// Memoize the Row component to prevent unnecessary re-renders
-const MemoizedRow = React.memo(Row);
-
 const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ postRootId }) => {
   const { state } = useStoryTree();
   const [isLocalLoading, setIsLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const listRef = useRef<VariableSizeList>(null);
-  const sizeMap = useRef<Map<number, number>>(new Map());
   const [levels, setLevels] = useState<Array<StoryTreeLevel>>([]);
-  const [listSize, setListSize] = useState<number>(Number.MAX_SAFE_INTEGER);
   
-  // Use our selective hook to prevent unnecessary re-renders
   const { replyTarget } = useReplyContextForList();
-
-  // Reset size cache when levels change
-  useEffect(() => {
-    if (listRef.current) {
-      sizeMap.current.clear();
-      listRef.current.resetAfterIndex(0);
-    }
-  }, [levels]);
 
   // useEffects
   // Load initial data
@@ -79,22 +61,17 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     }
   }, [postRootId]);
 
-  // Load more levels
+  // UPDATE: Effect only syncs context levels to local state
   useEffect(() => {
     if (!postRootId) return;
-    setLevels(state?.storyTree?.levels || []);
-
-    // check if we've loaded the last level
-    const lastLevel = state?.storyTree?.levels?.[state?.storyTree?.levels?.length - 1];
-    if (lastLevel && isLastLevel(lastLevel)) {
-      const levelNumber = getLevelNumber(lastLevel);
-      if (levelNumber !== undefined) {
-        // console.log("VirtualizedStoryList: no more levels to load. Setting list size to [" + levelNumber+ "]");
-        setListSize(levelNumber);
-      } else {
-        throw new Error("VirtualizedStoryList: Last Level has no level number");
+    const contextLevels = state?.storyTree?.levels || [];
+    setLevels(prevLevels => {
+      if (prevLevels !== contextLevels) {
+         console.log("VirtualizedStoryList: Context levels reference changed, updating local levels state.", { prevLength: prevLevels.length, newLength: contextLevels.length });
+         return contextLevels;
       }
-    }
+      return prevLevels;
+    });
   }, [postRootId, state?.storyTree?.levels]);
 
   // Set error
@@ -105,7 +82,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     }
   }, [state?.error]);
 
-  // Log the state values driving the conditional rendering below
+  // Update logging
   console.log(`VirtualizedStoryList Check: isLocalLoading: ${isLocalLoading}, levels.length: ${levels.length}, error: ${error}`);
 
   // Show initial loading state
@@ -126,81 +103,52 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     return <div className="error" role="alert">Error: {error}</div>;
   }
 
-  // Memoize the item renderer function to prevent unnecessary re-renders
-  const itemRenderer = useMemo(() => {
-    return ({ index, style }: { index: number, style: React.CSSProperties }) => {
-      const level = state?.storyTree?.levels?.[index];
-      if (!level) {
-        return <RowFallback style={style} index={index} />;
-      }
-      // Log the props passed to Row for debugging propagation
-      // console.log('VirtualizedStoryList: Rendering Row', { index, levelData: level });
-      return (
-        <MemoizedRow
-          levelData={level}
-          style={style}
-          setSize={(height) => {
-            if (height > 0) {
-              sizeMap.current.set(index, height);
-            }
-          }}
-          shouldHide={!!(replyTarget?.levelNumber) && !!(getLevelNumber(level)) && replyTarget.levelNumber < getLevelNumber(level)!}
-          index={index}
-        />
-      );
-    };
-  }, [state?.storyTree?.levels, replyTarget]);
+  // UPDATE: Define Virtuoso's itemContent function
+  const itemContent = useCallback((index: number, level: StoryTreeLevel) => {
+    // level is now provided by Virtuoso from the `data` prop (local levels state)
+    if (!level) {
+      // This case might still happen if the levels array somehow contains null/undefined
+      console.warn(`Virtuoso itemContent: Received null/undefined level data for index ${index}, rendering placeholder.`);
+      return <div style={{ height: '1px' }} />; 
+    }
 
-  // Show content with potential loading more indicator
-  console.log("VirtualizedStoryList: Rendering CONTENT state");
+    // Determine if the row should be hidden based on reply context
+    const shouldHide = !!(replyTarget?.levelNumber) && 
+                       !!(getLevelNumber(level)) && 
+                       replyTarget.levelNumber < getLevelNumber(level)!;
+
+    return (
+      <MemoizedRow
+        levelData={level}
+        shouldHide={shouldHide}
+        index={index}
+      />
+    );
+  // UPDATE dependency array - now depends on replyTarget only, as level comes from Virtuoso
+  }, [replyTarget]);
+
+  // UPDATE: Define the endReached callback for Virtuoso
+  const loadMore = useCallback(() => {
+    // Use local levels.length for startIndex
+    const startIndex = levels.length;
+    console.log(`Virtuoso endReached: loading more from index ${startIndex}`);
+    storyTreeOperator.loadMoreLevels(startIndex, startIndex + 10)
+  // UPDATE dependency array
+  }, [levels.length]); // Depend on local levels state length
+
+  console.log(`VirtualizedStoryList: Rendering CONTENT state with Virtuoso (count: ${levels.length})`);
+  
   return (
-    <div style={{ height: '100%', overflow: 'visible' }} role="list" aria-label="Story tree content">
-      <AutoSizer>
-        {({ height, width }) => {
-          return (
-            <InfiniteLoader
-              isItemLoaded={(index) => {
-                const isLoaded = index < levels.length;
-                return isLoaded;
-              }}
-              itemCount={listSize} 
-              loadMoreItems={async (startIndex: number, stopIndex: number) => {
-                return storyTreeOperator.loadMoreLevels(startIndex, stopIndex);
-              }}
-              minimumBatchSize={10}
-              threshold={5}
-            >
-              {({ onItemsRendered, ref }) => {
-                const refSetter = (list: VariableSizeList | null) => {
-                  listRef.current = list;
-                  if (typeof ref === 'function') {
-                    ref(list);
-                  }
-                };
-
-                return (
-                  <VariableSizeList
-                    height={height}
-                    width={width}
-                    itemCount={levels.length}
-                    itemSize={(index) => {
-                      const size = sizeMap.current.get(index) || 200;
-                      return size;
-                    }}
-                    overscanCount={5}
-                    ref={refSetter}
-                    onItemsRendered={(props) => {
-                      onItemsRendered(props);
-                    }}
-                  >
-                    {itemRenderer}
-                  </VariableSizeList>
-                );
-              }}
-            </InfiniteLoader>
-          );
-        }}
-      </AutoSizer>
+    <div style={{ height: '100%' }} role="list" aria-label="Story tree content">
+      <Virtuoso
+        style={{ height: '100%' }}
+        data={levels}
+        itemContent={itemContent}
+        endReached={loadMore}
+        overscan={5}
+        increaseViewportBy={{ top: 200, bottom: 200 }}
+      />
+      {/* Keep loading indicator, check levels.length */}
       {isLocalLoading && levels.length > 0 && (
         <div className="loading-more" role="alert" aria-busy="true">
           <div className="loading-spinner"></div>
