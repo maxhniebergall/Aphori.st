@@ -6,7 +6,7 @@
  * - Virtualization support for react-window
  */
 
-import React, { useRef, useMemo, memo, useCallback, useState } from 'react';
+import React, { useRef, useMemo, memo, useCallback } from 'react';
 import { ListChildComponentProps } from 'react-window';
 import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
 import StoryTreeLevelComponent from './StoryTreeLevel';
@@ -15,11 +15,9 @@ import {
   getSelectedQuote, 
   getSiblings, 
   getSelectedNodeHelper, 
-  setSelectedNodeHelper, 
-  getRootNodeId,
   isMidLevel
 } from '../utils/levelDataHelpers';
-import { Quote } from '../types/quote';
+import storyTreeOperator from '../operators/StoryTreeOperator';
 
 // Row Component Props - combines all previous component props
 interface RowProps extends Omit<ListChildComponentProps, 'data'> {
@@ -45,9 +43,6 @@ const Row: React.FC<RowProps> = memo(
   }) => {
     // Reference to the row element for measuring height
     const rowRef = useRef<HTMLDivElement>(null);
-
-    // Added dummy state to force re-render
-    const [reRender, setReRender] = useState(0);
 
     // Use the dynamic height hook directly in the Row component
     useDynamicRowHeight({
@@ -75,115 +70,122 @@ const Row: React.FC<RowProps> = memo(
     }, [style, shouldHide]);
 
     // Create navigation callbacks for StoryTreeLevel
-    const navigateToNextSiblingCallback = useCallback(() => {
-      // Skip if not a MidLevel
+    const navigateToNextSiblingCallback = useCallback(async () => {
       if (!isMidLevel(levelData)) {
-        
+        console.warn("Navigate called on non-MidLevel:", levelData);
         return;
       }
 
-      
       const selectedQuote = getSelectedQuote(levelData);
       if (!selectedQuote) {
-        throw new Error('No selected quote');
+        console.error('No selected quote found for navigation in level:', levelData);
+        return;
       }
-      
-      const siblings = getSiblings(levelData);
-      if (!siblings) {
-        throw new Error('No siblings found');
+
+      const siblingsData = getSiblings(levelData);
+      if (!siblingsData) {
+        console.error('No siblings data found for navigation in level:', levelData);
+        return;
       }
-      
-      const siblingsForQuote = siblings.levelsMap.find(
-        ([quote]) => quote && selectedQuote && quote.toString() === selectedQuote.toString()
+
+      const siblingsForQuote = siblingsData.levelsMap.find(
+        ([quoteFromMap]) => quoteFromMap && selectedQuote && quoteFromMap.sourcePostId === selectedQuote.sourcePostId && quoteFromMap.text === selectedQuote.text && quoteFromMap.selectionRange.start === selectedQuote.selectionRange.start && quoteFromMap.selectionRange.end === selectedQuote.selectionRange.end
       );
-      
-      if (!siblingsForQuote){
-        throw new Error('No siblings for quote');
+
+      if (!siblingsForQuote || siblingsForQuote[1].length === 0) {
+        console.error('No siblings found for the selected quote:', selectedQuote, 'in level:', levelData);
+        return;
       }
-      
-      const selectedNode = getSelectedNodeHelper(levelData);
-      if (!selectedNode) {
-        throw new Error('No selected node');
+
+      const currentSelectedNode = getSelectedNodeHelper(levelData);
+      if (!currentSelectedNode) {
+        console.error('No currently selected node found in level:', levelData);
+        return;
       }
-      
-      const currentIndex = siblingsForQuote[1].findIndex(sibling => { 
-        return sibling.id === selectedNode.id;
-      });
-  
-      if (currentIndex + 1 > siblingsForQuote[1].length - 1) {
-        throw new Error('No next sibling');
+
+      const currentIndex = siblingsForQuote[1].findIndex(sibling => sibling.id === currentSelectedNode.id);
+
+      if (currentIndex === -1) {
+         console.error('Current selected node not found within its own sibling list:', currentSelectedNode, siblingsForQuote[1]);
+         return;
       }
-      
+
+      if (currentIndex >= siblingsForQuote[1].length - 1) {
+        console.log('Already at the last sibling.');
+        return;
+      }
+
       const nextSibling = siblingsForQuote[1][currentIndex + 1];
       if (!nextSibling) {
-        throw new Error('No next sibling');
+         console.error('Next sibling is unexpectedly undefined at index', currentIndex + 1, 'in', siblingsForQuote[1]);
+         return;
       }
-      
-      // Update the levelData with the new selected node
-      const updatedLevelData = setSelectedNodeHelper(levelData, nextSibling);
-      // Since we're mutating a prop, we need to update the original object
-      if (levelData.midLevel) {
-        levelData.midLevel.selectedNode = nextSibling;
+
+      try {
+        await storyTreeOperator.setSelectedNode(nextSibling);
+      } catch (error) {
+        console.error("Failed to set selected node:", error);
       }
-      
-      // Force re-render by updating dummy state
-      setReRender(prev => prev + 1);
+
     }, [levelData]);
 
-    const navigateToPreviousSiblingCallback = useCallback(() => {
-      // Skip if not a MidLevel
+    const navigateToPreviousSiblingCallback = useCallback(async () => {
       if (!isMidLevel(levelData)) {
-        
+        console.warn("Navigate called on non-MidLevel:", levelData);
         return;
       }
 
-      
       const selectedQuote = getSelectedQuote(levelData);
       if (!selectedQuote) {
-        throw new Error('No selected quote');
+        console.error('No selected quote found for navigation in level:', levelData);
+        return;
       }
-      
-      const siblings = getSiblings(levelData);
-      if (!siblings) {
-        throw new Error('No siblings found');
+
+      const siblingsData = getSiblings(levelData);
+      if (!siblingsData) {
+        console.error('No siblings data found for navigation in level:', levelData);
+        return;
       }
-      
-      const siblingsForQuote = siblings.levelsMap.find(
-        ([quote]) => quote && selectedQuote && quote.toString() === selectedQuote.toString()
+
+      const siblingsForQuote = siblingsData.levelsMap.find(
+        ([quoteFromMap]) => quoteFromMap && selectedQuote && quoteFromMap.sourcePostId === selectedQuote.sourcePostId && quoteFromMap.text === selectedQuote.text && quoteFromMap.selectionRange.start === selectedQuote.selectionRange.start && quoteFromMap.selectionRange.end === selectedQuote.selectionRange.end
       );
-      
-      if (!siblingsForQuote){
-        throw new Error('No siblings for quote');
+
+      if (!siblingsForQuote || siblingsForQuote[1].length === 0) {
+        console.error('No siblings found for the selected quote:', selectedQuote, 'in level:', levelData);
+        return;
       }
-      
-      const selectedNode = getSelectedNodeHelper(levelData);
-      if (!selectedNode) {
-        throw new Error('No selected node');
+
+      const currentSelectedNode = getSelectedNodeHelper(levelData);
+      if (!currentSelectedNode) {
+        console.error('No currently selected node found in level:', levelData);
+        return;
       }
-      
-      const currentIndex = siblingsForQuote[1].findIndex(sibling => { 
-        return sibling.id === selectedNode.id;
-      });
-  
-      if (currentIndex - 1 < 0) {
-        throw new Error('No previous sibling');
+
+      const currentIndex = siblingsForQuote[1].findIndex(sibling => sibling.id === currentSelectedNode.id);
+
+      if (currentIndex === -1) {
+         console.error('Current selected node not found within its own sibling list:', currentSelectedNode, siblingsForQuote[1]);
+         return;
       }
-      
+
+      if (currentIndex <= 0) {
+        console.log('Already at the first sibling.');
+        return;
+      }
+
       const previousSibling = siblingsForQuote[1][currentIndex - 1];
       if (!previousSibling) {
-        throw new Error('No previous sibling');
+         console.error('Previous sibling is unexpectedly undefined at index', currentIndex - 1, 'in', siblingsForQuote[1]);
+         return;
       }
-      
-      // Update the levelData with the new selected node
-      const updatedLevelData = setSelectedNodeHelper(levelData, previousSibling);
-      // TODO this isn't right, we need to use the updatedLevelData object
-      // Since we're mutating a prop, we need to update the original object
-      if (levelData.midLevel) {
-        levelData.midLevel.selectedNode = previousSibling;
+
+      try {
+        await storyTreeOperator.setSelectedNode(previousSibling);
+      } catch (error) {
+        console.error("Failed to set selected node:", error);
       }
-      
-      // Force re-render by updating dummy state
-      setReRender(prev => prev + 1);
+
     }, [levelData]);
 
     // Create content component directly within Row
@@ -191,8 +193,6 @@ const Row: React.FC<RowProps> = memo(
       if (shouldHide) {
         return null;
       }
-      // Log the props passed to StoryTreeLevelComponent
-      
       return (
         <div className="normal-row-content">
           <StoryTreeLevelComponent
@@ -204,9 +204,6 @@ const Row: React.FC<RowProps> = memo(
       );
     }, [levelData, shouldHide, navigateToNextSiblingCallback, navigateToPreviousSiblingCallback]);
 
-    // Log the props received by Row for debugging propagation
-    
-
     return (
       <div
         ref={rowRef}
@@ -217,27 +214,6 @@ const Row: React.FC<RowProps> = memo(
       >
         {content}
       </div>
-    );
-  },
-  (prevProps, nextProps) => {
-    // Check if the selected node's quote counts have changed
-    const prevSelectedNode = getSelectedNodeHelper(prevProps.levelData);
-    const nextSelectedNode = getSelectedNodeHelper(nextProps.levelData);
-    
-    const prevQuoteCounts = prevSelectedNode?.quoteCounts;
-    const nextQuoteCounts = nextSelectedNode?.quoteCounts;
-    
-    // If quote counts changed, we should re-render
-    if (prevQuoteCounts !== nextQuoteCounts) {
-      return false; // Return false to trigger re-render
-    }
-    
-    // Otherwise, use existing checks to determine if we should update
-    return (
-      getRootNodeId(prevProps.levelData) === getRootNodeId(nextProps.levelData) &&
-      prevProps.index === nextProps.index &&
-      prevProps.style.top === nextProps.style.top &&
-      prevProps.shouldHide === nextProps.shouldHide
     );
   }
 );
