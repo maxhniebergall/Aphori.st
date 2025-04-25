@@ -117,39 +117,10 @@ const ReplyEditor = () => {
 function StoryTreeContent() {
   const navigate = useNavigate();
   const { state } = useStoryTree();
-  const [isRootInitialized, setIsRootInitialized] = useState(false);
-  // Get the UUID from the URL
   const { uuid: rootUUID } = useParams<{ uuid: string }>();
-  
+
   // Use a minimal set of context values to prevent re-renders when replyContent changes
   const { replyTarget } = useReplyContext();
- 
-  // Initialize story tree and fetch data
-  useEffect(() => {
-    let mounted = true;
-
-    const initializeTree = async () => {
-      if (!isRootInitialized && rootUUID && mounted) {
-        try {
-          await StoryTreeOperator.initializeStoryTree(rootUUID);
-          if (mounted) {
-            setIsRootInitialized(true);
-          }
-        } catch (error) {
-          console.error('Failed to initialize story tree:', error);
-          if (mounted) {
-            navigate('/feed');
-          }
-        }
-      }
-    };
-
-    initializeTree();
-
-    return () => {
-      mounted = false;
-    };
-  }, [isRootInitialized, rootUUID, navigate]);
 
   // Instead of returning a global loading spinner, we let VirtualizedStoryList handle progressive loading.
   // Show error state if present
@@ -187,7 +158,36 @@ function StoryTreeContent() {
 }
 
 // Wrapper component with provider
-function StoryTreeHolder() {
+function StoryTreeHolder() {  
+  const { uuid: rootUUID } = useParams<{ uuid: string }>();
+  const navigate = useNavigate();
+
+  // Initialize story tree and fetch data when rootUUID changes
+  useEffect(() => {
+    let mounted = true;
+
+    const initializeTree = async () => {
+      if (rootUUID && mounted) {
+        try {
+          // We assume initializeStoryTree handles resetting state if called again
+          await StoryTreeOperator.initializeStoryTree(rootUUID);
+        } catch (error) {
+          console.error('Failed to initialize story tree:', error);
+          if (mounted) {
+            // Optionally navigate away or show a persistent error
+            navigate('/feed');
+          }
+        }
+      }
+    };
+
+    initializeTree();
+
+    return () => {
+      mounted = false;
+    };
+  }, [rootUUID, navigate]);
+
   return (
     <StoryTreeProvider>
       <ReplyProvider>
