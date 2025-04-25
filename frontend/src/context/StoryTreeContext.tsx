@@ -43,13 +43,6 @@ const initialState: StoryTreeState = {
   error: null,
 };
 
-function getIndexOfNewLevelInExistingLevels(existingLevels: Array<StoryTreeLevel | LastLevel>, level: StoryTreeLevel | LastLevel): number {
-  return existingLevels.findIndex(existingLevel => 
-    getRootNodeId(existingLevel) === getRootNodeId(level) && 
-    getLevelNumber(existingLevel) === getLevelNumber(level)
-  );
-}
-
 // Helper function to find siblings for a quote in the array-based structure
 function findSiblingsForQuote(siblings: Siblings, quote: Quote | null): StoryTreeNode[] {
   const entry = siblings.levelsMap.find(([key]) => {
