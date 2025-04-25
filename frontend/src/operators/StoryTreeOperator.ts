@@ -658,10 +658,15 @@ class StoryTreeOperator extends BaseOperator {
     console.log('[StoryTreeOperator] State before update:', this.store.state);
 
     // 1. Update the selected quote for the current level (N)
-    const updatedLevelN: StoryTreeLevel = setSelectedQuoteHelper(level, quote);
+    const levelNumber = level.midLevel!.levelNumber; // Get level number (safe due to isMidLevel check)
+
+    // Dispatch specific action to update only the selectedQuote in the target level
     this.store.dispatch({
-      type: ACTIONS.INCLUDE_NODES_IN_LEVELS, // Or a more specific UPDATE_LEVEL_QUOTE action if available
-      payload: [updatedLevelN]
+      type: ACTIONS.UPDATE_LEVEL_SELECTED_QUOTE, // <<< Use new specific action type
+      payload: {
+        levelNumber: levelNumber,
+        newQuote: quote // Pass the necessary info to the reducer
+      }
     });
     
     // Add this check to satisfy the linter, although isMidLevel should have handled it

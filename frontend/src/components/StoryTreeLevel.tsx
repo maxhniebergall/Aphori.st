@@ -423,6 +423,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         <div {...bind()} style={{ touchAction: 'none' }}>
           <motion.div
             className={`story-tree-node ${isReplyTarget(nodeToRender) ? 'reply-target' : ''}`}
+            key={nodeToRender?.rootNodeId + levelData.midLevel?.levelNumber}
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0 }}

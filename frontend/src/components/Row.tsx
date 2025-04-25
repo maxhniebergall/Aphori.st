@@ -6,7 +6,7 @@
  * - Virtualization support for react-window
  */
 
-import React, { useRef, useMemo, memo, useCallback } from 'react';
+import React, { useRef, useMemo, memo, useCallback, useEffect } from 'react';
 import { ListChildComponentProps } from 'react-window';
 import useDynamicRowHeight from '../hooks/useDynamicRowHeight';
 import StoryTreeLevelComponent from './StoryTreeLevel';
@@ -41,6 +41,33 @@ const Row: React.FC<RowProps> = memo(
     shouldHide,
     index
   }) => {
+    console.log(`Row rendering/mounting - index: ${index}`);
+
+    // --- BEGIN: Added logging for levelData reference change at index 0 ---
+    const prevLevelDataRef = useRef<StoryTreeLevel | undefined>(undefined);
+    useEffect(() => {
+      if (index === 0) {
+        if (prevLevelDataRef.current && prevLevelDataRef.current !== levelData) {
+          console.log(`Row[0]: levelData REFERENCE CHANGED between renders.`);
+        } else if (!prevLevelDataRef.current) {
+          console.log(`Row[0]: Initial render, storing levelData reference.`);
+        } else {
+          console.log(`Row[0]: levelData reference SAME between renders.`);
+        }
+        // Update the ref *after* the comparison
+        prevLevelDataRef.current = levelData;
+      }
+    }, [levelData, index]); // Depend on levelData and index
+    // --- END: Added logging --- 
+
+    // Log unmount
+    useEffect(() => {
+      // This cleanup function runs only when the component unmounts
+      return () => {
+        console.log(`Row unmounting - index: ${index}`);
+      };
+    }, [index]);
+
     // Reference to the row element for measuring height
     const rowRef = useRef<HTMLDivElement>(null);
 
