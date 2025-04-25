@@ -175,6 +175,7 @@ export const ACTIONS = {
   SET_INITIAL_STORY_TREE_DATA: 'SET_INITIAL_STORY_TREE_DATA',
   INCLUDE_NODES_IN_LEVELS: 'INCLUDE_NODES_IN_LEVELS',
   SET_SELECTED_NODE: 'SET_SELECTED_NODE',
+  UPDATE_LEVEL_SELECTED_QUOTE: 'UPDATE_LEVEL_SELECTED_QUOTE',
   REPLACE_LEVEL_DATA: 'REPLACE_LEVEL_DATA',
   CLEAR_LEVELS_AFTER: 'CLEAR_LEVELS_AFTER',
   SET_LAST_LEVEL: 'SET_LAST_LEVEL',
@@ -187,6 +188,7 @@ export type Action =
   | { type: typeof ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { storyTree: StoryTree } }
   | { type: typeof ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: StoryTreeLevel[] }
   | { type: typeof ACTIONS.SET_SELECTED_NODE; payload: StoryTreeNode }
+  | { type: typeof ACTIONS.UPDATE_LEVEL_SELECTED_QUOTE; payload: { levelNumber: number; newQuote: Quote } }
   | { type: typeof ACTIONS.REPLACE_LEVEL_DATA; payload: StoryTreeLevel }
   | { type: typeof ACTIONS.CLEAR_LEVELS_AFTER; payload: { levelNumber: number } }
   | { type: typeof ACTIONS.SET_LAST_LEVEL; payload: { levelNumber: number } } 

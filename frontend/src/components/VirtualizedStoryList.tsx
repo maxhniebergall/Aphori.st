@@ -105,8 +105,12 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     }
   }, [state?.error]);
 
+  // Log the state values driving the conditional rendering below
+  console.log(`VirtualizedStoryList Check: isLocalLoading: ${isLocalLoading}, levels.length: ${levels.length}, error: ${error}`);
+
   // Show initial loading state
   if (isLocalLoading && !levels.length) {
+    console.log("VirtualizedStoryList: Rendering LOADING state");
     return (
       <div className="loading" role="alert" aria-busy="true">
         <div className="loading-spinner"></div>
@@ -117,6 +121,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
 
   // Show error state
   if (error) {
+    console.log("VirtualizedStoryList: Rendering ERROR state:", error);
     // console.warn("VirtualizedStoryList: Showing error state:", error);
     return <div className="error" role="alert">Error: {error}</div>;
   }
@@ -147,6 +152,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   }, [state?.storyTree?.levels, replyTarget]);
 
   // Show content with potential loading more indicator
+  console.log("VirtualizedStoryList: Rendering CONTENT state");
   return (
     <div style={{ height: '100%', overflow: 'visible' }} role="list" aria-label="Story tree content">
       <AutoSizer>

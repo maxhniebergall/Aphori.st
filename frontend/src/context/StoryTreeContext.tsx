@@ -68,140 +68,119 @@ function findSiblingsForQuote(siblings: Siblings, quote: Quote | null): StoryTre
   return entry ? entry[1] : [];
 }
 
-function mergeLevel(existingLevel: StoryTreeLevel, newLevel: StoryTreeLevel): StoryTreeLevel {
-  // Existing nodes with the same ID as the new nodes are replaced with the new nodes
-  // Other existing nodes are left unchanged
-  // Other new nodes are added to the level
-  // The siblings are updated to include the new nodes
-  // The level is returned
+export function mergeLevels(existingLevels: Array<StoryTreeLevel>, newLevelsPayload: Array<StoryTreeLevel>): Array<StoryTreeLevel> {
+  const processedNewLevelIndices = new Set<number>();
+  let overallChange = false; // Track if any level object reference changes
 
-  if (!isMidLevel(existingLevel) || !isMidLevel(newLevel)) {
-    throw new Error("Both levels must be MidLevel to merge");
-  }
+  const potentiallyUpdatedLevels = existingLevels.map(existingLevel => {
+    // Find corresponding level data in the payload
+    const newLevelIndex = newLevelsPayload.findIndex(newLevel =>
+      getRootNodeId(newLevel) === getRootNodeId(existingLevel) &&
+      getLevelNumber(newLevel) === getLevelNumber(existingLevel)
+    );
 
-  if (!existingLevel.midLevel || !newLevel.midLevel) {
-    throw new Error("MidLevel is not defined");
-  }
-
-  const existingNodes = existingLevel.midLevel.siblings.levelsMap.flatMap(([_, nodes]) => nodes);
-  const newNodes = newLevel.midLevel.siblings.levelsMap.flatMap(([_, nodes]) => nodes);
-
-  const mergedNodes = [...existingNodes];
-
-  for (const newNode of newNodes) {
-    const existingNodeIndex = mergedNodes.findIndex(node => node.id === newNode.id);
-    if (existingNodeIndex >= 0) {
-      mergedNodes[existingNodeIndex] = newNode;
-    } else {
-      mergedNodes.push(newNode);
+    if (newLevelIndex === -1) {
+      // No new data for this existing level, return original reference
+      return existingLevel;
     }
-  }
 
-  const updatedSiblings = updateSiblingsForQuoteHelper(
-    existingLevel.midLevel.siblings,
-    newLevel.midLevel.selectedQuote,
-    mergedNodes
-  );
+    const newLevelData = newLevelsPayload[newLevelIndex];
+    processedNewLevelIndices.add(newLevelIndex);
 
-  return {
-    ...existingLevel,
-    midLevel: {
-      ...existingLevel.midLevel,
-      siblings: updatedSiblings
+    if (newLevelData.isLastLevel) {
+      console.warn(`Attempted to merge LastLevel into existing Level ${getLevelNumber(existingLevel)}. Ignoring payload for this level.`);
+      return existingLevel;
     }
-  };
-}
+    if (!isMidLevel(existingLevel) || !existingLevel.midLevel) {
+      console.warn(`Attempted to merge into non-MidLevel or invalid existing Level ${getLevelNumber(existingLevel)}. Ignoring payload for this level.`);
+      return existingLevel;
+    }
+    if (!isMidLevel(newLevelData) || !newLevelData.midLevel) {
+      console.warn(`Payload for level ${getLevelNumber(existingLevel)} is not a valid MidLevel. Ignoring payload.`);
+      return existingLevel;
+    }
 
-export function mergeLevels(existingLevels: Array<StoryTreeLevel>, newLevels: Array<StoryTreeLevel>): Array<StoryTreeLevel> {
-  const returnableLevels = [...existingLevels];
+    let currentLevel = existingLevel;
+    let currentMidLevel = existingLevel.midLevel;
+    let currentSiblings = currentMidLevel.siblings;
+    let siblingsChanged = false; // Track if siblings reference changes
 
-  for (const levelWithNewItems of newLevels) {
-    const levelIndex = getIndexOfNewLevelInExistingLevels(existingLevels, levelWithNewItems);
-    
-    if (levelIndex === -1) {
-      // indicates a new level
-      returnableLevels.push(levelWithNewItems);
-    } else if (levelWithNewItems.isLastLevel) {
-      throw new Error("attempting to replace an existing level with a LastLevel[" + getLevelNumber(levelWithNewItems) + "]"  + JSON.stringify({levelWithNewItems, returnableLevels, levelIndex}));
-    } else {
-      // Merge the existing level with the new level
-      // Existing nodes with the same ID as the new nodes are replaced with the new nodes
-      
-      // Create a new level with updated pagination
-      const updatedLevel = mergeLevel(returnableLevels[levelIndex], levelWithNewItems);
+    // Get the latest pagination info from the payload, regardless of whether it changed
+    const latestPagination = newLevelData.midLevel.pagination ?? currentMidLevel.pagination;
 
-      returnableLevels[levelIndex] = updatedLevel;
+    // Merge Nodes/Siblings
+    const newSiblingsPayload = newLevelData.midLevel.siblings;
+    if (newSiblingsPayload?.levelsMap) {
+      for (const [quote, newNodesForQuote] of newSiblingsPayload.levelsMap) {
+        const existingNodesForQuote = findSiblingsForQuote(currentSiblings, quote);
+        const existingIds = new Set(existingNodesForQuote.map(node => node.id));
+        const uniqueNewNodes = newNodesForQuote.filter(node => !existingIds.has(node.id));
 
-      // Merge siblings map using cursor based pagination.
-      // Instead of using an index for insertion, check for the existence of prevCursor:
-      // if prevCursor exists, the new nodes are from an earlier page and should be prepended;
-      // otherwise, they are appended.
-      const newSiblings = getSiblings(levelWithNewItems);
-      if (newSiblings?.levelsMap) {
-        for (const [quote, newNodesAtLevel] of newSiblings.levelsMap) {
-          const existingSiblings = findSiblingsForQuote(getSiblings(updatedLevel)!, quote);
-          
-          // Filter out nodes that already exist
-          const existingIds = existingSiblings ? new Set(existingSiblings.map((node: StoryTreeNode) => node.id)) : new Set();
-          const uniqueNewNodes = newNodesAtLevel.filter((node: StoryTreeNode) => !existingIds.has(node.id));
-          
-          if (existingSiblings && existingSiblings.length > 0) {
-            const pagination = getPagination(levelWithNewItems);
-            if (pagination?.prevCursor) {
-              // Prepend new nodes if pagination indicates loading a previous page.
-              const updatedSiblings = updateSiblingsForQuoteHelper(
-                getSiblings(updatedLevel)!,
-                quote,
-                [...uniqueNewNodes, ...existingSiblings]
-              );
-              
-              // Update the level with the new siblings
-              returnableLevels[levelIndex] = {
-                ...updatedLevel,
-                midLevel: {
-                  ...updatedLevel.midLevel!,
-                  siblings: updatedSiblings
-                }
-              };
-            } else {
-              // Otherwise, append new nodes.
-              const updatedSiblings = updateSiblingsForQuoteHelper(
-                getSiblings(updatedLevel)!,
-                quote,
-                [...existingSiblings, ...uniqueNewNodes]
-              );
-              
-              // Update the level with the new siblings
-              returnableLevels[levelIndex] = {
-                ...updatedLevel,
-                midLevel: {
-                  ...updatedLevel.midLevel!,
-                  siblings: updatedSiblings
-                }
-              };
-            }
-          } else {
-            const updatedSiblings = updateSiblingsForQuoteHelper(
-              getSiblings(updatedLevel)!,
-              quote,
-              uniqueNewNodes
-            );
-            
-            // Update the level with the new siblings
-            returnableLevels[levelIndex] = {
-              ...updatedLevel,
-              midLevel: {
-                ...updatedLevel.midLevel!,
-                siblings: updatedSiblings
-              }
-            };
-          }
+        if (uniqueNewNodes.length === 0) {
+          continue;
+        }
+
+        let finalNodesForQuote;
+        const newLevelPagination = getPagination(newLevelData); // Use pagination from *new* data for prepend/append logic
+        if (newLevelPagination?.prevCursor) {
+          finalNodesForQuote = [...uniqueNewNodes, ...existingNodesForQuote];
+        } else {
+          finalNodesForQuote = [...existingNodesForQuote, ...uniqueNewNodes];
+        }
+
+        const updatedSiblingsResult = updateSiblingsForQuoteHelper(
+          currentSiblings,
+          quote,
+          finalNodesForQuote
+        );
+
+        if (updatedSiblingsResult !== currentSiblings) {
+          currentSiblings = updatedSiblingsResult; // Update siblings reference
+          siblingsChanged = true; // Mark that siblings object *did* change
         }
       }
     }
+
+    // If siblings changed, update midLevel and level references
+    if (siblingsChanged) {
+        // Create new midLevel object containing the new siblings reference and the latest pagination
+        currentMidLevel = { 
+            ...currentMidLevel, // Spread existing midLevel to preserve other properties
+            siblings: currentSiblings, 
+            pagination: latestPagination // Include the most recent pagination info
+        };
+        // Create new level object wrapping the new midLevel
+        currentLevel = { ...existingLevel, midLevel: currentMidLevel };
+        overallChange = true; // Mark that an object reference *did* change
+        return currentLevel; 
+    } else {
+        // Siblings did not change, BUT we might still need to update the pagination *within* the existing midLevel reference
+        // if it changed in the payload.
+        if (latestPagination !== existingLevel.midLevel.pagination && JSON.stringify(latestPagination) !== JSON.stringify(existingLevel.midLevel.pagination)) {
+             // Mutate pagination directly ONLY IF siblings didn't change.
+             // This is less ideal than full immutability but avoids level reference change.
+             // Consider if a more complex structure is needed if this becomes problematic.
+             existingLevel.midLevel.pagination = latestPagination; 
+             // Note: We *don't* set overallChange = true here, as the level reference itself didn't change.
+        }
+        // No change in siblings, return the original level object reference
+        return existingLevel;
+    }
+  });
+
+  // Append any completely new levels from the payload
+  const completelyNewLevels = newLevelsPayload.filter((_, index) => !processedNewLevelIndices.has(index));
+  if (completelyNewLevels.length > 0) {
+    overallChange = true; // Adding new levels is a change
+    // Note: Potentially mutated pagination in existing levels won't be reflected 
+    // unless we use potentiallyUpdatedLevels here. Decide based on desired behavior.
+    // If mutation above is acceptable, we might return existingLevels if overallChange remains false.
+    // Let's stick to returning the mapped array + new levels for now.
+     return [...potentiallyUpdatedLevels, ...completelyNewLevels];
   }
 
-  return returnableLevels;
+  // Return original array *only* if no levels were added AND no existing level references were changed.
+  return overallChange ? potentiallyUpdatedLevels : existingLevels;
 }
 
 function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {
@@ -254,34 +233,77 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
     case ACTIONS.SET_SELECTED_NODE:
       {
         if (!state.storyTree) {
-          console.error("StoryTree is not initialized");
+          console.error("SET_SELECTED_NODE: StoryTree is not initialized");
           return state;
         }
 
         const selectedNode: StoryTreeNode = action.payload;
-        const updatedLevel = state.storyTree.levels.find(level => 
-          getLevelNumber(level) === selectedNode.levelNumber
-        );
+        const targetLevelNumber = selectedNode.levelNumber;
 
-        if (!updatedLevel) {
-          console.error("Selected level not found");
-          return state; // or handle the error as needed
-        }
+        // Use .map() for immutable update, similar to UPDATE_LEVEL_SELECTED_QUOTE
+        const newLevels = state.storyTree.levels.map(level => {
+          if (getLevelNumber(level) === targetLevelNumber) {
+            // Call helper to get the immutably updated level object
+            // This helper already creates new level and midLevel objects internally
+            return setSelectedNodeHelper(level, selectedNode);
+          } else {
+            // Return original object reference for other levels
+            return level;
+          }
+        });
 
-        // Create a new levels array
-        const newLevels = [...state.storyTree.levels];
-        
-        // Update the level with the selected node using the helper function
-        newLevels[selectedNode.levelNumber] = setSelectedNodeHelper(updatedLevel as StoryTreeLevel, selectedNode);
-        
         // Truncate levels after the selected level if needed
-        if (selectedNode.levelNumber < newLevels.length - 1) {
-          newLevels.length = selectedNode.levelNumber + 1;
-        }
-        
+        // Ensure the truncation happens *after* the mapping
+        const finalLevels = newLevels.slice(0, targetLevelNumber + 1);
+
         nextState = {
           ...state,
-          storyTree: { ...state.storyTree, levels: newLevels }
+          storyTree: {
+            ...state.storyTree,
+            levels: finalLevels as StoryTreeLevel[] // Ensure type consistency
+          }
+        };
+        break;
+      }
+
+    case ACTIONS.UPDATE_LEVEL_SELECTED_QUOTE:
+      {
+        if (!state.storyTree) {
+          console.error("UPDATE_LEVEL_SELECTED_QUOTE: StoryTree is not initialized");
+          return state;
+        }
+        const { levelNumber: targetLevelNumber, newQuote } = action.payload;
+
+        // No explicit type here, let map infer
+        const newLevels = state.storyTree.levels.map(level => {
+          // Only modify the target level
+          if (getLevelNumber(level) === targetLevelNumber) {
+            // Ensure it's a MidLevel before updating
+            if (isMidLevel(level) && level.midLevel) {
+              // Return a *new* level object with the *new* midLevel object containing the new quote
+              return {
+                ...level,
+                midLevel: {
+                  ...level.midLevel,
+                  selectedQuote: newQuote
+                }
+              };
+            } else {
+              console.warn(`UPDATE_LEVEL_SELECTED_QUOTE: Attempted to update non-MidLevel or invalid MidLevel at index ${targetLevelNumber}`);
+              return level; // Return original if not a valid MidLevel to update
+            }
+          } else {
+            // For all other levels, return the original object reference
+            return level;
+          }
+        });
+
+        nextState = {
+          ...state,
+          storyTree: {
+            ...state.storyTree,
+            levels: newLevels as StoryTreeLevel[]
+          }
         };
         break;
       }
@@ -292,14 +314,34 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           console.error("StoryTree is not initialized");
           return state;
         }
-        const lastLevelNumberInStoryTree = state.storyTree.levels.length - 1;
-        const lastLevelNumberInPayload = action.payload.levelNumber;
-        if (lastLevelNumberInStoryTree + 1 !== lastLevelNumberInPayload) {
-          console.error(`Last level in story tree (${lastLevelNumberInStoryTree + 1}) does not match last level in payload (${lastLevelNumberInPayload})`);
-          return state;
+        // We still need the rootNodeId from the state's post
+        if (!state.storyTree.post?.id) {
+           console.error("SET_LAST_LEVEL: Cannot determine rootNodeId from post");
+           return state; // Or set error
         }
-        const lastLevel : StoryTreeLevel = createLastLevel(state.storyTree.post.id, lastLevelNumberInPayload);
-        const newLevels : Array<StoryTreeLevel> = [...state.storyTree.levels, lastLevel];
+        const rootNodeId = state.storyTree.post.id;
+        const lastLevelNumberInPayload = action.payload.levelNumber;
+        
+        // Create the LastLevel data part
+        const lastLevelData: LastLevel = { 
+            levelNumber: lastLevelNumberInPayload, 
+            rootNodeId: rootNodeId 
+        };
+
+        // Create the full StoryTreeLevel object representing the last level
+        const lastLevelAsStoryTreeLevel: StoryTreeLevel = {
+            isLastLevel: true,
+            midLevel: null,
+            lastLevel: lastLevelData
+        };
+
+        // Append this correctly typed object
+        // Ensure the array type matches the updated StoryTree.levels type
+        const newLevels : Array<StoryTreeLevel> = [
+            ...state.storyTree.levels,
+             lastLevelAsStoryTreeLevel
+        ]; 
+
         nextState = {
           ...state,
           storyTree: { ...state.storyTree, levels: newLevels }
