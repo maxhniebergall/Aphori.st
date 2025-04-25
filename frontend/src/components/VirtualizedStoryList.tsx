@@ -54,7 +54,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<VariableSizeList>(null);
   const sizeMap = useRef<Map<number, number>>(new Map());
-  const [levels, setLevels] = useState<Array<StoryTreeLevel | LastLevel>>([]);
+  const [levels, setLevels] = useState<Array<StoryTreeLevel>>([]);
   const [listSize, setListSize] = useState<number>(Number.MAX_SAFE_INTEGER);
   
   // Use our selective hook to prevent unnecessary re-renders

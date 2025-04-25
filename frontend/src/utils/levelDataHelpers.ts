@@ -10,7 +10,7 @@ import { Quote } from '../types/quote';
 /**
  * Check if a level is a LastLevel
  */
-export function isLastLevel(level: StoryTreeLevel | LastLevel): boolean {
+export function isLastLevel(level: StoryTreeLevel): boolean {
   if ('isLastLevel' in level) {
     return level.isLastLevel || (level.lastLevel !== null && level.midLevel === null);
   }
@@ -20,7 +20,7 @@ export function isLastLevel(level: StoryTreeLevel | LastLevel): boolean {
 /**
  * Check if a level is a MidLevel
  */
-export function isMidLevel(level: StoryTreeLevel | LastLevel): boolean {
+export function isMidLevel(level: StoryTreeLevel): boolean {
   if ('isLastLevel' in level) {
     return !level.isLastLevel && level.midLevel !== null;
   }
@@ -30,11 +30,7 @@ export function isMidLevel(level: StoryTreeLevel | LastLevel): boolean {
 /**
  * Get the rootNodeId from a StoryTreeLevel or LastLevel
  */
-export function getRootNodeId(level: StoryTreeLevel | LastLevel): string | undefined {
-  if ('rootNodeId' in level) {
-    return level.rootNodeId; // Direct access for LastLevel
-  }
-  
+export function getRootNodeId(level: StoryTreeLevel): string | undefined { 
   if (isLastLevel(level) && level.lastLevel) {
     return level.lastLevel.rootNodeId;
   } else if (isMidLevel(level) && level.midLevel) {
@@ -46,11 +42,7 @@ export function getRootNodeId(level: StoryTreeLevel | LastLevel): string | undef
 /**
  * Get the levelNumber from a StoryTreeLevel or LastLevel
  */
-export function getLevelNumber(level: StoryTreeLevel | LastLevel): number | undefined {
-  if ('levelNumber' in level) {
-    return level.levelNumber; // Direct access for LastLevel
-  }
-  
+export function getLevelNumber(level: StoryTreeLevel): number | undefined {
   if (isLastLevel(level) && level.lastLevel) {
     return level.lastLevel.levelNumber;
   } else if (isMidLevel(level) && level.midLevel) {

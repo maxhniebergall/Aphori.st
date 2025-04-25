@@ -685,7 +685,7 @@ class StoryTreeOperator extends BaseOperator {
       const limit = 5; // Or fetch from config/state
       const maybeFirstReplies = await this.fetchFirstRepliesForLevel(nextLevelNumber, parentId, quote, sortingCriteria, limit);
 
-      let nextLevelData: StoryTreeLevel | LastLevel;
+      let nextLevelData: StoryTreeLevel;
 
       if (maybeFirstReplies && maybeFirstReplies.data.length > 0) {
         const firstReplies: Reply[] = maybeFirstReplies.data;
