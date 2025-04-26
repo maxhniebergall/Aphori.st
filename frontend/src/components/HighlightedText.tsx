@@ -39,7 +39,8 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
   selectedQuoteOfThisNode
 }) => {
   const [activeSelectionIndex, setActiveSelectionIndex] = useState<number | null>(null);
-  const [clickCycleState, setClickCycleState] = useState<Map<number, number>>(new Map());
+  // Index in the main `selections` array of the last activated quote via click cycle
+  const [globalCycleIndex, setGlobalCycleIndex] = useState<number>(-1); 
 
   // Compute text segments with overlap information
   const segments = useMemo(() => {
@@ -85,37 +86,88 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
 
   // Handle click on a highlighted segment
   const handleSegmentClick = (segment: TextSegment) => {
-    if (!onSegmentClick || segment.overlapCount === 0 || segment.overlappingQuoteOriginalIndices.length === 0) {
+    if (!onSegmentClick || segment.overlapCount === 0 || !selections || selections.length === 0) {
       return;
     }
 
-    // Determine the next index in the cycle for this segment
-    const currentCycleIndex = clickCycleState.get(segment.start) ?? -1; // Start before the first index
-    const nextCycleIndex = (currentCycleIndex + 1) % segment.overlappingQuoteOriginalIndices.length;
-    
-    // Update the cycle state for this segment's start position
-    setClickCycleState(new Map(clickCycleState).set(segment.start, nextCycleIndex));
+    const overlappingIndices = segment.overlappingQuoteOriginalIndices;
+    if (overlappingIndices.length === 0) {
+      return; // Should not happen if overlapCount > 0, but safeguard
+    }
 
-    // Get the actual original index of the selection to activate
-    const activatedSelectionIndex = segment.overlappingQuoteOriginalIndices[nextCycleIndex];
+    // Find the next quote index in the global cycle that overlaps this segment
+    let nextGlobalIndex = -1;
+    let searchStartIndex = (globalCycleIndex + 1) % selections.length;
+    for (let i = 0; i < selections.length; i++) {
+      const currentIndex = (searchStartIndex + i) % selections.length;
+      
+      // Check if the quote at currentIndex overlaps with the clicked segment
+      const currentQuote = selections[currentIndex];
+      if (currentQuote && currentQuote.selectionRange && 
+          currentQuote.selectionRange.start <= segment.start && 
+          currentQuote.selectionRange.end >= segment.end &&
+          overlappingIndices.includes(currentIndex)) { // Ensure it's one of the segment's overlaps
+          
+          nextGlobalIndex = currentIndex;
+          break; // Found the next one
+      }
+    }
+
+    // Fallback if no suitable next quote is found (e.g., filters changed)
+    // In this case, just pick the first overlapping quote for the segment
+    if (nextGlobalIndex === -1) {
+        nextGlobalIndex = overlappingIndices[0];
+    }
     
+    // Update the global cycle index
+    setGlobalCycleIndex(nextGlobalIndex);
+
     // Set this selection as active (for hover effect consistency after click)
-    setActiveSelectionIndex(activatedSelectionIndex); 
+    // setActiveSelectionIndex(nextGlobalIndex); // Removed this line
 
     // Trigger the callback with the selected quote
-    if (activatedSelectionIndex >= 0 && activatedSelectionIndex < selections.length) {
-      onSegmentClick(selections[activatedSelectionIndex]);
+    if (nextGlobalIndex >= 0 && nextGlobalIndex < selections.length) {
+      onSegmentClick(selections[nextGlobalIndex]);
     }
   };
 
   // Handle mouse enter on a segment
   const handleMouseEnter = (segment: TextSegment) => {
-    if (segment.overlapCount > 0 && segment.overlappingQuoteOriginalIndices.length > 0) {
-      // For hover, always highlight the first associated selection for simplicity
-      // More complex logic could cycle on hover too, but might be jarring.
-      const hoverSelectionIndex = segment.overlappingQuoteOriginalIndices[0];
-      setActiveSelectionIndex(hoverSelectionIndex);
+    if (segment.overlapCount === 0 || !selections || selections.length === 0) {
+      setActiveSelectionIndex(null);
+      return;
     }
+
+    const overlappingIndices = segment.overlappingQuoteOriginalIndices;
+    if (overlappingIndices.length === 0) {
+      setActiveSelectionIndex(null);
+      return; 
+    }
+
+    // Find the quote index that *would* be selected next in the global cycle if clicked
+    let nextQuoteIndexForHover = -1;
+    let searchStartIndex = (globalCycleIndex + 1) % selections.length;
+    for (let i = 0; i < selections.length; i++) {
+      const currentIndex = (searchStartIndex + i) % selections.length;
+      
+      const currentQuote = selections[currentIndex];
+      if (currentQuote && currentQuote.selectionRange && 
+          currentQuote.selectionRange.start <= segment.start && 
+          currentQuote.selectionRange.end >= segment.end &&
+          overlappingIndices.includes(currentIndex)) { 
+          
+          nextQuoteIndexForHover = currentIndex;
+          break; 
+      }
+    }
+
+    // Fallback if no suitable next quote is found (e.g., after filtering)
+    if (nextQuoteIndexForHover === -1 && overlappingIndices.length > 0) {
+        nextQuoteIndexForHover = overlappingIndices[0];
+    }
+    
+    // Set this quote as active for hover effect
+    setActiveSelectionIndex(nextQuoteIndexForHover);
   };
 
   // Handle mouse leave from a segment
@@ -170,6 +222,8 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
             borderRadius: '2px',
           } : {})
         };
+
+        console.log(`Segment ${JSON.stringify(segment)} isBlueUnderlineSegment: ${isBlueUnderlineSegment} isActiveSegment: ${isActiveSegment}`);
 
         return (
           <span 
