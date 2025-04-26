@@ -37,46 +37,27 @@ export class BaseOperator {
       const isCompressed = response.headers['x-data-compressed'] === 'true';
       const responseData = response.data;
 
-      console.log("BaseOperator: Response structure:", {
-        isCompressed,
-        hasVersion: responseData?.v !== undefined,
-        dataCompressed: responseData?.c === true,
-        hasData: responseData?.d !== undefined,
-        hasItems: responseData?.items !== undefined
-      });
-
       if (isCompressed || (responseData?.v === 1 && responseData?.c === true && responseData?.d) || responseData?.items) {
         // Handle single compressed item
         if (responseData?.v === 1 && responseData?.c === true && responseData?.d) {
-          console.log("BaseOperator: Processing compressed single item");
           const decompressedData = await this.decompressItem<T>(responseData);
-          console.log("BaseOperator: Successfully decompressed single item");
-          console.log("BaseOperator: Decompressed data:", JSON.stringify(decompressedData, null, 2));
           return decompressedData;
         } 
         // Handle compressed array of items
         else if (responseData?.items && Array.isArray(responseData.items)) {
-          console.log("BaseOperator: Processing compressed array of items");
-          // Here we assume T is an array type; the caller should pass e.g. retryApiCall<ExpectedType[]>(...)
           const decompressedItems = await Promise.all(
             responseData.items.map((item: unknown) => this.decompressItem<any>(item))
           );
-          console.log("BaseOperator: Successfully decompressed array items");
           return decompressedItems as unknown as T;
         }
 
         // Legacy compressed response
-        console.log("BaseOperator: Processing legacy compressed response");
         const decompressedResponse = await compression.decompress(responseData);
-        console.log("BaseOperator: Successfully decompressed legacy response");
         return decompressedResponse as T;
       } else if (responseData?.v === 1 && responseData?.c === false && responseData?.d) {
-        console.log("BaseOperator: Processing encoded response");
         const unencodedResponse = compression.unencode(responseData.d);
-        console.log("BaseOperator: Successfully unencoded response");
         return unencodedResponse as T;
       } else {
-        console.log("BaseOperator: Response is not compressed, returning as is");
         return responseData as T;
       }
     } catch (error) {
@@ -94,16 +75,9 @@ export class BaseOperator {
   async decompressItem<T = unknown>(item: any): Promise<T> {
     try {
       const itemObject = typeof item === 'string' ? JSON.parse(item) : item;
-      console.log("BaseOperator: Decompressing item structure:", {
-        hasVersion: itemObject?.v !== undefined,
-        isCompressed: itemObject?.c === true,
-        hasData: itemObject?.d !== undefined
-      });
 
       if (itemObject?.v === 1 && itemObject?.c === true && itemObject?.d) {
-        console.log("BaseOperator: Decompressing compressed item");
         const decompressedItem = await compression.decompress(itemObject.d);
-        console.log("BaseOperator: Successfully decompressed item");
         try {
           if (typeof decompressedItem === 'string') {
             return JSON.parse(decompressedItem) as T;
@@ -115,7 +89,6 @@ export class BaseOperator {
           return decompressedItem as T;
         }
       } else if (itemObject?.v === 1 && itemObject?.c === false && itemObject?.d) {
-        console.log("BaseOperator: Unencoding item");
         const unencodedItem = await compression.unencode(itemObject.d);
         if (typeof unencodedItem === 'string') {
           return JSON.parse(unencodedItem) as T;
@@ -155,7 +128,6 @@ export class BaseOperator {
         }
       } catch (error: any) {
         if (error.response?.status === 503 && i < retries - 1) {
-          console.log(`Retrying API call after 503 error (attempt ${i + 1}/${retries})`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -203,7 +175,6 @@ export class BaseOperator {
           return data;
         } catch (error: any) {
           if (error.response?.status === 503 && i < retries - 1) {
-            console.log(`Retrying API call after 503 error (attempt ${i + 1}/${retries})`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }

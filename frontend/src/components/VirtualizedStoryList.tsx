@@ -67,7 +67,6 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     const contextLevels = state?.storyTree?.levels || [];
     setLevels(prevLevels => {
       if (prevLevels !== contextLevels) {
-         console.log("VirtualizedStoryList: Context levels reference changed, updating local levels state.", { prevLength: prevLevels.length, newLength: contextLevels.length });
          return contextLevels;
       }
       return prevLevels;
@@ -82,12 +81,8 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     }
   }, [state?.error]);
 
-  // Update logging
-  console.log(`VirtualizedStoryList Check: isLocalLoading: ${isLocalLoading}, levels.length: ${levels.length}, error: ${error}`);
-
   // Show initial loading state
   if (isLocalLoading && !levels.length) {
-    console.log("VirtualizedStoryList: Rendering LOADING state");
     return (
       <div className="loading" role="alert" aria-busy="true">
         <div className="loading-spinner"></div>
@@ -98,8 +93,6 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
 
   // Show error state
   if (error) {
-    console.log("VirtualizedStoryList: Rendering ERROR state:", error);
-    // console.warn("VirtualizedStoryList: Showing error state:", error);
     return <div className="error" role="alert">Error: {error}</div>;
   }
 
@@ -131,14 +124,11 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   const loadMore = useCallback(() => {
     // Use local levels.length for startIndex
     const startIndex = levels.length;
-    console.log(`Virtuoso endReached: loading more from index ${startIndex}`);
     // Call loadSingleLevel with only startIndex
     storyTreeOperator.loadSingleLevel(startIndex)
   // UPDATE dependency array
   }, [levels.length]); // Depend on local levels state length
 
-  console.log(`VirtualizedStoryList: Rendering CONTENT state with Virtuoso (count: ${levels.length})`);
-  
   return (
     <div style={{ height: '100%' }} role="list" aria-label="Story tree content">
       <Virtuoso

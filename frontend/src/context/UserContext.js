@@ -88,11 +88,9 @@ export function UserProvider({ children }) {
     // Action to handle verifying magic link and authenticating user
     const verifyMagicLink = async (token) => {
         const result = await userOperator.verifyMagicLink(token);
-        console.log('verifyMagicLink result:', result);  // Debug log
         
         if (result.success) {
             const userData = result.data.user;
-            console.log('Setting user data:', userData);  // Debug log
             
             dispatch({ type: 'AUTH_SUCCESS', payload: userData });
             localStorage.setItem('token', result.data.token);
@@ -153,7 +151,6 @@ export function UserProvider({ children }) {
                     .then(result => {
                         if (result.success) {
                             const parsedUserData = JSON.parse(userData);
-                            console.log('Restoring user data:', parsedUserData);  // Debug log
                             dispatch({ type: 'AUTH_SUCCESS', payload: parsedUserData });
                         } else {
                             dispatch({ type: 'LOGOUT' });
