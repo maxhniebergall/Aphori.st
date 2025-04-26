@@ -41,6 +41,12 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
   const [activeQuoteObj, setActiveQuoteObj] = useState<Quote | null>(null);
   const [globalCycleQuote, setGlobalCycleQuote] = useState<Quote | null>(null); 
 
+  // Detect if the primary input mechanism doesn't support hover (likely touch)
+  const isTouchDevice = useMemo(() => {
+    // Check window exists for environments like SSR
+    return typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
+  }, []);
+
   const segments = useMemo(() => {
     if (!text || !selections.length) {
       return [{ start: 0, end: text.length, text, overlapCount: 0, overlappingQuotes: [] }];
@@ -139,6 +145,7 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
   };
 
   const handleMouseEnter = (segment: TextSegment) => {
+    // This handler is only attached on non-touch devices now
     if (segment.overlapCount === 0 || !selections || selections.length === 0) {
       setActiveQuoteObj(null);
       return;
@@ -175,6 +182,7 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
   };
 
   const handleMouseLeave = () => {
+    // This handler is only attached on non-touch devices now
     setActiveQuoteObj(null);
   };
 
@@ -185,7 +193,8 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
           ? `rgba(50, 205, 50, ${Math.min(0.2 + segment.overlapCount * 0.1, 0.7)})`
           : 'transparent';
 
-        const isActiveSegment = activeQuoteObj !== null &&
+        const isActiveSegment = !isTouchDevice && // Only show active state on non-touch devices
+                                 activeQuoteObj !== null &&
                                  activeQuoteObj.selectionRange &&
                                  segment.start >= activeQuoteObj.selectionRange.start &&
                                  segment.end <= activeQuoteObj.selectionRange.end;
@@ -220,8 +229,9 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
             key={idx} 
             style={style}
             onClick={() => handleSegmentClick(segment)}
-            onMouseEnter={() => handleMouseEnter(segment)}
-            onMouseLeave={handleMouseLeave}
+            // Only attach mouse hover events on non-touch devices
+            onMouseEnter={!isTouchDevice ? () => handleMouseEnter(segment) : undefined}
+            onMouseLeave={!isTouchDevice ? handleMouseLeave : undefined}
             data-overlap-count={segment.overlapCount}
             className={segment.overlapCount > 0 ? 'highlighted-segment' : ''}
           >
