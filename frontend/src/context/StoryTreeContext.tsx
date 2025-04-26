@@ -41,6 +41,7 @@ import {
 const initialState: StoryTreeState = {
   storyTree: null,
   error: null,
+  isLoadingMore: false,
 };
 
 // Helper function to find siblings for a quote in the array-based structure
@@ -183,6 +184,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
       {
         nextState = {
           ...state,
+          isLoadingMore: true,
           storyTree: {
             post: {
               id: action.payload.rootNodeId,
@@ -199,10 +201,21 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
     
     case ACTIONS.SET_INITIAL_STORY_TREE_DATA:
     {
-      nextState = {
-        ...state,
-        storyTree: action.payload.storyTree,
-      };
+      if (!action.payload.storyTree) {
+        nextState = {
+          ...state,
+          isLoadingMore: false,
+          error: action.payload.error || state.error,
+          storyTree: null,
+        };
+      } else {
+        nextState = {
+          ...state,
+          isLoadingMore: false,
+          error: null,
+          storyTree: action.payload.storyTree,
+        };
+      }
       break;
     }
     
@@ -340,13 +353,10 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
     
     case ACTIONS.SET_ERROR:
       {
-        let error: string | null = null;
-        if (typeof action.payload === 'string') {
-          error = action.payload;
-        }
         nextState = {
           ...state,
-          error: error
+          isLoadingMore: false,
+          error: action.payload
         };
         break;
       }
@@ -422,6 +432,16 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         nextState = {
           ...state,
           storyTree: { ...state.storyTree, levels: filteredLevels },
+        };
+        break;
+      }
+
+    case ACTIONS.SET_LOADING_MORE:
+      {
+        const isLoading = typeof action.payload === 'boolean' ? action.payload : false;
+        nextState = {
+          ...state,
+          isLoadingMore: isLoading,
         };
         break;
       }

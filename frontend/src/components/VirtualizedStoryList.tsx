@@ -49,6 +49,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   const [levels, setLevels] = useState<Array<StoryTreeLevel>>([]);
   
   const { replyTarget } = useReplyContextForList();
+  const { isLoadingMore } = state; // Destructure after useStoryTree
 
   // useEffects
   // Load initial data
@@ -116,14 +117,18 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   // UPDATE dependency array - now depends on replyTarget only, as level comes from Virtuoso
   }, [replyTarget]);
 
-  // UPDATE: Define the endReached callback for Virtuoso
+  // Restore the original loadMore callback
   const loadMore = useCallback(() => {
-    // Use local levels.length for startIndex
-    const startIndex = levels.length;
-    // Call loadSingleLevel with only startIndex
-    storyTreeOperator.loadSingleLevel(startIndex)
-  // UPDATE dependency array
-  }, [levels.length]); // Depend on local levels state length
+    // Log when the callback is invoked
+    console.log("[VirtualizedStoryList] loadMore callback invoked. Context isLoadingMore:", isLoadingMore);
+    if (isLoadingMore) {
+      console.log("[VirtualizedStoryList] loadMore callback: Skipping, isLoadingMore is true.");
+      return;
+    }
+    // Call loadSingleLevel without startIndex
+    console.log("[VirtualizedStoryList] loadMore callback: Calling operator.loadSingleLevel().");
+    storyTreeOperator.loadSingleLevel()
+  }, [isLoadingMore]); // Correct dependency
 
   // UPDATE: Define computeItemKey
   const computeItemKey = useCallback((index: number, level: StoryTreeLevel): React.Key => {
