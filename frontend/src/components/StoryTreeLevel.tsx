@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
-import { StoryTreeLevel as LevelData, Pagination, StoryTreeNode } from '../types/types';
+import { StoryTreeLevel as LevelData, Pagination, StoryTreeNode, QuoteCounts } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import { 
@@ -102,13 +102,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []); // Dependency array kept empty as intended
 
-  // Get siblings from levelData using the correct key (parent's selected quote) - moved up
+  // Get siblings from levelData using the correct key (parent's selected quote) - RESTORED LOGIC
   const siblings = useMemo(() => {
-    if (!isMidLevel(levelData)) { // No need for || !levelData.midLevel check here if isMidLevel handles it
+    if (!isMidLevel(levelData)) { 
       return [];
     }
     const siblingsData = getSiblings(levelData);
-    const relevantQuoteKey = getSelectedQuoteInParent(levelData); // Use new helper
+    const relevantQuoteKey = getSelectedQuoteInParent(levelData); // Use helper
 
     if (!siblingsData || siblingsData.levelsMap.length === 0) {
       console.warn("No siblings data or map found in StoryTreeLevel:", levelData);
@@ -131,30 +131,59 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     // Extract the list if found, otherwise return empty
     return siblingsEntry ? siblingsEntry[1] : [];
 
-  }, [levelData]); // Dependency is just levelData
+  }, [levelData]); // Dependency is levelData
 
   // Get the current node to render - moved up
   const nodeToRender = useMemo(() => {
-    // Prioritize the node explicitly selected via navigation
     const selectedNode = getSelectedNodeHelper(levelData);
     if (selectedNode) {
       return selectedNode;
     }
-
-    // Fallback: If no node is explicitly selected (e.g., initial render of the level),
-    // display the first node from the determined siblings list.
     if (siblings.length > 0) {
       return siblings[0];
     }
-    
-    // If no selected node and no siblings, return undefined.
     return undefined;
-  }, [levelData, siblings]); // Simplified dependencies
+  }, [levelData, siblings]); // Dependencies restored
 
-  // Extract the currently selected quote *for this level* - moved up
+  // Extract the currently selected quote *for this level*, applying default logic - FIXED
   const currentLevelSelectedQuote = useMemo(() => {
-    return getSelectedQuoteInThisLevel(levelData);
-  }, [levelData]); // Dependency is just levelData
+    // 1. Check for explicitly selected quote in the state for this level/node
+    const explicitQuote = getSelectedQuoteInThisLevel(levelData);
+    if (explicitQuote) {
+      return explicitQuote;
+    }
+
+    // 2. If no explicit quote, find the default (highest count)
+    // Ensure nodeToRender and quoteCounts exist
+    const quotesMap: [Quote, number][] | undefined = nodeToRender?.quoteCounts?.quoteCounts;
+    if (quotesMap && quotesMap.length > 0) {
+        // Sort by count descending ONLY.
+        // Tuple is [Quote, number]
+        const sortedQuotes = [...quotesMap].sort((entryA, entryB) => { // entryA = [quoteA, countA]
+          // const quoteA = entryA[0]; // No longer needed for tie-breaker
+          const countA = entryA[1];
+          // const quoteB = entryB[0]; // No longer needed for tie-breaker
+          const countB = entryB[1];
+          
+          const countDiff = countB - countA; // Descending count
+          return countDiff;
+          
+          // Tie-breaker logic removed due to uncertainty about Quote type properties
+          /*
+          if (countDiff !== 0) return countDiff;
+          const startA = quoteA?.position?.start ?? 0; 
+          const startB = quoteB?.position?.start ?? 0;
+          return startA - startB;
+          */
+        });
+        // Return the Quote object (index 0) from the highest count entry
+        return sortedQuotes[0]?.[0] ?? null; // Safely access quote at index 0
+      }
+
+    // 3. If no explicit selection and no quotes available, return null
+    return null;
+
+  }, [levelData, nodeToRender]); // Dependencies correct
 
    // Handle text selection for replies with improved error handling - moved up
   const handleExistingQuoteSelectionCompleted = useCallback(
@@ -208,7 +237,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     isReplyActive, setIsReplyOpen, replyTarget // Added replyTarget dependency
   ]);
 
-  // Navigation functions with pagination - moved up
+  // Navigation functions with pagination - FIXED
   const navigateToNextSibling = useCallback(async () => {
     if (replyTarget?.id === nodeToRender?.id) { return; }
     if (!nodeToRender) { return; }
@@ -220,8 +249,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       try {
         const parentIdArr = getParentId(levelData);
         const levelNum = getLevelNumber(levelData);
-        // Pass the PARENT'S selected quote to loadMoreItems, as that defines the sibling group
-        const selQuoteParent = getSelectedQuoteInParent(levelData);
+        // Pass the PARENT'S selected quote to loadMoreItems - RESTORED
+        const selQuoteParent = getSelectedQuoteInParent(levelData); 
         
         if (!parentIdArr || parentIdArr.length === 0 || levelNum === undefined || !selQuoteParent) {
             console.warn("Missing data needed to load more items.", { parentIdArr, levelNum, selQuoteParent });
@@ -229,7 +258,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
             return;
         }
         await storyTreeOperator.loadMoreItems(
-          parentIdArr[0], levelNum, selQuoteParent, siblings.length, siblings.length + 3
+          parentIdArr[0], levelNum, selQuoteParent, siblings.length, siblings.length + 3 // Use parent's quote
         );
         navigateToNextSiblingCallback();
       } catch (error) {
@@ -242,7 +271,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     }
   }, [
     siblings, pagination, levelData, navigateToNextSiblingCallback, nodeToRender,
-    replyTarget, setIsLoading
+    replyTarget, setIsLoading // Keep dependencies
   ]);
 
   const navigateToPreviousSibling = useCallback(async () => {
@@ -328,11 +357,11 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     return null; // Or return some placeholder/error state
   }
 
-  // Determine if the current node is the target for a reply - moved calculation closer to usage
+  // Determine if the current node is the target for a reply
   const isReplyTarget = replyTarget?.id === nodeToRender?.id;
 
 
-  // Early return if we don't have a valid node (moved down, after hooks)
+  // Early return if we don't have a valid node
   if (!nodeToRender?.rootNodeId) {
     console.warn("StoryTreeLevelComponent: nodeToRender or its rootNodeId is missing. Rendering null.", { nodeToRender, levelData });
     return null;
@@ -375,7 +404,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               />
             )}
             <MemoizedNodeFooter
-              currentIndex={nodeToRender ? siblings.findIndex(sibling => sibling.id === nodeToRender.id) : -1}
+              currentIndex={nodeToRender ? siblings.findIndex(sibling => sibling.id === nodeToRender.id) : -1} 
               totalSiblings={siblings.length}
               onReplyClick={handleReplyButtonClick}
               isReplyTarget={isReplyTarget}
