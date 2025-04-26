@@ -229,31 +229,34 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     if (replyTarget?.id === nodeToRender?.id) { return; }
     if (!nodeToRender) { return; }
     const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id);
-    let didNavigate = false;
     if (currentIndex < siblings.length - 1) {
       navigateToNextSiblingCallback();
-      didNavigate = true;
     } else if (pagination.hasMore) {
       setIsLoading(true);
       try {
         const parentIdArr = getParentId(levelData);
         const levelNum = getLevelNumber(levelData);
         const selQuote = getSelectedQuote(levelData);
-        if (!parentIdArr || parentIdArr.length === 0 || levelNum === undefined || !selQuote) { return; }
+        if (!parentIdArr || parentIdArr.length === 0 || levelNum === undefined || !selQuote) {
+            console.warn("Missing data needed to load more items.");
+            setIsLoading(false);
+            return;
+        }
         await storyTreeOperator.loadMoreItems(
           parentIdArr[0], levelNum, selQuote, siblings.length, siblings.length + 3
         );
-        didNavigate = true; // Assume parent handles navigation after load
+        navigateToNextSiblingCallback();
       } catch (error) {
         console.error("Failed to load more items:", error);
       } finally {
         setIsLoading(false);
       }
+    } else {
+      console.log("No next sibling action taken (already at end or no more pages).");
     }
-    if (!didNavigate) { console.log("No next sibling action taken."); }
   }, [
     siblings, pagination, levelData, navigateToNextSiblingCallback, nodeToRender,
-    replyTarget, setIsLoading // Added dependencies
+    replyTarget, setIsLoading
   ]);
 
   const navigateToPreviousSibling = useCallback(async () => {
@@ -266,7 +269,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         console.log("No previous sibling action taken.");
     }
   }, [
-    siblings, navigateToPreviousSiblingCallback, levelData, nodeToRender, replyTarget // Added dependencies
+    siblings, navigateToPreviousSiblingCallback, levelData, nodeToRender, replyTarget
   ]);
 
    // Setup gesture handling for swipe navigation - moved up
