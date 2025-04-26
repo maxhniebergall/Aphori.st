@@ -245,15 +245,11 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           }
         });
 
-        // Truncate levels after the selected level if needed
-        // Ensure the truncation happens *after* the mapping
-        const finalLevels = newLevels.slice(0, targetLevelNumber + 1);
-
         nextState = {
           ...state,
           storyTree: {
             ...state.storyTree,
-            levels: finalLevels as StoryTreeLevel[] // Ensure type consistency
+            levels: newLevels as StoryTreeLevel[] // Use newLevels directly
           }
         };
         break;
