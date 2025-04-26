@@ -25,7 +25,6 @@ interface NodeContentProps {
   node: StoryTreeNode;
   onExistingQuoteSelectionComplete?: (quote: Quote) => void;
   quote?: Quote;
-  levelSelectedQuote?: Quote;
   existingSelectableQuotes?: QuoteCounts;
   currentLevelSelectedQuote?: Quote | null;
 }
@@ -81,7 +80,6 @@ const areNodeContentPropsEqual = (prevProps: NodeContentProps, nextProps: NodeCo
 
   // Use the helper for quote comparison
   const quoteChanged = !compareNullableQuotes(prevProps.quote, nextProps.quote);
-  const levelSelectedQuoteChanged = !compareNullableQuotes(prevProps.levelSelectedQuote, nextProps.levelSelectedQuote);
   const currentLevelSelectedQuoteChanged = !compareNullableQuotes(prevProps.currentLevelSelectedQuote, nextProps.currentLevelSelectedQuote);
 
   // Simple comparison for existingSelectableQuotes (compare by reference, assuming immutability)
@@ -91,14 +89,13 @@ const areNodeContentPropsEqual = (prevProps: NodeContentProps, nextProps: NodeCo
   const callbackChanged = prevProps.onExistingQuoteSelectionComplete !== nextProps.onExistingQuoteSelectionComplete;
 
   // Return true if none of the relevant props have changed
-  return !nodeChanged && !quoteChanged && !levelSelectedQuoteChanged && !existingQuotesChanged && !currentLevelSelectedQuoteChanged && !callbackChanged;
+  return !nodeChanged && !quoteChanged && !existingQuotesChanged && !currentLevelSelectedQuoteChanged && !callbackChanged;
 };
 
 const NodeContent: React.FC<NodeContentProps> = ({
   node,
   onExistingQuoteSelectionComplete: onExistingQuoteSelectionComplete = () => {},
   quote,
-  levelSelectedQuote,
   existingSelectableQuotes,
   currentLevelSelectedQuote
 }) => {
@@ -131,7 +128,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
     selectedQuote // Destructure selectedQuote from the hook's return
   } = useHighlighting({
     text: textContent,
-    selectedQuote: levelSelectedQuote,
+    selectedQuote: currentLevelSelectedQuote ?? undefined,
     existingSelectableQuotes: memoizedExistingSelectableQuotes,
     // Wrap the callback passed *to* the hook to log the quote received from HighlightedText/useHighlighting
     onSegmentClick: useCallback((quoteFromHighlighting: Quote) => {
