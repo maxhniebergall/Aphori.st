@@ -49,21 +49,26 @@ interface NodeContentProps {
  * TextSelection doesn't affect the highlights shown in HighlightedText.
  */
 
-// Memoize the TextSelection component to prevent unnecessary re-renders
-const MemoizedTextSelection = React.memo(TextSelection);
-// Memoize the HighlightedText component to prevent unnecessary re-renders
-const MemoizedHighlightedText = React.memo(HighlightedText,
-  (prevProps, nextProps) => {
-    return prevProps.text === nextProps.text && prevProps.selections === nextProps.selections && prevProps.selectedQuoteOfThisNode === nextProps.selectedQuoteOfThisNode;
-  }
-);
-
 // Helper for comparing potentially null/undefined quotes
 const compareNullableQuotes = (q1: Quote | null | undefined, q2: Quote | null | undefined): boolean => {
   if (!q1 && !q2) return true; // Both null/undefined
   if (!q1 || !q2) return false; // One is null/undefined, the other isn't
   return areQuotesEqual(q1, q2); // Both are valid Quotes, compare them
 };
+
+// Memoize the TextSelection component to prevent unnecessary re-renders
+const MemoizedTextSelection = React.memo(TextSelection);
+// Memoize the HighlightedText component to prevent unnecessary re-renders
+const MemoizedHighlightedText = React.memo(HighlightedText,
+  (prevProps, nextProps) => {
+    // Compare all relevant props for HighlightedText
+    return prevProps.text === nextProps.text &&
+           prevProps.selections === nextProps.selections && // Assuming immutable array reference comparison is okay here
+           compareNullableQuotes(prevProps.selectedReplyQuote, nextProps.selectedReplyQuote) && // Use helper function
+           prevProps.nodeId === nextProps.nodeId && 
+           prevProps.onSegmentClick === nextProps.onSegmentClick; // Reference comparison for callback
+  }
+);
 
 // Custom comparison function for React.memo
 const areNodeContentPropsEqual = (prevProps: NodeContentProps, nextProps: NodeContentProps): boolean => {
@@ -162,10 +167,11 @@ const NodeContent: React.FC<NodeContentProps> = ({
         id={node.id}
       >
         <MemoizedHighlightedText
+          nodeId={node.id}
           text={textContent}
           selections={selections}
           onSegmentClick={handleSegmentClick}
-          selectedQuoteOfThisNode={currentLevelSelectedQuote ?? undefined}
+          selectedReplyQuote={currentLevelSelectedQuote ?? undefined}
         />
       </div>
 
