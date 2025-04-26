@@ -432,14 +432,14 @@ class StoryTreeOperator extends BaseOperator {
   public loadSingleLevel = async (startIndex: number): Promise<void> => {
     // Check the boolean flag
     if (this.isLoadingMore) {
-      console.warn("StoryTreeOperator: loadMoreLevels already in progress, skipping.");
+      console.warn("StoryTreeOperator: loadSingleLevel already in progress, skipping.");
       return;
     }
       
     this.isLoadingMore = true; // Set lock
 
     try {
-      console.log(`StoryTreeOperator: Starting loadMoreLevels for index ${startIndex}`);
+      console.log(`StoryTreeOperator: Starting loadSingleLevel for index ${startIndex}`);
 
       if (!this.store) {
           throw new StoryTreeError('Store not initialized');
@@ -462,14 +462,14 @@ class StoryTreeOperator extends BaseOperator {
         }
         // Adjusted check: Ensure we are only trying to load the *next* available level
         if (levelNumber !== state.storyTree.levels.length) { 
-            console.warn(`[loadMoreLevels] Attempting to load level ${levelNumber}, but current levels length is ${state.storyTree.levels.length}. Stopping.`);
+            console.warn(`[loadSingleLevel] Attempting to load level ${levelNumber}, but current levels length is ${state.storyTree.levels.length}. Stopping.`);
             // This prevents loading levels out of order if Virtuoso triggers rapidly
             return; // Stop if not loading the immediate next level
         }
         // Skip root level (level 0) - This check might be redundant now if levelNumber starts at 1
         // but keep for safety, although startIndex should come from levels.length which is >= 1
         if (levelNumber === 0) {
-           console.warn(`[loadMoreLevels] Attempting to load level 0, which is not allowed. Stopping.`);
+           console.warn(`[loadSingleLevel] Attempting to load level 0, which is not allowed. Stopping.`);
            return;
         }
       }
@@ -477,14 +477,14 @@ class StoryTreeOperator extends BaseOperator {
       
       // Ensure parentLevel is not undefined before checking isLastLevel
       if (typeof parentLevel === 'undefined') {
-         console.error(`[loadMoreLevels] Parent level ${levelNumber - 1} is undefined when trying to load level ${levelNumber}. State length: ${state.storyTree?.levels?.length}`);
+         console.error(`[loadSingleLevel] Parent level ${levelNumber - 1} is undefined when trying to load level ${levelNumber}. State length: ${state.storyTree?.levels?.length}`);
          // This indicates a state inconsistency or rapid firing despite the lock?
          throw new StoryTreeError(`Parent level ${levelNumber - 1} is undefined.`);
       }
 
       // Check if parent level is incorrectly marked as last
       if (isLastLevel(parentLevel)) {
-          console.warn(`[loadMoreLevels] Parent level ${levelNumber - 1} is marked as LastLevel, cannot load level ${levelNumber}. Stopping.`);
+          console.warn(`[loadSingleLevel] Parent level ${levelNumber - 1} is marked as LastLevel, cannot load level ${levelNumber}. Stopping.`);
           return; // Stop loading
       }
       
@@ -501,9 +501,9 @@ class StoryTreeOperator extends BaseOperator {
         const selectedNode = getSelectedNodeHelper(parentLevelAsLevel);
         if (!selectedNode) { // Simplified check: !selectedNode implies !parentLevel check is redundant if parentLevel existed
           // Log the state *right before* throwing the error
-          console.error(`[loadMoreLevels] Error condition reached: Selected node not found for parent level ${levelNumber - 1} when loading level ${levelNumber}.`);
-          console.error(`[loadMoreLevels] Parent Level Data: ${JSON.stringify(parentLevel)}`);
-          console.error(`[loadMoreLevels] Current Levels State: ${JSON.stringify(state.storyTree.levels)}`);
+          console.error(`[loadSingleLevel] Error condition reached: Selected node not found for parent level ${levelNumber - 1} when loading level ${levelNumber}.`);
+          console.error(`[loadSingleLevel] Parent Level Data: ${JSON.stringify(parentLevel)}`);
+          console.error(`[loadSingleLevel] Current Levels State: ${JSON.stringify(state.storyTree.levels)}`);
           const errorMsg = `Selected node not found for level ${levelNumber} (based on parent level ${levelNumber-1});
  parentLevel: ${JSON.stringify(parentLevel)};
  levels: ${JSON.stringify(state.storyTree.levels)}`;
@@ -513,14 +513,14 @@ class StoryTreeOperator extends BaseOperator {
       const selectedNodeOfParentLevel = getSelectedNodeHelper(parentLevelAsLevel);
       if (!selectedNodeOfParentLevel) {
           // This should ideally be caught by the check above, but keep as safeguard
-          console.error(`[loadMoreLevels] Safeguard check failed: Selected node is null/undefined for parent level ${levelNumber-1}.`);
+          console.error(`[loadSingleLevel] Safeguard check failed: Selected node is null/undefined for parent level ${levelNumber-1}.`);
           throw new StoryTreeError(`Selected node not found for level ${levelNumber-1}`);
       }
       const parentId = selectedNodeOfParentLevel.id;
       const parentText = selectedNodeOfParentLevel.textContent;
       { // continue validation
         if (!parentId || !parentText) {
-          console.warn(`[loadMoreLevels] Missing parentId or parentText for level ${levelNumber - 1}. Cannot load level ${levelNumber}.`);
+          console.warn(`[loadSingleLevel] Missing parentId or parentText for level ${levelNumber - 1}. Cannot load level ${levelNumber}.`);
           // Dispatch last level for the level we *tried* to load
           this.dispatchLastLevel(levelNumber);
           return;
@@ -529,7 +529,7 @@ class StoryTreeOperator extends BaseOperator {
       const quoteCountsFromParent = selectedNodeOfParentLevel.quoteCounts;
       { // continue validation
         if (!quoteCountsFromParent || !quoteCountsFromParent.quoteCounts || quoteCountsFromParent.quoteCounts.length === 0) {
-          console.log(`[loadMoreLevels] Parent node ${parentId} level ${levelNumber-1} has no quotes. Dispatching LastLevel for ${levelNumber}.`);
+          console.log(`[loadSingleLevel] Parent node ${parentId} level ${levelNumber-1} has no quotes. Dispatching LastLevel for ${levelNumber}.`);
           this.dispatchLastLevel(levelNumber);
           return;
         }
@@ -538,7 +538,7 @@ class StoryTreeOperator extends BaseOperator {
         let selectedQuoteFromParent = this.fullQuoteFromText(parentText, parentId);
 
         if (!isMidLevel(parentLevel)) { 
-           console.error(`[loadMoreLevels] Inconsistency: Parent level ${levelNumber-1} passed isLastLevel check but failed isMidLevel check.`);
+           console.error(`[loadSingleLevel] Inconsistency: Parent level ${levelNumber-1} passed isLastLevel check but failed isMidLevel check.`);
            throw new StoryTreeError(`Level ${levelNumber-1} state inconsistency.`);
         } else {
             if (parentLevel.midLevel!.selectedQuote) {
@@ -556,11 +556,11 @@ class StoryTreeOperator extends BaseOperator {
           if (hasRepliesForDefaultQuote === false) {
             const maybeQuote = this.mostQuoted(quoteCountsFromParent);
             if (maybeQuote === null) {
-              console.log(`[loadMoreLevels] No replies for default quote and no other quotes have replies for level ${levelNumber-1}. Dispatching LastLevel for ${levelNumber}.`);
+              console.log(`[loadSingleLevel] No replies for default quote and no other quotes have replies for level ${levelNumber-1}. Dispatching LastLevel for ${levelNumber}.`);
               this.dispatchLastLevel(levelNumber);
               return;
             } else {
-              console.log(`[loadMoreLevels] Default quote has no replies, selecting most quoted for level ${levelNumber-1}:`, maybeQuote);
+              console.log(`[loadSingleLevel] Default quote has no replies, selecting most quoted for level ${levelNumber-1}:`, maybeQuote);
               selectedQuoteFromParent = maybeQuote;
             }
           }
@@ -570,13 +570,13 @@ class StoryTreeOperator extends BaseOperator {
         const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, selectedQuoteFromParent, sortingCriteria, 5); 
         
         if (!maybeFirstReplies) {
-           console.warn(`[loadMoreLevels] fetchFirstRepliesForLevel returned null for level ${levelNumber}. Assuming end of branch.`);
+           console.warn(`[loadSingleLevel] fetchFirstRepliesForLevel returned null for level ${levelNumber}. Assuming end of branch.`);
            this.dispatchLastLevel(levelNumber);
            return;
         }
         
         if (maybeFirstReplies.data.length === 0) {
-           console.log(`[loadMoreLevels] fetchFirstRepliesForLevel returned 0 replies for level ${levelNumber}. Dispatching LastLevel.`);
+           console.log(`[loadSingleLevel] fetchFirstRepliesForLevel returned 0 replies for level ${levelNumber}. Dispatching LastLevel.`);
            this.dispatchLastLevel(levelNumber);
            return;
         }
@@ -590,7 +590,7 @@ class StoryTreeOperator extends BaseOperator {
               const quoteCounts = await this.fetchQuoteCounts(reply.id);
               quoteCountsMap.set(reply.quote, quoteCounts);
           } catch (qcError) {
-              console.error(`[loadMoreLevels] Failed to fetch quote counts for reply ${reply.id}:`, qcError);
+              console.error(`[loadSingleLevel] Failed to fetch quote counts for reply ${reply.id}:`, qcError);
               quoteCountsMap.set(reply.quote, { quoteCounts: [] }); // Store empty counts on error
           }
         }));
@@ -623,7 +623,7 @@ class StoryTreeOperator extends BaseOperator {
         await this.dispatchNewLevel(level);
         
       } catch (error) {
-         console.error(`[loadMoreLevels] Error processing level ${levelNumber}:`, error);
+         console.error(`[loadSingleLevel] Error processing level ${levelNumber}:`, error);
          if (this.store?.dispatch) {
              this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to process level ${levelNumber}: ${error instanceof Error ? error.message : String(error)}` });
          }
@@ -634,7 +634,7 @@ class StoryTreeOperator extends BaseOperator {
       }
 
     } catch (error) {
-        console.error(`[loadMoreLevels] Outer error during loadMoreLevels for index ${startIndex}:`, error);
+        console.error(`[loadSingleLevel] Outer error during loadSingleLevel for index ${startIndex}:`, error);
         if (this.store?.dispatch) {
           this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to load level ${startIndex}: ${error instanceof Error ? error.message : String(error)}` });
         }
@@ -759,10 +759,10 @@ class StoryTreeOperator extends BaseOperator {
         
         // TODO: Consider fetching quote counts for these replies asynchronously later if needed immediately
         const quoteCountsMap = new Map<Quote, QuoteCounts>();
-        // await Promise.all(firstReplies.map(async (reply: Reply) => {
-        //   const quoteCounts = await this.fetchQuoteCounts(reply.id);
-        //   quoteCountsMap.set(reply.quote, quoteCounts);
-        // }));
+        await Promise.all(firstReplies.map(async (reply: Reply) => {
+          const quoteCounts = await this.fetchQuoteCounts(reply.id);
+          quoteCountsMap.set(reply.quote, quoteCounts);
+        }));
 
         const siblingsForQuote: Array<StoryTreeNode> = firstReplies.map(reply => ({
           id: reply.id,
