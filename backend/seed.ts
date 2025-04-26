@@ -211,7 +211,7 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                 // Create a test quote targeting the calculated excerpt of the parent story
                 const quote: Quote = {
                     text: quoteResult.excerpt,
-                    sourcePostId: storyId,
+                    sourceId: storyId,
                     selectionRange: {
                         start: quoteResult.start,
                         end: quoteResult.end
@@ -280,7 +280,7 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                     // Create a test quote targeting the calculated excerpt of the parent reply
                     const quoteReply: Quote = {
                         text: quoteResultReply.excerpt,
-                        sourcePostId: firstUniqueReplyId, // Parent is the first of the 5 identical first-level replies
+                        sourceId: firstUniqueReplyId, // Parent is the first of the 5 identical first-level replies
                         selectionRange: {
                             start: quoteResultReply.start,
                             end: quoteResultReply.end

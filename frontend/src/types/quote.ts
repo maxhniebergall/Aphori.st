@@ -14,7 +14,7 @@ export interface SelectionState {
 export class Quote {
   constructor(
     public text: string,
-    public sourcePostId: string,
+    public sourceId: string,
     public selectionRange: SelectionState
   ) {
     if (selectionRange.start > selectionRange.end) {
@@ -26,7 +26,7 @@ export class Quote {
     if (!Quote.isValid(this)) {
       throw new Error('Invalid Quote created:' + JSON.stringify({
         text: this.text,
-        sourcePostId: this.sourcePostId,
+        sourceId: this.sourceId,
         selectionRange: this.selectionRange
       }));
     }
@@ -40,7 +40,7 @@ export class Quote {
       console.error('Quote text is required');
       return false;
     }
-    if (!quote.sourcePostId){
+    if (!quote.sourceId){
       console.error('Source post ID is required');
       return false;
     }
@@ -69,7 +69,7 @@ export class Quote {
     if (!Quote.isValid(quote)) {
       console.error('Attempting to serialize invalid Quote:', {
         text: quote.text,
-        sourcePostId: quote.sourcePostId,
+        sourceId: quote.sourceId,
         selectionRange: quote.selectionRange
       });
       throw new Error('Cannot serialize invalid Quote');
@@ -78,7 +78,7 @@ export class Quote {
     return encodeURIComponent(
       JSON.stringify({
         text: quote.text,
-        sourcePostId: quote.sourcePostId,
+        sourceId: quote.sourceId,
         selectionRange: quote.selectionRange,
       })
     );
@@ -86,19 +86,19 @@ export class Quote {
 
   /**
    * Creates a placeholder quote object, often used when no real quote is selected.
-   * @param {string} sourcePostId - The ID of the source post for context.
+   * @param {string} sourceId - The ID of the source post for context.
    * @returns {Quote} A placeholder Quote instance with empty text and an invalid range.
    */
-  public static createPlaceholder(sourcePostId: string): Quote {
+  public static createPlaceholder(sourceId: string): Quote {
     // Use invalid range like start: -1, end: -1 or start: 0, end: 0 depending on downstream checks
-    return new Quote("", sourcePostId, { start: -1, end: -1 }); 
+    return new Quote("", sourceId, { start: -1, end: -1 }); 
   }
 }
 
 export function areQuotesEqual(q1: Quote, q2: Quote): boolean {
   return (
     q1.text === q2.text &&
-    q1.sourcePostId === q2.sourcePostId &&
+    q1.sourceId === q2.sourceId &&
     q1.selectionRange.start === q2.selectionRange.start &&
     q1.selectionRange.end === q2.selectionRange.end
   );

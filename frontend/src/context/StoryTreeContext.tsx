@@ -53,7 +53,7 @@ function findSiblingsForQuote(siblings: Siblings, quote: Quote | null): StoryTre
     if (!key || !quote) {
       return false;
     }
-    return key.sourcePostId === quote.sourcePostId && 
+    return key.sourceId === quote.sourceId && 
            key.text === quote.text &&
            key.selectionRange.start === quote.selectionRange.start &&
            key.selectionRange.end === quote.selectionRange.end;

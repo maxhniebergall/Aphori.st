@@ -205,7 +205,7 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
                                  segment.start >= activeQuoteObj.selectionRange.start &&
                                  segment.end <= activeQuoteObj.selectionRange.end;
 
-        const isBlueUnderlineSegment = selectedReplyQuote?.sourcePostId === nodeId &&
+        const isBlueUnderlineSegment = selectedReplyQuote &&
                                        selectedReplyQuote.selectionRange &&
                                        segment.start >= selectedReplyQuote.selectionRange.start &&
                                        segment.end <= selectedReplyQuote.selectionRange.end;

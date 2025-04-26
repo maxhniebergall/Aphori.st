@@ -795,10 +795,10 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         const user: User = (req as AuthenticatedRequest).user;
 
         // Validate that required fields are provided.
-        if (!text || !parentId || !quote || !quote.text || !quote.sourcePostId || !quote.selectionRange) {
+        if (!text || !parentId || !quote || !quote.text || !quote.sourceId || !quote.selectionRange) {
             res.status(400).json({ 
                 success: false, 
-                error: 'Missing required fields. Ensure text, parentId, and a full quote (with text, sourcePostId, and selectionRange) are provided.' 
+                error: 'Missing required fields. Ensure text, parentId, and a full quote (with text, sourceId, and selectionRange) are provided.' 
             });
             return;
         }
@@ -932,10 +932,10 @@ app.get<{
         }
 
         // Validate that the quote object includes the required fields.
-        if (!quoteObj.text || !quoteObj.sourcePostId || !quoteObj.selectionRange) {
+        if (!quoteObj.text || !quoteObj.sourceId || !quoteObj.selectionRange) {
             const errorResponse: CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>> = {
                 success: false,
-                error: 'Quote object must include text, sourcePostId, and selectionRange fields'
+                error: 'Quote object must include text, sourceId, and selectionRange fields'
             };
             res.status(400).json(errorResponse);
             return;

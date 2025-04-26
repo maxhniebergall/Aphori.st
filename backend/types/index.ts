@@ -45,7 +45,7 @@ export interface UserResult {
 }
 export interface Quote {
     text: string;
-    sourcePostId: string;
+    sourceId: string;
     selectionRange: {
         start: number;
         end: number;

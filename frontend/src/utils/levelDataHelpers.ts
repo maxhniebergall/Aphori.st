@@ -202,7 +202,7 @@ export function updateSiblingsForQuoteHelper(siblings: Siblings, quote: Quote | 
       return false;
     }
     // Using stricter quote comparison
-    return key.sourcePostId === quote.sourcePostId &&
+    return key.sourceId === quote.sourceId &&
            key.text === quote.text &&
            key.selectionRange.start === quote.selectionRange.start &&
            key.selectionRange.end === quote.selectionRange.end;
