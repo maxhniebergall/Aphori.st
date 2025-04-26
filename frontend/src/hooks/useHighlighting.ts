@@ -84,7 +84,7 @@ export function useHighlighting({
           try {
             quote = new Quote(
               (quoteObj as any).text || "",
-              (quoteObj as any).sourcePostId || "",
+              (quoteObj as any).sourceId || "",
               (quoteObj as any).selectionRange || { start: 0, end: 0 }
             );
           } catch (e) {
@@ -109,7 +109,7 @@ export function useHighlighting({
       quoteSelections.forEach(quote => {
         // Only add if not already included (to avoid duplicates with selectedQuote)
         if (!newSelections.some(q => 
-          q.sourcePostId === quote.sourcePostId && 
+          q.sourceId === quote.sourceId && 
           q.selectionRange.start === quote.selectionRange.start && 
           q.selectionRange.end === quote.selectionRange.end
         )) {
