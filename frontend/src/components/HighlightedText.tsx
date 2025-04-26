@@ -6,7 +6,7 @@
  * - Integrate with the Quote system
  * - Visual Cues:
  *   - Green Highlight (background/border): Indicates the text segment is quoted by one or more child replies. Based on `selections` prop.
- *   - Blue/Teal Underline: Indicates the text segment is part of the quote made by the currently selected reply in the UI context. Based on `selectedReplyQuote` prop matching the `nodeId`.
+ *   - Blue/Teal Underline: Shows which segments belong to the currently selectedQuote in this level. 
  *   - Light Blue Background (hover): Previews the next selected quote under the user's cursor on non-touch devices. Based on `activeQuoteObj` state.
  */
 
