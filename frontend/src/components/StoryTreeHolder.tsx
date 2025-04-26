@@ -115,18 +115,10 @@ const ReplyEditor = () => {
 
 // Main content component
 function StoryTreeContent() {
-  console.log('StoryTreeContent rendering/mounting...'); // Log mount/render
   const navigate = useNavigate();
   const { state } = useStoryTree();
   const { uuid: rootUUID } = useParams<{ uuid: string }>();
 
-  // Log changes in state.error and cleanup on unmount
-  useEffect(() => {
-    console.log(`StoryTreeContent: state.error changed to: ${state.error}`);
-    return () => {
-      console.log('StoryTreeContent unmounting...'); // Log unmount
-    };
-  }, [state.error]);
 
   // Use a minimal set of context values to prevent re-renders when replyContent changes
   const { replyTarget } = useReplyContext();

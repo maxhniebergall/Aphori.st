@@ -439,7 +439,6 @@ class StoryTreeOperator extends BaseOperator {
     this.isLoadingMore = true; // Set lock
 
     try {
-      // Log with only startIndex now
       console.log(`StoryTreeOperator: Starting loadMoreLevels for index ${startIndex}`);
 
       if (!this.store) {
@@ -476,9 +475,6 @@ class StoryTreeOperator extends BaseOperator {
       }
       const parentLevel = state.storyTree.levels[levelNumber-1];
       
-      // Add logging to check parentLevel state *before* casting/using it
-      console.log(`[loadMoreLevels] Checking parentLevel (level ${levelNumber-1}) for loading level ${levelNumber}:`, JSON.stringify(parentLevel));
-
       // Ensure parentLevel is not undefined before checking isLastLevel
       if (typeof parentLevel === 'undefined') {
          console.error(`[loadMoreLevels] Parent level ${levelNumber - 1} is undefined when trying to load level ${levelNumber}. State length: ${state.storyTree?.levels?.length}`);
@@ -625,7 +621,6 @@ class StoryTreeOperator extends BaseOperator {
         );
         
         await this.dispatchNewLevel(level);
-        console.log(`[loadMoreLevels] Successfully loaded and dispatched level ${levelNumber}`);
         
       } catch (error) {
          console.error(`[loadMoreLevels] Error processing level ${levelNumber}:`, error);
@@ -644,7 +639,6 @@ class StoryTreeOperator extends BaseOperator {
           this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to load level ${startIndex}: ${error instanceof Error ? error.message : String(error)}` });
         }
     } finally {
-      console.log(`StoryTreeOperator: Finished loadMoreLevels for index ${startIndex}`);
       this.isLoadingMore = false;
     }
   };

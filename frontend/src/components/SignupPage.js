@@ -33,9 +33,7 @@ const SignupPage = () => {
             setIsChecking(true);
             setError('');
             const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/check-user-id/${id}`);
-            console.log("SignupPage: checkIdAvailability response", response.data);
             if (!response.data.success) {
-                console.log("SignupPage: checkIdAvailability error", response.data.error);
                 setError(response.data.error);
                 return false;
             }

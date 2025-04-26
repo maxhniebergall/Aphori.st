@@ -36,7 +36,10 @@ function App() {
         // Add retry logic for CORS errors
         axios.interceptors.response.use(
             (response) => {
-                console.log(`Backend build: ${response.headers['x-build-hash']}`);
+                if (process.env.NODE_ENV !== 'development') {
+                    // Production-only logging
+                    console.log(`Backend build: ${response.headers['x-build-hash']}`); 
+                }
                 return response;
             },
             async (error) => {

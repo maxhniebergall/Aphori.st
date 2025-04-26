@@ -48,23 +48,18 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
 
   // Logging wrappers
   const setReplyTarget = (target: StoryTreeNode | null) => {
-    console.log('ReplyContext: setReplyTarget', target);
     setReplyTargetState(target);
   };
   const setReplyContent = (content: string) => {
-    console.log('ReplyContext: setReplyContent', content);
     setReplyContentState(content);
   };
   const setReplyQuote = (quote: Quote | null) => {
-    console.log('ReplyContext: setReplyQuote', quote);
     setReplyQuoteState(quote);
   };
   const setReplyError = (error: string | null) => {
-    console.log('ReplyContext: setReplyError', error);
     setReplyErrorState(error);
   };
   const setIsReplyOpen = (isOpen: boolean) => {
-    console.log('ReplyContext: setIsReplyOpen', isOpen);
     setIsReplyOpenState(isOpen);
   };
 

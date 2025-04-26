@@ -46,7 +46,6 @@ class FeedOperator extends BaseOperator {
                 throw new Error('No feed items received');
             }
             
-            console.log("FeedOperator: Decompressing feed items:", compressedFeedItems);
             const decompressedFeedItems = await compression.decompress<FeedItemsResponse>(compressedFeedItems);
 
             // If response is already decompressed by BaseOperator
