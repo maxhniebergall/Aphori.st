@@ -141,7 +141,7 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
 
         // Use active color if it's part of the active selection, otherwise use base color
         const finalBackgroundColor = isActiveSegment
-          ? 'rgba(50, 205, 50, 0.8)' // Active/hover color
+          ? 'rgba(173, 216, 230, 0.8)' // Light blue for active/hover color
           : baseBackgroundColor;
 
         // Add border and styling for highlighted segments
