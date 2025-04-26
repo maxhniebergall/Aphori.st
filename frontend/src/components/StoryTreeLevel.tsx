@@ -147,43 +147,37 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Extract the currently selected quote *for this level*, applying default logic - FIXED
   const currentLevelSelectedQuote = useMemo(() => {
-    // 1. Check for explicitly selected quote in the state for this level/node
-    const explicitQuote = getSelectedQuoteInThisLevel(levelData);
-    if (explicitQuote) {
-      return explicitQuote;
+    // 1. Get the explicitly selected quote for the level from the state
+    const explicitLevelQuote = getSelectedQuoteInThisLevel(levelData);
+    const quotesMap: [Quote, number][] | undefined = nodeToRender?.quoteCounts?.quoteCounts;
+
+    // 2. Check if the explicit level quote exists AND is present in the current node's quotes
+    if (explicitLevelQuote && quotesMap) {
+      const quoteExistsInNode = quotesMap.some(([quote]) => areQuotesEqual(quote, explicitLevelQuote));
+      if (quoteExistsInNode) {
+        // Use the explicitly selected level quote if it applies to this node
+        return explicitLevelQuote;
+      }
     }
 
-    // 2. If no explicit quote, find the default (highest count)
-    // Ensure nodeToRender and quoteCounts exist
-    const quotesMap: [Quote, number][] | undefined = nodeToRender?.quoteCounts?.quoteCounts;
+    // 3. If no valid explicit quote for *this node*, find the default (highest count) for *this node*
     if (quotesMap && quotesMap.length > 0) {
-        // Sort by count descending ONLY.
-        // Tuple is [Quote, number]
-        const sortedQuotes = [...quotesMap].sort((entryA, entryB) => { // entryA = [quoteA, countA]
-          // const quoteA = entryA[0]; // No longer needed for tie-breaker
-          const countA = entryA[1];
-          // const quoteB = entryB[0]; // No longer needed for tie-breaker
-          const countB = entryB[1];
-          
-          const countDiff = countB - countA; // Descending count
-          return countDiff;
-          
-          // Tie-breaker logic removed due to uncertainty about Quote type properties
-          /*
-          if (countDiff !== 0) return countDiff;
-          const startA = quoteA?.position?.start ?? 0; 
-          const startB = quoteB?.position?.start ?? 0;
-          return startA - startB;
-          */
-        });
-        // Return the Quote object (index 0) from the highest count entry
-        return sortedQuotes[0]?.[0] ?? null; // Safely access quote at index 0
-      }
+      // Sort by count descending ONLY.
+      // Tuple is [Quote, number]
+      const sortedQuotes = [...quotesMap].sort((entryA, entryB) => { // entryA = [quoteA, countA]
+        const countA = entryA[1];
+        const countB = entryB[1];
+        const countDiff = countB - countA; // Descending count
+        return countDiff;
+      });
+      // Return the Quote object (index 0) from the highest count entry
+      return sortedQuotes[0]?.[0] ?? null; // Safely access quote at index 0
+    }
 
-    // 3. If no explicit selection and no quotes available, return null
+    // 4. If no explicit selection applicable and no quotes available on this node, return null
     return null;
 
-  }, [levelData, nodeToRender]); // Dependencies correct
+  }, [levelData, nodeToRender, levelData.midLevel?.selectedNode]); // Dependencies correct
 
    // Handle text selection for replies with improved error handling - moved up
   const handleExistingQuoteSelectionCompleted = useCallback(

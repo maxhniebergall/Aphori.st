@@ -44,7 +44,8 @@ import {
   getRootNodeId,
   getSelectedNodeHelper,
   isMidLevel,
-  isLastLevel
+  isLastLevel,
+  getSiblings
 } from '../utils/levelDataHelpers';
 
 class StoryTreeOperator extends BaseOperator {
@@ -767,10 +768,175 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   public async setSelectedNode(node: StoryTreeNode): Promise<void> {
-    if (this.store && this.store.dispatch) {
-      this.store.dispatch({ type: ACTIONS.SET_SELECTED_NODE, payload: node });
+    if (!this.store || !this.store.dispatch || !this.store.state || !this.store.state.storyTree) {
+        throw new StoryTreeError('Store, state, or story tree not initialized for setSelectedNode');
+    }
+
+    const state = this.store.state;
+    const dispatch = this.store.dispatch;
+    const levelNumber = node.levelNumber;
+    const targetLevel = state.storyTree?.levels[levelNumber];
+    const nextLevelNumber = levelNumber + 1;
+    const rootNodeId = node.rootNodeId; // Assuming consistent rootNodeId
+
+    if (!targetLevel || !isMidLevel(targetLevel)) {
+        console.warn(`[setSelectedNode] Target level ${levelNumber} not found or is not a MidLevel. Dispatching SET_SELECTED_NODE only.`);
+        dispatch({ type: ACTIONS.SET_SELECTED_NODE, payload: node });
+        return;
+    }
+
+    // --- Step 1: Dispatch update for the selected node in the current level ---
+    dispatch({ type: ACTIONS.SET_SELECTED_NODE, payload: node });
+
+    // --- Step 2: Get the quote that *was* selected in this level ---
+    const currentSelectedQuote = getSelectedQuoteInThisLevel(targetLevel);
+    let isPreviouslySelectedQuoteValidForNewNode = false;
+    if (currentSelectedQuote) {
+        const quotesMap = node.quoteCounts?.quoteCounts;
+        if (quotesMap) {
+            isPreviouslySelectedQuoteValidForNewNode = quotesMap.some(([quoteFromMap]) => areQuotesEqual(quoteFromMap, currentSelectedQuote));
+        }
+    }
+
+    // Determine the quote context that *should* drive the next level
+    let quoteToDriveNextLevel: Quote | null = null;
+
+    if (currentSelectedQuote && isPreviouslySelectedQuoteValidForNewNode) {
+        // Case A: Previous selection is still valid for the new node.
+        quoteToDriveNextLevel = currentSelectedQuote;
+        console.log(`[setSelectedNode] Prev selected quote is valid for node ${node.id}. Quote:`, quoteToDriveNextLevel);
+        // No need to dispatch UPDATE_THIS_LEVEL_SELECTED_QUOTE as it hasn't changed.
     } else {
-      throw new StoryTreeError('Store not initialized for setSelectedNode');
+        // Case B: Previous selection is invalid (or didn't exist). Need to find the new default.
+        const newDefaultQuoteForParent = this.mostQuoted(node.quoteCounts);
+        quoteToDriveNextLevel = newDefaultQuoteForParent; // This might be null if no quotes exist
+
+        console.log(`[setSelectedNode] Prev selected quote invalid or null. New driving quote for node ${node.id}:`, quoteToDriveNextLevel);
+
+        // Explicitly update/reset the parent level's selected quote state
+        dispatch({
+            type: ACTIONS.UPDATE_THIS_LEVEL_SELECTED_QUOTE,
+            payload: {
+                levelNumber: levelNumber,
+                // Set to the new default, or null if no default exists.
+                // Setting it here ensures the parent level state reflects the context driving N+1.
+                newQuote: quoteToDriveNextLevel
+            }
+        });
+    }
+
+    // --- Step 3: Check if the *next* level (N+1) needs updating ---
+    // Re-add explicit null check to satisfy linter
+    if (!state.storyTree) {
+        console.error("[setSelectedNode] state.storyTree became null unexpectedly before checking next level.");
+        return; 
+    }
+    const nextLevel = state.storyTree.levels[nextLevelNumber];
+    let nextLevelNeedsUpdate = true; // Assume update needed unless proven otherwise
+
+    if (nextLevel && isMidLevel(nextLevel)) {
+        // Next level exists and has data. Check if its driving quote matches.
+        const nextLevelParentQuote = getSelectedQuoteInParent(nextLevel);
+        if (areQuotesEqual(nextLevelParentQuote, quoteToDriveNextLevel)) {
+            // The next level already shows data for the correct quote. No update needed.
+            nextLevelNeedsUpdate = false;
+            console.log(`[setSelectedNode] Next level ${nextLevelNumber} already reflects the correct quote. No update needed.`);
+        } else {
+             console.log(`[setSelectedNode] Next level ${nextLevelNumber} needs update. Current parent quote:`, nextLevelParentQuote, `Required:`, quoteToDriveNextLevel);
+        }
+    } else if (nextLevel && isLastLevel(nextLevel)) {
+        // Next level exists but is 'End of thread'. Check if it *should* be.
+        if (quoteToDriveNextLevel === null) {
+            // Correct state: Parent context leads to no children. No update needed.
+            nextLevelNeedsUpdate = false;
+            console.log(`[setSelectedNode] Next level ${nextLevelNumber} is LastLevel and driving quote is null. Correct state.`);
+        } else {
+             console.log(`[setSelectedNode] Next level ${nextLevelNumber} is LastLevel, but should show children for quote:`, quoteToDriveNextLevel);
+        }
+    } else if (!nextLevel && quoteToDriveNextLevel !== null) {
+        // Next level doesn't exist yet, but it should (parent has a driving quote).
+         console.log(`[setSelectedNode] Next level ${nextLevelNumber} does not exist, but should be fetched for quote:`, quoteToDriveNextLevel);
+    } else {
+        // Default case: nextLevel doesn't exist and driving quote is null. Correct state.
+        nextLevelNeedsUpdate = false;
+         console.log(`[setSelectedNode] Next level ${nextLevelNumber} does not exist and driving quote is null. Correct state.`);
+    }
+
+
+    // --- Step 4: If N+1 needs updating, fetch/replace data ---
+    if (nextLevelNeedsUpdate) {
+        console.log(`[setSelectedNode] Proceeding to update level ${nextLevelNumber}.`);
+        const parentIdForNextLevel = node.id;
+
+        try {
+            let nextLevelData: StoryTreeLevel;
+
+            if (quoteToDriveNextLevel) {
+                // Fetch replies for the driving quote
+                const sortingCriteria = 'mostRecent';
+                const limit = 5;
+                const maybeFirstReplies = await this.fetchFirstRepliesForLevel(nextLevelNumber, parentIdForNextLevel, quoteToDriveNextLevel, sortingCriteria, limit);
+
+                if (maybeFirstReplies && maybeFirstReplies.data.length > 0) {
+                    // Construct MidLevel N+1
+                    const firstReplies: Reply[] = maybeFirstReplies.data;
+                    const pagination: Pagination = maybeFirstReplies.pagination;
+                    const quoteCountsMap = new Map<Quote, QuoteCounts>();
+                     await Promise.all(firstReplies.map(async (reply: Reply) => {
+                      const quoteCounts = await this.fetchQuoteCounts(reply.id);
+                      quoteCountsMap.set(reply.quote, quoteCounts);
+                    }));
+                    const siblingsForQuote: Array<StoryTreeNode> = firstReplies.map(reply => ({
+                      id: reply.id, rootNodeId: rootNodeId, parentId: [parentIdForNextLevel], levelNumber: nextLevelNumber,
+                      textContent: reply.text, repliedToQuote: quoteToDriveNextLevel,
+                      quoteCounts: quoteCountsMap.get(reply.quote), authorId: reply.authorId, createdAt: reply.createdAt,
+                    } as StoryTreeNode));
+                    const selectedNodeForNewLevel = siblingsForQuote[0];
+                    const initialSelectedQuoteInNewLevel = selectedNodeForNewLevel.quoteCounts ? this.mostQuoted(selectedNodeForNewLevel.quoteCounts) : null;
+
+                    nextLevelData = createMidLevel(
+                      rootNodeId, [parentIdForNextLevel], nextLevelNumber,
+                      quoteToDriveNextLevel, // selectedQuoteInParent for N+1
+                      initialSelectedQuoteInNewLevel, // selectedQuoteInThisLevel for N+1's first node
+                      selectedNodeForNewLevel,
+                      { levelsMap: [[quoteToDriveNextLevel, siblingsForQuote]] },
+                      pagination
+                    );
+
+                } else {
+                    // No replies found for the driving quote, mark N+1 as LastLevel
+                     console.log(`[setSelectedNode] No replies found for quote. Marking level ${nextLevelNumber} as LastLevel.`);
+                    nextLevelData = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: rootNodeId }, midLevel: null };
+                }
+            } else {
+                // Driving quote is null, mark N+1 as LastLevel
+                 console.log(`[setSelectedNode] Driving quote is null. Marking level ${nextLevelNumber} as LastLevel.`);
+                nextLevelData = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: rootNodeId }, midLevel: null };
+            }
+
+            // Dispatch REPLACE_LEVEL_DATA for N+1
+            dispatch({
+                type: ACTIONS.REPLACE_LEVEL_DATA,
+                payload: nextLevelData
+            });
+
+            // Dispatch CLEAR_LEVELS_AFTER N+1
+            dispatch({
+                type: ACTIONS.CLEAR_LEVELS_AFTER,
+                payload: { levelNumber: nextLevelNumber }
+            });
+
+        } catch (error) {
+             console.error(`[setSelectedNode] Error fetching or processing data for level ${nextLevelNumber}:`, error);
+            const storyTreeErr = new StoryTreeError(`Failed to update level ${nextLevelNumber}: ${error instanceof Error ? error.message : String(error)}`);
+            dispatch({ type: ACTIONS.SET_ERROR, payload: storyTreeErr.message });
+            // Add null check before accessing storyTree again for rootNodeId
+            const finalRootNodeId = state.storyTree ? state.storyTree.post.id : 'unknown_root'; // Fallback ID
+            // Mark N+1 as LastLevel on error
+            const errorLevelData: StoryTreeLevel = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: finalRootNodeId }, midLevel: null };
+             dispatch({ type: ACTIONS.REPLACE_LEVEL_DATA, payload: errorLevelData });
+             dispatch({ type: ACTIONS.CLEAR_LEVELS_AFTER, payload: { levelNumber: nextLevelNumber } });
+        }
     }
   }
 
@@ -938,7 +1104,142 @@ class StoryTreeOperator extends BaseOperator {
       end: parentText.length
     });
   } 
-  
+
+  // Add these new methods
+  public async handleNavigateNextSibling(levelNumber: number): Promise<void> {
+    if (!this.store || !this.store.state) {
+        console.warn("[Operator NAV_NEXT] Store or state not initialized.");
+        return;
+    }
+    if (!this.store.state.storyTree) {
+        console.warn("[Operator NAV_NEXT] storyTree not initialized.");
+        return;
+    }
+    const state = this.store.state;
+    // Use non-null assertion after check
+    const levelData = state.storyTree!.levels[levelNumber]; 
+
+    console.log(`[Operator] Handling NAVIGATE_NEXT_SIBLING for Level: ${levelNumber}`);
+
+    if (!levelData || !isMidLevel(levelData) || !levelData.midLevel) {
+      console.warn(`[Operator NAV_NEXT] Invalid level data for level ${levelNumber}`);
+      return;
+    }
+
+    const siblingsData = getSiblings(levelData);
+    const currentSelectedNode = getSelectedNodeHelper(levelData);
+
+    if (!siblingsData || !currentSelectedNode) {
+        console.error(`[Operator NAV_NEXT] Missing siblings data or selected node for level ${levelNumber}`);
+        return;
+    }
+
+    let siblingsList: StoryTreeNode[] | undefined;
+    for (const [quoteKey, nodesForQuote] of siblingsData.levelsMap) {
+        if (nodesForQuote.some((node: StoryTreeNode) => node.id === currentSelectedNode.id)) {
+            siblingsList = nodesForQuote;
+            break;
+        }
+    }
+
+    if (!siblingsList) {
+        console.error(`[Operator NAV_NEXT] Consistency Error: Selected node ${currentSelectedNode.id} not found in any sibling list for level ${levelNumber}`);
+        return;
+    }
+
+    const currentIndex = siblingsList.findIndex(sibling => sibling.id === currentSelectedNode.id);
+    if (currentIndex === -1) {
+       console.error(`[Operator NAV_NEXT] Safeguard Error: Current node ${currentSelectedNode.id} not found in its identified list.`);
+       return;
+    }
+    if (currentIndex >= siblingsList.length - 1) {
+      console.log(`[Operator NAV_NEXT] Already at last sibling for level ${levelNumber}.`);
+      // TODO: Handle pagination/load more?
+      return;
+    }
+
+    const nextSibling = siblingsList[currentIndex + 1];
+    if (!nextSibling) {
+       console.error(`[Operator NAV_NEXT] Next sibling is unexpectedly undefined at index ${currentIndex + 1} for level ${levelNumber}`);
+       return;
+    }
+
+    try {
+      await this.setSelectedNode(nextSibling);
+    } catch (error) {
+      console.error(`[Operator NAV_NEXT] Failed to set selected node for level ${levelNumber}:`, error);
+       if (this.store.dispatch) {
+            this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Navigation failed: ${error instanceof Error ? error.message : String(error)}` });
+        }
+    }
+  }
+
+  public async handleNavigatePrevSibling(levelNumber: number): Promise<void> {
+     if (!this.store || !this.store.state) {
+        console.warn("[Operator NAV_PREV] Store or state not initialized.");
+        return;
+     }
+    if (!this.store.state.storyTree) {
+        console.warn("[Operator NAV_PREV] storyTree not initialized.");
+        return;
+    }
+    const state = this.store.state;
+    // Use non-null assertion after check
+    const levelData = state.storyTree!.levels[levelNumber];
+
+    console.log(`[Operator] Handling NAVIGATE_PREV_SIBLING for Level: ${levelNumber}`);
+
+     if (!levelData || !isMidLevel(levelData) || !levelData.midLevel) {
+       console.warn(`[Operator NAV_PREV] Invalid level data for level ${levelNumber}`);
+      return;
+     }
+
+    const siblingsData = getSiblings(levelData);
+    const currentSelectedNode = getSelectedNodeHelper(levelData);
+
+    if (!siblingsData || !currentSelectedNode) {
+       console.error(`[Operator NAV_PREV] Missing siblings data or selected node for level ${levelNumber}`);
+        return;
+    }
+
+    let siblingsList: StoryTreeNode[] | undefined;
+     for (const [quoteKey, nodesForQuote] of siblingsData.levelsMap) {
+        if (nodesForQuote.some((node: StoryTreeNode) => node.id === currentSelectedNode.id)) {
+            siblingsList = nodesForQuote;
+            break;
+        }
+    }
+
+     if (!siblingsList) {
+       console.error(`[Operator NAV_PREV] Consistency Error: Selected node ${currentSelectedNode.id} not found in any sibling list for level ${levelNumber}`);
+        return;
+    }
+
+    const currentIndex = siblingsList.findIndex(sibling => sibling.id === currentSelectedNode.id);
+     if (currentIndex === -1) {
+        console.error(`[Operator NAV_PREV] Safeguard Error: Current node ${currentSelectedNode.id} not found in its identified list.`);
+       return;
+     }
+     if (currentIndex <= 0) {
+        console.log(`[Operator NAV_PREV] Already at first sibling for level ${levelNumber}.`);
+       return;
+     }
+
+    const previousSibling = siblingsList[currentIndex - 1];
+     if (!previousSibling) {
+        console.error(`[Operator NAV_PREV] Previous sibling is unexpectedly undefined at index ${currentIndex - 1} for level ${levelNumber}`);
+       return;
+     }
+
+    try {
+      await this.setSelectedNode(previousSibling);
+    } catch (error) {
+       console.error(`[Operator NAV_PREV] Failed to set selected node for level ${levelNumber}:`, error);
+       if (this.store.dispatch) {
+            this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Navigation failed: ${error instanceof Error ? error.message : String(error)}` });
+        }
+    }
+  }
 }
 
 // Create and export a single instance
