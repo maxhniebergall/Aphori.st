@@ -68,11 +68,6 @@ export function useHighlighting({
   useEffect(() => {
     let newSelections: Quote[] = [];
     
-    // Add the main selectedQuote first if it's valid
-    if (selectedQuote && Quote.isValid(selectedQuote) && selectedQuote.selectionRange.end > selectedQuote.selectionRange.start) {
-      newSelections.push(selectedQuote);
-    }
-
     // Add quotes from existingSelectableQuotes
     if (existingSelectableQuotes?.quoteCounts) {
       // Sort quotes by reply count descending and process top 10 only
@@ -123,6 +118,8 @@ export function useHighlighting({
       });
     }
     
+    // The selections array should ONLY contain quotes made *by children* (from existingSelectableQuotes)
+    // The quote the node makes of its parent (selectedQuote) is handled separately (e.g., blue underline).
     setSelections(newSelections);
   }, [selectedQuote, existingSelectableQuotes]);
 

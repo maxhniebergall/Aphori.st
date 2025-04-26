@@ -4,6 +4,10 @@
  * - Support varying highlight intensity based on overlap count
  * - Handle click events on highlighted segments
  * - Integrate with the Quote system
+ * - Visual Cues:
+ *   - Green Highlight (background/border): Indicates the text segment is quoted by one or more child replies. Based on `selections` prop.
+ *   - Blue/Teal Underline: Indicates the text segment is part of the quote made by the currently selected reply in the UI context. Based on `selectedReplyQuote` prop matching the `nodeId`.
+ *   - Light Blue Background (hover): Previews the next selected quote under the user's cursor on non-touch devices. Based on `activeQuoteObj` state.
  */
 
 import React, { useMemo, useState } from 'react';
@@ -22,7 +26,8 @@ interface HighlightedTextProps {
   text: string;
   selections: Quote[];
   onSegmentClick?: (quote: Quote) => void;
-  selectedQuoteOfThisNode?: Quote | null;
+  selectedReplyQuote?: Quote | null;
+  nodeId: string;
 }
 
 /**
@@ -36,7 +41,8 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
   text, 
   selections, 
   onSegmentClick,
-  selectedQuoteOfThisNode
+  selectedReplyQuote,
+  nodeId
 }) => {
   const [activeQuoteObj, setActiveQuoteObj] = useState<Quote | null>(null);
   const [globalCycleQuote, setGlobalCycleQuote] = useState<Quote | null>(null); 
@@ -199,10 +205,10 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
                                  segment.start >= activeQuoteObj.selectionRange.start &&
                                  segment.end <= activeQuoteObj.selectionRange.end;
 
-        const isBlueUnderlineSegment = selectedQuoteOfThisNode !== undefined && selectedQuoteOfThisNode !== null &&
-                                          selectedQuoteOfThisNode.selectionRange &&
-                                          segment.start >= selectedQuoteOfThisNode.selectionRange.start &&
-                                          segment.end <= selectedQuoteOfThisNode.selectionRange.end;
+        const isBlueUnderlineSegment = selectedReplyQuote?.sourcePostId === nodeId &&
+                                       selectedReplyQuote.selectionRange &&
+                                       segment.start >= selectedReplyQuote.selectionRange.start &&
+                                       segment.end <= selectedReplyQuote.selectionRange.end;
 
         const finalBackgroundColor = isActiveSegment
           ? 'rgba(173, 216, 230, 0.8)'
