@@ -22,6 +22,7 @@ interface HighlightedTextProps {
   text: string;
   selections: Quote[];
   onSegmentClick?: (quote: Quote) => void;
+  selectedQuoteOfThisNode?: Quote | null;
 }
 
 /**
@@ -34,7 +35,8 @@ interface HighlightedTextProps {
 export const HighlightedText: React.FC<HighlightedTextProps> = ({ 
   text, 
   selections, 
-  onSegmentClick 
+  onSegmentClick,
+  selectedQuoteOfThisNode
 }) => {
   const [activeSelectionIndex, setActiveSelectionIndex] = useState<number | null>(null);
   const [clickCycleState, setClickCycleState] = useState<Map<number, number>>(new Map());
@@ -79,7 +81,7 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
         overlappingQuoteOriginalIndices
       };
     });
-  }, [text, selections]);
+  }, [text, selections, selectedQuoteOfThisNode]);
 
   // Handle click on a highlighted segment
   const handleSegmentClick = (segment: TextSegment) => {
@@ -134,24 +136,36 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
           : 'transparent';
 
         // Determine if this segment is part of the currently active selection (hover or click)
-        const isActiveSegment = activeQuote !== null && 
+        const isActiveSegment = activeQuote !== null &&
                                  activeQuote.selectionRange &&
-                                 segment.start >= activeQuote.selectionRange.start && 
+                                 segment.start >= activeQuote.selectionRange.start &&
                                  segment.end <= activeQuote.selectionRange.end;
 
-        // Use active color if it's part of the active selection, otherwise use base color
+        // Determine if this segment is part of the quote designated for a blue underline
+        const isBlueUnderlineSegment = selectedQuoteOfThisNode !== undefined && selectedQuoteOfThisNode !== null &&
+                                          selectedQuoteOfThisNode.selectionRange &&
+                                          segment.start >= selectedQuoteOfThisNode.selectionRange.start &&
+                                          segment.end <= selectedQuoteOfThisNode.selectionRange.end;
+
+        // Use active color for background if it's part of the active selection (hover)
         const finalBackgroundColor = isActiveSegment
           ? 'rgba(173, 216, 230, 0.8)' // Light blue for active/hover color
           : baseBackgroundColor;
 
+        // Determine border color based on the selectedQuoteOfThisNode prop
+        const borderColor = isBlueUnderlineSegment ? 'rgba(0, 255, 251, 0.8)' : '#228B22'; // Blue if designated, else green
+
+        // Determine if a border should be shown at all
+        const shouldShowBorder = segment.overlapCount > 0 || isBlueUnderlineSegment;
+
         // Add border and styling for highlighted segments
         const style: React.CSSProperties = {
           backgroundColor: finalBackgroundColor,
-          cursor: segment.overlapCount > 0 ? 'pointer' : 'inherit',
+          cursor: shouldShowBorder ? 'pointer' : 'inherit', // Make cursor pointer if border is shown
           display: 'inline',
-          transition: 'background-color 0.2s ease', // Apply transition here
-          ...(segment.overlapCount > 0 ? {
-            borderBottom: '2px solid #228B22',
+          transition: 'background-color 0.2s ease, border-bottom-color 0.2s ease', // Add transition for border color
+          ...(shouldShowBorder ? { // Apply border style if needed
+            borderBottom: `2px solid ${borderColor}`, // Use dynamic border color
             padding: '0 2px',
             borderRadius: '2px',
           } : {})

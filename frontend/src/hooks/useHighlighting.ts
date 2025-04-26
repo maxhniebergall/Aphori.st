@@ -21,6 +21,7 @@ interface UseHighlightingProps {
 interface UseHighlightingReturn {
   selections: Quote[];
   handleSegmentClick: (quote: Quote) => void;
+  selectedQuote?: Quote | null;
 }
 
 /**
@@ -41,10 +42,12 @@ interface UseHighlightingReturn {
  * 
  * @returns {{
  *   selections: Quote[],
- *   handleSegmentClick: (quote: Quote) => void
+ *   handleSegmentClick: (quote: Quote) => void,
+ *   selectedQuote?: Quote | null
  * }} An object containing:
  *   - selections: array of quotes for rendering with HighlightedText.
  *   - handleSegmentClick: function to handle clicks on highlighted segments.
+ *   - selectedQuote?: Quote | null
  */
 export function useHighlighting({
   text,
@@ -65,6 +68,11 @@ export function useHighlighting({
   useEffect(() => {
     let newSelections: Quote[] = [];
     
+    // Add the main selectedQuote first if it's valid
+    if (selectedQuote && Quote.isValid(selectedQuote) && selectedQuote.selectionRange.end > selectedQuote.selectionRange.start) {
+      newSelections.push(selectedQuote);
+    }
+
     // Add quotes from existingSelectableQuotes
     if (existingSelectableQuotes?.quoteCounts) {
       // Sort quotes by reply count descending and process top 10 only
@@ -97,8 +105,9 @@ export function useHighlighting({
         
         return quote;
       }).filter(quote => 
-        quote.selectionRange.start >= 0 && 
-        quote.selectionRange.end > quote.selectionRange.start
+        // Relax validation slightly: primarily check end > start
+        // Allow start === 0 for potentially empty ranges initially?
+        quote.selectionRange && quote.selectionRange.end > quote.selectionRange.start
       ); // Filter out invalid selections
       
       // Add unique quotes from the existing ones
@@ -119,6 +128,7 @@ export function useHighlighting({
 
   return {
     selections,
-    handleSegmentClick
+    handleSegmentClick,
+    selectedQuote
   };
 } 

@@ -83,6 +83,16 @@ export class Quote {
       })
     );
   }
+
+  /**
+   * Creates a placeholder quote object, often used when no real quote is selected.
+   * @param {string} sourcePostId - The ID of the source post for context.
+   * @returns {Quote} A placeholder Quote instance with empty text and an invalid range.
+   */
+  public static createPlaceholder(sourcePostId: string): Quote {
+    // Use invalid range like start: -1, end: -1 or start: 0, end: 0 depending on downstream checks
+    return new Quote("", sourcePostId, { start: -1, end: -1 }); 
+  }
 }
 
 export function areQuotesEqual(q1: Quote, q2: Quote): boolean {

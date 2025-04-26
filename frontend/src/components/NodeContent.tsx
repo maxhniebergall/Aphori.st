@@ -27,6 +27,7 @@ interface NodeContentProps {
   quote?: Quote;
   levelSelectedQuote?: Quote;
   existingSelectableQuotes?: QuoteCounts;
+  currentLevelSelectedQuote?: Quote | null;
 }
 
 /**
@@ -51,14 +52,19 @@ interface NodeContentProps {
 // Memoize the TextSelection component to prevent unnecessary re-renders
 const MemoizedTextSelection = React.memo(TextSelection);
 // Memoize the HighlightedText component to prevent unnecessary re-renders
-const MemoizedHighlightedText = React.memo(HighlightedText);
+const MemoizedHighlightedText = React.memo(HighlightedText,
+  (prevProps, nextProps) => {
+    return prevProps.text === nextProps.text && prevProps.selections === nextProps.selections && prevProps.selectedQuoteOfThisNode === nextProps.selectedQuoteOfThisNode;
+  }
+);
 
 const NodeContent: React.FC<NodeContentProps> = ({
   node,
   onExistingQuoteSelectionComplete: onExistingQuoteSelectionComplete = () => {},
   quote,
   levelSelectedQuote,
-  existingSelectableQuotes
+  existingSelectableQuotes,
+  currentLevelSelectedQuote
 }) => {
   // Log the props received by NodeContent for debugging propagation
   
@@ -93,7 +99,8 @@ const NodeContent: React.FC<NodeContentProps> = ({
   // Use the highlighting hook ONLY for managing highlights in the main content
   const {
     selections,
-    handleSegmentClick // This is the function passed *down* to HighlightedText
+    handleSegmentClick,
+    selectedQuote // Destructure selectedQuote from the hook's return
   } = useHighlighting({
     text: containerText || textContent,
     selectedQuote: levelSelectedQuote,
@@ -135,6 +142,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
           text={containerText || textContent}
           selections={selections}
           onSegmentClick={handleSegmentClick}
+          selectedQuoteOfThisNode={currentLevelSelectedQuote ?? undefined}
         />
       </div>
 

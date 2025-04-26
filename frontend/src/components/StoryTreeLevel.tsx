@@ -8,13 +8,13 @@
  * - Communicate height changes to parent components for proper virtualization
  */
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
-import { StoryTreeLevel as LevelData, StoryTreeNode, Pagination } from '../types/types';
+import { StoryTreeLevel as LevelData, Pagination } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import { 
@@ -50,16 +50,27 @@ const MemoizedNodeFooter = React.memo(NodeFooter,
 const MemoizedNodeContent = React.memo(NodeContent, (prevProps, nextProps) => {
   // Check if nodes are the same reference or have the same ID
   const nodeChanged = prevProps.node !== nextProps.node && prevProps.node?.id !== nextProps.node?.id;
-  
-  // Use areQuotesEqual for quote comparison, handling undefined cases
-  const quoteChanged = prevProps.quote && nextProps.quote && !areQuotesEqual(prevProps.quote, nextProps.quote);
-  const levelSelectedQuoteChanged = prevProps.levelSelectedQuote && nextProps.levelSelectedQuote && !areQuotesEqual(prevProps.levelSelectedQuote, nextProps.levelSelectedQuote);
+
+  // Helper for comparing potentially null/undefined quotes
+  const compareNullableQuotes = (q1: Quote | null | undefined, q2: Quote | null | undefined): boolean => {
+    if (!q1 && !q2) return true; // Both null/undefined
+    if (!q1 || !q2) return false; // One is null/undefined, the other isn't
+    return areQuotesEqual(q1, q2); // Both are valid Quotes, compare them
+  };
+
+  // Use the helper for quote comparison
+  const quoteChanged = !compareNullableQuotes(prevProps.quote, nextProps.quote);
+  const levelSelectedQuoteChanged = !compareNullableQuotes(prevProps.levelSelectedQuote, nextProps.levelSelectedQuote);
+  const currentLevelSelectedQuoteChanged = !compareNullableQuotes(prevProps.currentLevelSelectedQuote, nextProps.currentLevelSelectedQuote);
 
   // Simple comparison for existingSelectableQuotes (can be refined if needed)
   const existingQuotesChanged = prevProps.existingSelectableQuotes !== nextProps.existingSelectableQuotes;
 
+  // Compare callback function by reference
+  const callbackChanged = prevProps.onExistingQuoteSelectionComplete !== nextProps.onExistingQuoteSelectionComplete;
+
   // Return true if none of the relevant props have changed
-  return !nodeChanged && !quoteChanged && !levelSelectedQuoteChanged && !existingQuotesChanged;
+  return !nodeChanged && !quoteChanged && !levelSelectedQuoteChanged && !existingQuotesChanged && !currentLevelSelectedQuoteChanged && !callbackChanged;
 });
 
 export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
@@ -198,22 +209,26 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     if (!siblings) {
       return undefined;
     }
-    
-    // Fallback to the first sibling from the map
-    const nullEntry = siblings.levelsMap.find(([quote]) => quote === null);
-    return siblings.levelsMap[0]?.[1]?.[0] || (nullEntry ? nullEntry[1][0] : undefined);
+
+    // If there are siblings, return the first one as a fallback (should ideally not happen if selectedNode logic is robust)
+    const selectedQuoteForSiblings = getLevelSelectedQuote(levelData);
+    if (!selectedQuoteForSiblings) return undefined;
+    // Ensure both quotes are non-null before comparing
+    const entry = siblings.levelsMap.find(([quote]) => 
+      quote !== null && selectedQuoteForSiblings !== null && areQuotesEqual(quote, selectedQuoteForSiblings)
+    );
+    return entry && entry[1].length > 0 ? entry[1][0] : undefined;
+
   }, [levelData]);
 
-  // Check if a node is the reply target more efficiently
-  const isReplyTarget = useCallback(
-    (node: StoryTreeNode | undefined): boolean => {
-      if (!node) return false;
-      
-      if (!replyTarget) return false;
-      return replyTarget.rootNodeId === node.rootNodeId && replyTarget.id === node.id && replyTarget.levelNumber === node.levelNumber;
-    },
-    [replyTarget]
-  );
+  // Extract the currently selected quote *for this level*
+  const currentLevelSelectedQuote = useMemo(() => {
+    // Add null check for midLevel
+    return isMidLevel(levelData) && levelData.midLevel ? levelData.midLevel.selectedQuote : null;
+  }, [levelData.midLevel?.selectedQuote]);
+
+  // Determine if the current node is the target for a reply
+  const isReplyTarget = replyTarget?.id === nodeToRender?.id;
 
   // Handle text selection for replies with improved error handling
   const handleExistingQuoteSelectionCompleted = useCallback(
@@ -243,7 +258,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     
     try {
       // Check if we're already in reply mode for this node
-      if (isReplyActive && isReplyTarget(nodeToRender)) {
+      if (isReplyActive && isReplyTarget) {
         // If already in reply mode, exit reply mode
         clearReplyState();
       } else {
@@ -294,7 +309,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Navigation functions with pagination
   const navigateToNextSibling = useCallback(async () => {
-    if (isReplyTarget(nodeToRender)) { return; } // Disable navigation if node is reply target
+    if (isReplyTarget) { return; } // Disable navigation if node is reply target
     
     if (!nodeToRender) {
       
@@ -350,7 +365,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   ]);
 
   const navigateToPreviousSibling = useCallback(async () => {
-    if (isReplyTarget(nodeToRender)) { return; } // Disable navigation if node is reply target
+    if (isReplyTarget) { return; } // Disable navigation if node is reply target
     
     if (!nodeToRender) {
       
@@ -400,9 +415,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     }
   });
 
-  // Get the actual selected quote for this level
-  const levelSelectedQuote = useMemo(() => getLevelSelectedQuote(levelData), [levelData]);
-
   // Early return if we don't have a valid node
   if (!nodeToRender?.rootNodeId) {
     return null;
@@ -422,7 +434,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       <AnimatePresence mode="wait">
         <div {...bind()} style={{ touchAction: 'none' }}>
           <motion.div
-            className={`story-tree-node ${isReplyTarget(nodeToRender) ? 'reply-target' : ''}`}
+            className={`story-tree-node ${isReplyTarget ? 'reply-target' : ''}`}
             key={nodeToRender?.rootNodeId + levelData.midLevel?.levelNumber}
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
@@ -435,18 +447,21 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               position: 'relative'
             }}
           >
-            <MemoizedNodeContent
-              node={nodeToRender}
-              levelSelectedQuote={levelSelectedQuote}
-              quote={(isReplyTarget(nodeToRender) && replyQuote) ? replyQuote : undefined}
-              existingSelectableQuotes={nodeToRender?.quoteCounts ?? undefined}
-              onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
-            />
+            {nodeToRender && (
+              <MemoizedNodeContent
+                node={nodeToRender}
+                onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
+                quote={isReplyTarget ? (replyQuote ?? undefined) : undefined}
+                levelSelectedQuote={getLevelSelectedQuote(levelData) ?? undefined}
+                existingSelectableQuotes={nodeToRender.quoteCounts ?? undefined}
+                currentLevelSelectedQuote={currentLevelSelectedQuote ?? undefined}
+              />
+            )}
             <MemoizedNodeFooter
               currentIndex={siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id)}
               totalSiblings={pagination.totalCount}
               onReplyClick={handleReplyButtonClick}
-              isReplyTarget={isReplyTarget(nodeToRender)}
+              isReplyTarget={isReplyTarget}
               onNextSibling={navigateToNextSibling}
               onPreviousSibling={navigateToPreviousSibling}
               isReplyActive={isReplyActive}
