@@ -13,8 +13,9 @@ import {
   getSelectedQuote, 
   getSiblings, 
   getSelectedNodeHelper, 
-  isMidLevel
+  isMidLevel,
 } from '../utils/levelDataHelpers';
+import { areQuotesEqual } from '../types/quote';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 
 // Row Component Props - update to remove react-window and sizing props
@@ -40,34 +41,42 @@ const Row: React.FC<RowProps> = memo(
       return <div style={{ height: '1px', overflow: 'hidden' }} aria-hidden="true" />;
     }
 
-
-
-
     // Create navigation callbacks for StoryTreeLevel
     const navigateToNextSiblingCallback = useCallback(async () => {
-      if (!isMidLevel(levelData)) {
-        console.warn("Navigate called on non-MidLevel:", levelData);
-        return;
-      }
-
-      const selectedQuote = getSelectedQuote(levelData);
-      if (!selectedQuote) {
-        console.error('No selected quote found for navigation in level:', levelData);
+      if (!isMidLevel(levelData) || !levelData.midLevel) {
+        console.warn("Navigate called on non-MidLevel or invalid levelData:", levelData);
         return;
       }
 
       const siblingsData = getSiblings(levelData);
-      if (!siblingsData) {
-        console.error('No siblings data found for navigation in level:', levelData);
+      if (!siblingsData || siblingsData.levelsMap.length === 0) {
+        console.error('No siblings data or map found for navigation in level:', levelData);
         return;
       }
 
-      const siblingsForQuote = siblingsData.levelsMap.find(
-        ([quoteFromMap]) => quoteFromMap && selectedQuote && quoteFromMap.sourcePostId === selectedQuote.sourcePostId && quoteFromMap.text === selectedQuote.text && quoteFromMap.selectionRange.start === selectedQuote.selectionRange.start && quoteFromMap.selectionRange.end === selectedQuote.selectionRange.end
-      );
+      // --- CORRECT SIBLINGS LIST SELECTION --- 
+      // Get the quote that defines this level's context (selected in the parent)
+      const relevantQuoteKey = levelData.midLevel.selectedQuote;
+      
+      // Find the siblings list in the map that matches the relevant quote
+      const siblingsEntry = siblingsData.levelsMap.find(([quoteKey]) => {
+        // Handle null cases explicitly before calling areQuotesEqual
+        if (relevantQuoteKey === null && quoteKey === null) {
+          return true; // Both are null, they match
+        }
+        if (relevantQuoteKey === null || quoteKey === null) {
+          return false; // One is null, the other isn't, they don't match
+        }
+        // Both are non-null Quotes, now we can safely compare them
+        return areQuotesEqual(quoteKey, relevantQuoteKey);
+      });
 
-      if (!siblingsForQuote || siblingsForQuote[1].length === 0) {
-        console.error('No siblings found for the selected quote:', selectedQuote, 'in level:', levelData);
+      // Extract the list if found, otherwise it's an error/empty
+      const siblingsList = siblingsEntry ? siblingsEntry[1] : [];
+      // --- END CORRECT SIBLINGS LIST SELECTION ---
+
+      if (!siblingsList || siblingsList.length === 0) {
+        console.error('No siblings found for the relevant quote key in level:', levelData, relevantQuoteKey);
         return;
       }
 
@@ -77,21 +86,21 @@ const Row: React.FC<RowProps> = memo(
         return;
       }
 
-      const currentIndex = siblingsForQuote[1].findIndex(sibling => sibling.id === currentSelectedNode.id);
+      const currentIndex = siblingsList.findIndex(sibling => sibling.id === currentSelectedNode.id);
 
       if (currentIndex === -1) {
-         console.error('Current selected node not found within its own sibling list:', currentSelectedNode, siblingsForQuote[1]);
+         console.error('Current selected node not found within its own sibling list:', currentSelectedNode, siblingsList);
          return;
       }
 
-      if (currentIndex >= siblingsForQuote[1].length - 1) {
+      if (currentIndex >= siblingsList.length - 1) {
         console.log('Already at the last sibling.');
         return;
       }
 
-      const nextSibling = siblingsForQuote[1][currentIndex + 1];
+      const nextSibling = siblingsList[currentIndex + 1];
       if (!nextSibling) {
-         console.error('Next sibling is unexpectedly undefined at index', currentIndex + 1, 'in', siblingsForQuote[1]);
+         console.error('Next sibling is unexpectedly undefined at index', currentIndex + 1, 'in', siblingsList);
          return;
       }
 
@@ -104,29 +113,40 @@ const Row: React.FC<RowProps> = memo(
     }, [levelData]);
 
     const navigateToPreviousSiblingCallback = useCallback(async () => {
-      if (!isMidLevel(levelData)) {
-        console.warn("Navigate called on non-MidLevel:", levelData);
-        return;
-      }
-
-      const selectedQuote = getSelectedQuote(levelData);
-      if (!selectedQuote) {
-        console.error('No selected quote found for navigation in level:', levelData);
+      if (!isMidLevel(levelData) || !levelData.midLevel) {
+        console.warn("Navigate called on non-MidLevel or invalid levelData:", levelData);
         return;
       }
 
       const siblingsData = getSiblings(levelData);
-      if (!siblingsData) {
-        console.error('No siblings data found for navigation in level:', levelData);
+       if (!siblingsData || siblingsData.levelsMap.length === 0) {
+        console.error('No siblings data or map found for navigation in level:', levelData);
         return;
       }
 
-      const siblingsForQuote = siblingsData.levelsMap.find(
-        ([quoteFromMap]) => quoteFromMap && selectedQuote && quoteFromMap.sourcePostId === selectedQuote.sourcePostId && quoteFromMap.text === selectedQuote.text && quoteFromMap.selectionRange.start === selectedQuote.selectionRange.start && quoteFromMap.selectionRange.end === selectedQuote.selectionRange.end
-      );
+      // --- CORRECT SIBLINGS LIST SELECTION --- 
+      // Get the quote that defines this level's context (selected in the parent)
+      const relevantQuoteKey = levelData.midLevel.selectedQuote;
+      
+      // Find the siblings list in the map that matches the relevant quote
+      const siblingsEntry = siblingsData.levelsMap.find(([quoteKey]) => {
+        // Handle null cases explicitly before calling areQuotesEqual
+        if (relevantQuoteKey === null && quoteKey === null) {
+          return true; // Both are null, they match
+        }
+        if (relevantQuoteKey === null || quoteKey === null) {
+          return false; // One is null, the other isn't, they don't match
+        }
+        // Both are non-null Quotes, now we can safely compare them
+        return areQuotesEqual(quoteKey, relevantQuoteKey);
+      });
 
-      if (!siblingsForQuote || siblingsForQuote[1].length === 0) {
-        console.error('No siblings found for the selected quote:', selectedQuote, 'in level:', levelData);
+      // Extract the list if found, otherwise it's an error/empty
+      const siblingsList = siblingsEntry ? siblingsEntry[1] : [];
+      // --- END CORRECT SIBLINGS LIST SELECTION ---
+
+      if (!siblingsList || siblingsList.length === 0) {
+        console.error('No siblings found for the relevant quote key in level:', levelData, relevantQuoteKey);
         return;
       }
 
@@ -136,10 +156,10 @@ const Row: React.FC<RowProps> = memo(
         return;
       }
 
-      const currentIndex = siblingsForQuote[1].findIndex(sibling => sibling.id === currentSelectedNode.id);
+      const currentIndex = siblingsList.findIndex(sibling => sibling.id === currentSelectedNode.id);
 
       if (currentIndex === -1) {
-         console.error('Current selected node not found within its own sibling list:', currentSelectedNode, siblingsForQuote[1]);
+         console.error('Current selected node not found within its own sibling list:', currentSelectedNode, siblingsList);
          return;
       }
 
@@ -148,9 +168,9 @@ const Row: React.FC<RowProps> = memo(
         return;
       }
 
-      const previousSibling = siblingsForQuote[1][currentIndex - 1];
+      const previousSibling = siblingsList[currentIndex - 1];
       if (!previousSibling) {
-         console.error('Previous sibling is unexpectedly undefined at index', currentIndex - 1, 'in', siblingsForQuote[1]);
+         console.error('Previous sibling is unexpectedly undefined at index', currentIndex - 1, 'in', siblingsList);
          return;
       }
 
@@ -177,13 +197,11 @@ const Row: React.FC<RowProps> = memo(
     }, [levelData, navigateToNextSiblingCallback, navigateToPreviousSiblingCallback]);
 
     // Render the container div for a visible row
-    // REMOVE minHeight and conditional height/opacity/overflow/pointerEvents
     return (
       <div
         style={{
             padding: '20px', // Apply padding only when visible
             boxSizing: 'border-box',
-            // No minHeight, height, opacity, overflow, pointerEvents here
         }}
         className="row-container"
         role="listitem"
