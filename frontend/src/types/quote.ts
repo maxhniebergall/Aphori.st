@@ -95,7 +95,12 @@ export class Quote {
   }
 }
 
-export function areQuotesEqual(q1: Quote, q2: Quote): boolean {
+export function areQuotesEqual(q1: Quote | null, q2: Quote | null): boolean {
+  if (q1 === null && q2 === null) {
+    return true;
+  } else if (q1 === null || q2 === null) {
+    return false;
+  }
   return (
     q1.text === q2.text &&
     q1.sourceId === q2.sourceId &&

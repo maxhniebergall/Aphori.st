@@ -10,7 +10,7 @@ import React, { useRef, useMemo, memo, useCallback, useEffect } from 'react';
 import StoryTreeLevelComponent from './StoryTreeLevel';
 import { StoryTreeLevel, StoryTreeNode } from '../types/types';
 import { 
-  getSelectedQuote, 
+  getSelectedQuoteInParent,
   getSiblings, 
   getSelectedNodeHelper, 
   isMidLevel,
@@ -56,18 +56,18 @@ const Row: React.FC<RowProps> = memo(
 
       // --- CORRECT SIBLINGS LIST SELECTION --- 
       // Get the quote that defines this level's context (selected in the parent)
-      const relevantQuoteKey = levelData.midLevel.selectedQuote;
+      const relevantQuoteKey = getSelectedQuoteInParent(levelData);
       
       // Find the siblings list in the map that matches the relevant quote
       const siblingsEntry = siblingsData.levelsMap.find(([quoteKey]) => {
-        // Handle null cases explicitly before calling areQuotesEqual
-        if (relevantQuoteKey === null && quoteKey === null) {
-          return true; // Both are null, they match
+        // Handle null/undefined cases explicitly before calling areQuotesEqual
+        if ((relevantQuoteKey === null || relevantQuoteKey === undefined) && (quoteKey === null || quoteKey === undefined)) {
+          return true; // Both are null/undefined, they match
         }
-        if (relevantQuoteKey === null || quoteKey === null) {
-          return false; // One is null, the other isn't, they don't match
+        if ((relevantQuoteKey === null || relevantQuoteKey === undefined) || (quoteKey === null || quoteKey === undefined)) {
+          return false; // One is null/undefined, the other isn't, they don't match
         }
-        // Both are non-null Quotes, now we can safely compare them
+        // Both are non-null/undefined Quotes, now we can safely compare them
         return areQuotesEqual(quoteKey, relevantQuoteKey);
       });
 
@@ -110,7 +110,7 @@ const Row: React.FC<RowProps> = memo(
         console.error("Failed to set selected node:", error);
       }
 
-    }, [levelData, levelData.midLevel?.selectedQuote, levelData.midLevel?.siblings]);
+    }, [levelData]);
 
     const navigateToPreviousSiblingCallback = useCallback(async () => {
       if (!isMidLevel(levelData) || !levelData.midLevel) {
@@ -124,26 +124,24 @@ const Row: React.FC<RowProps> = memo(
         return;
       }
 
-      // --- CORRECT SIBLINGS LIST SELECTION --- 
       // Get the quote that defines this level's context (selected in the parent)
-      const relevantQuoteKey = levelData.midLevel.selectedQuote;
+      const relevantQuoteKey = getSelectedQuoteInParent(levelData);
       
       // Find the siblings list in the map that matches the relevant quote
       const siblingsEntry = siblingsData.levelsMap.find(([quoteKey]) => {
-        // Handle null cases explicitly before calling areQuotesEqual
-        if (relevantQuoteKey === null && quoteKey === null) {
-          return true; // Both are null, they match
+        // Handle null/undefined cases explicitly before calling areQuotesEqual
+        if ((relevantQuoteKey === null || relevantQuoteKey === undefined) && (quoteKey === null || quoteKey === undefined)) {
+          return true; // Both are null/undefined, they match
         }
-        if (relevantQuoteKey === null || quoteKey === null) {
-          return false; // One is null, the other isn't, they don't match
+        if ((relevantQuoteKey === null || relevantQuoteKey === undefined) || (quoteKey === null || quoteKey === undefined)) {
+          return false; // One is null/undefined, the other isn't, they don't match
         }
-        // Both are non-null Quotes, now we can safely compare them
+        // Both are non-null/undefined Quotes, now we can safely compare them
         return areQuotesEqual(quoteKey, relevantQuoteKey);
       });
 
       // Extract the list if found, otherwise it's an error/empty
       const siblingsList = siblingsEntry ? siblingsEntry[1] : [];
-      // --- END CORRECT SIBLINGS LIST SELECTION ---
 
       if (!siblingsList || siblingsList.length === 0) {
         console.error('No siblings found for the relevant quote key in level:', levelData, relevantQuoteKey);
@@ -180,7 +178,7 @@ const Row: React.FC<RowProps> = memo(
         console.error("Failed to set selected node:", error);
       }
 
-    }, [levelData, levelData.midLevel?.selectedQuote, levelData.midLevel?.siblings]);
+    }, [levelData]);
 
     // Create content component directly within Row
     const content = useMemo(() => {

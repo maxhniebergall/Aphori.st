@@ -62,32 +62,45 @@ export function getParentId(level: StoryTreeLevel): string[] | undefined {
 }
 
 /**
- * Get the selectedQuote from a StoryTreeLevel
+ * Get the selectedQuoteInParent from a StoryTreeLevel (the quote selected in the parent level)
  */
-export function getSelectedQuote(level: StoryTreeLevel): Quote | undefined {
+export function getSelectedQuoteInParent(level: StoryTreeLevel): Quote | null {
   if (isMidLevel(level) && level.midLevel) {
-    return level.midLevel.selectedQuote;
+    return level.midLevel.selectedQuoteInParent;
   }
-  return undefined;
+  return null;
 }
 
 /**
- * Set the selectedQuote in a StoryTreeLevel
-  
+ * Get the selectedQuoteInThisLevel from a StoryTreeLevel (the quote selected within this level's node)
+ */
+export function getSelectedQuoteInThisLevel(level: StoryTreeLevel): Quote | null {
+  if (isMidLevel(level) && level.midLevel) {
+    return level.midLevel.selectedQuoteInThisLevel;
+  }
+  return null;
+}
+
+/**
+ * Set the selectedQuoteInThisLevel in a StoryTreeLevel
+ * 
  * Pure Function
  */
-export function setSelectedQuoteHelper(level: StoryTreeLevel, quote: Quote): StoryTreeLevel {
+export function setSelectedQuoteInThisLevelHelper(level: StoryTreeLevel, quote: Quote | null): StoryTreeLevel {
   if (isMidLevel(level) && level.midLevel) {
     const newLevel = {
       ...level,
       midLevel: {
       ...level.midLevel,
-      selectedQuote: quote
+      selectedQuoteInThisLevel: quote // Update this field
       }
     }
     return newLevel;
   } else {
-    throw new Error("Invalid level");
+    // Maybe log a warning or return level unchanged? Throwing might be too harsh.
+    console.warn("Attempted to set selectedQuoteInThisLevel on a non-MidLevel or invalid level:", level);
+    return level;
+    // throw new Error("Invalid level"); 
   }
 }
 
@@ -151,7 +164,8 @@ export function createMidLevel(
   rootNodeId: string,
   parentId: string[],
   levelNumber: number,
-  selectedQuote: Quote,
+  selectedQuoteInParent: Quote | null,
+  selectedQuoteInThisLevel: Quote | null,
   selectedNode: StoryTreeNode,
   siblings: Siblings,
   pagination: Pagination
@@ -162,7 +176,8 @@ export function createMidLevel(
       rootNodeId,
       parentId,
       levelNumber,
-      selectedQuote,
+      selectedQuoteInParent,
+      selectedQuoteInThisLevel,
       selectedNode,
       siblings,
       pagination
