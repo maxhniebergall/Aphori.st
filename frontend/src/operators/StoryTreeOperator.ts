@@ -434,18 +434,14 @@ class StoryTreeOperator extends BaseOperator {
     const currentLevelsLength = currentState?.storyTree?.levels?.length ?? 0;
     const levelNumber = currentLevelsLength; // Level to load is the current length
 
-    console.log(`[Operator Start] loadSingleLevel() called. Attempting to load level ${levelNumber}. Internal isLoadingMore: ${this.isLoadingMore}, loadingLevelNumber: ${this.loadingLevelNumber}, Context isLoadingMore: ${currentState?.isLoadingMore}`);
-
     // Check the internal boolean flag first
     if (this.isLoadingMore) {
       // If already loading, check if it's for the *same level* we are about to load
       if (this.loadingLevelNumber === levelNumber) {
-        console.warn(`[Operator Internal Lock] TRUE for the same level ${levelNumber}. Skipping duplicate request.`);
         return;
       } else {
         // This case should ideally not happen if loadMore calls are sequential, 
         // but handles potential edge cases where a load for N+1 starts before N finishes releasing the lock.
-        console.warn(`[Operator Internal Lock] TRUE for level ${this.loadingLevelNumber}, but requested level is ${levelNumber}. Skipping new request.`);
         return;
       }
     }
@@ -453,11 +449,9 @@ class StoryTreeOperator extends BaseOperator {
     // Belt-and-suspenders: Also check the shared context state
     // This check might be redundant now with the level-specific lock, but keep for safety?
     if (currentState?.isLoadingMore) {
-      console.warn(`[Operator Context Check] TRUE for level ${levelNumber}. Skipping.`);
       return;
     }
       
-    console.log(`[Operator Set Lock] Setting internal isLoadingMore = true, loadingLevelNumber = ${levelNumber}`);
     this.isLoadingMore = true; // Set internal lock
     this.loadingLevelNumber = levelNumber; // Set level being loaded
 
@@ -466,8 +460,6 @@ class StoryTreeOperator extends BaseOperator {
     if (this.store?.dispatch) {
       this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: true }); // Dispatch START loading action
     } else {
-      console.error("StoryTreeOperator: Store not available for dispatching SET_LOADING_MORE true.");
-      // Reset internal lock if dispatch fails?
       this.isLoadingMore = false;
       return; // Can't proceed without dispatch
     }
@@ -480,9 +472,6 @@ class StoryTreeOperator extends BaseOperator {
           throw new StoryTreeError('Store not initialized');
       }
       
-      // Use the calculated levelNumber
-      // const levelNumber = startIndex; // Removed
-
       // Re-read state here? Or rely on the one fetched at the start?
       // Let's re-read to be absolutely sure we have the latest before validation
       const state = this.getState();  
@@ -676,13 +665,9 @@ class StoryTreeOperator extends BaseOperator {
           this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to load level ${levelNumber}: ${error instanceof Error ? error.message : String(error)}` });
         }
     } finally {
-      // Use the calculated levelNumber in log
-      console.log(`[Operator Finally Start] For level ${levelNumber}. Internal isLoadingMore: ${this.isLoadingMore}, loadingLevelNumber: ${this.loadingLevelNumber}`);
-      
       // Dispatch context update immediately
       if (this.store?.dispatch) {
         this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false }); 
-        console.log(`[Operator Finally] Dispatched SET_LOADING_MORE: false for level ${levelNumber}`);
       } else {
         console.error("StoryTreeOperator: Store not available for dispatching SET_LOADING_MORE false.");
       }
@@ -701,7 +686,6 @@ class StoryTreeOperator extends BaseOperator {
         // to the next tick. This gives React time to process the context state update. When the second
         // invocation runs, it correctly sees the *internal* locks are still engaged from the first call
         // and skips the duplicate load. The internal locks are then safely reset later when the timeout executes.
-        console.log(`[Operator Lock Reset Timeout] Resetting internal locks. Was loading level: ${this.loadingLevelNumber}`);
         this.isLoadingMore = false; // Release internal lock
         this.loadingLevelNumber = null; // Clear level being loaded
       }, 0);

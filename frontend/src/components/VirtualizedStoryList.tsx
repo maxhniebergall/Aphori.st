@@ -120,13 +120,10 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   // Restore the original loadMore callback
   const loadMore = useCallback(() => {
     // Log when the callback is invoked
-    console.log("[VirtualizedStoryList] loadMore callback invoked. Context isLoadingMore:", isLoadingMore);
     if (isLoadingMore) {
-      console.log("[VirtualizedStoryList] loadMore callback: Skipping, isLoadingMore is true.");
       return;
     }
     // Call loadSingleLevel without startIndex
-    console.log("[VirtualizedStoryList] loadMore callback: Calling operator.loadSingleLevel().");
     storyTreeOperator.loadSingleLevel()
   }, [isLoadingMore]); // Correct dependency
 
