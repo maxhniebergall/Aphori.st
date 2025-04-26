@@ -11,6 +11,7 @@ import {
   getPagination,
   getSiblings,
   setSelectedNodeHelper,
+  setSelectedQuoteInThisLevelHelper,
   createLastLevel,
   isMidLevel,
   isLastLevel,
@@ -268,32 +269,18 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         break;
       }
 
-    case ACTIONS.UPDATE_LEVEL_SELECTED_QUOTE:
+    case ACTIONS.UPDATE_THIS_LEVEL_SELECTED_QUOTE:
       {
         if (!state.storyTree) {
-          console.error("UPDATE_LEVEL_SELECTED_QUOTE: StoryTree is not initialized");
+          console.error("UPDATE_THIS_LEVEL_SELECTED_QUOTE: StoryTree is not initialized");
           return state;
         }
         const { levelNumber: targetLevelNumber, newQuote } = action.payload;
 
-        // No explicit type here, let map infer
         const newLevels = state.storyTree.levels.map(level => {
-          // Only modify the target level
           if (getLevelNumber(level) === targetLevelNumber) {
-            // Ensure it's a MidLevel before updating
-            if (isMidLevel(level) && level.midLevel) {
-              // Return a *new* level object with the *new* midLevel object containing the new quote
-              return {
-                ...level,
-                midLevel: {
-                  ...level.midLevel,
-                  selectedQuote: newQuote
-                }
-              };
-            } else {
-              console.warn(`UPDATE_LEVEL_SELECTED_QUOTE: Attempted to update non-MidLevel or invalid MidLevel at index ${targetLevelNumber}`);
-              return level; // Return original if not a valid MidLevel to update
-            }
+             // Use the helper function to update the quote immutably
+            return setSelectedQuoteInThisLevelHelper(level, newQuote);
           } else {
             // For all other levels, return the original object reference
             return level;

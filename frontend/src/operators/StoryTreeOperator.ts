@@ -36,7 +36,8 @@ import { Compressed } from '../types/compressed';
 import compression from '../utils/compression';
 import { 
   createMidLevel, 
-  getSelectedQuote,
+  getSelectedQuoteInParent,
+  getSelectedQuoteInThisLevel,
   getParentId,
   getLevelNumber,
   getPagination,
@@ -177,7 +178,8 @@ class StoryTreeOperator extends BaseOperator {
         post.id,
         [],
         0,
-        initialSelectedQuote || null as unknown as Quote, // Use the determined quote or placeholder
+        null, // selectedQuoteInParent is null for level 0
+        initialSelectedQuote, // selectedQuoteInThisLevel is the initial selection within level 0
         contentNode,
         siblings,
         {
@@ -210,15 +212,18 @@ class StoryTreeOperator extends BaseOperator {
     
     const parentId = getParentId(level);
     const levelNumber = getLevelNumber(level);
-    const selectedQuote = getSelectedQuote(level);
+    // Use getSelectedQuoteInParent to determine which siblings list is relevant
+    const selectedQuoteParent = getSelectedQuoteInParent(level); 
     const rootNodeId = getRootNodeId(level);
     
-    if (!parentId || !levelNumber || !selectedQuote || !rootNodeId) {
+    // Check selectedQuoteParent specifically
+    if (!parentId || parentId.length === 0 || levelNumber === undefined || !selectedQuoteParent || !rootNodeId) {
+      console.warn('[fetchAndDispatchReplies] Missing critical data:', { parentId, levelNumber, selectedQuoteParent, rootNodeId });
       return;
     }
     
     // Use static method for encoding
-    const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId[0]}/${Quote.toEncodedString(selectedQuote)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
+    const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId[0]}/${Quote.toEncodedString(selectedQuoteParent)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
     
     try {
       const compressedPaginatedResponse = await this.retryApiCallSimplified<Compressed<CursorPaginatedResponse<Reply>>>(
@@ -240,21 +245,24 @@ class StoryTreeOperator extends BaseOperator {
           id: reply.id,
           rootNodeId: rootNodeId,
           parentId: reply.parentId,
-          levelNumber: levelNumber,
+          levelNumber: levelNumber + 1, // Correct level number for replies
           textContent: reply.text,
           authorId: reply.authorId,
           createdAt: reply.createdAt,
-          repliedToQuote: reply.quote,
+          repliedToQuote: reply.quote, // The quote in the parent this node replies to
           quoteCounts: quoteCountsMap.get(reply.quote) || null
         }));
+        const initialSelectedQuoteInNewLevel = this.mostQuoted(replyNodes[0].quoteCounts);
         const newLevelData = createMidLevel(
           rootNodeId,
-          parentId,
-          levelNumber,
-          selectedQuote,
-          getSelectedNodeHelper(level) || replyNodes[0],
+          parentId, // Parent ID comes from the current level's selected node
+          levelNumber + 1, // Level number for the replies
+          selectedQuoteParent, // The quote selected in the parent (current level) that led to these replies
+          initialSelectedQuoteInNewLevel, // The default selected quote *within* the first reply node of the new level
+          replyNodes[0], // The selected node for the new level is the first reply
           {
-            levelsMap: [[selectedQuote, replyNodes]]
+            // The siblings map for the new level contains these replies, keyed by the quote from the parent
+            levelsMap: [[selectedQuoteParent, replyNodes]] 
           },
           decompressedPaginatedData.pagination
         );
@@ -561,39 +569,46 @@ class StoryTreeOperator extends BaseOperator {
         }
       }
       try {
-        let selectedQuoteFromParent = this.fullQuoteFromText(parentText, parentId);
+        // Determine the quote in the PARENT level that should lead to the children we are loading now.
+        // This defaults to the currently selected quote *within* the parent level's node.
+        let quoteInParentToFetchChildrenFor = getSelectedQuoteInThisLevel(parentLevelAsLevel); 
 
-        if (!isMidLevel(parentLevel)) { 
-           console.error(`[loadSingleLevel] Inconsistency: Parent level ${levelNumber-1} passed isLastLevel check but failed isMidLevel check.`);
-           throw new StoryTreeError(`Level ${levelNumber-1} state inconsistency.`);
-        } else {
-            if (parentLevel.midLevel!.selectedQuote) {
-              selectedQuoteFromParent = parentLevel.midLevel!.selectedQuote;
-            }
+        // If no quote is selected in the parent, or if the selected one has no replies, pick the most quoted one.
+        const parentHasQuoteSelected = !!quoteInParentToFetchChildrenFor;
+        let selectedParentQuoteHasReplies = false;
+        if (parentHasQuoteSelected) {
+           selectedParentQuoteHasReplies = quoteCountsFromParent.quoteCounts.some(
+            ([quote, count]) => count > 0 && areQuotesEqual(quote, quoteInParentToFetchChildrenFor)
+          );
         }
 
-        { // Determine actual quote to use if default/selected has no replies
-          const hasRepliesForDefaultQuote = quoteCountsFromParent.quoteCounts.some(
-            (quoteCountPair: [Quote, number]) => {
-              const [quote, count] = quoteCountPair;
-              return count > 0 && areQuotesEqual(quote, selectedQuoteFromParent);
-            }
-          );
-          if (hasRepliesForDefaultQuote === false) {
-            const maybeQuote = this.mostQuoted(quoteCountsFromParent);
-            if (maybeQuote === null) {
-              console.log(`[loadSingleLevel] No replies for default quote and no other quotes have replies for level ${levelNumber-1}. Dispatching LastLevel for ${levelNumber}.`);
+        if (!parentHasQuoteSelected || !selectedParentQuoteHasReplies) {
+            const mostQuotedInParent = this.mostQuoted(quoteCountsFromParent);
+            if (mostQuotedInParent === null) {
+              console.log(`[loadSingleLevel] No quote selected in parent, or selected has no replies, and no other quotes have replies for level ${levelNumber-1}. Dispatching LastLevel for ${levelNumber}.`);
               this.dispatchLastLevel(levelNumber);
               return;
             } else {
-              console.log(`[loadSingleLevel] Default quote has no replies, selecting most quoted for level ${levelNumber-1}:`, maybeQuote);
-              selectedQuoteFromParent = maybeQuote;
+              console.log(`[loadSingleLevel] No quote selected/no replies for selected, using most quoted from parent level ${levelNumber-1}:`, mostQuotedInParent);
+              quoteInParentToFetchChildrenFor = mostQuotedInParent;
+              // OPTIONAL: Dispatch an update to the parent level's selectedQuoteInThisLevel? 
+              // Or let the UI handle selection explicitly? Let's not dispatch for now.
             }
-          }
         }
-        
+
+        // We MUST have a valid quote at this point to proceed
+        if (!quoteInParentToFetchChildrenFor) {
+           console.error(`[loadSingleLevel] Logic error: quoteInParentToFetchChildrenFor is null/undefined after checks. Cannot fetch replies. Parent Level:`, parentLevelAsLevel);
+           // Dispatch last level as we cannot proceed without a quote
+           this.dispatchLastLevel(levelNumber);
+           return; 
+           // throw new StoryTreeError('Failed to determine parent quote for fetching children.'); // Alternative: throw error
+        }
+
+        // Fetch replies using the determined quote from the parent
         const sortingCriteria = 'mostRecent';
-        const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, selectedQuoteFromParent, sortingCriteria, 5); 
+        // Now quoteInParentToFetchChildrenFor is guaranteed to be a Quote
+        const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, quoteInParentToFetchChildrenFor, sortingCriteria, 5); 
         
         if (!maybeFirstReplies) {
            console.warn(`[loadSingleLevel] fetchFirstRepliesForLevel returned null for level ${levelNumber}. Assuming end of branch.`);
@@ -629,20 +644,25 @@ class StoryTreeOperator extends BaseOperator {
             parentId: [parentId],
             levelNumber: levelNumber,
             textContent: reply.text,
-            repliedToQuote: selectedQuoteFromParent,
+            repliedToQuote: quoteInParentToFetchChildrenFor, // Link back to the parent quote
             quoteCounts: quoteCountsMap.get(reply.quote),
             authorId: reply.authorId,
             createdAt: reply.createdAt,
           } as StoryTreeNode);
         });
         
+        // Determine initial selected quote *within* the first node of the *newly loaded* level
+        const selectedNodeForNewLevel = siblingsForQuote[0];
+        const initialSelectedQuoteInNewLevel = selectedNodeForNewLevel.quoteCounts ? this.mostQuoted(selectedNodeForNewLevel.quoteCounts) : null;
+
         const level: StoryTreeLevel = createMidLevel(
           rootNodeId,
           [parentId],
           levelNumber,
-          selectedQuoteFromParent,
-          siblingsForQuote[0],
-          { levelsMap: [[selectedQuoteFromParent, siblingsForQuote]] },
+          quoteInParentToFetchChildrenFor, // This is the quote selected in the parent that led to this level
+          initialSelectedQuoteInNewLevel, // This is the default selection *within* the first node of *this* level
+          selectedNodeForNewLevel, // The default selected node for this new level
+          { levelsMap: [[quoteInParentToFetchChildrenFor, siblingsForQuote]] }, // Siblings keyed by the parent quote
           pagination
         );
         
@@ -693,7 +713,7 @@ class StoryTreeOperator extends BaseOperator {
     }
   };
 
-  private mostQuoted(quoteCounts: QuoteCounts): Quote | null {
+  private mostQuoted(quoteCounts: QuoteCounts | null): Quote | null { // Allow null input
     if (!quoteCounts || !quoteCounts.quoteCounts || quoteCounts.quoteCounts.length === 0) {
       return null;
     }
@@ -781,9 +801,9 @@ class StoryTreeOperator extends BaseOperator {
     // 1. Update the selected quote for the current level (N)
     const levelNumber = level.midLevel!.levelNumber; // Get level number (safe due to isMidLevel check)
 
-    // Dispatch specific action to update only the selectedQuote in the target level
+    // Dispatch specific action to update selectedQuoteInThisLevel in the target level
     this.store.dispatch({
-      type: ACTIONS.UPDATE_LEVEL_SELECTED_QUOTE, // <<< Use new specific action type
+      type: ACTIONS.UPDATE_THIS_LEVEL_SELECTED_QUOTE, // Use renamed action
       payload: {
         levelNumber: levelNumber,
         newQuote: quote // Pass the necessary info to the reducer
@@ -801,9 +821,10 @@ class StoryTreeOperator extends BaseOperator {
     const rootNodeId = node.rootNodeId; // Assuming rootNodeId is consistent
 
     try {
-      // 2. Fetch the first page of replies for the new quote in the next level (N+1)
+      // 2. Fetch the first page of replies for the new quote (which is now the parent selection) in the next level (N+1)
       const sortingCriteria = 'mostRecent'; // Or fetch from config/state
       const limit = 5; // Or fetch from config/state
+      // Fetch using 'quote' which is the selection made in level N
       const maybeFirstReplies = await this.fetchFirstRepliesForLevel(nextLevelNumber, parentId, quote, sortingCriteria, limit);
 
       let nextLevelData: StoryTreeLevel;
@@ -825,20 +846,25 @@ class StoryTreeOperator extends BaseOperator {
           parentId: [parentId],
           levelNumber: nextLevelNumber,
           textContent: reply.text,
-          repliedToQuote: quote, // Replies are to the newly selected quote
-          quoteCounts: quoteCountsMap.get(reply.quote), // Initially undefined or empty
+          repliedToQuote: quote, // Replies are to the newly selected quote from level N
+          quoteCounts: quoteCountsMap.get(reply.quote), 
           authorId: reply.authorId,
           createdAt: reply.createdAt,
         } as StoryTreeNode));
+
+        // Determine initial selected quote *within* the first node of the *new* level N+1
+        const selectedNodeForNewLevel = siblingsForQuote[0];
+        const initialSelectedQuoteInNewLevel = selectedNodeForNewLevel.quoteCounts ? this.mostQuoted(selectedNodeForNewLevel.quoteCounts) : null;
 
         // Create the new level N+1 data
         nextLevelData = createMidLevel(
           rootNodeId,
           [parentId],
           nextLevelNumber,
-          quote, // The quote leading to this level
-          siblingsForQuote[0], // Select the first reply node by default
-          { levelsMap: [[quote, siblingsForQuote]] }, // Only include siblings for the selected quote initially
+          quote, // The quote selected in the parent (level N) that led to this level
+          initialSelectedQuoteInNewLevel, // The default selection *within* the first node of this new level N+1
+          selectedNodeForNewLevel, // Select the first reply node by default
+          { levelsMap: [[quote, siblingsForQuote]] }, // Siblings keyed by the parent quote
           pagination
         );
         
