@@ -125,12 +125,21 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   // UPDATE dependency array
   }, [levels.length]); // Depend on local levels state length
 
+  // UPDATE: Define computeItemKey
+  const computeItemKey = useCallback((index: number, level: StoryTreeLevel): React.Key => {
+    const levelNum = getLevelNumber(level);
+    // Try to get rootNodeId safely, fall back to index if level data is incomplete
+    const rootId = level?.midLevel?.rootNodeId ?? level?.lastLevel?.rootNodeId ?? `fallback-${index}`;
+    return `${rootId}-level-${levelNum ?? index}`;
+  }, []); // Empty dependency array as helpers are pure functions
+
   return (
     <div style={{ height: '100%' }} role="list" aria-label="Story tree content">
       <Virtuoso
         style={{ height: '100%' }}
         data={levels}
         itemContent={itemContent}
+        computeItemKey={computeItemKey}
         endReached={loadMore}
         overscan={5}
         increaseViewportBy={{ top: 200, bottom: 200 }}
