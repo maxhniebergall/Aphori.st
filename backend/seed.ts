@@ -183,7 +183,8 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
             const storyWords = storyContent.split(/\s+/); // Split by whitespace
             const storyWordCount = storyWords.length;
 
-            for (let storyIdReplyNumber = 0; storyIdReplyNumber < 10; storyIdReplyNumber++) {
+            // Create 15 replies to the original story
+            for (let storyIdReplyNumber = 0; storyIdReplyNumber < 15; storyIdReplyNumber++) {
                 const rootReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
                 const timestamp = Date.now();
 
@@ -227,14 +228,31 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                     createdAt: timestamp.toString() // Consider using toISOString() for consistency
                 };
 
-                // Store the reply in Redis
-                await storeReply(reply);
+                // Store 5 identical replies with unique IDs
+                let firstUniqueReplyId = ''; // Store the ID of the first one created
+                for (let i = 0; i < 5; i++) {
+                    const uniqueReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
+                    if (i === 0) {
+                        firstUniqueReplyId = uniqueReplyId; // Capture the first ID
+                    }
+                    const modifiedReplyText = `${replyText} (Copy ${i + 1})`; // Add identifier
+                    const replyToStore: Reply = {
+                        id: uniqueReplyId, // Assign unique ID
+                        text: modifiedReplyText, // Use modified text
+                        parentId: [storyId],
+                        quote: quote,
+                        authorId: 'seed_user',
+                        createdAt: timestamp.toString()
+                    };
+                    await storeReply(replyToStore);
+                }
 
                 // create replies to the reply
                 const replyWords = replyText.split(/\s+/); // Split by whitespace
                 const replyWordCount = replyWords.length;
 
-                for (let replyReplyNumber = 0; replyReplyNumber < 4; replyReplyNumber++) {
+                // Create 8 replies to the first-level reply
+                for (let replyReplyNumber = 0; replyReplyNumber < 8; replyReplyNumber++) {
                     const replyReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
                     const timestampReply = Date.now(); // Use a new timestamp
 
@@ -262,25 +280,34 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                     // Create a test quote targeting the calculated excerpt of the parent reply
                     const quoteReply: Quote = {
                         text: quoteResultReply.excerpt,
-                        sourcePostId: rootReplyId, // Parent is the root reply
+                        sourcePostId: firstUniqueReplyId, // Parent is the first of the 5 identical first-level replies
                         selectionRange: {
                             start: quoteResultReply.start,
                             end: quoteResultReply.end
                         }
                     };
 
-                    // Create the reply object
+                    // Create the reply object template
                     const replyReply: Reply = {
-                        id: replyReplyId,
+                        id: '', // Placeholder ID, will be replaced in loop
                         text: replyReplyText,
-                        parentId: [rootReplyId], // Parent is the root reply
+                        parentId: [firstUniqueReplyId], // Parent is the FIRST of the 5 identical first-level replies
                         quote: quoteReply,
                         authorId: 'seed_user',
                         createdAt: timestampReply.toString() // Consider using toISOString()
                     };
 
-                    // Store the reply in Redis
-                    await storeReply(replyReply);
+                    // Store 5 identical replies with unique IDs
+                    for (let j = 0; j < 5; j++) {
+                        const uniqueReplyReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
+                        const modifiedReplyReplyText = `${replyReplyText} (Copy ${j + 1})`; // Add identifier
+                        const replyReplyToStore: Reply = {
+                           ...replyReply, // Copy base reply-reply data (includes parentId, quote, author, createdAt)
+                            id: uniqueReplyReplyId, // Assign unique ID
+                            text: modifiedReplyReplyText, // Use modified text
+                        };
+                         await storeReply(replyReplyToStore);
+                    }
                 }
             }
         }
