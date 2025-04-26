@@ -110,7 +110,7 @@ const Row: React.FC<RowProps> = memo(
         console.error("Failed to set selected node:", error);
       }
 
-    }, [levelData]);
+    }, [levelData, levelData.midLevel?.selectedQuote, levelData.midLevel?.siblings]);
 
     const navigateToPreviousSiblingCallback = useCallback(async () => {
       if (!isMidLevel(levelData) || !levelData.midLevel) {
@@ -180,7 +180,7 @@ const Row: React.FC<RowProps> = memo(
         console.error("Failed to set selected node:", error);
       }
 
-    }, [levelData]);
+    }, [levelData, levelData.midLevel?.selectedQuote, levelData.midLevel?.siblings]);
 
     // Create content component directly within Row
     const content = useMemo(() => {

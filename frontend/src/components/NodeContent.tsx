@@ -58,6 +58,37 @@ const MemoizedHighlightedText = React.memo(HighlightedText,
   }
 );
 
+// Helper for comparing potentially null/undefined quotes
+const compareNullableQuotes = (q1: Quote | null | undefined, q2: Quote | null | undefined): boolean => {
+  if (!q1 && !q2) return true; // Both null/undefined
+  if (!q1 || !q2) return false; // One is null/undefined, the other isn't
+  return areQuotesEqual(q1, q2); // Both are valid Quotes, compare them
+};
+
+// Custom comparison function for React.memo
+const areNodeContentPropsEqual = (prevProps: NodeContentProps, nextProps: NodeContentProps): boolean => {
+  // Check if nodes are the same reference or have the same ID and text content
+  const nodeChanged = prevProps.node !== nextProps.node ||
+                      prevProps.node?.id !== nextProps.node?.id ||
+                      prevProps.node?.textContent !== nextProps.node?.textContent ||
+                      prevProps.node?.quoteCounts !== nextProps.node?.quoteCounts ||
+                      prevProps.node?.repliedToQuote !== nextProps.node?.repliedToQuote;
+
+  // Use the helper for quote comparison
+  const quoteChanged = !compareNullableQuotes(prevProps.quote, nextProps.quote);
+  const levelSelectedQuoteChanged = !compareNullableQuotes(prevProps.levelSelectedQuote, nextProps.levelSelectedQuote);
+  const currentLevelSelectedQuoteChanged = !compareNullableQuotes(prevProps.currentLevelSelectedQuote, nextProps.currentLevelSelectedQuote);
+
+  // Simple comparison for existingSelectableQuotes (compare by reference, assuming immutability)
+  const existingQuotesChanged = prevProps.existingSelectableQuotes !== nextProps.existingSelectableQuotes;
+
+  // Compare callback function by reference
+  const callbackChanged = prevProps.onExistingQuoteSelectionComplete !== nextProps.onExistingQuoteSelectionComplete;
+
+  // Return true if none of the relevant props have changed
+  return !nodeChanged && !quoteChanged && !levelSelectedQuoteChanged && !existingQuotesChanged && !currentLevelSelectedQuoteChanged && !callbackChanged;
+};
+
 const NodeContent: React.FC<NodeContentProps> = ({
   node,
   onExistingQuoteSelectionComplete: onExistingQuoteSelectionComplete = () => {},
@@ -75,14 +106,6 @@ const NodeContent: React.FC<NodeContentProps> = ({
 
   // Reference to the main content container
   const mainContentRef = useRef<HTMLDivElement>(null);
-  const [containerText, setContainerText] = useState<string>('');
-
-  // Update container text when the ref changes
-  useEffect(() => {
-    if (mainContentRef.current) {
-      setContainerText(mainContentRef.current.textContent || '');
-    }
-  }, [textContent]);
 
   // Memoize the callback passed down from StoryTreeLevelComponent
   const memoizedOnExistingQuoteSelectionComplete = useCallback((selectedQuote: Quote) => {
@@ -102,7 +125,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
     handleSegmentClick,
     selectedQuote // Destructure selectedQuote from the hook's return
   } = useHighlighting({
-    text: containerText || textContent,
+    text: textContent,
     selectedQuote: levelSelectedQuote,
     existingSelectableQuotes: memoizedExistingSelectableQuotes,
     // Wrap the callback passed *to* the hook to log the quote received from HighlightedText/useHighlighting
@@ -139,7 +162,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
         id={node.id}
       >
         <MemoizedHighlightedText
-          text={containerText || textContent}
+          text={textContent}
           selections={selections}
           onSegmentClick={handleSegmentClick}
           selectedQuoteOfThisNode={currentLevelSelectedQuote ?? undefined}
@@ -169,5 +192,5 @@ const NodeContent: React.FC<NodeContentProps> = ({
 // Add display name for better debugging
 NodeContent.displayName = 'NodeContent';
 
-// Export memoized component to prevent unnecessary re-renders
-export default React.memo(NodeContent);
+// Export memoized component using the custom comparison function
+export default React.memo(NodeContent, areNodeContentPropsEqual);

@@ -46,32 +46,8 @@ const MemoizedNodeFooter = React.memo(NodeFooter,
   }
 );
 
-// Create a memoized NodeContent component to prevent unnecessary re-renders
-const MemoizedNodeContent = React.memo(NodeContent, (prevProps, nextProps) => {
-  // Check if nodes are the same reference or have the same ID
-  const nodeChanged = prevProps.node !== nextProps.node || prevProps.node?.id !== nextProps.node?.id;
-
-  // Helper for comparing potentially null/undefined quotes
-  const compareNullableQuotes = (q1: Quote | null | undefined, q2: Quote | null | undefined): boolean => {
-    if (!q1 && !q2) return true; // Both null/undefined
-    if (!q1 || !q2) return false; // One is null/undefined, the other isn't
-    return areQuotesEqual(q1, q2); // Both are valid Quotes, compare them
-  };
-
-  // Use the helper for quote comparison
-  const quoteChanged = !compareNullableQuotes(prevProps.quote, nextProps.quote);
-  const levelSelectedQuoteChanged = !compareNullableQuotes(prevProps.levelSelectedQuote, nextProps.levelSelectedQuote);
-  const currentLevelSelectedQuoteChanged = !compareNullableQuotes(prevProps.currentLevelSelectedQuote, nextProps.currentLevelSelectedQuote);
-
-  // Simple comparison for existingSelectableQuotes (can be refined if needed)
-  const existingQuotesChanged = prevProps.existingSelectableQuotes !== nextProps.existingSelectableQuotes;
-
-  // Compare callback function by reference
-  const callbackChanged = prevProps.onExistingQuoteSelectionComplete !== nextProps.onExistingQuoteSelectionComplete;
-
-  // Return true if none of the relevant props have changed
-  return !nodeChanged && !quoteChanged && !levelSelectedQuoteChanged && !existingQuotesChanged && !currentLevelSelectedQuoteChanged && !callbackChanged;
-});
+// Memoize NodeContent using the comparison function defined within NodeContent.tsx
+const MemoizedNodeContent = React.memo(NodeContent);
 
 export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   levelData,
@@ -140,7 +116,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     }
     // If no siblings data or map is empty, return empty array
     return [];
-  }, [levelData]); // Dependency remains levelData as it contains the necessary siblings structure
+  }, [levelData, levelData.midLevel?.siblings]); // Dependency remains levelData as it contains the necessary siblings structure
 
   // Get the current node to render - moved up
   const nodeToRender = useMemo(() => {
@@ -158,12 +134,12 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     
     // If no selected node and no siblings, return undefined.
     return undefined;
-  }, [levelData, siblings]); // Depends on levelData (for selectedNode) and the derived siblings
+  }, [levelData, levelData.midLevel?.selectedNode, siblings]); // Depends on levelData (for selectedNode) and the derived siblings
 
   // Extract the currently selected quote *for this level* - moved up
   const currentLevelSelectedQuote = useMemo(() => {
     return isMidLevel(levelData) && levelData.midLevel ? levelData.midLevel.selectedQuote : null;
-  }, [levelData]); // Adjusted dependencies
+  }, [levelData, levelData.midLevel?.selectedQuote]); // Adjusted dependencies
 
    // Handle text selection for replies with improved error handling - moved up
   const handleExistingQuoteSelectionCompleted = useCallback(
