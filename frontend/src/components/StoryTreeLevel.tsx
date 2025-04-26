@@ -49,7 +49,7 @@ const MemoizedNodeFooter = React.memo(NodeFooter,
 // Create a memoized NodeContent component to prevent unnecessary re-renders
 const MemoizedNodeContent = React.memo(NodeContent, (prevProps, nextProps) => {
   // Check if nodes are the same reference or have the same ID
-  const nodeChanged = prevProps.node !== nextProps.node && prevProps.node?.id !== nextProps.node?.id;
+  const nodeChanged = prevProps.node !== nextProps.node || prevProps.node?.id !== nextProps.node?.id;
 
   // Helper for comparing potentially null/undefined quotes
   const compareNullableQuotes = (q1: Quote | null | undefined, q2: Quote | null | undefined): boolean => {
@@ -132,40 +132,33 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       return [];
     }
     const siblingsData = getSiblings(levelData);
-    if (!siblingsData) {
-      return [];
+    // The siblingsData.levelsMap should contain the relevant siblings
+    // determined by the parent's quote selection. We assume the first entry is correct.
+    if (siblingsData && siblingsData.levelsMap.length > 0) {
+      // Return the array of StoryTreeNode which is the second element of the tuple
+      return siblingsData.levelsMap[0][1] || []; 
     }
-    const selectedQuote = getSelectedQuote(levelData);
-    if (!selectedQuote) {
-      // If no quote is selected in a midlevel, default to first set of siblings if available
-      return siblingsData.levelsMap.length > 0 ? siblingsData.levelsMap[0][1] : [];
-    }
-    const entry = siblingsData.levelsMap.find(
-      ([quote]) => quote && selectedQuote && areQuotesEqual(quote, selectedQuote)
-    );
-    return entry ? entry[1] : [];
-  }, [levelData]); // Adjusted dependencies
+    // If no siblings data or map is empty, return empty array
+    return [];
+  }, [levelData]); // Dependency remains levelData as it contains the necessary siblings structure
 
   // Get the current node to render - moved up
   const nodeToRender = useMemo(() => {
+    // Prioritize the node explicitly selected via navigation
     const selectedNode = getSelectedNodeHelper(levelData);
     if (selectedNode) {
       return selectedNode;
     }
-    if (!isMidLevel(levelData)) {
-      return undefined;
+
+    // Fallback: If no node is explicitly selected (e.g., initial render of the level),
+    // display the first node from the determined siblings list.
+    if (siblings.length > 0) {
+      return siblings[0];
     }
-    const siblingsData = getSiblings(levelData);
-    if (!siblingsData) {
-      return undefined;
-    }
-    const selectedQuoteForSiblings = getLevelSelectedQuote(levelData);
-    if (!selectedQuoteForSiblings) return undefined;
-    const entry = siblingsData.levelsMap.find(([quote]) =>
-      quote !== null && selectedQuoteForSiblings !== null && areQuotesEqual(quote, selectedQuoteForSiblings)
-    );
-    return entry && entry[1].length > 0 ? entry[1][0] : undefined;
-  }, [levelData]); // Adjusted dependencies
+    
+    // If no selected node and no siblings, return undefined.
+    return undefined;
+  }, [levelData, siblings]); // Depends on levelData (for selectedNode) and the derived siblings
 
   // Extract the currently selected quote *for this level* - moved up
   const currentLevelSelectedQuote = useMemo(() => {
