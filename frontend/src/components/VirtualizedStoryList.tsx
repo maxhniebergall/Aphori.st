@@ -65,12 +65,8 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   useEffect(() => {
     if (!postRootId) return;
     const contextLevels = state?.storyTree?.levels || [];
-    setLevels(prevLevels => {
-      if (prevLevels !== contextLevels) {
-         return contextLevels;
-      }
-      return prevLevels;
-    });
+    // Always update local state when the effect runs (contextLevels reference changed)
+    setLevels(contextLevels);
   }, [postRootId, state?.storyTree?.levels]);
 
   // Set error

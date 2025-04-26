@@ -161,31 +161,38 @@ class StoryTreeOperator extends BaseOperator {
       quoteCounts: quoteCounts,
     };
 
-    // For the root post, we use null as the key since it's not replying to any quote
-    const siblings: Siblings = {
-      levelsMap: [[null, [contentNode]]]
-    };
+    // Determine the initial selected quote for level 0 (e.g., the most quoted one)
+    const initialSelectedQuote = this.mostQuoted(quoteCounts);
 
-    // Create the content level using the helper function
-    const contentLevel = createMidLevel(
-      post.id,
-      [],
-      0,
-      null as unknown as Quote, // Type assertion to satisfy TypeScript
-      contentNode,
-      siblings,
-      { 
-        hasMore: false,
-        totalCount: 1
-      }
-    );
-
-    // Dispatch the content level
+    // Dispatch action based on whether an initial quote exists
     if (this.store && this.store.dispatch) {
+      // Always create and dispatch a level 0
+      const siblings: Siblings = {
+        levelsMap: [[null, [contentNode]]] // Keep null key for the map itself
+      };
+
+      const contentLevel = createMidLevel(
+        post.id,
+        [],
+        0,
+        initialSelectedQuote || null as unknown as Quote, // Use the determined quote or placeholder
+        contentNode,
+        siblings,
+        {
+          hasMore: false,
+          totalCount: 1
+        }
+      );
+
       this.store.dispatch({
         type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
         payload: [contentLevel]
       });
+
+      // If there was no actual quote, immediately mark the next level as the last level
+      if (!initialSelectedQuote) {
+        this.dispatchLastLevel(1);
+      }
     }
   }
 
@@ -208,6 +215,7 @@ class StoryTreeOperator extends BaseOperator {
       return;
     }
     
+    // Use static method for encoding
     const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId[0]}/${Quote.toEncodedString(selectedQuote)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
     
     try {
@@ -278,6 +286,7 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   private async fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
+    // Use static method for encoding
     const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId}/${Quote.toEncodedString(selectedQuote)}/${sortingCriteria}?limit=${limit}`;
     
     try {
@@ -337,23 +346,9 @@ class StoryTreeOperator extends BaseOperator {
    */
   public async loadMoreItems(parentId: string, levelNumber: number, quote: Quote, startIndex: number, stopIndex: number): Promise<void> {
 
-    // Validate the quote
-    if (!quote) {
-      return;
-    }
-
-    // Ensure quote has isValid method
-    if (!Quote.isValid(quote)) {
-      // Try to recreate the quote if possible
-      if (quote.text && quote.sourcePostId && quote.selectionRange) {
-        quote = new Quote(quote.text, quote.sourcePostId, quote.selectionRange);
-      } else {
-        throw new StoryTreeError('Invalid quote provided to loadMoreItems');
-      }
-    }
-
-    // Now check if the quote is valid
-    if (!Quote.isValid(quote)) {
+    // Validate the quote simply
+    if (!quote || !Quote.isValid(quote)) {
+      console.error('Invalid quote provided to loadMoreItems:', quote);
       throw new StoryTreeError('Invalid quote provided to loadMoreItems');
     }
 
@@ -377,7 +372,8 @@ class StoryTreeOperator extends BaseOperator {
       const storyTreeErr = new StoryTreeError(
         'Error loading more items', 
         statusCode, 
-        `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId}/${encodeURIComponent(quote.toString())}/mostRecent`, 
+        // Use static method for encoding
+        `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId}/${Quote.toEncodedString(quote)}/mostRecent`,
         error
       );
       throw storyTreeErr;
