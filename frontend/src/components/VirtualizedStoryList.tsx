@@ -132,7 +132,8 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     // Use local levels.length for startIndex
     const startIndex = levels.length;
     console.log(`Virtuoso endReached: loading more from index ${startIndex}`);
-    storyTreeOperator.loadMoreLevels(startIndex, startIndex + 10)
+    // Call loadSingleLevel with only startIndex
+    storyTreeOperator.loadSingleLevel(startIndex)
   // UPDATE dependency array
   }, [levels.length]); // Depend on local levels state length
 
