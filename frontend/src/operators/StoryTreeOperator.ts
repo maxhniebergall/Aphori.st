@@ -50,8 +50,10 @@ class StoryTreeOperator extends BaseOperator {
   // Introduce a store property to hold state and dispatch injected from a React component.
   private store: { state: StoryTreeState, dispatch: React.Dispatch<Action> } | null = null;
   private userContext: { state: { user: { id: string } | null } } | null = null;
-  // Reintroduce isLoadingMore flag
+  // Loading flag
   private isLoadingMore: boolean = false;
+  // Track which level is currently being loaded
+  private loadingLevelNumber: number | null = null;
 
   // Initialize with a valid root quote that represents the entire content
 
@@ -425,25 +427,64 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
-  public loadSingleLevel = async (startIndex: number): Promise<void> => {
-    // Check the boolean flag
+  // Remove startIndex parameter, determine levelNumber from context state
+  public loadSingleLevel = async (): Promise<void> => {
+    // Read state inside the function to get the latest
+    const currentState = this.store?.state;
+    const currentLevelsLength = currentState?.storyTree?.levels?.length ?? 0;
+    const levelNumber = currentLevelsLength; // Level to load is the current length
+
+    console.log(`[Operator Start] loadSingleLevel() called. Attempting to load level ${levelNumber}. Internal isLoadingMore: ${this.isLoadingMore}, loadingLevelNumber: ${this.loadingLevelNumber}, Context isLoadingMore: ${currentState?.isLoadingMore}`);
+
+    // Check the internal boolean flag first
     if (this.isLoadingMore) {
-      console.warn("StoryTreeOperator: loadSingleLevel already in progress, skipping.");
+      // If already loading, check if it's for the *same level* we are about to load
+      if (this.loadingLevelNumber === levelNumber) {
+        console.warn(`[Operator Internal Lock] TRUE for the same level ${levelNumber}. Skipping duplicate request.`);
+        return;
+      } else {
+        // This case should ideally not happen if loadMore calls are sequential, 
+        // but handles potential edge cases where a load for N+1 starts before N finishes releasing the lock.
+        console.warn(`[Operator Internal Lock] TRUE for level ${this.loadingLevelNumber}, but requested level is ${levelNumber}. Skipping new request.`);
+        return;
+      }
+    }
+
+    // Belt-and-suspenders: Also check the shared context state
+    // This check might be redundant now with the level-specific lock, but keep for safety?
+    if (currentState?.isLoadingMore) {
+      console.warn(`[Operator Context Check] TRUE for level ${levelNumber}. Skipping.`);
       return;
     }
       
-    this.isLoadingMore = true; // Set lock
+    console.log(`[Operator Set Lock] Setting internal isLoadingMore = true, loadingLevelNumber = ${levelNumber}`);
+    this.isLoadingMore = true; // Set internal lock
+    this.loadingLevelNumber = levelNumber; // Set level being loaded
+
+    // Access dispatch via this.store
+    // Ensure store exists before dispatching
+    if (this.store?.dispatch) {
+      this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: true }); // Dispatch START loading action
+    } else {
+      console.error("StoryTreeOperator: Store not available for dispatching SET_LOADING_MORE true.");
+      // Reset internal lock if dispatch fails?
+      this.isLoadingMore = false;
+      return; // Can't proceed without dispatch
+    }
 
     try {
-      console.log(`StoryTreeOperator: Starting loadSingleLevel for index ${startIndex}`);
+      // Log the level number we are actually processing
+      console.log(`StoryTreeOperator: Starting loadSingleLevel processing for level ${levelNumber}`);
 
       if (!this.store) {
           throw new StoryTreeError('Store not initialized');
       }
       
-      // Use startIndex directly as the levelNumber to process
-      const levelNumber = startIndex;
+      // Use the calculated levelNumber
+      // const levelNumber = startIndex; // Removed
 
+      // Re-read state here? Or rely on the one fetched at the start?
+      // Let's re-read to be absolutely sure we have the latest before validation
       const state = this.getState();  
 
       { // Validate inputs and state
@@ -630,12 +671,41 @@ class StoryTreeOperator extends BaseOperator {
       }
 
     } catch (error) {
-        console.error(`[loadSingleLevel] Outer error during loadSingleLevel for index ${startIndex}:`, error);
+        console.error(`[loadSingleLevel] Outer error during loadSingleLevel for level ${levelNumber}:`, error);
         if (this.store?.dispatch) {
-          this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to load level ${startIndex}: ${error instanceof Error ? error.message : String(error)}` });
+          this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to load level ${levelNumber}: ${error instanceof Error ? error.message : String(error)}` });
         }
     } finally {
-      this.isLoadingMore = false;
+      // Use the calculated levelNumber in log
+      console.log(`[Operator Finally Start] For level ${levelNumber}. Internal isLoadingMore: ${this.isLoadingMore}, loadingLevelNumber: ${this.loadingLevelNumber}`);
+      
+      // Dispatch context update immediately
+      if (this.store?.dispatch) {
+        this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false }); 
+        console.log(`[Operator Finally] Dispatched SET_LOADING_MORE: false for level ${levelNumber}`);
+      } else {
+        console.error("StoryTreeOperator: Store not available for dispatching SET_LOADING_MORE false.");
+      }
+
+      // Reset internal locks on the next tick to allow context state to propagate
+      setTimeout(() => {
+        // Why setTimeout(0)?
+        // In React StrictMode, the calling component (`VirtualizedStoryList` via Virtuoso's `endReached`)
+        // might invoke this `loadSingleLevel` function twice in rapid succession.
+        // The first call sets internal locks (`isLoadingMore`, `loadingLevelNumber`) and dispatches a context
+        // update (`SET_LOADING_MORE: false`) in the `finally` block immediately.
+        // However, React state updates are not synchronous. If we reset the internal locks immediately too,
+        // the second invocation might run *before* the context state update propagates. It would then
+        // see the *internal* locks as released (false/null) and incorrectly start a duplicate load.
+        // By using setTimeout(0), we yield to the event loop, pushing the reset of the *internal* locks
+        // to the next tick. This gives React time to process the context state update. When the second
+        // invocation runs, it correctly sees the *internal* locks are still engaged from the first call
+        // and skips the duplicate load. The internal locks are then safely reset later when the timeout executes.
+        console.log(`[Operator Lock Reset Timeout] Resetting internal locks. Was loading level: ${this.loadingLevelNumber}`);
+        this.isLoadingMore = false; // Release internal lock
+        this.loadingLevelNumber = null; // Clear level being loaded
+      }, 0);
+
     }
   };
 
@@ -676,6 +746,11 @@ class StoryTreeOperator extends BaseOperator {
     } catch (error) {
       if (this.store && this.store.dispatch) {
         this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load story tree' });
+      }
+    } finally {
+      // Ensure loading state is always reset after initialization attempt
+      if (this.store?.dispatch) {
+        this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false });
       }
     }
   }

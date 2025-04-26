@@ -119,6 +119,7 @@ export interface StoryTree { // this is the story tree we assemble as the user n
 export interface StoryTreeState { // required to allow storyTree to be null before it is initialized
   storyTree: StoryTree | null;
   error: string | null;
+  isLoadingMore: boolean;
 }
 
 // Cache Types
@@ -180,12 +181,13 @@ export const ACTIONS = {
   CLEAR_LEVELS_AFTER: 'CLEAR_LEVELS_AFTER',
   SET_LAST_LEVEL: 'SET_LAST_LEVEL',
   SET_ERROR: 'SET_ERROR',
-  CLEAR_ERROR: 'CLEAR_ERROR'
+  CLEAR_ERROR: 'CLEAR_ERROR',
+  SET_LOADING_MORE: 'SET_LOADING_MORE'
 } as const;
 
 export type Action =
   | { type: typeof ACTIONS.START_STORY_TREE_LOAD; payload: { rootNodeId: string } }
-  | { type: typeof ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { storyTree: StoryTree } }
+  | { type: typeof ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { storyTree: StoryTree; error?: never } | { storyTree?: never; error: string } }
   | { type: typeof ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: StoryTreeLevel[] }
   | { type: typeof ACTIONS.SET_SELECTED_NODE; payload: StoryTreeNode }
   | { type: typeof ACTIONS.UPDATE_LEVEL_SELECTED_QUOTE; payload: { levelNumber: number; newQuote: Quote } }
@@ -194,4 +196,5 @@ export type Action =
   | { type: typeof ACTIONS.SET_LAST_LEVEL; payload: { levelNumber: number } } 
       // levelNumber is the number of the level immediately after the last level that has replies, will be filled with nulls
   | { type: typeof ACTIONS.SET_ERROR; payload: string }
-  | { type: typeof ACTIONS.CLEAR_ERROR };
+  | { type: typeof ACTIONS.CLEAR_ERROR }
+  | { type: typeof ACTIONS.SET_LOADING_MORE; payload: boolean };
