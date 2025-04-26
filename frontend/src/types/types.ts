@@ -183,7 +183,9 @@ export const ACTIONS = {
   SET_LAST_LEVEL: 'SET_LAST_LEVEL',
   SET_ERROR: 'SET_ERROR',
   CLEAR_ERROR: 'CLEAR_ERROR',
-  SET_LOADING_MORE: 'SET_LOADING_MORE'
+  SET_LOADING_MORE: 'SET_LOADING_MORE',
+  NAVIGATE_NEXT_SIBLING: 'NAVIGATE_NEXT_SIBLING',
+  NAVIGATE_PREV_SIBLING: 'NAVIGATE_PREV_SIBLING',
 } as const;
 
 export type Action =
@@ -198,4 +200,6 @@ export type Action =
       // levelNumber is the number of the level immediately after the last level that has replies, will be filled with nulls
   | { type: typeof ACTIONS.SET_ERROR; payload: string }
   | { type: typeof ACTIONS.CLEAR_ERROR }
-  | { type: typeof ACTIONS.SET_LOADING_MORE; payload: boolean };
+  | { type: typeof ACTIONS.SET_LOADING_MORE; payload: boolean }
+  | { type: typeof ACTIONS.NAVIGATE_NEXT_SIBLING; payload: { levelNumber: number } }
+  | { type: typeof ACTIONS.NAVIGATE_PREV_SIBLING; payload: { levelNumber: number } };

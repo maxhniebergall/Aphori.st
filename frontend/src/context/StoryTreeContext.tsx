@@ -4,7 +4,7 @@ import { ACTIONS } from '../types/types';
 import StoryTreeErrorBoundary from './StoryTreeErrorBoundary';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import { useUser } from './UserContext';
-import { Quote } from '../types/quote';
+import { Quote, areQuotesEqual } from '../types/quote';
 import { 
   getRootNodeId, 
   getLevelNumber,
@@ -15,7 +15,7 @@ import {
   createLastLevel,
   isMidLevel,
   isLastLevel,
-  updateSiblingsForQuoteHelper
+  updateSiblingsForQuoteHelper,
 } from '../utils/levelDataHelpers';
 
 /*
@@ -363,10 +363,10 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           console.error("REPLACE_LEVEL_DATA: StoryTree is not initialized");
           return state;
         }
-        const newLevel = action.payload;
-        const levelNumberToReplace = getLevelNumber(newLevel);
+        const newLevelPayload = action.payload;
+        const levelNumberToReplace = getLevelNumber(newLevelPayload);
         if (levelNumberToReplace === null) {
-          console.error("REPLACE_LEVEL_DATA: Invalid level number in payload", newLevel);
+          console.error("REPLACE_LEVEL_DATA: Invalid level number in payload", newLevelPayload);
           return state;
         }
 
@@ -374,19 +374,42 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         const levelIndex = currentLevels.findIndex(level => getLevelNumber(level) === levelNumberToReplace);
 
         let updatedLevels;
+        let levelToInsert = newLevelPayload;
+
+        if (isMidLevel(levelToInsert) && levelToInsert.midLevel) {
+            const parentQuote = levelToInsert.midLevel.selectedQuoteInParent;
+            const siblingsMap = levelToInsert.midLevel.siblings.levelsMap;
+            let firstSibling: StoryTreeNode | undefined = undefined;
+
+            const entry = siblingsMap.find(([key]) => areQuotesEqual(key, parentQuote));
+            if (entry && entry[1].length > 0) {
+                firstSibling = entry[1][0];
+            } else if (siblingsMap.length > 0 && siblingsMap[0][1].length > 0) {
+                 console.warn(`REPLACE_LEVEL_DATA: Could not find sibling list for parentQuote. Falling back to first list.`);
+                 firstSibling = siblingsMap[0][1][0];
+            }
+
+            if (firstSibling && levelToInsert.midLevel.selectedNode?.id !== firstSibling.id) {
+                console.warn(`REPLACE_LEVEL_DATA: Payload selectedNode ID (${levelToInsert.midLevel.selectedNode?.id}) mismatch with first sibling ID (${firstSibling.id}). Correcting.`);
+                // Use the imported helper for immutable update
+                levelToInsert = setSelectedNodeHelper(levelToInsert, firstSibling);
+            } else if (!firstSibling && levelToInsert.midLevel.selectedNode) {
+                 console.warn(`REPLACE_LEVEL_DATA: Payload has selectedNode but no siblings found. Proceeding with original payload selectedNode.`);
+                 // Don't modify levelToInsert here, keep the selectedNode from the payload as is.
+            }
+        }
+
         if (levelIndex !== -1) {
-          // Replace existing level
           updatedLevels = [
             ...currentLevels.slice(0, levelIndex),
-            newLevel,
+            levelToInsert,
             ...currentLevels.slice(levelIndex + 1)
           ];
         } else if (levelNumberToReplace === currentLevels.length) {
-          // Append new level if it's the next one
-          updatedLevels = [...currentLevels, newLevel];
+          updatedLevels = [...currentLevels, levelToInsert];
         } else {
-          console.error(`REPLACE_LEVEL_DATA: Cannot replace level ${levelNumberToReplace}. It does not exist and is not the next level (${currentLevels.length}).`);
-          return state; // Or set an error state
+          console.error(`REPLACE_LEVEL_DATA: Cannot replace level ${levelNumberToReplace}. Invalid index.`);
+          return state;
         }
 
         nextState = {
@@ -431,6 +454,25 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           isLoadingMore: isLoading,
         };
         break;
+      }
+
+    case ACTIONS.NAVIGATE_NEXT_SIBLING:
+      {
+        // Note: Reducers should be pure. Calling async operator methods here is an anti-pattern.
+        // This logic *should* ideally live in an effect in the Provider or be handled differently.
+        // For now, we'll call it directly, acknowledging the impurity.
+        console.log(`[Reducer] Received NAVIGATE_NEXT_SIBLING for level ${action.payload.levelNumber}`);
+        storyTreeOperator.handleNavigateNextSibling(action.payload.levelNumber)
+          .catch(error => console.error("Error in handleNavigateNextSibling:", error)); // Log async errors
+        return state; // Return current state, side effect handled by operator
+      }
+
+    case ACTIONS.NAVIGATE_PREV_SIBLING:
+       {
+         console.log(`[Reducer] Received NAVIGATE_PREV_SIBLING for level ${action.payload.levelNumber}`);
+        storyTreeOperator.handleNavigatePrevSibling(action.payload.levelNumber)
+           .catch(error => console.error("Error in handleNavigatePrevSibling:", error)); // Log async errors
+        return state; // Return current state, side effect handled by operator
       }
     
     default:
