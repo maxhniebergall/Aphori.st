@@ -67,7 +67,6 @@ export function useHighlighting({
 
   // Memoize the calculation of selections
   const selections = useMemo(() => {
-    console.log('[useHighlighting] Recalculating selections...'); // Debug log
     let calculatedSelections: Quote[] = [];
     
     // Add quotes from existingSelectableQuotes
