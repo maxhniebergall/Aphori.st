@@ -65,6 +65,7 @@ const MemoizedHighlightedText = React.memo(HighlightedText,
            prevProps.selections === nextProps.selections && // Assuming immutable array reference comparison is okay here
            compareNullableQuotes(prevProps.selectedReplyQuote, nextProps.selectedReplyQuote) && // Use helper function
            prevProps.nodeId === nextProps.nodeId && 
+           prevProps.levelNumber === nextProps.levelNumber && // Add levelNumber comparison
            prevProps.onSegmentClick === nextProps.onSegmentClick; // Reference comparison for callback
   }
 );
@@ -116,10 +117,12 @@ const NodeContent: React.FC<NodeContentProps> = ({
     onExistingQuoteSelectionComplete(selectedQuote);
   }, [onExistingQuoteSelectionComplete]);
 
-  // Memoize the existingSelectableQuotes to prevent unnecessary re-renders
+  // Memoize the existingSelectableQuotes. 
+  // Rely ONLY on the prop passed down, assuming it's correctly memoized upstream.
   const memoizedExistingSelectableQuotes = useMemo(() => {
-    return existingSelectableQuotes ?? node.quoteCounts ?? { quoteCounts: [] };
-  }, [existingSelectableQuotes, node.quoteCounts, node.id]);
+    return existingSelectableQuotes ?? { quoteCounts: [] };
+  // Only depend on the prop. Remove node.quoteCounts and node.id dependencies.
+  }, [existingSelectableQuotes]);
 
   // Use the highlighting hook ONLY for managing highlights in the main content
   const {
@@ -167,8 +170,10 @@ const NodeContent: React.FC<NodeContentProps> = ({
           nodeId={node.id}
           text={textContent}
           selections={selections}
+          quoteCounts={memoizedExistingSelectableQuotes}
           onSegmentClick={handleSegmentClick}
           selectedReplyQuote={currentLevelSelectedQuote ?? undefined}
+          levelNumber={node.levelNumber}
         />
       </div>
 

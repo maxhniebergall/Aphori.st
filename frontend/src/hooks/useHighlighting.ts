@@ -7,8 +7,8 @@
  * - Provide a way to handle clicks on highlighted segments
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { Quote } from '../types/quote';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Quote, areQuotesEqual } from '../types/quote';
 import { QuoteCounts } from '../types/types';
 
 interface UseHighlightingProps {
@@ -55,7 +55,8 @@ export function useHighlighting({
   existingSelectableQuotes,
   onSegmentClick
 }: UseHighlightingProps): UseHighlightingReturn {
-  const [selections, setSelections] = useState<Quote[]>([]);
+  // Remove useState for selections
+  // const [selections, setSelections] = useState<Quote[]>([]);
 
   // Handle segment click (for existing highlights)
   const handleSegmentClick = useCallback((quote: Quote) => {
@@ -64,16 +65,16 @@ export function useHighlighting({
     }
   }, [onSegmentClick]);
 
-  // Effect: update selections based on selectedQuote and existingSelectableQuotes
-  useEffect(() => {
-    let newSelections: Quote[] = [];
+  // Memoize the calculation of selections
+  const selections = useMemo(() => {
+    console.log('[useHighlighting] Recalculating selections...'); // Debug log
+    let calculatedSelections: Quote[] = [];
     
     // Add quotes from existingSelectableQuotes
     if (existingSelectableQuotes?.quoteCounts) {
-      // Sort quotes by reply count descending and process top 10 only
+      // Sort quotes by reply count descending
       const sortedQuotes = existingSelectableQuotes.quoteCounts
-        .sort(([, count1], [, count2]) => count2 - count1)
-        .slice(0, 10);
+        .sort(([, count1], [, count2]) => count2 - count1);
       
       const quoteSelections: Quote[] = sortedQuotes.map(([quoteObj, _]) => {
         // Ensure quote is a valid Quote instance or convert it
@@ -100,28 +101,25 @@ export function useHighlighting({
         
         return quote;
       }).filter(quote => 
-        // Relax validation slightly: primarily check end > start
-        // Allow start === 0 for potentially empty ranges initially?
         quote.selectionRange && quote.selectionRange.end > quote.selectionRange.start
       ); // Filter out invalid selections
       
       // Add unique quotes from the existing ones
+      // Using areQuotesEqual for more robust comparison
       quoteSelections.forEach(quote => {
-        // Only add if not already included (to avoid duplicates with selectedQuote)
-        if (!newSelections.some(q => 
-          q.sourceId === quote.sourceId && 
-          q.selectionRange.start === quote.selectionRange.start && 
-          q.selectionRange.end === quote.selectionRange.end
-        )) {
-          newSelections.push(quote);
+        if (!calculatedSelections.some(q => areQuotesEqual(q, quote))) {
+          calculatedSelections.push(quote);
         }
       });
     }
     
     // The selections array should ONLY contain quotes made *by children* (from existingSelectableQuotes)
     // The quote the node makes of its parent (selectedQuote) is handled separately (e.g., blue underline).
-    setSelections(newSelections);
-  }, [selectedQuote, existingSelectableQuotes]);
+    return calculatedSelections;
+  // IMPORTANT: Add dependencies for useMemo. It should recalculate if existingSelectableQuotes changes.
+  // Note: selectedQuote is NOT needed here because it doesn't affect the 'selections' list itself,
+  // it's used for the separate blue underline logic in HighlightedText.
+  }, [existingSelectableQuotes]);
 
   return {
     selections,

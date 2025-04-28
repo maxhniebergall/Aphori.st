@@ -328,6 +328,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     }
   }, [levelData, pagination]); // Added pagination to dependency array
 
+  // Memoize quote counts based on the node ID. If the node ID is the same,
+  // assume its quote counts haven't fundamentally changed for highlighting purposes.
+  const memoizedQuoteCounts = useMemo(() => {
+    console.log(`[StoryTreeLevel ${levelData.midLevel?.levelNumber}] Recalculating memoizedQuoteCounts... Node ID: ${nodeToRender?.id}`); 
+    return nodeToRender?.quoteCounts ?? undefined;
+  // Depend only on the node ID. If the node changes, recalculate.
+  }, [nodeToRender?.id]);
 
   // --- Conditional logic starts here ---
 
@@ -393,7 +400,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
                 node={nodeToRender}
                 onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
                 quote={isReplyTarget ? (replyQuote ?? undefined) : undefined}
-                existingSelectableQuotes={nodeToRender.quoteCounts ?? undefined}
+                existingSelectableQuotes={memoizedQuoteCounts}
                 currentLevelSelectedQuote={currentLevelSelectedQuote ?? undefined}
               />
             )}
