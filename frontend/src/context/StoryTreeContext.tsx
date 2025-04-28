@@ -300,36 +300,53 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
     case ACTIONS.SET_LAST_LEVEL:
       {
         if (!state.storyTree) {
-          console.error("StoryTree is not initialized");
+          console.error("SET_LAST_LEVEL: StoryTree is not initialized");
           return state;
         }
-        // We still need the rootNodeId from the state's post
         if (!state.storyTree.post?.id) {
            console.error("SET_LAST_LEVEL: Cannot determine rootNodeId from post");
            return state; // Or set error
         }
         const rootNodeId = state.storyTree.post.id;
         const lastLevelNumberInPayload = action.payload.levelNumber;
-        
+
         // Create the LastLevel data part
-        const lastLevelData: LastLevel = { 
-            levelNumber: lastLevelNumberInPayload, 
-            rootNodeId: rootNodeId 
+        const lastLevelData: LastLevel = {
+            levelNumber: lastLevelNumberInPayload,
+            rootNodeId: rootNodeId
         };
 
         // Create the full StoryTreeLevel object representing the last level
         const lastLevelAsStoryTreeLevel: StoryTreeLevel = {
             isLastLevel: true,
-            midLevel: null,
+            midLevel: null, // Keep midLevel as null
             lastLevel: lastLevelData
         };
 
-        // Append this correctly typed object
-        // Ensure the array type matches the updated StoryTree.levels type
-        const newLevels : Array<StoryTreeLevel> = [
-            ...state.storyTree.levels,
-             lastLevelAsStoryTreeLevel
-        ]; 
+        // Find if the level already exists
+        const levelIndex = state.storyTree.levels.findIndex(level => getLevelNumber(level) === lastLevelNumberInPayload);
+
+        let newLevels: Array<StoryTreeLevel>;
+        if (levelIndex !== -1) {
+           // If level already exists, replace it and truncate any subsequent levels
+           console.log(`[Reducer SET_LAST_LEVEL] Replacing existing level ${lastLevelNumberInPayload} at index ${levelIndex} with LastLevel object.`);
+           newLevels = [
+               ...state.storyTree.levels.slice(0, levelIndex),
+               lastLevelAsStoryTreeLevel
+               // Truncate levels after this index
+           ];
+        } else if (lastLevelNumberInPayload === state.storyTree.levels.length) {
+            // If the level doesn't exist yet and it's the next sequential level, append it
+             console.log(`[Reducer SET_LAST_LEVEL] Appending LastLevel object for new level ${lastLevelNumberInPayload}.`);
+            newLevels = [
+               ...state.storyTree.levels,
+               lastLevelAsStoryTreeLevel
+           ];
+        } else {
+            // Error case: Trying to set LastLevel for a non-existent, non-sequential level
+            console.error(`SET_LAST_LEVEL: Cannot set LastLevel for non-sequential level ${lastLevelNumberInPayload}. Current length: ${state.storyTree.levels.length}. State unchanged.`);
+            return state; // Return unchanged state
+        }
 
         nextState = {
           ...state,

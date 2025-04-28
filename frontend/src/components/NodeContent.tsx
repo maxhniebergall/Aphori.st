@@ -20,11 +20,12 @@ import HighlightedText from './HighlightedText';
 import { QuoteCounts, StoryTreeNode } from '../types/types';
 import { Quote, areQuotesEqual } from '../types/quote';
 import { useHighlighting } from '../hooks/useHighlighting';
+import { useReplyContext } from '../context/ReplyContext';
 
 interface NodeContentProps {
   node: StoryTreeNode;
   onExistingQuoteSelectionComplete?: (quote: Quote) => void;
-  quote?: Quote;
+  isReplyTargetNode?: boolean;
   existingSelectableQuotes?: QuoteCounts;
   currentLevelSelectedQuote?: Quote | null;
 }
@@ -79,8 +80,9 @@ const areNodeContentPropsEqual = (prevProps: NodeContentProps, nextProps: NodeCo
                       prevProps.node?.quoteCounts !== nextProps.node?.quoteCounts ||
                       prevProps.node?.repliedToQuote !== nextProps.node?.repliedToQuote;
 
-  // Use the helper for quote comparison
-  const quoteChanged = !compareNullableQuotes(prevProps.quote, nextProps.quote);
+  // Compare the new boolean prop
+  const isReplyTargetChanged = prevProps.isReplyTargetNode !== nextProps.isReplyTargetNode;
+  
   const currentLevelSelectedQuoteChanged = !compareNullableQuotes(prevProps.currentLevelSelectedQuote, nextProps.currentLevelSelectedQuote);
 
   // Simple comparison for existingSelectableQuotes (compare by reference, assuming immutability)
@@ -90,17 +92,18 @@ const areNodeContentPropsEqual = (prevProps: NodeContentProps, nextProps: NodeCo
   const callbackChanged = prevProps.onExistingQuoteSelectionComplete !== nextProps.onExistingQuoteSelectionComplete;
 
   // Return true if none of the relevant props have changed
-  return !nodeChanged && !quoteChanged && !existingQuotesChanged && !currentLevelSelectedQuoteChanged && !callbackChanged;
+  return !nodeChanged && !isReplyTargetChanged && !existingQuotesChanged && !currentLevelSelectedQuoteChanged && !callbackChanged;
 };
 
 const NodeContent: React.FC<NodeContentProps> = ({
   node,
   onExistingQuoteSelectionComplete: onExistingQuoteSelectionComplete = () => {},
-  quote,
+  isReplyTargetNode = false,
   existingSelectableQuotes,
   currentLevelSelectedQuote
 }) => {
-  // Log the props received by NodeContent for debugging propagation
+  // Get replyQuote from context
+  const { replyQuote } = useReplyContext();
   
   // Memoize the text content to prevent unnecessary re-renders
   const textContent = useMemo(() => {
@@ -147,16 +150,16 @@ const NodeContent: React.FC<NodeContentProps> = ({
     
   }, [selections]);
 
-  // Safely handle the quote text
-  const quoteText = useMemo(() => {
-    return quote?.text || '';
-  }, [quote]);
+  // Safely handle the quote text for the blockquote display (use full text)
+  const quoteContainerText = useMemo(() => {
+    return node.textContent || '';
+  }, [node.textContent]);
 
   return (
     <div 
       className="node-content"
       role="article"
-      aria-label={quote ? 'Content being replied to' : 'Story content'}
+      aria-label={isReplyTargetNode ? 'Content being replied to' : 'Story content'}
     >
       {/* Main content area - ONLY for displaying highlights, never selectable */}
       <div 
@@ -177,18 +180,17 @@ const NodeContent: React.FC<NodeContentProps> = ({
         />
       </div>
 
-      {/* Quote container area - ALWAYS selectable */}
-      {/* This renders the quote being actively replied to, if any */}
-      {quote && (
+      {/* Quote container area - ALWAYS selectable if rendered */}
+      {/* Render the quote container ONLY if this node is the reply target */}
+      {isReplyTargetNode && (
         <div className="quote-container" role="region" aria-label="Quoted content for reply">
           <blockquote className="story-tree-node-quote">
             <MemoizedTextSelection
               node={node}
-              selectedQuote={quote}
-              selectAll={true}
+              selectedQuote={replyQuote ?? undefined}
               aria-label="Selectable text for reply"
             >
-              {quoteText}
+              {quoteContainerText}
             </MemoizedTextSelection>
           </blockquote>
         </div>
