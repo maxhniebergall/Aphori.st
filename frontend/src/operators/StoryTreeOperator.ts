@@ -45,13 +45,22 @@ import {
   getSelectedNodeHelper,
   isMidLevel,
   isLastLevel,
-  getSiblings
+  getSiblings,
+  setSelectedNodeHelper
 } from '../utils/levelDataHelpers';
+
+// Define the type for the ReplyContext setters we need
+interface ReplyContextSetters {
+  resetReplyState: () => void;
+  // Add other setters if needed directly by the operator
+}
 
 class StoryTreeOperator extends BaseOperator {
   // Introduce a store property to hold state and dispatch injected from a React component.
   private store: { state: StoryTreeState, dispatch: React.Dispatch<Action> } | null = null;
   private userContext: { state: { user: { id: string } | null } } | null = null;
+  // Add property to hold ReplyContext setters
+  private replyContextSetters: ReplyContextSetters | null = null;
   // Loading flag
   private isLoadingMore: boolean = false;
   // Track which level is currently being loaded
@@ -78,6 +87,11 @@ class StoryTreeOperator extends BaseOperator {
   // Method to inject the user context
   public setUserContext(context: { state: { user: { id: string } | null } }): void {
     this.userContext = context;
+  }
+
+  // Method to inject ReplyContext setters
+  public setReplyContextSetters(setters: ReplyContextSetters): void {
+    this.replyContextSetters = setters;
   }
 
   private getState() {
@@ -237,6 +251,7 @@ class StoryTreeOperator extends BaseOperator {
       
       if (decompressedPaginatedData && decompressedPaginatedData.pagination) {
         const quoteCountsMap = new Map<Quote, QuoteCounts>();
+        console.log(`[fetchAndDispatchReplies] quote counts map: ${JSON.stringify(quoteCountsMap)}`);
         const repliesData = decompressedPaginatedData.data;
         await Promise.all(repliesData.map(async (reply: Reply) => {
           const quoteCounts = await this.fetchQuoteCounts(reply.id);
@@ -339,7 +354,7 @@ class StoryTreeOperator extends BaseOperator {
     if (!decompressedResponse || !decompressedResponse.quoteCounts) {
       throw new StoryTreeError('Invalid data received for quote counts');
     }
-    
+    console.log(`[fetchQuoteCounts] quote counts: ${JSON.stringify(decompressedResponse.quoteCounts)}`);
     return {quoteCounts: decompressedResponse.quoteCounts};
   }
 
@@ -392,47 +407,208 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   /**
-   * Submits a reply to a given story node.
+   * Fetches the first page of replies for a given parent ID and quote,
+   * transforms them into StoryTreeNodes, creates a new StoryTreeLevel,
+   * and dispatches an action to update the state.
    *
-   * @param text - The content of the reply.
-   * @param parentId - The parent node identifier.
-   * @param quote - The quote associated with the reply.
-   * @returns A promise resolving to an object indicating success and optionally the reply ID.
-   * @throws {StoryTreeError} If user is not authenticated
+   * @param targetLevelIndex The index of the level to refresh/create.
+   * @param parentId The ID of the node whose replies we are fetching.
+   * @param quoteInParent The quote in the parent node that these replies are responding to.
    */
+  private async refreshLevel(targetLevelIndex: number, parentId: string, quoteInParent: Quote): Promise<void> {
+    if (!this.store) {
+      throw new StoryTreeError('Store not initialized in refreshLevel');
+    }
+    const state = this.getState();
+    if (!state.storyTree) {
+      throw new StoryTreeError('StoryTree not initialized in refreshLevel');
+    }
+
+    console.log(`[refreshLevel] Refreshing level ${targetLevelIndex} for parent ${parentId} based on quote:`, quoteInParent);
+
+    try {
+      // Fetch the first page of replies for the parent node and the specific quote.
+      // Use a default sorting criteria, e.g., 'mostRecent'
+      const sortingCriteria = 'mostRecent'; // Or fetch this from context/config if needed
+      const limit = 5; // Or fetch this from context/config if needed
+
+      // Re-use fetchFirstRepliesForLevel logic
+      const repliesResponse = await this.fetchFirstRepliesForLevel(
+        targetLevelIndex, // Pass target level number
+        parentId,
+        quoteInParent, // Use the specific quote from the parent
+        sortingCriteria,
+        limit
+      );
+
+      let newLevel: StoryTreeLevel;
+
+      if (repliesResponse && repliesResponse.data.length > 0) {
+        // Transform replies into StoryTreeNodes
+        const nodes: StoryTreeNode[] = await Promise.all(repliesResponse.data.map(async (reply): Promise<StoryTreeNode> => {
+          const quoteCounts = await this.fetchQuoteCounts(reply.id); // Fetch quote counts for each reply
+          return {
+            id: reply.id,
+            rootNodeId: state.storyTree!.post.id, // Use rootNodeId from the existing story tree
+            parentId: [parentId], // The parent ID is the node we are refreshing replies for
+            levelNumber: targetLevelIndex,
+            textContent: reply.text,
+            authorId: reply.authorId,
+            createdAt: reply.createdAt,
+            repliedToQuote: reply.quote, // Store the quote this reply is responding to
+            quoteCounts: quoteCounts,
+          };
+        }));
+
+        // Select the first node as the default selected node for the refreshed level
+        const selectedNode = nodes[0];
+
+        // Determine the quote to pre-select within this new level's selected node
+        const selectedQuoteInThisLevel = this.mostQuoted(selectedNode.quoteCounts);
+
+        // Construct siblings map for the new level
+        const siblingsMap: Siblings = {
+          levelsMap: [[quoteInParent, nodes]] // Use the parent's quote as the key
+        };
+
+        // Create the new MidLevel
+        newLevel = createMidLevel(
+          state.storyTree!.post.id,
+          [parentId],
+          targetLevelIndex,
+          quoteInParent, // The quote selected *in the parent* that led to this level
+          selectedQuoteInThisLevel, // The quote pre-selected *within* this new level
+          selectedNode,
+          siblingsMap,
+          repliesResponse.pagination // Use pagination info from the API response
+        );
+      } else {
+        // If no replies are found, create a LastLevel
+        console.log(`[refreshLevel] No replies found for parent ${parentId} and quote. Creating LastLevel for index ${targetLevelIndex}.`);
+        newLevel = { // Manually construct LastLevel structure
+           isLastLevel: true,
+           midLevel: null,
+           lastLevel: {
+               rootNodeId: state.storyTree.post.id,
+               levelNumber: targetLevelIndex
+           }
+        };
+      }
+
+      // --- Parent Level Update ---
+      const parentLevelIndex = targetLevelIndex - 1;
+      const parentLevel = state.storyTree.levels[parentLevelIndex];
+
+      if (parentLevel && isMidLevel(parentLevel)) {
+        const parentNode = getSelectedNodeHelper(parentLevel);
+        if (parentNode && parentNode.id === parentId) {
+          try {
+            console.log(`[refreshLevel] Fetching updated quote counts for parent node ${parentId}`);
+            const updatedQuoteCounts = await this.fetchQuoteCounts(parentId);
+            const updatedParentNode = { ...parentNode, quoteCounts: updatedQuoteCounts };
+            const updatedParentLevel = setSelectedNodeHelper(parentLevel, updatedParentNode);
+            
+            console.log(`[refreshLevel] Dispatching REPLACE_LEVEL_DATA for parent level ${parentLevelIndex}`);
+            this.store.dispatch({
+              type: ACTIONS.REPLACE_LEVEL_DATA,
+              payload: updatedParentLevel
+            });
+          } catch (qcError) {
+            console.error(`[refreshLevel] Failed to fetch/update quote counts for parent ${parentId}:`, qcError);
+            // Continue without updating parent counts if fetch fails
+          }
+        } else {
+           console.warn(`[refreshLevel] Parent node mismatch or not found when trying to update counts. Parent ID: ${parentId}, Node found: ${parentNode?.id}`);
+        }
+      } else {
+         console.warn(`[refreshLevel] Parent level ${parentLevelIndex} not found or not MidLevel when trying to update counts.`);
+      }
+      // --- End Parent Level Update ---
+
+      // Dispatch action to replace the target level data (N+1)
+      console.log(`[refreshLevel] Dispatching REPLACE_LEVEL_DATA for target level ${targetLevelIndex}`);
+      this.store.dispatch({
+        type: ACTIONS.REPLACE_LEVEL_DATA,
+        payload: newLevel
+      });
+
+    } catch (error) {
+      console.error(`[refreshLevel] Error refreshing level ${targetLevelIndex}:`, error);
+      // Optionally dispatch an error state update
+      const errorMessage = error instanceof Error ? error.message : 'Failed to refresh level';
+      this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Error refreshing level ${targetLevelIndex}: ${errorMessage}` });
+      // Decide if we should dispatch a LastLevel here on error or let the UI handle the error state
+       this.dispatchLastLevel(targetLevelIndex); // Tentatively set LastLevel on error
+    }
+  }
+
   public async submitReply(text: string, parentId: string, quote: Quote): Promise<{ replyId?: string; error?: string }> {
+    // Ensure reply context setters are available before proceeding
+    if (!this.replyContextSetters) {
+        console.error("[submitReply] ReplyContext setters not initialized in StoryTreeOperator.");
+        return { error: 'Internal configuration error: Reply context not available.' };
+    }
     try {
       // Get the user ID, which will throw if user is not authenticated
       const authorId = this.getUserId();
 
       const response = await axios.post<CreateReplyResponse>(`${process.env.REACT_APP_API_URL}/api/createReply`, {
         text,
-        parentId,
+        parentId: [parentId], // Ensure parentId is always an array
         quote,
         metadata: {
           authorId,
-          createdAt: new Date().toISOString()
         }
       });
 
-      if (!response.data.success) {
-        return { error: response.data.error || 'Unknown error occurred' };
+      if (!response.data.success || !response.data.data?.id) {
+        return { error: response.data.error || 'Unknown error occurred during reply submission' };
       }
 
-      // After successful reply, reload the story tree data 
-      // TODO: this is a hack, we should only reload the necessary data
+      const newReplyId = response.data.data.id;
+      console.log(`[submitReply] Reply successfully submitted with ID: ${newReplyId}`);
+
+      // --- Refetch Logic ---
       const state = this.getState();
-      if (state.storyTree) {
-        await this.initializeStoryTree(state.storyTree.post.id);
-      }
+      if (state.storyTree && state.storyTree.levels) {
+        // Find the index of the parent level
+        const parentLevelIndex = state.storyTree.levels.findIndex(level =>
+          isMidLevel(level) && level.midLevel?.selectedNode.id === parentId
+        );
 
-      return { replyId: response.data.data?.id };
+        if (parentLevelIndex !== -1) {
+          const targetLevelIndex = parentLevelIndex + 1;
+          console.log(`[submitReply] Triggering refresh for level ${targetLevelIndex} after submitting reply to parent ${parentId}`);
+          // Call refreshLevel asynchronously (don't block the return)
+          this.refreshLevel(targetLevelIndex, parentId, quote).catch(err => {
+             console.error(`[submitReply] Error during background level refresh:`, err);
+             // Optionally dispatch an error notification here
+          });
+        } else {
+          console.error(`[submitReply] Could not find parent level index for parentId: ${parentId}. Cannot refresh level.`);
+          // Handle this case - maybe dispatch an error or warning?
+        }
+      } else {
+         console.warn(`[submitReply] Story tree or levels not found in state after reply submission. Cannot refresh level.`);
+      }
+      // --- End Refetch Logic ---
+
+      // Reset Reply UI State BEFORE returning
+      this.replyContextSetters.resetReplyState();
+
+      // Return success immediately, refresh happens in the background
+      return { replyId: newReplyId };
+
     } catch (error) {
+      console.error("[submitReply] Error submitting reply:", error); // Log the full error
       if (error instanceof StoryTreeError) {
         return { error: error.message };
       }
       const axiosErr = error as AxiosError<CreateReplyResponse>;
-      return { error: axiosErr.response?.data?.error || 'Failed to submit reply' };
+      // Try to get a more specific error message from the response
+      const backendError = axiosErr.response?.data?.error;
+      const statusText = axiosErr.response?.statusText;
+      return { error: backendError || statusText || 'Failed to submit reply due to network or server error' };
     }
   }
 

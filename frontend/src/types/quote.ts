@@ -52,8 +52,8 @@ export class Quote {
       console.error('Invalid   selection range:', quote.selectionRange);
       return false;
     }
-    if (quote.selectionRange.end <= quote.selectionRange.start){
-      console.error('Invalid selection range:', quote.selectionRange);
+    if (quote.selectionRange.end < quote.selectionRange.start){
+      console.error('Invalid selection range (end < start):', quote.selectionRange);
       return false;
     }
     
@@ -91,7 +91,7 @@ export class Quote {
    */
   public static createPlaceholder(sourceId: string): Quote {
     // Use invalid range like start: -1, end: -1 or start: 0, end: 0 depending on downstream checks
-    return new Quote("", sourceId, { start: -1, end: -1 }); 
+    return new Quote("", sourceId, { start: -1, end: -1 });
   }
 }
 

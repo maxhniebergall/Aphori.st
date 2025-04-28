@@ -10,8 +10,9 @@
  *   - Light Blue Background (hover): Previews the next selected quote under the user's cursor on non-touch devices. Based on `activeQuoteObj` state.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Quote, areQuotesEqual } from '../types/quote';
+import { QuoteCounts } from '../types/types';
 import './HighlightedText.css';
 
 interface TextSegment {
@@ -25,9 +26,11 @@ interface TextSegment {
 interface HighlightedTextProps {
   text: string;
   selections: Quote[];
+  quoteCounts: QuoteCounts;
   onSegmentClick?: (quote: Quote) => void;
   selectedReplyQuote?: Quote | null;
   nodeId: string;
+  levelNumber: number;
 }
 
 /**
@@ -40,12 +43,23 @@ interface HighlightedTextProps {
 export const HighlightedText: React.FC<HighlightedTextProps> = ({ 
   text, 
   selections, 
+  quoteCounts,
   onSegmentClick,
   selectedReplyQuote,
-  nodeId
+  nodeId,
+  levelNumber
 }) => {
   const [activeQuoteObj, setActiveQuoteObj] = useState<Quote | null>(null);
   const [globalCycleQuote, setGlobalCycleQuote] = useState<Quote | null>(null); 
+  const [selectedHistory, setSelectedHistory] = useState<Set<string>>(new Set());
+
+  // Reset history if the base selections change
+  useEffect(() => {
+    console.log('[HighlightedText] Selections changed, resetting history.');
+    setSelectedHistory(new Set());
+    // Optionally reset globalCycleQuote too if desired
+    // setGlobalCycleQuote(null); 
+  }, [selections]);
 
   // Detect if the primary input mechanism doesn't support hover (likely touch)
   const isTouchDevice = useMemo(() => {
@@ -90,105 +104,138 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
     });
   }, [text, selections]);
 
-  const handleSegmentClick = (segment: TextSegment) => {
-    if (!onSegmentClick || segment.overlapCount === 0 || !selections || selections.length === 0) {
-      return;
-    }
-
-    const overlappingQuotes = segment.overlappingQuotes;
-    if (overlappingQuotes.length === 0) {
-      return;
-    }
-
-    const currentGlobalQuoteIndex = globalCycleQuote 
-      ? selections.findIndex(q => areQuotesEqual(q, globalCycleQuote)) 
-      : -1;
-
-    let nextGlobalQuote: Quote | null = null;
-    let searchStartIndex = (currentGlobalQuoteIndex + 1) % selections.length;
-
-    for (let i = 0; i < selections.length; i++) {
-      const currentIndex = (searchStartIndex + i) % selections.length;
-      const candidateQuote = selections[currentIndex];
-      
-      if (overlappingQuotes.some(oq => areQuotesEqual(oq, candidateQuote))) {
-        nextGlobalQuote = candidateQuote;
-        break;
-      }
-    }
-
-    if (!nextGlobalQuote && overlappingQuotes.length > 0) {
-        nextGlobalQuote = overlappingQuotes[0];
-    }
-    
-    if (nextGlobalQuote && onSegmentClick) {
-      onSegmentClick(nextGlobalQuote);
-    }
-
-    setGlobalCycleQuote(nextGlobalQuote);
-    
-    let previewQuote: Quote | null = null;
-    if (nextGlobalQuote) {
-      const nextGlobalQuoteIndex = selections.findIndex(q => areQuotesEqual(q, nextGlobalQuote!));
-      let previewSearchStartIndex = (nextGlobalQuoteIndex + 1) % selections.length;
-
-      for (let i = 0; i < selections.length; i++) {
-        const previewCurrentIndex = (previewSearchStartIndex + i) % selections.length;
-        const previewCandidateQuote = selections[previewCurrentIndex];
-        
-        if (overlappingQuotes.some(oq => areQuotesEqual(oq, previewCandidateQuote))) {
-          previewQuote = previewCandidateQuote;
-          break;
-        }
-      }
-
-      if (!previewQuote && overlappingQuotes.length > 0) {
-          previewQuote = overlappingQuotes[0];
-      }
-    }
-    
-    setActiveQuoteObj(previewQuote); 
+  // Helper to get count for a quote
+  const getCount = (quote: Quote, counts: QuoteCounts): number => {
+    const countEntry = counts.quoteCounts.find(entry => areQuotesEqual(entry[0], quote));
+    return countEntry ? countEntry[1] : 0;
   };
 
-  const handleMouseEnter = (segment: TextSegment) => {
-    // This handler is only attached on non-touch devices now
-    if (segment.overlapCount === 0 || !selections || selections.length === 0) {
-      setActiveQuoteObj(null);
+  // Helper function to sort quotes by count
+  const sortQuotesByCount = (
+    quotesToSort: Quote[], 
+    counts: QuoteCounts
+  ): Quote[] => {
+    return [...quotesToSort].sort((a, b) => getCount(b, counts) - getCount(a, counts));
+  };
+
+  // Helper to get the next quote for preview
+  const determinePreviewQuote = (currentOverlappingQuotes: Quote[], quoteToExclude: Quote | null, history: Set<string>, counts: QuoteCounts): Quote | null => {
+    if (currentOverlappingQuotes.length === 0) return null;
+
+    const sortedOverlapping = sortQuotesByCount(currentOverlappingQuotes, counts);
+    
+    let potentialPreviewCandidates = sortedOverlapping.filter(q => !quoteToExclude || !areQuotesEqual(q, quoteToExclude));
+    
+    // FIX: If filtering leaves no candidates, there's nothing valid to preview.
+    if (potentialPreviewCandidates.length === 0) {
+      return null;
+    }
+
+    // Prioritize unseen quotes for preview
+    const unseenPreview = potentialPreviewCandidates.find(q => !history.has(Quote.toEncodedString(q)));
+    if (unseenPreview) return unseenPreview;
+
+    // If all potential previews have been seen, return the highest priority one (that's not excluded)
+    return potentialPreviewCandidates[0];
+};
+
+  const handleSegmentClick = (segment: TextSegment) => {
+    // --- Added Logs --- 
+    console.log(`[HighlightedText Level ${levelNumber}] --- Start handleSegmentClick ---`);
+    console.log(`[HighlightedText Level ${levelNumber}] Segment Clicked:`, { start: segment.start, end: segment.end, text: segment.text });
+    console.log(`[HighlightedText Level ${levelNumber}] ALL Overlapping Quotes for Segment:`, segment.overlappingQuotes.map(q => Quote.toEncodedString(q)));
+    console.log(`[HighlightedText Level ${levelNumber}] History BEFORE processing click:`, Array.from(selectedHistory));
+    // --- End Added Logs --- 
+
+    // Existing logic with logs prefixed
+    console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: Initial Segment Check`, { start: segment.start, end: segment.end }); 
+    if (!onSegmentClick || segment.overlapCount === 0) {
+      console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: No action (no callback or overlap=0)`); 
       return;
     }
 
     const overlappingQuotes = segment.overlappingQuotes;
     if (overlappingQuotes.length === 0) {
-      setActiveQuoteObj(null);
+        console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: No action (zero overlapping quotes for segment)`); 
+      return;
+    }
+    console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: Overlapping Quotes (valid):`, overlappingQuotes.map(q => Quote.toEncodedString(q))); 
+    console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: Current History (mid-processing):`, Array.from(selectedHistory)); 
+
+    const unseenCandidates = overlappingQuotes.filter(q => !selectedHistory.has(Quote.toEncodedString(q)));
+    console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: Unseen Candidates:`, unseenCandidates.map(q => Quote.toEncodedString(q))); 
+
+    let candidatesToConsider: Quote[];
+    let resetCycle = false;
+
+    if (unseenCandidates.length > 0) {
+      candidatesToConsider = unseenCandidates;
+    } else {
+      console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: All seen, resetting cycle.`); 
+      candidatesToConsider = overlappingQuotes;
+      resetCycle = true;
+    }
+    console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: Candidates to Consider:`, candidatesToConsider.map(q => Quote.toEncodedString(q))); 
+
+    const sortedCandidates = sortQuotesByCount(candidatesToConsider, quoteCounts);
+    console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: Sorted Candidates:`, sortedCandidates.map(q => Quote.toEncodedString(q))); 
+
+    if (sortedCandidates.length === 0) {
+      console.warn(`[HighlightedText Level ${levelNumber}] handleSegmentClick: No candidates found after sorting, returning.`); 
       return; 
     }
 
-    const currentGlobalQuoteIndex = globalCycleQuote 
-      ? selections.findIndex(q => areQuotesEqual(q, globalCycleQuote)) 
-      : -1;
+    const nextGlobalQuote = sortedCandidates[0];
+    const nextGlobalQuoteId = Quote.toEncodedString(nextGlobalQuote);
+    console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: Selected Quote ID:`, nextGlobalQuoteId); 
 
-    let potentialNextGlobalQuote: Quote | null = null;
-    let searchStartIndex = (currentGlobalQuoteIndex + 1) % selections.length;
+    // --- Update State --- 
+    onSegmentClick(nextGlobalQuote);
+    setGlobalCycleQuote(nextGlobalQuote);
 
-    for (let i = 0; i < selections.length; i++) {
-      const currentIndex = (searchStartIndex + i) % selections.length;
-      const candidateQuote = selections[currentIndex];
-
-      if (overlappingQuotes.some(oq => areQuotesEqual(oq, candidateQuote))) {
-        potentialNextGlobalQuote = candidateQuote;
-        break; 
-      }
+    let nextHistory: Set<string>;
+    if (resetCycle) {
+      nextHistory = new Set([nextGlobalQuoteId]);
+      console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: History Reset To:`, Array.from(nextHistory)); 
+    } else {
+      nextHistory = new Set(selectedHistory).add(nextGlobalQuoteId);
+      console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: History Updated To:`, Array.from(nextHistory)); 
     }
+    setSelectedHistory(nextHistory);
 
-    if (!potentialNextGlobalQuote && overlappingQuotes.length > 0) {
-        potentialNextGlobalQuote = overlappingQuotes[0]; 
+    // --- Determine Preview ---  
+    const previewQuote = determinePreviewQuote(overlappingQuotes, nextGlobalQuote, nextHistory, quoteCounts);
+    console.log(`[HighlightedText Level ${levelNumber}] handleSegmentClick: Setting Preview Quote:`, previewQuote ? Quote.toEncodedString(previewQuote) : null); 
+    setActiveQuoteObj(previewQuote);
+  };
+
+  const handleMouseEnter = (segment: TextSegment) => {
+    console.log(`[HighlightedText Level ${levelNumber}] handleMouseEnter: Segment`, { start: segment.start, end: segment.end }); 
+    if (isTouchDevice || segment.overlapCount === 0) {
+      setActiveQuoteObj(null);
+      return;
     }
+    const overlappingQuotes = segment.overlappingQuotes;
+    if (overlappingQuotes.length === 0) {
+        setActiveQuoteObj(null);
+        return;
+    }
+    console.log(`[HighlightedText Level ${levelNumber}] handleMouseEnter: Overlapping Quotes:`, overlappingQuotes.map(q => Quote.toEncodedString(q))); 
+    console.log(`[HighlightedText Level ${levelNumber}] handleMouseEnter: Current History:`, Array.from(selectedHistory)); 
+
+    // Determine what the *next* click would select based on current history
+    const unseenCandidates = overlappingQuotes.filter(q => !selectedHistory.has(Quote.toEncodedString(q)));
+    const candidatesToConsider = unseenCandidates.length > 0 ? unseenCandidates : overlappingQuotes;
+    const sortedCandidates = sortQuotesByCount(candidatesToConsider, quoteCounts);
+    const potentialNextGlobalQuote = sortedCandidates.length > 0 ? sortedCandidates[0] : null;
     
+    // FIX: Set the preview directly to what the next click would select
+    console.log(`[HighlightedText Level ${levelNumber}] handleMouseEnter: Setting Preview Quote (Direct):`, potentialNextGlobalQuote ? Quote.toEncodedString(potentialNextGlobalQuote) : null);
     setActiveQuoteObj(potentialNextGlobalQuote);
   };
 
   const handleMouseLeave = () => {
-    // This handler is only attached on non-touch devices now
+    console.log(`[HighlightedText Level ${levelNumber}] handleMouseLeave: Clearing Preview`); 
     setActiveQuoteObj(null);
   };
 

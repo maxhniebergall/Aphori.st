@@ -30,6 +30,7 @@ import rehypeSanitize from 'rehype-sanitize';
 import { ReplyProvider, useReplyContext } from '../context/ReplyContext';
 import StoryTreeOperator from '../operators/StoryTreeOperator';
 import React from 'react';
+import { useUser } from '../context/UserContext';
 
 // Memoized content component to prevent unnecessary re-renders
 const MemoizedVirtualizedStoryList = React.memo(VirtualizedStoryList);
@@ -158,12 +159,41 @@ function StoryTreeContent() {
   );
 }
 
-// Wrapper component with provider
-function StoryTreeHolder() {  
+// New component to handle context consumption and operator setup
+function StoryTreeSetupAndContent() {
+  // Hooks are now called safely inside the providers
+  const { state: storyTreeState, dispatch: storyTreeDispatch } = useStoryTree();
+  const { state: userState } = useUser();
+  const { clearReplyState } = useReplyContext();
+
+  // Define the reset function required by the operator interface
+  const resetReplyState = useCallback(() => {
+    clearReplyState();
+  }, [clearReplyState]);
+
+  // Effect to initialize the operator with contexts and setters
+  useEffect(() => {
+    // Inject StoryTree state/dispatch
+    StoryTreeOperator.setStore({ state: storyTreeState, dispatch: storyTreeDispatch });
+    // Inject User context state
+    StoryTreeOperator.setUserContext({ state: userState });
+    // Inject Reply context setters
+    StoryTreeOperator.setReplyContextSetters({ resetReplyState });
+
+
+  }, [storyTreeState, storyTreeDispatch, userState, resetReplyState]);
+
+  // Render the actual content component
+  return <StoryTreeContent />;
+}
+
+// Wrapper component that renders the providers
+function StoryTreeHolder() {
   const { uuid: rootUUID } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
 
   // Initialize story tree and fetch data when rootUUID changes
+  // This effect remains here as it doesn't depend on the contexts being fetched *in this component*
   useEffect(() => {
     let mounted = true;
 
@@ -171,17 +201,25 @@ function StoryTreeHolder() {
       if (rootUUID && mounted) {
         try {
           // We assume initializeStoryTree handles resetting state if called again
+          // Operator needs contexts injected first, which happens in StoryTreeSetupAndContent
+          // Ensure operator is ready before calling initialize
+          // A slight delay or check might be needed if there's a race condition,
+          // but usually the effect in SetupAndContent runs before this outer one triggers initialize.
           await StoryTreeOperator.initializeStoryTree(rootUUID);
         } catch (error) {
           console.error('Failed to initialize story tree:', error);
           if (mounted) {
             // Optionally navigate away or show a persistent error
-            navigate('/feed');
+            // Consider dispatching error to StoryTreeContext instead of navigating
+             navigate('/feed');
           }
         }
       }
     };
 
+    // Need to ensure operator injection happens first.
+    // For simplicity now, we assume the inner effect runs first.
+    // A more robust solution might involve a state flag set by the inner effect.
     initializeTree();
 
     return () => {
@@ -192,7 +230,7 @@ function StoryTreeHolder() {
   return (
     <StoryTreeProvider>
       <ReplyProvider>
-        <StoryTreeContent />
+        <StoryTreeSetupAndContent />
       </ReplyProvider>
     </StoryTreeProvider>
   );
