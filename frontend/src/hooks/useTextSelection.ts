@@ -14,6 +14,7 @@ import { useRef, useCallback, useEffect, useState } from 'react';
 import { throttle } from 'lodash';
 import { getCurrentOffset, getWordBoundaries } from '../utils/selectionUtils';
 import { Quote } from '../types/quote';
+import { useReplyContext } from '../context/ReplyContext';
 
 interface UseTextSelectionProps {
   selectAll?: boolean;
@@ -87,8 +88,9 @@ const highlightTemporarySelection = (element: HTMLElement, startOffset: number, 
   }
 };
 
-function onSelectionCompleted(quote: Quote, container: HTMLElement, ){
+function onSelectionCompleted(quote: Quote, container: HTMLElement, setReplyQuote: (quote: Quote) => void){
   highlightTemporarySelection(container, quote.selectionRange.start, quote.selectionRange.end)
+  setReplyQuote(quote);
 }
 
 // Throttled animation loop used during mouse/touch move
@@ -166,12 +168,23 @@ export function useTextSelection({
   const initialOffsetRef = useRef<number | null>(null);
   const finalOffsetRef = useRef<number | null>(null);
 
+  const { 
+    setReplyQuote 
+  } = useReplyContext();
+
+  // Track the ID for which the initial quote was set
+  const initialQuoteSetForIdRef = useRef<string | null>(null);
+
   // Update container text when the ref changes
   useEffect(() => {
     if (containerRef.current) {
       setContainerText(containerRef.current.textContent || '');
+      // Reset initial quote tracking if container ID changes
+      if (containerRef.current.id !== initialQuoteSetForIdRef.current) {
+        initialQuoteSetForIdRef.current = null; 
+      }
     }
-  }, []);
+  }, []); // Keep dependencies minimal
 
   const cleanupEventListeners = useCallback(() => {
     if (boundThrottledAnimationRef.current && containerRef.current) {
@@ -269,7 +282,7 @@ export function useTextSelection({
             { start, end }
           );
           
-          onSelectionCompleted(quote, containerRef.current);
+          onSelectionCompleted(quote, containerRef.current, setReplyQuote);
           mouseIsDownRef.current = false;
           cleanupEventListeners(); // This will also set isSelecting to false
           return;
@@ -278,7 +291,7 @@ export function useTextSelection({
       
       const quote = endAnimationLoop(event);
       if (quote) {
-        onSelectionCompleted(quote, containerRef.current);
+        onSelectionCompleted(quote, containerRef.current, setReplyQuote);
       }
     },
     [endAnimationLoop, onSelectionCompleted, cleanupEventListeners]
@@ -289,6 +302,10 @@ export function useTextSelection({
     const handleGlobalMouseUp = () => {
       if (mouseIsDownRef.current) {
         mouseIsDownRef.current = false;
+        // Ensure temporary highlights are removed even if selection wasn't completed normally
+        if (containerRef.current) {
+          removeTemporaryHighlights(containerRef.current);
+        }
         cleanupEventListeners();
       }
     };
@@ -300,20 +317,42 @@ export function useTextSelection({
     };
   }, [cleanupEventListeners]);
 
-  // Effect: handle selectAll and selectedQuote
+  // Effect: handle INITIAL selectedQuote
   useEffect(() => {
-    if (containerRef.current) {
-      const text = containerRef.current.textContent || '';
-      setContainerText(text);
+    // Ensure container is available and has an ID
+    if (containerRef.current && containerRef.current.id) {
+      const currentContainerId = containerRef.current.id;
       
-      if (selectAll) {
-        const quote = new Quote(text, containerRef.current.id, { start: 0, end: text.length });
-        onSelectionCompleted(quote, containerRef.current);
-      } else if (selectedQuote) {
-        onSelectionCompleted(selectedQuote, containerRef.current);
+      // Only set initial quote if:
+      // 1. A selectedQuote is provided.
+      // 2. We haven't already set the initial quote for THIS container ID.
+      if (selectedQuote && initialQuoteSetForIdRef.current !== currentContainerId) {
+        
+        // Check if the quote source matches the container ID - important safety check
+        if (selectedQuote.sourceId === currentContainerId) {
+          // Use a minimal version of onSelectionCompleted just for highlighting
+          highlightTemporarySelection(containerRef.current, selectedQuote.selectionRange.start, selectedQuote.selectionRange.end);
+          
+          // Mark that the initial quote has been set for this container ID
+          initialQuoteSetForIdRef.current = currentContainerId;
+        } else {
+          console.warn("useTextSelection: selectedQuote sourceId does not match container id. Initial highlight skipped.", {
+            quoteSourceId: selectedQuote.sourceId,
+            containerId: currentContainerId
+          });
+          // Reset tracking if quote doesn't match container
+          initialQuoteSetForIdRef.current = null; 
+        }
+      } 
+      // If selectedQuote becomes null/undefined after being set, clear the highlight and reset tracking
+      else if (!selectedQuote && initialQuoteSetForIdRef.current === currentContainerId) {
+        removeTemporaryHighlights(containerRef.current);
+        initialQuoteSetForIdRef.current = null;
       }
     }
-  }, [selectAll, selectedQuote, onSelectionCompleted]);
+  // Dependencies: Only run when selectedQuote or the container ref itself changes.
+  // Avoid dependency on onSelectionCompleted or setReplyQuote here.
+  }, [selectedQuote, containerRef.current]); 
 
   // Wrap our internal handlers for React events
   const onMouseDownHandler = useCallback((event: React.MouseEvent<HTMLDivElement>) => {

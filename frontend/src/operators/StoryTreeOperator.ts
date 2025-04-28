@@ -530,6 +530,12 @@ class StoryTreeOperator extends BaseOperator {
         payload: newLevel
       });
 
+      // Dispatch CLEAR_LEVELS_AFTER N+1 to prune potential old branches
+      this.store.dispatch({
+        type: ACTIONS.CLEAR_LEVELS_AFTER,
+        payload: { levelNumber: targetLevelIndex } // Use the level number just replaced/added
+      });
+
     } catch (error) {
       console.error(`[refreshLevel] Error refreshing level ${targetLevelIndex}:`, error);
       // Optionally dispatch an error state update

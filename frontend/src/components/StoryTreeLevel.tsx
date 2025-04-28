@@ -189,7 +189,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         await storyTreeOperator.setSelectedQuoteForNodeInLevel(quote, nodeToRender, levelData);
         window.dispatchEvent(new Event('resize'));
       } catch (error) {
-        setReplyError(error instanceof Error ? error.message : 'Failed to set reply target');
+        setReplyError(error instanceof Error ? error.message : 'Failed to set reply target'); // TODO: why is this a reply error?
       }
     },
     [nodeToRender, levelData, setReplyError] // Dependencies updated
@@ -398,7 +398,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               <MemoizedNodeContent
                 node={nodeToRender}
                 onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
-                quote={isReplyTarget ? (replyQuote ?? undefined) : undefined}
+                isReplyTargetNode={isReplyTarget}
                 existingSelectableQuotes={memoizedQuoteCounts}
                 currentLevelSelectedQuote={currentLevelSelectedQuote ?? undefined}
               />
