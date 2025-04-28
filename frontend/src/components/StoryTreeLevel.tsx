@@ -331,7 +331,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // Memoize quote counts based on the node ID. If the node ID is the same,
   // assume its quote counts haven't fundamentally changed for highlighting purposes.
   const memoizedQuoteCounts = useMemo(() => {
-    console.log(`[StoryTreeLevel ${levelData.midLevel?.levelNumber}] Recalculating memoizedQuoteCounts... Node ID: ${nodeToRender?.id}`); 
     return nodeToRender?.quoteCounts ?? undefined;
   // Depend only on the node ID. If the node changes, recalculate.
   }, [nodeToRender?.id]);
