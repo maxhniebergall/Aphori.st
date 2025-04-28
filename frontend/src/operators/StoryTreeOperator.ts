@@ -422,6 +422,14 @@ class StoryTreeOperator extends BaseOperator {
       throw new StoryTreeError('StoryTree not initialized in refreshLevel');
     }
 
+    // Set loading state
+    if (this.store?.dispatch) {
+      this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: true });
+    } else {
+       console.error("[refreshLevel] Store not available to dispatch loading state.");
+      return; // Can't proceed without dispatch
+    }
+
     console.log(`[refreshLevel] Refreshing level ${targetLevelIndex} for parent ${parentId} based on quote:`, quoteInParent);
 
     try {
@@ -505,7 +513,7 @@ class StoryTreeOperator extends BaseOperator {
             const updatedQuoteCounts = await this.fetchQuoteCounts(parentId);
             const updatedParentNode = { ...parentNode, quoteCounts: updatedQuoteCounts };
             const updatedParentLevel = setSelectedNodeHelper(parentLevel, updatedParentNode);
-            
+
             console.log(`[refreshLevel] Dispatching REPLACE_LEVEL_DATA for parent level ${parentLevelIndex}`);
             this.store.dispatch({
               type: ACTIONS.REPLACE_LEVEL_DATA,
@@ -530,6 +538,8 @@ class StoryTreeOperator extends BaseOperator {
         payload: newLevel
       });
 
+      // Add a log right before the second dispatch
+      console.log(`[refreshLevel] About to dispatch CLEAR_LEVELS_AFTER for target level ${targetLevelIndex}`);
       // Dispatch CLEAR_LEVELS_AFTER N+1 to prune potential old branches
       this.store.dispatch({
         type: ACTIONS.CLEAR_LEVELS_AFTER,
@@ -543,6 +553,11 @@ class StoryTreeOperator extends BaseOperator {
       this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Error refreshing level ${targetLevelIndex}: ${errorMessage}` });
       // Decide if we should dispatch a LastLevel here on error or let the UI handle the error state
        this.dispatchLastLevel(targetLevelIndex); // Tentatively set LastLevel on error
+    } finally {
+      // Ensure loading state is reset
+      if (this.store?.dispatch) {
+        this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false });
+      }
     }
   }
 
@@ -583,11 +598,15 @@ class StoryTreeOperator extends BaseOperator {
         if (parentLevelIndex !== -1) {
           const targetLevelIndex = parentLevelIndex + 1;
           console.log(`[submitReply] Triggering refresh for level ${targetLevelIndex} after submitting reply to parent ${parentId}`);
-          // Call refreshLevel asynchronously (don't block the return)
+          // --- MODIFICATION: Await refreshLevel for debugging ---
+          await this.refreshLevel(targetLevelIndex, parentId, quote);
+          /* Original code:
           this.refreshLevel(targetLevelIndex, parentId, quote).catch(err => {
              console.error(`[submitReply] Error during background level refresh:`, err);
              // Optionally dispatch an error notification here
           });
+          */
+          // --- END MODIFICATION ---
         } else {
           console.error(`[submitReply] Could not find parent level index for parentId: ${parentId}. Cannot refresh level.`);
           // Handle this case - maybe dispatch an error or warning?
