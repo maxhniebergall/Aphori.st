@@ -70,7 +70,8 @@ const ReplyEditor = () => {
   }, [setReplyContent]);
   
   // Handle reply cancellation
-  const handleReplyCancel = useCallback(() => {
+  const handleReplyFinished = useCallback(() => {
+    // used for both cancel and submit
     setReplyContent('');
     setReplyTarget(null);
     setReplyQuote(null);
@@ -95,7 +96,16 @@ const ReplyEditor = () => {
       </div>
       <div className="reply-actions" role="group" aria-label="Reply actions">
         <button 
-          onClick={() => StoryTreeOperator.submitReply(replyContent, replyTarget.id, replyQuote)}
+          onClick={async () => {
+            try {
+              const result = await StoryTreeOperator.submitReply(replyContent, replyTarget.id, replyQuote);
+              if (!result.error) {
+                handleReplyFinished();
+              }
+            } catch (error) {
+              console.error("Error during reply submission:", error);
+            }
+          }}
           disabled={!replyContent.trim()}
           className="submit-reply-button"
           aria-label="Submit reply"
@@ -103,7 +113,7 @@ const ReplyEditor = () => {
           Submit
         </button>
         <button 
-          onClick={handleReplyCancel}
+          onClick={handleReplyFinished}
           className="cancel-reply-button"
           aria-label="Cancel reply"
         >

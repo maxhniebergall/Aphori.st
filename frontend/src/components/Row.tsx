@@ -19,6 +19,7 @@ import {
 } from '../utils/levelDataHelpers';
 import storyTreeOperator from '../operators/StoryTreeOperator';
 import { useStoryTree } from '../context/StoryTreeContext';
+import { useReplyContext } from '../context/ReplyContext';
 
 // Row Component Props - update to remove react-window and sizing props
 interface RowProps {
@@ -44,20 +45,21 @@ const Row: React.FC<RowProps> = memo(
     }
 
     const { dispatch } = useStoryTree();
+    const { isReplyActive } = useReplyContext();
     const levelNumber = useMemo(() => getLevelNumber(levelData), [levelData]);
 
     // Create simplified navigation callbacks for StoryTreeLevel
     const navigateToNextSiblingCallback = useCallback(() => {
-      if (levelNumber === undefined) return;
+      if (levelNumber === undefined || isReplyActive) return;
       console.log(`[Row] Dispatching NAVIGATE_NEXT_SIBLING for level ${levelNumber}`);
       dispatch({ type: ACTIONS.NAVIGATE_NEXT_SIBLING, payload: { levelNumber } });
-    }, [dispatch, levelNumber]);
+    }, [dispatch, levelNumber, isReplyActive]);
 
     const navigateToPreviousSiblingCallback = useCallback(() => {
-      if (levelNumber === undefined) return;
+      if (levelNumber === undefined || isReplyActive) return;
       console.log(`[Row] Dispatching NAVIGATE_PREV_SIBLING for level ${levelNumber}`);
       dispatch({ type: ACTIONS.NAVIGATE_PREV_SIBLING, payload: { levelNumber } });
-    }, [dispatch, levelNumber]);
+    }, [dispatch, levelNumber, isReplyActive]);
 
     // Create content component directly within Row
     const content = useMemo(() => {
