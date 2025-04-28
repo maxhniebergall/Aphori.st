@@ -187,7 +187,6 @@ const NodeContent: React.FC<NodeContentProps> = ({
           <blockquote className="story-tree-node-quote">
             <MemoizedTextSelection
               node={node}
-              selectedQuote={replyQuote ?? undefined}
               aria-label="Selectable text for reply"
             >
               {quoteContainerText}
