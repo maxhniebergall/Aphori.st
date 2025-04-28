@@ -251,7 +251,6 @@ class StoryTreeOperator extends BaseOperator {
       
       if (decompressedPaginatedData && decompressedPaginatedData.pagination) {
         const quoteCountsMap = new Map<Quote, QuoteCounts>();
-        console.log(`[fetchAndDispatchReplies] quote counts map: ${JSON.stringify(quoteCountsMap)}`);
         const repliesData = decompressedPaginatedData.data;
         await Promise.all(repliesData.map(async (reply: Reply) => {
           const quoteCounts = await this.fetchQuoteCounts(reply.id);
@@ -354,7 +353,6 @@ class StoryTreeOperator extends BaseOperator {
     if (!decompressedResponse || !decompressedResponse.quoteCounts) {
       throw new StoryTreeError('Invalid data received for quote counts');
     }
-    console.log(`[fetchQuoteCounts] quote counts: ${JSON.stringify(decompressedResponse.quoteCounts)}`);
     return {quoteCounts: decompressedResponse.quoteCounts};
   }
 
