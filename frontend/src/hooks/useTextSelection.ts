@@ -165,22 +165,33 @@ const updateHandlePositions = (
   const startCoords = getCoordsForOffset(container, startOffset);
   const endCoords = getCoordsForOffset(container, endOffset);
 
+  // Get container dimensions for clamping
+  const containerWidth = container.clientWidth;
+  const containerHeight = container.clientHeight; // Might not be strictly necessary if text flows only horizontally, but good practice
+  const handleRadius = 8; // Half of the 16px width/height
+
   if (startCoords) {
-    startHandle.style.left = `${startCoords.x}px`;
-    startHandle.style.top = `${startCoords.y}px`;
-    startHandle.style.display = 'block'; // Make visible
+    // Clamp coordinates to stay within container bounds, accounting for handle radius
+    const clampedX = Math.max(handleRadius, Math.min(startCoords.x, containerWidth - handleRadius));
+    const clampedY = Math.max(handleRadius, Math.min(startCoords.y, containerHeight - handleRadius));
+
+    startHandle.style.left = `${clampedX}px`;
+    startHandle.style.top = `${clampedY}px`;
+    startHandle.style.display = 'block';
   } else {
-    startHandle.style.display = 'none'; // Hide if coords fail
+    startHandle.style.display = 'none';
   }
 
   if (endCoords) {
-    // For the end handle, position it relative to the *end* character's bounding box
-    // We might need a slight adjustment if getCoordsForOffset gives the start of the char
-    endHandle.style.left = `${endCoords.x}px`;
-    endHandle.style.top = `${endCoords.y}px`;
-    endHandle.style.display = 'block'; // Make visible
+    // Clamp coordinates
+    const clampedX = Math.max(handleRadius, Math.min(endCoords.x, containerWidth - handleRadius));
+    const clampedY = Math.max(handleRadius, Math.min(endCoords.y, containerHeight - handleRadius));
+
+    endHandle.style.left = `${clampedX}px`;
+    endHandle.style.top = `${clampedY}px`;
+    endHandle.style.display = 'block';
   } else {
-    endHandle.style.display = 'none'; // Hide if coords fail
+    endHandle.style.display = 'none';
   }
 };
 
