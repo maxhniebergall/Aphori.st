@@ -835,6 +835,15 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             return;
         }
 
+        // Validate reply text length
+        if (text.length > 1000) {
+            res.status(400).json({
+                success: false,
+                error: 'Reply text exceeds the maximum length of 1000 characters.'
+            });
+            return;
+        }
+
         // Create the new reply object adhering to the unified node structure.
         const newReply = {
             id: generateCondensedUuid(),

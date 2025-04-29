@@ -94,9 +94,24 @@ const ReplyEditor = () => {
           {...editorOptions}
         />
       </div>
+      <div 
+        style={{
+          textAlign: 'left',
+          fontSize: '0.8em',
+          marginTop: '4px',
+          color: replyContent.length > 1000 ? 'red' : 'inherit'
+        }}
+      >
+        {replyContent.length} / 1000
+      </div>
       <div className="reply-actions" role="group" aria-label="Reply actions">
         <button 
           onClick={async () => {
+            // Add length validation
+            if (replyContent.length > 1000) {
+              window.alert('Reply text cannot exceed 1000 characters.');
+              return; // Stop the submission
+            }
             try {
               const result = await StoryTreeOperator.submitReply(replyContent, replyTarget.id, replyQuote);
               if (!result.error) {
