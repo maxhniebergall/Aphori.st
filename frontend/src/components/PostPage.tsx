@@ -22,6 +22,7 @@ import { Link } from 'react-router-dom';
 import { PostCreationRequest } from '../types/types';
 
 const MAX_POST_LENGTH = 5000;
+const MIN_POST_LENGTH = 100;
 
 const PostPage: React.FC = (): JSX.Element => {
   const [content, setContent] = useState<string>('');
@@ -31,13 +32,15 @@ const PostPage: React.FC = (): JSX.Element => {
   const { state } = useUser();
   const loggedOutMessage: string = 'Please sign in to create a post';
   const lengthExceededError: string = `Post content cannot exceed ${MAX_POST_LENGTH} characters.`;
+  const lengthInsufficientError: string = `Post content must be at least ${MIN_POST_LENGTH} characters.`;
   const [isLengthExceeded, setIsLengthExceeded] = useState<boolean>(false);
+  const [isLengthInsufficient, setIsLengthInsufficient] = useState<boolean>(false);
 
   useEffect(() => {
     if (!state?.verified) {
       setError(loggedOutMessage);
     } else {
-      // Clear login error if verified, but preserve length error
+      // Clear login error if verified, but preserve length errors
       if (error === loggedOutMessage) {
         setError('');
       }
@@ -48,15 +51,25 @@ const PostPage: React.FC = (): JSX.Element => {
     const newContent = value || '';
     setContent(newContent);
 
-    if (newContent.length > MAX_POST_LENGTH) {
-      setError(lengthExceededError);
-      setIsLengthExceeded(true);
-    } else {
-      // Clear length error if it was the current error
-      if (error === lengthExceededError) {
-          setError('');
-      }
-      setIsLengthExceeded(false);
+    const length = newContent.length;
+    let currentError = '';
+    let exceeded = false;
+    let insufficient = false;
+
+    if (length > MAX_POST_LENGTH) {
+      currentError = lengthExceededError;
+      exceeded = true;
+    } else if (length > 0 && length < MIN_POST_LENGTH) {
+      currentError = lengthInsufficientError;
+      insufficient = true;
+    }
+
+    setIsLengthExceeded(exceeded);
+    setIsLengthInsufficient(insufficient);
+
+    // Update error only if it's a length-related error or clearing one
+    if (currentError || error === lengthExceededError || error === lengthInsufficientError) {
+        setError(currentError);
     }
   };
 
@@ -67,6 +80,10 @@ const PostPage: React.FC = (): JSX.Element => {
     if (isLengthExceeded) {
       window.alert(lengthExceededError); // Show alert modal
       return; // Stop the submission process
+    }
+    if (isLengthInsufficient) {
+      window.alert(lengthInsufficientError);
+      return;
     }
 
     setIsSubmitting(true);
@@ -93,8 +110,8 @@ const PostPage: React.FC = (): JSX.Element => {
     }
   };
 
-  // Update canSubmit to remove the length check for disabling the button
-  const canSubmit = state?.verified && !isSubmitting && content.trim().length > 0;
+  // Update canSubmit logic to include minimum length check
+  const canSubmit = state?.verified && !isSubmitting && content.trim().length >= MIN_POST_LENGTH && !isLengthExceeded;
 
   return (
     <div className="post-page">

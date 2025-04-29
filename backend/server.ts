@@ -687,8 +687,13 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
 
         // Validate content length
         const MAX_POST_LENGTH = 5000;
+        const MIN_POST_LENGTH = 100;
         if (storyTree.content.length > MAX_POST_LENGTH) {
             res.status(400).json({ error: `Post content exceeds the maximum length of ${MAX_POST_LENGTH} characters.` });
+            return;
+        }
+        if (storyTree.content.length < MIN_POST_LENGTH) {
+            res.status(400).json({ error: `Post content must be at least ${MIN_POST_LENGTH} characters long.` });
             return;
         }
 
