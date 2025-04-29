@@ -680,19 +680,22 @@ app.get('/health', (req: Request, res: Response): void => {
 app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { storyTree } = req.body as { storyTree: PostCreationRequest };
-        if (!storyTree) {
-            res.status(400).json({ error: 'StoryTree data is required' });
+        if (!storyTree || !storyTree.content) {
+            res.status(400).json({ error: 'StoryTree data with content is required' });
             return;
         }
 
-        // Validate content length
+        // Trim the content
+        const trimmedContent = storyTree.content.trim();
+
+        // Validate content length using trimmed content
         const MAX_POST_LENGTH = 5000;
         const MIN_POST_LENGTH = 100;
-        if (storyTree.content.length > MAX_POST_LENGTH) {
+        if (trimmedContent.length > MAX_POST_LENGTH) {
             res.status(400).json({ error: `Post content exceeds the maximum length of ${MAX_POST_LENGTH} characters.` });
             return;
         }
-        if (storyTree.content.length < MIN_POST_LENGTH) {
+        if (trimmedContent.length < MIN_POST_LENGTH) {
             res.status(400).json({ error: `Post content must be at least ${MIN_POST_LENGTH} characters long.` });
             return;
         }
@@ -700,10 +703,10 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         // Generate a new UUID for the story tree
         const uuid = generateCondensedUuid();
         
-        // Create the full object following new schema structure
+        // Create the full object using trimmed content
         const formattedStoryTree = {
             id: uuid,
-            content: storyTree.content,
+            content: trimmedContent,
             parentId: null, // Root-level posts always have null parentId
             authorId: req.user.id,
             createdAt: new Date().toISOString(),
@@ -716,7 +719,7 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         // Add to feed items (only root-level posts go to feed)
         const feedItem = {
             id: uuid,
-            text: storyTree.content,
+            text: trimmedContent,
             authorId: req.user.id,
             createdAt: formattedStoryTree.createdAt
         } as FeedItem;
@@ -831,7 +834,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         const quote: Quote = req.body.quote;
         const user: User = (req as AuthenticatedRequest).user;
 
-        // Validate that required fields are provided.
+        // Validate that required fields are provided (before trimming text).
         if (!text || !parentId || !quote || !quote.text || !quote.sourceId || !quote.selectionRange) {
             res.status(400).json({ 
                 success: false, 
@@ -840,17 +843,20 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             return;
         }
 
-        // Validate reply text length
+        // Trim the reply text
+        const trimmedText = text.trim();
+
+        // Validate reply text length using trimmed text
         const MAX_REPLY_LENGTH = 1000;
         const MIN_REPLY_LENGTH = 50;
-        if (text.length > MAX_REPLY_LENGTH) {
+        if (trimmedText.length > MAX_REPLY_LENGTH) {
             res.status(400).json({
                 success: false,
                 error: `Reply text exceeds the maximum length of ${MAX_REPLY_LENGTH} characters.`
             });
             return;
         }
-        if (text.length < MIN_REPLY_LENGTH) {
+        if (trimmedText.length < MIN_REPLY_LENGTH) {
             res.status(400).json({
                 success: false,
                 error: `Reply text must be at least ${MIN_REPLY_LENGTH} characters long.`
@@ -858,10 +864,10 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             return;
         }
 
-        // Create the new reply object adhering to the unified node structure.
+        // Create the new reply object using trimmed text
         const newReply = {
             id: generateCondensedUuid(),
-            text,
+            text: trimmedText, // Use trimmed text
             parentId, // Expecting an array of parent IDs
             quote,    // Store the complete quote object
             authorId: user.id,

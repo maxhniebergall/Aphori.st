@@ -76,21 +76,35 @@ const PostPage: React.FC = (): JSX.Element => {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
 
-    // Check length before attempting submission
-    if (isLengthExceeded) {
-      window.alert(lengthExceededError); // Show alert modal
-      return; // Stop the submission process
+    // Trim content first
+    const trimmedContent = content.trim();
+
+    // Check length before attempting submission using trimmed content
+    if (trimmedContent.length > MAX_POST_LENGTH) {
+      setError(lengthExceededError);
+      setIsLengthExceeded(true); // Keep state updated for UI feedback
+      window.alert(lengthExceededError);
+      return;
     }
-    if (isLengthInsufficient) {
+    if (trimmedContent.length < MIN_POST_LENGTH) {
+      setError(lengthInsufficientError);
+      setIsLengthInsufficient(true); // Keep state updated for UI feedback
       window.alert(lengthInsufficientError);
       return;
+    }
+
+    // Clear length errors if checks pass
+    setIsLengthExceeded(false);
+    setIsLengthInsufficient(false);
+    if (error === lengthExceededError || error === lengthInsufficientError) {
+        setError('');
     }
 
     setIsSubmitting(true);
     setError(''); // Clear previous errors before new attempt
     try {
       const newPost: PostCreationRequest = {
-        content: content.trim(),
+        content: trimmedContent, // Use trimmed content for the request
       };
 
       await axios.post(
@@ -110,8 +124,8 @@ const PostPage: React.FC = (): JSX.Element => {
     }
   };
 
-  // Update canSubmit logic to include minimum length check
-  const canSubmit = state?.verified && !isSubmitting && content.trim().length >= MIN_POST_LENGTH && !isLengthExceeded;
+  // Update canSubmit logic to use trimmed length
+  const canSubmit = state?.verified && !isSubmitting && content.trim().length >= MIN_POST_LENGTH && content.trim().length <= MAX_POST_LENGTH;
 
   return (
     <div className="post-page">

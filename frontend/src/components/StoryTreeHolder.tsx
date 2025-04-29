@@ -110,16 +110,21 @@ const ReplyEditor = () => {
       <div className="reply-actions" role="group" aria-label="Reply actions">
         <button 
           onClick={async () => {
-            if (replyContent.length > MAX_REPLY_LENGTH) {
+            // Trim content first
+            const trimmedReplyContent = replyContent.trim();
+            
+            // Use trimmed content for length validation checks
+            if (trimmedReplyContent.length > MAX_REPLY_LENGTH) {
               window.alert(`Reply text cannot exceed ${MAX_REPLY_LENGTH} characters.`);
-              return;
+              return; // Stop the submission
             }
-            if (replyContent.length < MIN_REPLY_LENGTH) {
+            if (trimmedReplyContent.length < MIN_REPLY_LENGTH) {
               window.alert(`Reply text must be at least ${MIN_REPLY_LENGTH} characters long.`);
-              return;
+              return; // Stop the submission
             }
             try {
-              const result = await StoryTreeOperator.submitReply(replyContent, replyTarget.id, replyQuote);
+              // Use trimmed content for submission
+              const result = await StoryTreeOperator.submitReply(trimmedReplyContent, replyTarget.id, replyQuote);
               if (!result.error) {
                 handleReplyFinished();
               }
@@ -127,7 +132,8 @@ const ReplyEditor = () => {
               console.error("Error during reply submission:", error);
             }
           }}
-          disabled={!replyContent.trim() || replyContent.length < MIN_REPLY_LENGTH || replyContent.length > MAX_REPLY_LENGTH}
+          // Update disabled logic to use trimmed length
+          disabled={!replyContent.trim() || replyContent.trim().length < MIN_REPLY_LENGTH || replyContent.trim().length > MAX_REPLY_LENGTH}
           className="submit-reply-button"
           aria-label="Submit reply"
         >
