@@ -46,6 +46,9 @@ const ReplyEditor = () => {
     setReplyQuote 
   } = useReplyContext();
 
+  const MAX_REPLY_LENGTH = 1000;
+  const MIN_REPLY_LENGTH = 50; // Define min length
+
   // Memoize editor options
   const editorOptions = useMemo(() => ({
     preview: "edit" as const,
@@ -99,18 +102,21 @@ const ReplyEditor = () => {
           textAlign: 'left',
           fontSize: '0.8em',
           marginTop: '4px',
-          color: replyContent.length > 1000 ? 'red' : 'inherit'
+          color: replyContent.length < MIN_REPLY_LENGTH || replyContent.length > MAX_REPLY_LENGTH ? 'red' : 'inherit'
         }}
       >
-        {replyContent.length} / 1000
+        {replyContent.length} / {MIN_REPLY_LENGTH} (min) - {MAX_REPLY_LENGTH} (max)
       </div>
       <div className="reply-actions" role="group" aria-label="Reply actions">
         <button 
           onClick={async () => {
-            // Add length validation
-            if (replyContent.length > 1000) {
-              window.alert('Reply text cannot exceed 1000 characters.');
-              return; // Stop the submission
+            if (replyContent.length > MAX_REPLY_LENGTH) {
+              window.alert(`Reply text cannot exceed ${MAX_REPLY_LENGTH} characters.`);
+              return;
+            }
+            if (replyContent.length < MIN_REPLY_LENGTH) {
+              window.alert(`Reply text must be at least ${MIN_REPLY_LENGTH} characters long.`);
+              return;
             }
             try {
               const result = await StoryTreeOperator.submitReply(replyContent, replyTarget.id, replyQuote);
@@ -121,7 +127,7 @@ const ReplyEditor = () => {
               console.error("Error during reply submission:", error);
             }
           }}
-          disabled={!replyContent.trim()}
+          disabled={!replyContent.trim() || replyContent.length < MIN_REPLY_LENGTH || replyContent.length > MAX_REPLY_LENGTH}
           className="submit-reply-button"
           aria-label="Submit reply"
         >
