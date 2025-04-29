@@ -120,6 +120,131 @@ const throttledAnimationLoop = throttle(
   16
 );
 
+// Helper function to get coordinates for a specific text offset
+const getCoordsForOffset = (
+  container: HTMLElement,
+  offset: number
+): { x: number; y: number } | null => {
+  const nodeAndOffset = findNodeAndOffset(container, offset);
+  if (!nodeAndOffset) return null;
+
+  const { node, offset: nodeOffset } = nodeAndOffset;
+
+  try {
+    const range = document.createRange();
+    // Ensure the offset is within the node's bounds
+    const clampedOffset = Math.min(nodeOffset, node.textContent?.length ?? 0);
+    range.setStart(node, clampedOffset);
+    range.setEnd(node, clampedOffset); // Use the same point for start and end to get a collapsed range
+
+    const rect = range.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+
+    // Calculate position relative to the container
+    // Adjust slightly to position the handle nicely (e.g., center it vertically)
+    return {
+      x: rect.left - containerRect.left,
+      y: rect.top - containerRect.top + rect.height / 2, // Center vertically on the line
+    };
+  } catch (e) {
+    console.error("Error calculating coordinates for offset:", e);
+    return null;
+  }
+};
+
+// Function to update the visual positions of the handles
+const updateHandlePositions = (
+  container: HTMLElement,
+  startHandle: HTMLSpanElement | null,
+  endHandle: HTMLSpanElement | null,
+  startOffset: number,
+  endOffset: number
+) => {
+  if (!startHandle || !endHandle) return;
+
+  const startCoords = getCoordsForOffset(container, startOffset);
+  const endCoords = getCoordsForOffset(container, endOffset);
+
+  if (startCoords) {
+    startHandle.style.left = `${startCoords.x}px`;
+    startHandle.style.top = `${startCoords.y}px`;
+    startHandle.style.display = 'block'; // Make visible
+  } else {
+    startHandle.style.display = 'none'; // Hide if coords fail
+  }
+
+  if (endCoords) {
+    // For the end handle, position it relative to the *end* character's bounding box
+    // We might need a slight adjustment if getCoordsForOffset gives the start of the char
+    endHandle.style.left = `${endCoords.x}px`;
+    endHandle.style.top = `${endCoords.y}px`;
+    endHandle.style.display = 'block'; // Make visible
+  } else {
+    endHandle.style.display = 'none'; // Hide if coords fail
+  }
+};
+
+// Helper to get text offset from viewport coordinates
+const getOffsetFromCoordinates = (
+  container: HTMLElement,
+  clientX: number,
+  clientY: number
+): number | null => {
+  let range: Range | null = null;
+  // Modern approach
+  if (document.caretPositionFromPoint) {
+    const caretPos = document.caretPositionFromPoint(clientX, clientY);
+    if (!caretPos || !container.contains(caretPos.offsetNode)) return null; // Ensure point is within container
+    range = document.createRange();
+    range.setStart(caretPos.offsetNode, caretPos.offset);
+    range.collapse(true); // Collapse to a single point
+  }
+  // Fallback for older browsers (less common now)
+  else if ((document as any).caretRangeFromPoint) {
+      range = (document as any).caretRangeFromPoint(clientX, clientY) as Range;
+       if (!range || !container.contains(range.startContainer)) return null; // Check containment
+  } else {
+    console.warn("Browser does not support caretPositionFromPoint or caretRangeFromPoint.");
+    return null;
+  }
+
+  if (!range) return null;
+
+  // Calculate offset relative to the container's start
+  const containerRange = document.createRange();
+  containerRange.selectNodeContents(container);
+  containerRange.setEnd(range.startContainer, range.startOffset); // Set end to the caret position
+
+  // The length of the containerRange is the offset
+  // Need to be careful with different node types potentially?
+  // textContent.length might be simpler/safer if performance allows
+  // return containerRange.toString().length; // toString() can be slow
+
+  // Alternative: Walk the tree (similar to findNodeAndOffset but in reverse) - more complex
+  // For simplicity and reasonable performance, let's stick to the range length for now.
+  // Test this carefully with complex nested elements if they exist.
+  try {
+      // This seems most reliable for offset calculation within the container
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+      let currentOffset = 0;
+      let node;
+      while (node = walker.nextNode()) {
+          if (node === range.startContainer) {
+              currentOffset += range.startOffset;
+              break; // Found the node
+          }
+          currentOffset += node.textContent?.length ?? 0;
+      }
+      // Clamp offset to container text length
+      const maxOffset = container.textContent?.length ?? 0;
+      return Math.min(Math.max(0, currentOffset), maxOffset);
+
+  } catch (e) {
+      console.error("Error calculating offset from range:", e);
+      return null;
+  }
+};
+
 /**
  * Manages text selection ONLY within the quote container for creating new selections.
  * 
@@ -162,11 +287,27 @@ export function useTextSelection({
   const [containerText, setContainerText] = useState<string>('');
   const [isSelecting, setIsSelecting] = useState<boolean>(false);
   
+  // Replace useState with useRef
+  // const [handlesVisible, setHandlesVisible] = useState<boolean>(false);
+  const handlesVisibleRef = useRef<boolean>(false);
+  // const [draggingHandle, setDraggingHandle] = useState<'start' | 'end' | null>(null);
+  const draggingHandleRef = useRef<'start' | 'end' | null>(null);
+
+  // Refs for listener functions to ensure correct removal
+  const handleGlobalDragMoveRef = useRef<((event: MouseEvent | TouchEvent) => void) | null>(null);
+  const handleGlobalDragEndRef = useRef<((event: MouseEvent | TouchEvent) => void) | null>(null);
+
   const boundThrottledAnimationRef = useRef<((e: Event) => void) | null>(null);
   const mouseIsDownRef = useRef(false);
   const isDraggingRef = useRef(false);
-  const initialOffsetRef = useRef<number | null>(null);
-  const finalOffsetRef = useRef<number | null>(null);
+
+  // Refs for selection offsets - replacing initialOffsetRef and finalOffsetRef for live updates
+  const selectionStartOffsetRef = useRef<number>(0);
+  const selectionEndOffsetRef = useRef<number>(0);
+
+  // Refs for handle DOM elements (we'll create/manage these)
+  const startHandleRef = useRef<HTMLSpanElement | null>(null);
+  const endHandleRef = useRef<HTMLSpanElement | null>(null);
 
   const { 
     setReplyQuote 
@@ -174,6 +315,9 @@ export function useTextSelection({
 
   // Track the ID for which the initial quote was set
   const initialQuoteSetForIdRef = useRef<string | null>(null);
+
+  // Forward declare handleMouseDownOnHandle because addHandles needs it
+  const handleMouseDownOnHandle = useRef<((event: MouseEvent | TouchEvent, handleType: 'start' | 'end') => void) | null>(null);
 
   // Update container text when the ref changes
   useEffect(() => {
@@ -185,6 +329,147 @@ export function useTextSelection({
       }
     }
   }, []); // Keep dependencies minimal
+
+  const removeHandles = useCallback(() => {
+    if (startHandleRef.current) {
+        startHandleRef.current.remove();
+        startHandleRef.current = null;
+    }
+    if (endHandleRef.current) {
+        endHandleRef.current.remove();
+        endHandleRef.current = null;
+    }
+    handlesVisibleRef.current = false;
+    if (containerRef.current) {
+        removeTemporaryHighlights(containerRef.current);
+    }
+  }, []);
+
+  const addHandles = useCallback((container: HTMLElement, startOffset: number, endOffset: number) => {
+      if (getComputedStyle(container).position === 'static') {
+          container.style.position = 'relative';
+      }
+      const onHandleMouseDown = handleMouseDownOnHandle.current; // Get current ref value
+      if (!onHandleMouseDown) return; // Should not happen if initialized correctly
+
+      if (!startHandleRef.current) {
+          startHandleRef.current = document.createElement('span');
+          startHandleRef.current.className = 'selection-handle start';
+          // Use the captured onHandleMouseDown
+          startHandleRef.current.addEventListener('mousedown', (e) => onHandleMouseDown(e, 'start'));
+          startHandleRef.current.addEventListener('touchstart', (e) => onHandleMouseDown(e, 'start'), { passive: false });
+          container.appendChild(startHandleRef.current);
+      }
+      if (!endHandleRef.current) {
+          endHandleRef.current = document.createElement('span');
+          endHandleRef.current.className = 'selection-handle end';
+          // Use the captured onHandleMouseDown
+          endHandleRef.current.addEventListener('mousedown', (e) => onHandleMouseDown(e, 'end'));
+          endHandleRef.current.addEventListener('touchstart', (e) => onHandleMouseDown(e, 'end'), { passive: false });
+          container.appendChild(endHandleRef.current);
+      }
+      updateHandlePositions(container, startHandleRef.current, endHandleRef.current, startOffset, endOffset);
+      handlesVisibleRef.current = true;
+  // Depend only on the ref container, not the function itself
+  }, [handleMouseDownOnHandle]);
+
+  // Now define handleMouseDownOnHandle and assign it to the ref
+  handleMouseDownOnHandle.current = (event: MouseEvent | TouchEvent, handleType: 'start' | 'end') => {
+       event.stopPropagation();
+       if (!containerRef.current) return;
+       draggingHandleRef.current = handleType;
+       const container = containerRef.current;
+
+       // Define and store listener functions in refs
+       handleGlobalDragMoveRef.current = (moveEvent: MouseEvent | TouchEvent) => {
+           moveEvent.preventDefault();
+           if (!containerRef.current) return; // Re-check container
+           const container = containerRef.current; // Re-get container
+
+           const newOffset = getCurrentOffset(container, moveEvent);
+           // console.log("Offset from getCurrentOffset:", newOffset); // Keep for debugging if needed
+
+           if (newOffset !== null) {
+                let currentStart = selectionStartOffsetRef.current;
+                let currentEnd = selectionEndOffsetRef.current;
+                let nextStart = currentStart;
+                let nextEnd = currentEnd;
+
+                if (draggingHandleRef.current === 'start') { nextStart = newOffset; }
+                else { nextEnd = newOffset; }
+
+                if (nextStart > nextEnd) { [nextStart, nextEnd] = [nextEnd, nextStart]; }
+
+                selectionStartOffsetRef.current = nextStart;
+                selectionEndOffsetRef.current = nextEnd;
+
+                // --- FIX 2: Uncomment highlighting ---
+                highlightTemporarySelection(container, nextStart, nextEnd);
+                // --- Update handle positions ---
+                updateHandlePositions(container, startHandleRef.current, endHandleRef.current, nextStart, nextEnd);
+           } else {
+               // console.log("getCurrentOffset returned null during handle drag"); // Keep if needed
+           }
+       };
+
+       handleGlobalDragEndRef.current = (endEvent: MouseEvent | TouchEvent) => {
+            endEvent.preventDefault();
+
+            // --- FIX 1: Implement listener removal ---
+            if (handleGlobalDragMoveRef.current) {
+                window.removeEventListener('mousemove', handleGlobalDragMoveRef.current);
+                window.removeEventListener('touchmove', handleGlobalDragMoveRef.current);
+            }
+            // Remove self (mouseup/touchend) listener
+            if (handleGlobalDragEndRef.current) {
+                window.removeEventListener('mouseup', handleGlobalDragEndRef.current);
+                window.removeEventListener('touchend', handleGlobalDragEndRef.current);
+            }
+            // --- End Fix 1 ---
+
+            // Clear refs AFTER removing listeners that use them
+            handleGlobalDragMoveRef.current = null;
+            handleGlobalDragEndRef.current = null;
+
+            // Check container AFTER clearing refs, as we re-get it if needed
+            const currentContainer = containerRef.current;
+            if (!currentContainer) {
+                draggingHandleRef.current = null;
+                return;
+            }
+
+            // Final position update
+            updateHandlePositions(
+                currentContainer, // Use variable
+                startHandleRef.current,
+                endHandleRef.current,
+                selectionStartOffsetRef.current,
+                selectionEndOffsetRef.current
+            );
+
+            const startOffset = selectionStartOffsetRef.current;
+            const endOffset = selectionEndOffsetRef.current;
+
+            if (startOffset <= endOffset && currentContainer.id) {
+                 const selectedText = currentContainer.textContent?.slice(startOffset, endOffset) || '';
+                 const quote = new Quote(selectedText, currentContainer.id, { start: startOffset, end: endOffset });
+                 setReplyQuote(quote);
+            } else {
+                 removeTemporaryHighlights(currentContainer); // Use variable
+            }
+            draggingHandleRef.current = null;
+       };
+
+       // Add listeners using the refs (ensure refs are assigned first)
+       if (handleGlobalDragMoveRef.current) {
+           window.addEventListener('mousemove', handleGlobalDragMoveRef.current, { passive: false });
+           window.addEventListener('touchmove', handleGlobalDragMoveRef.current, { passive: false });
+       }
+       if (handleGlobalDragEndRef.current) {
+           window.addEventListener('mouseup', handleGlobalDragEndRef.current);
+           window.addEventListener('touchend', handleGlobalDragEndRef.current);
+       }
+  }; // End of handleMouseDownOnHandle.current assignment
 
   const cleanupEventListeners = useCallback(() => {
     if (boundThrottledAnimationRef.current && containerRef.current) {
@@ -204,13 +489,14 @@ export function useTextSelection({
 
   const handleMouseDown = useCallback((event: MouseEvent | TouchEvent) => {
     if (!containerRef.current) return;
+    const container = containerRef.current;
+    removeHandles(); // Now defined
     event.preventDefault();
-
-    // Start selection mode - this will hide existing highlights
     setIsSelecting(true);
     mouseIsDownRef.current = true;
     isDraggingRef.current = false;
-    initialOffsetRef.current = getCurrentOffset(containerRef.current, event);
+    const startOffset = getCurrentOffset(container, event);
+    selectionStartOffsetRef.current = startOffset ?? 0;
 
     boundThrottledAnimationRef.current = (e: Event) => {
       if (e.cancelable) e.preventDefault();
@@ -219,7 +505,7 @@ export function useTextSelection({
       throttledAnimationLoop(
         e, 
         containerRef, 
-        initialOffsetRef.current!, 
+        selectionStartOffsetRef.current, 
         mouseIsDownRef
       );
     };
@@ -229,7 +515,7 @@ export function useTextSelection({
     } else {
       containerRef.current.addEventListener('mousemove', boundThrottledAnimationRef.current);
     }
-  }, []);
+  }, [removeHandles]);
 
   const endAnimationLoop = useCallback(
     (event: MouseEvent | TouchEvent): Quote | null => {
@@ -241,9 +527,10 @@ export function useTextSelection({
       
       if (!containerRef.current) return null;
       
-      finalOffsetRef.current = getCurrentOffset(containerRef.current, event);
-      let startOffset = initialOffsetRef.current ?? 0;
-      let endOffset = finalOffsetRef.current ?? 0;
+      const endOffsetValue = getCurrentOffset(containerRef.current, event);
+      selectionEndOffsetRef.current = endOffsetValue ?? 0; // Default to 0 if null
+      let startOffset = selectionStartOffsetRef.current;
+      let endOffset = selectionEndOffsetRef.current; // Use the updated ref value
       
       if (startOffset > endOffset) {
         const temp = startOffset;
@@ -265,44 +552,68 @@ export function useTextSelection({
     [cleanupEventListeners]
   );
 
-  const handleMouseUp = useCallback(
-    (event: MouseEvent | TouchEvent) => {
-      if (!mouseIsDownRef.current || !containerRef.current) return;
+  const handleMouseUp = useCallback((event: MouseEvent | TouchEvent) => {
+    if (!mouseIsDownRef.current || !containerRef.current) return;
+    const container = containerRef.current;
+    let finalStartOffset: number | null = null;
+    let finalEndOffset: number | null = null;
+    let quote: Quote | null = null;
 
-      if (!isDraggingRef.current) {
-        // If no dragging occurred, we'll do a word selection based on the initial offset
-        const offset = initialOffsetRef.current;
-        if (offset !== null) {
-          const text = containerRef.current.textContent || '';
-          const { start, end } = getWordBoundaries(text, offset);
-          
-          const quote = new Quote(
-            text.slice(start, end),
-            containerRef.current.id,
-            { start, end }
-          );
-          
-          onSelectionCompleted(quote, containerRef.current, setReplyQuote);
-          mouseIsDownRef.current = false;
-          cleanupEventListeners(); // This will also set isSelecting to false
-          return;
-        }
+    if (!isDraggingRef.current) {
+      // Click -> Word Selection
+      const offset = selectionStartOffsetRef.current;
+      if (offset !== null && container.id) {
+        const text = container.textContent || '';
+        const { start, end } = getWordBoundaries(text, offset);
+        finalStartOffset = start;
+        finalEndOffset = end;
+        const selectedText = text.slice(start, end);
+        quote = new Quote(selectedText, container.id, { start, end });
       }
-      
-      const quote = endAnimationLoop(event);
-      if (quote) {
-        onSelectionCompleted(quote, containerRef.current, setReplyQuote);
+    } else {
+      // Drag -> Finalize drag offsets
+      event.preventDefault();
+      event.stopPropagation();
+
+      const endOffsetValue = getCurrentOffset(container, event);
+      selectionEndOffsetRef.current = endOffsetValue ?? selectionStartOffsetRef.current;
+
+      if (selectionStartOffsetRef.current > selectionEndOffsetRef.current) {
+        const temp = selectionStartOffsetRef.current;
+        selectionStartOffsetRef.current = selectionEndOffsetRef.current;
+        selectionEndOffsetRef.current = temp;
       }
-    },
-    [endAnimationLoop, onSelectionCompleted, cleanupEventListeners]
-  );
+      finalStartOffset = selectionStartOffsetRef.current;
+      finalEndOffset = selectionEndOffsetRef.current;
+
+      if (container.id) {
+          const selectedText = container.textContent?.slice(finalStartOffset, finalEndOffset) || '';
+          quote = new Quote(selectedText, container.id, { start: finalStartOffset, end: finalEndOffset });
+      }
+    }
+
+    cleanupEventListeners();
+    mouseIsDownRef.current = false;
+    isDraggingRef.current = false;
+    setIsSelecting(false);
+
+    if (finalStartOffset !== null && finalEndOffset !== null && finalStartOffset <= finalEndOffset && quote) {
+      selectionStartOffsetRef.current = finalStartOffset;
+      selectionEndOffsetRef.current = finalEndOffset;
+
+      highlightTemporarySelection(container, finalStartOffset, finalEndOffset);
+      addHandles(container, finalStartOffset, finalEndOffset);
+      setReplyQuote(quote);
+    } else {
+      removeTemporaryHighlights(container);
+    }
+  }, [cleanupEventListeners, setReplyQuote, addHandles]);
 
   // Global cleanup in case of lost mouseup/touchend events
   useEffect(() => {
     const handleGlobalMouseUp = () => {
       if (mouseIsDownRef.current) {
         mouseIsDownRef.current = false;
-        // Ensure temporary highlights are removed even if selection wasn't completed normally
         if (containerRef.current) {
           removeTemporaryHighlights(containerRef.current);
         }
@@ -319,39 +630,28 @@ export function useTextSelection({
 
   // Effect: handle INITIAL selectedQuote
   useEffect(() => {
-    // Ensure container is available and has an ID
     if (containerRef.current && containerRef.current.id) {
       const currentContainerId = containerRef.current.id;
       
-      // Only set initial quote if:
-      // 1. A selectedQuote is provided.
-      // 2. We haven't already set the initial quote for THIS container ID.
       if (selectedQuote && initialQuoteSetForIdRef.current !== currentContainerId) {
         
-        // Check if the quote source matches the container ID - important safety check
         if (selectedQuote.sourceId === currentContainerId) {
-          // Use a minimal version of onSelectionCompleted just for highlighting
           highlightTemporarySelection(containerRef.current, selectedQuote.selectionRange.start, selectedQuote.selectionRange.end);
           
-          // Mark that the initial quote has been set for this container ID
           initialQuoteSetForIdRef.current = currentContainerId;
         } else {
           console.warn("useTextSelection: selectedQuote sourceId does not match container id. Initial highlight skipped.", {
             quoteSourceId: selectedQuote.sourceId,
             containerId: currentContainerId
           });
-          // Reset tracking if quote doesn't match container
           initialQuoteSetForIdRef.current = null; 
         }
       } 
-      // If selectedQuote becomes null/undefined after being set, clear the highlight and reset tracking
       else if (!selectedQuote && initialQuoteSetForIdRef.current === currentContainerId) {
         removeTemporaryHighlights(containerRef.current);
         initialQuoteSetForIdRef.current = null;
       }
     }
-  // Dependencies: Only run when selectedQuote or the container ref itself changes.
-  // Avoid dependency on onSelectionCompleted or setReplyQuote here.
   }, [selectedQuote, containerRef.current]); 
 
   // Wrap our internal handlers for React events

@@ -66,4 +66,33 @@
   background-color: rgba(255, 255, 0, 0.4) !important;
   border-radius: 2px;
   padding: 0 1px;
-} 
+}
+
+.selection-handle {
+  position: absolute;
+  width: 16px; /* Slightly larger for easier touch */
+  height: 16px;
+  background-color: #007bff; /* Bootstrap primary blue */
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  cursor: grab;
+  z-index: 10;
+  /* Center the handle visually over the coordinate */
+  transform: translate(-50%, -50%);
+  touch-action: none; /* Important for touch dragging */
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  display: none; /* Initially hidden */
+}
+
+.selection-handle:active {
+  cursor: grabbing;
+  background-color: #0056b3; /* Darker blue when active */
+}
+
+/* Optional: Different styles for start/end if desired */
+/* .selection-handle.start {} */
+/* .selection-handle.end {} */ 
