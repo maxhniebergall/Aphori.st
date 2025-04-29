@@ -113,6 +113,11 @@ const ReplyEditor = () => {
             // Trim content first
             const trimmedReplyContent = replyContent.trim();
 
+            if (!trimmedReplyContent) {
+              window.alert("Reply cannot be empty.");
+              return; // Stop the submission
+            }
+
             // If trimming changed the content, update the state via context
             if (trimmedReplyContent !== replyContent) {
               setReplyContent(trimmedReplyContent);
@@ -137,8 +142,6 @@ const ReplyEditor = () => {
               console.error("Error during reply submission:", error);
             }
           }}
-          // Update disabled logic to use trimmed length
-          disabled={!replyContent.trim() || replyContent.trim().length < MIN_REPLY_LENGTH || replyContent.trim().length > MAX_REPLY_LENGTH}
           className="submit-reply-button"
           aria-label="Submit reply"
         >
