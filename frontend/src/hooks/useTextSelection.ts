@@ -398,28 +398,29 @@ export function useTextSelection({
            const container = containerRef.current; // Re-get container
 
            const newOffset = getCurrentOffset(container, moveEvent);
-           // console.log("Offset from getCurrentOffset:", newOffset); // Keep for debugging if needed
 
            if (newOffset !== null) {
-                let currentStart = selectionStartOffsetRef.current;
-                let currentEnd = selectionEndOffsetRef.current;
-                let nextStart = currentStart;
-                let nextEnd = currentEnd;
+                // Keep track of the handle being dragged
+                const handleType = draggingHandleRef.current;
+                let nextStart = selectionStartOffsetRef.current;
+                let nextEnd = selectionEndOffsetRef.current;
 
-                if (draggingHandleRef.current === 'start') { nextStart = newOffset; }
-                else { nextEnd = newOffset; }
+                // Update the offset corresponding to the dragged handle
+                if (handleType === 'start') {
+                    nextStart = newOffset;
+                } else if (handleType === 'end') {
+                    nextEnd = newOffset;
+                }
 
-                if (nextStart > nextEnd) { [nextStart, nextEnd] = [nextEnd, nextStart]; }
-
+                // Update the refs directly with potentially crossed-over values
                 selectionStartOffsetRef.current = nextStart;
                 selectionEndOffsetRef.current = nextEnd;
 
-                // --- FIX 2: Uncomment highlighting ---
+                // Highlight and update positions - they handle swapped values correctly
                 highlightTemporarySelection(container, nextStart, nextEnd);
-                // --- Update handle positions ---
                 updateHandlePositions(container, startHandleRef.current, endHandleRef.current, nextStart, nextEnd);
            } else {
-               // console.log("getCurrentOffset returned null during handle drag"); // Keep if needed
+               // console.log("getCurrentOffset returned null during handle drag");
            }
        };
 
@@ -438,38 +439,51 @@ export function useTextSelection({
             }
             // --- End Fix 1 ---
 
-            // Clear refs AFTER removing listeners that use them
+            // Clear refs AFTER removing listeners
             handleGlobalDragMoveRef.current = null;
             handleGlobalDragEndRef.current = null;
 
-            // Check container AFTER clearing refs, as we re-get it if needed
             const currentContainer = containerRef.current;
             if (!currentContainer) {
                 draggingHandleRef.current = null;
                 return;
             }
 
-            // Final position update
+            // --- Normalize offsets BEFORE finalization ---
+            const offset1 = selectionStartOffsetRef.current;
+            const offset2 = selectionEndOffsetRef.current;
+            const finalStartOffset = Math.min(offset1, offset2);
+            const finalEndOffset = Math.max(offset1, offset2);
+            // ---
+
+            // Final position update using the potentially inverted offsets from refs,
+            // as updateHandlePositions calculates coords based on absolute values.
             updateHandlePositions(
-                currentContainer, // Use variable
+                currentContainer,
                 startHandleRef.current,
                 endHandleRef.current,
-                selectionStartOffsetRef.current,
-                selectionEndOffsetRef.current
+                offset1, // Use original ref values for positioning
+                offset2
             );
 
-            const startOffset = selectionStartOffsetRef.current;
-            const endOffset = selectionEndOffsetRef.current;
-
-            if (startOffset <= endOffset && currentContainer.id) {
-                 const selectedText = currentContainer.textContent?.slice(startOffset, endOffset) || '';
-                 const quote = new Quote(selectedText, currentContainer.id, { start: startOffset, end: endOffset });
+            // Check validity and finalize using NORMALIZED offsets
+            if (finalStartOffset <= finalEndOffset && currentContainer.id) {
+                 // Use normalized offsets for slicing text
+                 const selectedText = currentContainer.textContent?.slice(finalStartOffset, finalEndOffset) || '';
+                 // Store normalized offsets in the Quote object
+                 const quote = new Quote(
+                     selectedText,
+                     currentContainer.id,
+                     { start: finalStartOffset, end: finalEndOffset }
+                 );
                  setReplyQuote(quote);
+                 // Highlight remains visible until next mousedown clears it via removeHandles
             } else {
-                 removeTemporaryHighlights(currentContainer); // Use variable
+                 // Only remove highlight if something else went wrong (e.g., no container.id)
+                 removeTemporaryHighlights(currentContainer);
             }
             draggingHandleRef.current = null;
-       };
+       }; // End of handleGlobalDragEndRef.current definition
 
        // Add listeners using the refs (ensure refs are assigned first)
        if (handleGlobalDragMoveRef.current) {
