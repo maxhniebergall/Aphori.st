@@ -32,7 +32,7 @@ const PostPage: React.FC = (): JSX.Element => {
   const { state } = useUser();
   const loggedOutMessage: string = 'Please sign in to create a post';
   const lengthExceededError: string = `Post content cannot exceed ${MAX_POST_LENGTH} characters.`;
-  const lengthInsufficientError: string = `Post content must be at least ${MIN_POST_LENGTH} characters.`;
+  const lengthInsufficientError: string = `Post content must be at least ${MIN_POST_LENGTH} characters without leading and trailing whitespace.`;
   const [isLengthExceeded, setIsLengthExceeded] = useState<boolean>(false);
   const [isLengthInsufficient, setIsLengthInsufficient] = useState<boolean>(false);
 
@@ -76,8 +76,22 @@ const PostPage: React.FC = (): JSX.Element => {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
 
+    if (!state?.verified) {
+      window.alert(loggedOutMessage);
+      return;
+    }
+    if (isSubmitting) {
+      window.alert("Submission already in progress, please wait for it to complete."); 
+      return; 
+    }
+
     // Trim content first
     const trimmedContent = content.trim();
+
+    // If trimming changed the content, update the state to reflect it in the editor
+    if (trimmedContent !== content) {
+      setContent(trimmedContent);
+    }
 
     // Check length before attempting submission using trimmed content
     if (trimmedContent.length > MAX_POST_LENGTH) {
@@ -124,9 +138,6 @@ const PostPage: React.FC = (): JSX.Element => {
     }
   };
 
-  // Update canSubmit logic to use trimmed length
-  const canSubmit = state?.verified && !isSubmitting && content.trim().length >= MIN_POST_LENGTH && content.trim().length <= MAX_POST_LENGTH;
-
   return (
     <div className="post-page">
       <Header 
@@ -158,14 +169,13 @@ const PostPage: React.FC = (): JSX.Element => {
                 }}
               />
             </div>
-            <div className="char-count" style={{ color: isLengthExceeded ? 'red' : 'inherit' }}>
+            <div className="char-count" style={{ color: isLengthExceeded || isLengthInsufficient? 'red' : 'inherit' }}>
               {content.length}/{MAX_POST_LENGTH}
             </div>
           </div>
 
           <button 
             type="submit" 
-            disabled={!canSubmit} // Use updated canSubmit logic
             className="submit-button"
           >
             {isSubmitting ? 'Posting...' : 'Create Post'}
