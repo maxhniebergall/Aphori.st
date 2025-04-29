@@ -112,6 +112,11 @@ const ReplyEditor = () => {
           onClick={async () => {
             // Trim content first
             const trimmedReplyContent = replyContent.trim();
+
+            // If trimming changed the content, update the state via context
+            if (trimmedReplyContent !== replyContent) {
+              setReplyContent(trimmedReplyContent);
+            }
             
             // Use trimmed content for length validation checks
             if (trimmedReplyContent.length > MAX_REPLY_LENGTH) {
