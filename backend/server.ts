@@ -260,14 +260,39 @@ app.get('/api/feed', async (req: Request, res: Response<CompressedApiResponse<Co
             );
         }
 
-        // Use the type guard in your code
-        const fetchedItems: unknown = await db.lRange('feedItems', cursor, endIndex - 1, { returnCompressed: false });
-        if (!Array.isArray(fetchedItems) || !fetchedItems.every(isValidFeedItem)) {
-            throw new Error("Invalid feed items returned from the database");
-        }
-        const feedItems: FeedItem[] = fetchedItems;
+        // Fetch potentially stringified items from Redis
+        const fetchedRawItems: unknown = await db.lRange('feedItems', cursor, endIndex - 1, { returnCompressed: false });
 
-        logger.info("feed items: %O", feedItems);
+        // Ensure fetchedItems is an array
+        if (!Array.isArray(fetchedRawItems)) {
+            throw new Error("Database did not return an array for feed items");
+        }
+
+        // Parse each item and validate
+        const parsedItems: FeedItem[] = [];
+        for (const rawItem of fetchedRawItems) {
+            if (typeof rawItem !== 'string') {
+                logger.warn('Found non-string item in feedItems list:', rawItem);
+                continue; // Skip non-string items if any exist
+            }
+            try {
+                const item = JSON.parse(rawItem);
+                if (isValidFeedItem(item)) {
+                    parsedItems.push(item);
+                } else {
+                    logger.warn('Found invalid FeedItem structure after parsing:', item);
+                    // Optionally, handle invalid items (e.g., skip, log, move to DLQ)
+                }
+            } catch (parseError) {
+                logger.error('Failed to parse feed item JSON:', rawItem, parseError);
+                // Optionally, handle parse errors
+            }
+        }
+        
+        // Assign the successfully parsed and validated items
+        const feedItems: FeedItem[] = parsedItems;
+
+        logger.info("Parsed feed items: %O", feedItems);
         
         // Create the response object with cursor-based pagination
         const data = {
@@ -660,6 +685,13 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
             return;
         }
 
+        // Validate content length
+        const MAX_POST_LENGTH = 5000;
+        if (storyTree.content.length > MAX_POST_LENGTH) {
+            res.status(400).json({ error: `Post content exceeds the maximum length of ${MAX_POST_LENGTH} characters.` });
+            return;
+        }
+
         // Generate a new UUID for the story tree
         const uuid = generateCondensedUuid();
         
@@ -1027,10 +1059,21 @@ app.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/api/getPost
         return; 
     }
     try {
-        // Try fetching as a story node first
-        let maybePost = await db.hGet(uuid, 'post', { returnCompressed: false });
-        if (!maybePost) {
-            res.status(404).json({ success: false, error: 'Node not found' });
+        // Fetch using the correct field key 'storyTree'
+        let maybePostString = await db.hGet(uuid, 'storyTree', { returnCompressed: false });
+        if (!maybePostString || typeof maybePostString !== 'string') {
+            // If not found or not a string, return 404
+            res.status(404).json({ success: false, error: 'Node not found or invalid format' });
+            return;
+        }
+
+        // Parse the string into an object
+        let maybePost: any;
+        try {
+            maybePost = JSON.parse(maybePostString);
+        } catch (parseError) {
+            logger.error('Failed to parse post JSON:', maybePostString, parseError);
+            res.status(500).json({ success: false, error: 'Failed to parse post data' });
             return;
         }
 

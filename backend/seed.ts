@@ -94,8 +94,9 @@ async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
                 createdAt: new Date().toISOString(),
             };
 
-            // Store in Redis - let the database client handle compression
-            await db.hSet(uuid, 'post', formattedStory);
+            // Store in Redis, ensuring consistency with create/get endpoints
+            // Use field key 'storyTree' and store stringified JSON
+            await db.hSet(uuid, 'storyTree', JSON.stringify(formattedStory));
             await db.lPush('allStoryTreeIds', uuid);
 
             // Add to feed items (only root-level posts go to feed)
@@ -105,7 +106,8 @@ async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
                 authorId: formattedStory.authorId,
                 createdAt: formattedStory.createdAt
             } as FeedItem;
-            await db.lPush('feedItems', feedItem);
+            // Ensure feed items are stored as strings, consistent with server.ts
+            await db.lPush('feedItems', JSON.stringify(feedItem));
             logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
 
             logger.info(`Created new story with UUID: ${uuid}`);
