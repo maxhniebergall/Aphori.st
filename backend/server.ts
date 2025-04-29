@@ -841,10 +841,19 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         }
 
         // Validate reply text length
-        if (text.length > 1000) {
+        const MAX_REPLY_LENGTH = 1000;
+        const MIN_REPLY_LENGTH = 50;
+        if (text.length > MAX_REPLY_LENGTH) {
             res.status(400).json({
                 success: false,
-                error: 'Reply text exceeds the maximum length of 1000 characters.'
+                error: `Reply text exceeds the maximum length of ${MAX_REPLY_LENGTH} characters.`
+            });
+            return;
+        }
+        if (text.length < MIN_REPLY_LENGTH) {
+            res.status(400).json({
+                success: false,
+                error: `Reply text must be at least ${MIN_REPLY_LENGTH} characters long.`
             });
             return;
         }
