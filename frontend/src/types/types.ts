@@ -201,5 +201,5 @@ export type Action =
   | { type: typeof ACTIONS.SET_ERROR; payload: string }
   | { type: typeof ACTIONS.CLEAR_ERROR }
   | { type: typeof ACTIONS.SET_LOADING_MORE; payload: boolean }
-  | { type: typeof ACTIONS.NAVIGATE_NEXT_SIBLING; payload: { levelNumber: number } }
-  | { type: typeof ACTIONS.NAVIGATE_PREV_SIBLING; payload: { levelNumber: number } };
+  | { type: typeof ACTIONS.NAVIGATE_NEXT_SIBLING; payload: { levelNumber: number; expectedCurrentNodeId: string | null } }
+  | { type: typeof ACTIONS.NAVIGATE_PREV_SIBLING; payload: { levelNumber: number; expectedCurrentNodeId: string | null } };

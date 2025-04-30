@@ -479,7 +479,8 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         // This logic *should* ideally live in an effect in the Provider or be handled differently.
         // For now, we'll call it directly, acknowledging the impurity.
         console.log(`[Reducer] Received NAVIGATE_NEXT_SIBLING for level ${action.payload.levelNumber}`);
-        storyTreeOperator.handleNavigateNextSibling(action.payload.levelNumber)
+        // Pass the full payload including expectedCurrentNodeId
+        storyTreeOperator.handleNavigateNextSibling(action.payload.levelNumber, action.payload.expectedCurrentNodeId)
           .catch(error => console.error("Error in handleNavigateNextSibling:", error)); // Log async errors
         return state; // Return current state, side effect handled by operator
       }
@@ -487,7 +488,8 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
     case ACTIONS.NAVIGATE_PREV_SIBLING:
        {
          console.log(`[Reducer] Received NAVIGATE_PREV_SIBLING for level ${action.payload.levelNumber}`);
-        storyTreeOperator.handleNavigatePrevSibling(action.payload.levelNumber)
+         // Pass the full payload including expectedCurrentNodeId
+        storyTreeOperator.handleNavigatePrevSibling(action.payload.levelNumber, action.payload.expectedCurrentNodeId)
            .catch(error => console.error("Error in handleNavigatePrevSibling:", error)); // Log async errors
         return state; // Return current state, side effect handled by operator
       }

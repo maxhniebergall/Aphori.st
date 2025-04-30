@@ -8,15 +8,17 @@
  * - Communicate height changes to parent components for proper virtualization
  */
 
-import React, { useState, useCallback, useMemo, useRef, useContext } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useContext, useEffect } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { debounce } from 'lodash';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
-import { StoryTreeLevel as LevelData, Pagination, StoryTreeNode, QuoteCounts } from '../types/types';
+import { StoryTreeLevel as LevelData, Pagination, StoryTreeNode, QuoteCounts, ACTIONS } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
 import storyTreeOperator from '../operators/StoryTreeOperator';
+import { useStoryTree } from '../context/StoryTreeContext';
 import { 
   getSelectedQuoteInParent,
   getSelectedQuoteInThisLevel,
@@ -32,8 +34,6 @@ import { ReplyContextType } from '../context/ReplyContext';
 
 interface StoryTreeLevelProps {
   levelData: LevelData;
-  navigateToNextSiblingCallback: () => void;
-  navigateToPreviousSiblingCallback: () => void;
   reportHeight?: (height: number) => void;
 }
 
@@ -53,10 +53,56 @@ const MemoizedNodeContent = React.memo(NodeContent);
 
 export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   levelData,
-  navigateToNextSiblingCallback,
-  navigateToPreviousSiblingCallback,
   reportHeight,
 }) => {
+  const { dispatch } = useStoryTree();
+  // --- DEBUG: Strict Mode Check ---
+  useEffect(() => {
+    const levelId = getLevelNumber(levelData) ?? 'unknown';
+    const nodeId = getSelectedNodeHelper(levelData)?.id ?? 'none';
+    console.log(`[StoryTreeLevel DEBUG] Mounting level ${levelId}, node ${nodeId}`);
+    return () => {
+      console.log(`[StoryTreeLevel DEBUG] UNmounting level ${levelId}, node ${nodeId}`);
+    };
+    // Run only on mount/unmount, but include levelData/node for logging context
+    // Be careful not to cause infinite loops if levelData changes too often without memoization
+  }, [levelData]);
+  // --- END DEBUG ---
+
+  // Debounce the navigation actions
+  const debouncedNavigateNext = useMemo(
+    () => debounce(() => {
+      const levelNumber = getLevelNumber(levelData);
+      const currentNodeId = getSelectedNodeHelper(levelData)?.id ?? null;
+      if (levelNumber !== undefined && currentNodeId !== null) { 
+        console.log(`[StoryTreeLevel] Dispatching NAVIGATE_NEXT_SIBLING for level ${levelNumber}, expecting node ${currentNodeId}`);
+        dispatch({ 
+          type: ACTIONS.NAVIGATE_NEXT_SIBLING, 
+          payload: { levelNumber, expectedCurrentNodeId: currentNodeId }
+        });
+      } else {
+        console.log(`[StoryTreeLevel] Navigation dispatch skipped (Next). Level: ${levelNumber}, CurrentNodeId: ${currentNodeId}`);
+      }
+    }, 100, { leading: true, trailing: false }),
+    [dispatch, levelData]
+  );
+  const debouncedNavigatePrev = useMemo(
+    () => debounce(() => {
+      const levelNumber = getLevelNumber(levelData);
+      const currentNodeId = getSelectedNodeHelper(levelData)?.id ?? null;
+      if (levelNumber !== undefined && currentNodeId !== null) { 
+        console.log(`[StoryTreeLevel] Dispatching NAVIGATE_PREV_SIBLING for level ${levelNumber}, expecting node ${currentNodeId}`);
+        dispatch({ 
+          type: ACTIONS.NAVIGATE_PREV_SIBLING, 
+          payload: { levelNumber, expectedCurrentNodeId: currentNodeId }
+        });
+      } else {
+        console.log(`[StoryTreeLevel] Navigation dispatch skipped (Prev). Level: ${levelNumber}, CurrentNodeId: ${currentNodeId}`);
+      }
+    }, 100, { leading: true, trailing: false }),
+    [dispatch, levelData]
+  );
+
   // Log the props received by StoryTreeLevelComponent for debugging propagation
 
   // Core state hooks moved to top
@@ -277,13 +323,12 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     if (!nodeToRender) { return; }
     const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id);
     if (currentIndex < siblings.length - 1) {
-      navigateToNextSiblingCallback();
+      debouncedNavigateNext(); // Call debounced action
     } else if (pagination.hasMore) {
       setIsLoading(true);
       try {
         const parentIdArr = getParentId(levelData);
         const levelNum = getLevelNumber(levelData);
-        // Pass the PARENT'S selected quote to loadMoreItems - RESTORED
         const selQuoteParent = getSelectedQuoteInParent(levelData); 
         
         if (!parentIdArr || parentIdArr.length === 0 || levelNum === undefined || !selQuoteParent) {
@@ -292,9 +337,12 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
             return;
         }
         await storyTreeOperator.loadMoreItems(
-          parentIdArr[0], levelNum, selQuoteParent, siblings.length, siblings.length + 3 // Use parent's quote
+          parentIdArr[0], levelNum, selQuoteParent, siblings.length, siblings.length + 3
         );
-        navigateToNextSiblingCallback();
+        // Dispatch the action *after* loading more items completes
+        // NOTE: The debounced function already captures the correct expected node ID
+        // from when the *initial* gesture/call happened, which is what we want.
+        debouncedNavigateNext(); 
       } catch (error) {
         console.error("Failed to load more items:", error);
       } finally {
@@ -304,8 +352,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       console.log("No next sibling action taken (already at end or no more pages).");
     }
   }, [
-    siblings, pagination, levelData, navigateToNextSiblingCallback, nodeToRender,
-    replyTarget, setIsLoading // Keep dependencies
+    siblings, pagination, levelData, debouncedNavigateNext, nodeToRender, 
+    replyTarget, setIsLoading
   ]);
 
   const navigateToPreviousSibling = useCallback(async () => {
@@ -313,12 +361,12 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     if (!nodeToRender) { return; }
     const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id);
     if (currentIndex > 0) {
-      navigateToPreviousSiblingCallback();
+      debouncedNavigatePrev(); // Call debounced action
     } else {
         console.log("No previous sibling action taken.");
     }
   }, [
-    siblings, navigateToPreviousSiblingCallback, levelData, nodeToRender, replyTarget
+    siblings, debouncedNavigatePrev, levelData, nodeToRender, replyTarget 
   ]);
 
    // Setup gesture handling for swipe navigation - moved up
