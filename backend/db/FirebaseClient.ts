@@ -13,10 +13,20 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   constructor(config: FirebaseConfig) {
     super();
-    const app = initializeApp({
-      credential: cert(config.credential),
+    
+    let appOptions: any = {
       databaseURL: config.databaseURL
-    });
+    };
+
+    // Only add credentials if they are provided (i.e., not using emulator)
+    if (config.credential) {
+        appOptions.credential = cert(config.credential);
+    } else {
+        // Log if we are connecting without explicit credentials (likely emulator)
+        console.log('Initializing Firebase Admin SDK without explicit credentials (connecting to emulator).');
+    }
+
+    const app = initializeApp(appOptions);
     this.db = getDatabase(app);
   }
 
