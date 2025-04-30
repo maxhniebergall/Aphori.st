@@ -202,7 +202,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // Handle reply button click - checks for draft first
   const handleReplyButtonClick = useCallback((): void => {
     // Add detailed logging here
-    console.log('[handleReplyButtonClick] Triggered for node:', nodeToRender?.id);
     
     if (!nodeToRender) {
       console.error('[handleReplyButtonClick] Error: nodeToRender is null/undefined.');
@@ -210,28 +209,21 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       return;
     }
     const isCurrentlyReplyTarget = replyTarget?.id === nodeToRender?.id; // Local check
-    console.log(`[handleReplyButtonClick] isCurrentlyReplyTarget: ${isCurrentlyReplyTarget}, isReplyActive: ${isReplyActive}`);
 
     try {
       if (isReplyActive && isCurrentlyReplyTarget) {
         // User clicked "Cancel Reply"
-        console.log('[handleReplyButtonClick] Action: Cancelling reply.');
         clearReplyState(); // Clears target, quote, content, and localStorage entry
       } else {
-        // User clicked "Reply" or "Select Different Node"
-        console.log('[handleReplyButtonClick] Action: Initiating reply or changing target.');
         
         // Check for existing draft for this parent node
         let loadedDraft = null;
-        console.log(`[handleReplyButtonClick] Checking draft with rootUUID: ${rootUUID}, parentId: ${nodeToRender.id}`);
         if (rootUUID) { // Ensure rootUUID is available
           loadedDraft = findLatestDraftForParent(rootUUID, nodeToRender.id);
-          console.log('[handleReplyButtonClick] Result of findLatestDraftForParent:', loadedDraft);
         }
 
         if (loadedDraft) {
           // Draft found - load its state into context
-          console.log('[handleReplyButtonClick] Draft found. Setting state:', { target: nodeToRender, quote: loadedDraft.quote, content: loadedDraft.content });
           setReplyTarget(nodeToRender);
           setReplyQuote(loadedDraft.quote); // Set the quote from the draft
           setReplyContent(loadedDraft.content); // Set the content from the draft
@@ -239,10 +231,8 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
           setIsReplyOpen(true); // Ensure reply editor opens
         } else {
           // No draft found - start fresh reply, selecting entire node text as the default quote
-          console.log('[handleReplyButtonClick] No draft found. Creating default quote.');
           setReplyTarget(nodeToRender);
           const nodeText = nodeToRender.textContent?.trim();
-          console.log(`[handleReplyButtonClick] Node text content (trimmed): "${nodeText}"`);
           if (!nodeText || nodeText.length === 0) {
             console.error('[handleReplyButtonClick] Error: Cannot create quote: node has no text content.');
             // Set an error state instead of throwing, or handle gracefully
@@ -255,7 +245,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
             nodeToRender.id, // Provide the sourceId
             { start: 0, end: nodeText.length } // Range covering the whole text
           );
-          console.log('[handleReplyButtonClick] Setting default quote:', defaultQuote);
           setReplyQuote(defaultQuote); // Set the default quote
           setReplyContent(''); // Start with empty content for the new reply
           setReplyError(null); // Clear any previous errors

@@ -644,15 +644,12 @@ class StoryTreeOperator extends BaseOperator {
 
       // Prevent adding duplicates if already loading or queued
       if (this.isLoadingLevel && this.loadingLevelNumber === nextLevelNumber) {
-          console.log(`[Queue] Level ${nextLevelNumber} is already being processed.`);
           return;
       }
       if (this.pendingLoadRequests.includes(nextLevelNumber)) {
-          console.log(`[Queue] Level ${nextLevelNumber} is already in the queue.`);
           return;
       }
 
-      console.log(`[Queue] Request received for level ${nextLevelNumber}. Queue length: ${this.pendingLoadRequests.length}`);
       this.pendingLoadRequests.push(nextLevelNumber);
       // Sort queue to ensure levels are processed sequentially? Generally FIFO is fine here.
       // this.pendingLoadRequests.sort((a, b) => a - b); // Optional: Keep sorted
@@ -673,7 +670,6 @@ class StoryTreeOperator extends BaseOperator {
            return;
       }
 
-      console.log(`[Queue] Starting processing for level ${levelToLoad}. Remaining in queue: ${this.pendingLoadRequests.length}`);
       this.loadingLevelNumber = levelToLoad; // Track current level
 
       // Ensure store exists before dispatching START loading action
@@ -685,7 +681,6 @@ class StoryTreeOperator extends BaseOperator {
       try {
           // Call the actual loading logic, passing the specific level number from the queue
           await this.executeLoadLevel(levelToLoad);
-          console.log(`[Queue] Finished processing level ${levelToLoad}`);
       } catch (error) {
           // executeLoadLevel should handle its own errors/dispatch SET_ERROR
           console.error(`[Queue] Error processing level ${levelToLoad} in processLoadQueue:`, error);
