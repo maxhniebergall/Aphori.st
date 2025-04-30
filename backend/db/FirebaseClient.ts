@@ -47,8 +47,47 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async connect(): Promise<void> {
-    // Firebase connects automatically
-    return Promise.resolve();
+    // Firebase connects automatically, but we need to verify the connection
+    // before declaring the client ready, especially for the emulator.
+    return new Promise((resolve, reject) => {
+      const connectedRef = this.db.ref('.info/connected');
+      
+      const listener = connectedRef.on('value', (snap) => {
+        if (snap.val() === true) {
+          console.log('Firebase Realtime Database connection verified.');
+          connectedRef.off('value', listener); // Remove listener once connected
+          resolve();
+        } else {
+          console.log('Waiting for Firebase Realtime Database connection...');
+        }
+      }, (error) => {
+        console.error('Firebase Realtime Database connection check failed:', error);
+        connectedRef.off('value', listener); // Remove listener on error
+        reject(error);
+      });
+
+      // Optional: Add a timeout to prevent hanging indefinitely if the emulator/DB is down
+      const timeoutId = setTimeout(() => {
+          console.error('Firebase Realtime Database connection check timed out.');
+          connectedRef.off('value', listener);
+          reject(new Error('Connection check timed out'));
+      }, 15000); // 15 second timeout
+
+      // Clear timeout if connection succeeds or fails before timeout
+      const clearConnectionTimeout = () => clearTimeout(timeoutId);
+      connectedRef.on('value', (snap) => { if (snap.val() === true) clearConnectionTimeout(); });
+      // Also clear timeout on error
+      // The reject path already clears the listener, let's ensure timeout is cleared too.
+      // Modify the error handler slightly:
+      // }, (error) => { ... reject(error); clearConnectionTimeout(); }); // Can't modify inline easily, do this manually if needed.
+      // Simpler: Just wrap resolve/reject to clear timeout
+      const originalResolve = resolve;
+      const originalReject = reject;
+      resolve = () => { clearTimeout(timeoutId); originalResolve(); };
+      reject = (err) => { clearTimeout(timeoutId); originalReject(err); };
+
+
+    });
   }
 
   async get(key: string): Promise<any> {
