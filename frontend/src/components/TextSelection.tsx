@@ -59,7 +59,7 @@ const TextSelection: React.FC<TextSelectionProps> = ({
   }), []);
 
   // Extract event handlers safely
-  const { onMouseDown, onMouseUp, onTouchEnd } = eventHandlers || {};
+  const { onMouseDown, onMouseUp, onTouchStart } = eventHandlers || {};
 
   // Get the text content to display
   const displayText = useMemo(() => {
@@ -82,7 +82,7 @@ const TextSelection: React.FC<TextSelectionProps> = ({
       style={containerStyle}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
-      onTouchEnd={onTouchEnd}
+      onTouchStart={onTouchStart}
       aria-label={ariaLabel}
     >
       {displayText}
