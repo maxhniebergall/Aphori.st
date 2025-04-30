@@ -48,19 +48,6 @@ const Row: React.FC<RowProps> = memo(
     const { isReplyActive } = useReplyContext();
     const levelNumber = useMemo(() => getLevelNumber(levelData), [levelData]);
 
-    // Create simplified navigation callbacks for StoryTreeLevel
-    const navigateToNextSiblingCallback = useCallback(() => {
-      if (levelNumber === undefined || isReplyActive) return;
-      console.log(`[Row] Dispatching NAVIGATE_NEXT_SIBLING for level ${levelNumber}`);
-      dispatch({ type: ACTIONS.NAVIGATE_NEXT_SIBLING, payload: { levelNumber } });
-    }, [dispatch, levelNumber, isReplyActive]);
-
-    const navigateToPreviousSiblingCallback = useCallback(() => {
-      if (levelNumber === undefined || isReplyActive) return;
-      console.log(`[Row] Dispatching NAVIGATE_PREV_SIBLING for level ${levelNumber}`);
-      dispatch({ type: ACTIONS.NAVIGATE_PREV_SIBLING, payload: { levelNumber } });
-    }, [dispatch, levelNumber, isReplyActive]);
-
     // Create content component directly within Row
     const content = useMemo(() => {
       // No need to check shouldHide here, handled above
@@ -68,12 +55,10 @@ const Row: React.FC<RowProps> = memo(
         <div className="normal-row-content" style={{ margin: 0 }}>
           <StoryTreeLevelComponent
             levelData={levelData}
-            navigateToNextSiblingCallback={navigateToNextSiblingCallback}
-            navigateToPreviousSiblingCallback={navigateToPreviousSiblingCallback}
           />
         </div>
       );
-    }, [levelData, navigateToNextSiblingCallback, navigateToPreviousSiblingCallback]);
+    }, [levelData]);
 
     // Render the container div for a visible row
     return (

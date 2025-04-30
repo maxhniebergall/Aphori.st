@@ -1325,139 +1325,119 @@ class StoryTreeOperator extends BaseOperator {
     });
   } 
 
-  // Add these new methods
-  public async handleNavigateNextSibling(levelNumber: number): Promise<void> {
-    if (!this.store || !this.store.state) {
-        console.warn("[Operator NAV_NEXT] Store or state not initialized.");
-        return;
-    }
-    if (!this.store.state.storyTree) {
-        console.warn("[Operator NAV_NEXT] storyTree not initialized.");
-        return;
-    }
-    const state = this.store.state;
-    // Use non-null assertion after check
-    const levelData = state.storyTree!.levels[levelNumber]; 
-
-    console.log(`[Operator] Handling NAVIGATE_NEXT_SIBLING for Level: ${levelNumber}`);
-
-    if (!levelData || !isMidLevel(levelData) || !levelData.midLevel) {
-      console.warn(`[Operator NAV_NEXT] Invalid level data for level ${levelNumber}`);
+  /**
+   * Handles the logic for navigating to the next sibling node within a given level.
+   * Performs an idempotency check using expectedCurrentNodeId.
+   */
+  public async handleNavigateNextSibling(levelNumber: number, expectedCurrentNodeId: string | null): Promise<void> {
+    console.log(`[Operator] Handling NAVIGATE_NEXT_SIBLING for Level: ${levelNumber}, expecting ${expectedCurrentNodeId}`);
+    const state = this.getState();
+    if (!state.storyTree) {
+      console.warn("[handleNavigateNextSibling] Story tree not initialized.");
       return;
     }
 
-    const siblingsData = getSiblings(levelData);
-    const currentSelectedNode = getSelectedNodeHelper(levelData);
-
-    if (!siblingsData || !currentSelectedNode) {
-        console.error(`[Operator NAV_NEXT] Missing siblings data or selected node for level ${levelNumber}`);
-        return;
+    const targetLevel = state.storyTree.levels[levelNumber];
+    if (!targetLevel || !isMidLevel(targetLevel)) {
+      console.warn(`[handleNavigateNextSibling] Target level ${levelNumber} not found or not a MidLevel.`);
+      return;
     }
 
-    let siblingsList: StoryTreeNode[] | undefined;
-    for (const [quoteKey, nodesForQuote] of siblingsData.levelsMap) {
-        if (nodesForQuote.some((node: StoryTreeNode) => node.id === currentSelectedNode.id)) {
-            siblingsList = nodesForQuote;
-            break;
-        }
+    const actualCurrentNode = getSelectedNodeHelper(targetLevel);
+    const actualCurrentNodeId = actualCurrentNode?.id ?? null;
+
+    // Idempotency Check
+    if (actualCurrentNodeId !== expectedCurrentNodeId) {
+      console.log(`[Operator] NAVIGATE_NEXT_SIBLING for Level ${levelNumber} ignored. Expected current node ${expectedCurrentNodeId}, but found ${actualCurrentNodeId}. State likely already updated.`);
+      return; // Do nothing if the state doesn't match expectation
     }
 
-    if (!siblingsList) {
-        console.error(`[Operator NAV_NEXT] Consistency Error: Selected node ${currentSelectedNode.id} not found in any sibling list for level ${levelNumber}`);
-        return;
+    const siblingsMap = getSiblings(targetLevel)?.levelsMap;
+    const parentQuote = getSelectedQuoteInParent(targetLevel);
+    if (!siblingsMap) {
+      console.warn("[handleNavigateNextSibling] Siblings map not found for level:", targetLevel);
+      return;
     }
 
-    const currentIndex = siblingsList.findIndex(sibling => sibling.id === currentSelectedNode.id);
+    // Find the correct list of siblings based on the parent's selected quote
+    const siblingsEntry = siblingsMap.find(([quoteKey]) => areQuotesEqual(quoteKey, parentQuote));
+    const siblingsList = siblingsEntry ? siblingsEntry[1] : [];
+
+    if (!actualCurrentNode || siblingsList.length === 0) {
+      console.warn("[handleNavigateNextSibling] Current node or siblings list is invalid.");
+      return;
+    }
+
+    const currentIndex = siblingsList.findIndex(sibling => sibling.id === actualCurrentNode.id);
     if (currentIndex === -1) {
-       console.error(`[Operator NAV_NEXT] Safeguard Error: Current node ${currentSelectedNode.id} not found in its identified list.`);
-       return;
-    }
-    if (currentIndex >= siblingsList.length - 1) {
-      console.log(`[Operator NAV_NEXT] Already at last sibling for level ${levelNumber}.`);
-      // TODO: Handle pagination/load more?
+      console.warn("[handleNavigateNextSibling] Could not find current node in siblings list.");
       return;
     }
 
-    const nextSibling = siblingsList[currentIndex + 1];
-    if (!nextSibling) {
-       console.error(`[Operator NAV_NEXT] Next sibling is unexpectedly undefined at index ${currentIndex + 1} for level ${levelNumber}`);
-       return;
-    }
-
-    try {
-      await this.setSelectedNode(nextSibling);
-    } catch (error) {
-      console.error(`[Operator NAV_NEXT] Failed to set selected node for level ${levelNumber}:`, error);
-       if (this.store.dispatch) {
-            this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Navigation failed: ${error instanceof Error ? error.message : String(error)}` });
-        }
+    if (currentIndex < siblingsList.length - 1) {
+      const nextNode = siblingsList[currentIndex + 1];
+      await this.setSelectedNode(nextNode);
+    } else {
+      console.log("[handleNavigateNextSibling] Already at the last sibling.");
+      // TODO: Potentially trigger loading more if pagination.hasMore is true?
+      // The logic in StoryTreeLevelComponent already handles this, maybe keep it there?
     }
   }
 
-  public async handleNavigatePrevSibling(levelNumber: number): Promise<void> {
-     if (!this.store || !this.store.state) {
-        console.warn("[Operator NAV_PREV] Store or state not initialized.");
-        return;
-     }
-    if (!this.store.state.storyTree) {
-        console.warn("[Operator NAV_PREV] storyTree not initialized.");
-        return;
-    }
-    const state = this.store.state;
-    // Use non-null assertion after check
-    const levelData = state.storyTree!.levels[levelNumber];
-
-    console.log(`[Operator] Handling NAVIGATE_PREV_SIBLING for Level: ${levelNumber}`);
-
-     if (!levelData || !isMidLevel(levelData) || !levelData.midLevel) {
-       console.warn(`[Operator NAV_PREV] Invalid level data for level ${levelNumber}`);
+  /**
+   * Handles the logic for navigating to the previous sibling node within a given level.
+   * Performs an idempotency check using expectedCurrentNodeId.
+   */
+  public async handleNavigatePrevSibling(levelNumber: number, expectedCurrentNodeId: string | null): Promise<void> {
+    console.log(`[Operator] Handling NAVIGATE_PREV_SIBLING for Level: ${levelNumber}, expecting ${expectedCurrentNodeId}`);
+    const state = this.getState();
+    if (!state.storyTree) {
+      console.warn("[handleNavigatePrevSibling] Story tree not initialized.");
       return;
-     }
-
-    const siblingsData = getSiblings(levelData);
-    const currentSelectedNode = getSelectedNodeHelper(levelData);
-
-    if (!siblingsData || !currentSelectedNode) {
-       console.error(`[Operator NAV_PREV] Missing siblings data or selected node for level ${levelNumber}`);
-        return;
     }
 
-    let siblingsList: StoryTreeNode[] | undefined;
-     for (const [quoteKey, nodesForQuote] of siblingsData.levelsMap) {
-        if (nodesForQuote.some((node: StoryTreeNode) => node.id === currentSelectedNode.id)) {
-            siblingsList = nodesForQuote;
-            break;
-        }
+    const targetLevel = state.storyTree.levels[levelNumber];
+    if (!targetLevel || !isMidLevel(targetLevel)) {
+      console.warn(`[handleNavigatePrevSibling] Target level ${levelNumber} not found or not a MidLevel.`);
+      return;
     }
 
-     if (!siblingsList) {
-       console.error(`[Operator NAV_PREV] Consistency Error: Selected node ${currentSelectedNode.id} not found in any sibling list for level ${levelNumber}`);
-        return;
+    const actualCurrentNode = getSelectedNodeHelper(targetLevel);
+    const actualCurrentNodeId = actualCurrentNode?.id ?? null;
+
+    // Idempotency Check
+    if (actualCurrentNodeId !== expectedCurrentNodeId) {
+      console.log(`[Operator] NAVIGATE_PREV_SIBLING for Level ${levelNumber} ignored. Expected current node ${expectedCurrentNodeId}, but found ${actualCurrentNodeId}. State likely already updated.`);
+      return; // Do nothing if the state doesn't match expectation
     }
 
-    const currentIndex = siblingsList.findIndex(sibling => sibling.id === currentSelectedNode.id);
-     if (currentIndex === -1) {
-        console.error(`[Operator NAV_PREV] Safeguard Error: Current node ${currentSelectedNode.id} not found in its identified list.`);
-       return;
-     }
-     if (currentIndex <= 0) {
-        console.log(`[Operator NAV_PREV] Already at first sibling for level ${levelNumber}.`);
-       return;
-     }
+    const siblingsMap = getSiblings(targetLevel)?.levelsMap;
+    const parentQuote = getSelectedQuoteInParent(targetLevel);
+    if (!siblingsMap) {
+      console.warn("[handleNavigatePrevSibling] Siblings map not found for level:", targetLevel);
+      return;
+    }
 
-    const previousSibling = siblingsList[currentIndex - 1];
-     if (!previousSibling) {
-        console.error(`[Operator NAV_PREV] Previous sibling is unexpectedly undefined at index ${currentIndex - 1} for level ${levelNumber}`);
-       return;
-     }
+    // Find the correct list of siblings based on the parent's selected quote
+    const siblingsEntry = siblingsMap.find(([quoteKey]) => areQuotesEqual(quoteKey, parentQuote));
+    const siblingsList = siblingsEntry ? siblingsEntry[1] : [];
 
-    try {
-      await this.setSelectedNode(previousSibling);
-    } catch (error) {
-       console.error(`[Operator NAV_PREV] Failed to set selected node for level ${levelNumber}:`, error);
-       if (this.store.dispatch) {
-            this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Navigation failed: ${error instanceof Error ? error.message : String(error)}` });
-        }
+    if (!actualCurrentNode || siblingsList.length === 0) {
+      console.warn("[handleNavigatePrevSibling] Current node or siblings list is invalid.");
+      return;
+    }
+
+    const currentIndex = siblingsList.findIndex(sibling => sibling.id === actualCurrentNode.id);
+    if (currentIndex === -1) {
+      console.warn("[handleNavigatePrevSibling] Could not find current node in siblings list.");
+      return;
+    }
+
+    if (currentIndex > 0) {
+      const prevNode = siblingsList[currentIndex - 1];
+      await this.setSelectedNode(prevNode);
+    } else {
+      console.log("[handleNavigatePrevSibling] Already at the first sibling.");
     }
   }
 }
