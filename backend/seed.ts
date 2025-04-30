@@ -13,44 +13,30 @@ import { uuidv7obj } from "uuidv7";
 import { Uuid25 } from "uuid25";
 import newLogger from './logger.js';
 import { createDatabaseClient } from './db/index.js';
-import { DatabaseClient, FeedItem, Post, Reply, Quote } from './types/index.js';
+import { DatabaseClientInterface } from './db/DatabaseClientInterface.js';
+import { FeedItem, Post, Reply, Quote } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { randomInt } from 'crypto';
 
 const logger = newLogger("seed.ts");
 
+/**
+ * Sanitizes a string for use as a Firebase Realtime Database key
+ * by replacing forbidden characters (., #, $, [, ]) with underscores (_).
+ */
+function sanitizeFirebaseKey(key: string): string {
+    // Replace forbidden characters with underscores
+    // Note: Firebase keys also cannot be empty.
+    if (!key) return '_'; // Handle empty string case
+    return key.replace(/[.#$[\]]/g, '_');
+}
+
 interface StoryContent {
     content: string;
 }
 
-let db: DatabaseClient;
-let client: RedisClientType;
-
-if (process.env.NODE_ENV !== 'production') {
-    client = createClient({
-        socket: {
-            port: 6379,
-            host: process.env.REDIS_SERVER_IP
-        }
-    });
-
-    db = createDatabaseClient();
-
-    client.on('error', (err: Error) => {
-        logger.error('Redis Client Error', err);
-    });
-
-    client.on('connect', () => {
-        logger.info('Connected to Redis');
-    });
-
-    await client.connect();
-    await db.connect();
-
-    // At the start of your seed script, clear existing feed items
-    await client.del('feedItems');
-    await client.del('allStoryTreeIds');
-}
+let db: DatabaseClientInterface;
+// let client: RedisClientType; // Removed direct Redis client declaration
 
 // List of sample stories
 const sampleStories: StoryContent[] = [
@@ -65,16 +51,20 @@ const sampleStories: StoryContent[] = [
     }
 ];
 
-async function seedDevStories(dbClient: DatabaseClient): Promise<void> {
+async function seedDevStories(dbClient: DatabaseClientInterface): Promise<void> {
     try {
-        db = dbClient;
+        db = dbClient; // Use the passed-in dbClient
         logger.info("Attempting to seed data");
 
-        // Clear existing feed items and story IDs
-        if (client) {
-            await client.del('feedItems');
-            await client.del('allStoryTreeIds');
-            logger.info("Existing feed items cleared");
+        // Clear existing feed items and story IDs using the db client
+        // Note: This might be redundant if the block above already cleared them,
+        // but can be kept for safety or if seedDevStories is called independently.
+        try {
+            await db.del('feedItems');
+            await db.del('allStoryTreeIds');
+            logger.info("Existing feed items cleared within seedDevStories using db client");
+        } catch (err) {
+            logger.error('Failed to delete existing keys within seedDevStories:', err);
         }
 
         const storyIds: string[] = [];
@@ -332,6 +322,7 @@ async function storeReply(reply: Reply) {
 
     // Add to various indices
     const quoteKey = getQuoteKey(quote);
+    const sanitizedQuoteText = sanitizeFirebaseKey(quote.text);
 
     // 1. Global replies feed
     await db.zAdd('replies:feed:mostRecent', timestamp, replyUniqueId);
@@ -343,13 +334,13 @@ async function storeReply(reply: Reply) {
     await db.zAdd(`replies:uuid:${storyId}:quote:${quoteKey}:mostRecent`, timestamp, replyUniqueId);
 
     // 4. Replies by Parent ID and Quote Text
-    await db.zAdd(`replies:${storyId}:${quote.text}:mostRecent`, timestamp, replyUniqueId);
+    await db.zAdd(`replies:${storyId}:${sanitizedQuoteText}:mostRecent`, timestamp, replyUniqueId);
 
     // 5. Conditional Replies by Quote Text Only
-    await db.zAdd(`replies:quote:${quote.text}:mostRecent`, timestamp, replyUniqueId);
+    await db.zAdd(`replies:quote:${sanitizedQuoteText}:mostRecent`, timestamp, replyUniqueId);
 
     // Increment the quote count
-    await db.hIncrBy(`${storyId}:quoteCounts`, JSON.stringify(quote), 1);
+    await db.hIncrBy(`${storyId}:quoteCounts`, sanitizedQuoteText, 1);
 
     logger.info(`Created test reply with ID: ${replyUniqueId} for story: ${storyId}`);
 }
