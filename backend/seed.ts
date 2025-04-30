@@ -20,16 +20,6 @@ import { randomInt } from 'crypto';
 
 const logger = newLogger("seed.ts");
 
-/**
- * Sanitizes a string for use as a Firebase Realtime Database key
- * by replacing forbidden characters (., #, $, [, ]) with underscores (_).
- */
-function sanitizeFirebaseKey(key: string): string {
-    // Replace forbidden characters with underscores
-    // Note: Firebase keys also cannot be empty.
-    if (!key) return '_'; // Handle empty string case
-    return key.replace(/[.#$[\]]/g, '_');
-}
 
 interface StoryContent {
     content: string;
@@ -312,37 +302,38 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
 }
 
 async function storeReply(reply: Reply) {
-    const replyUniqueId = reply.id;
+    const parentId = reply.parentId[0]; // Assuming single parent for simplicity
     const quote = reply.quote;
-    const timestamp = parseInt(reply.createdAt);
-    const storyId = reply.parentId[0];
+    const replyId = reply.id;
+    const score = Date.now(); // Use current timestamp for score
 
-    // Store the reply itself
-    await db.hSet(replyUniqueId, 'reply', reply);
+    // Store the reply object itself
+    await db.hSet(replyId, 'reply', JSON.stringify(reply));
 
-    // Add to various indices
+    // Indexing - use safe quote key
     const quoteKey = getQuoteKey(quote);
-    const sanitizedQuoteText = sanitizeFirebaseKey(quote.text);
 
-    // 1. Global replies feed
-    await db.zAdd('replies:feed:mostRecent', timestamp, replyUniqueId);
+    // 1. Index for "Replies by Parent ID and Quote"
+    await db.zAdd(`replies:uuid:${parentId}:quote:${quoteKey}:mostRecent`, score, replyId);
 
-    // 2. Replies by Quote (General)
-    await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, timestamp, replyUniqueId);
+    // 2. Increment quote count in the hash using the new method
+    await db.hIncrementQuoteCount(`${parentId}:quoteCounts`, quoteKey, quote);
+    
+    // --- Reinstate removed indices ---
+    // 3. Global replies feed
+    await db.zAdd('replies:feed:mostRecent', score, replyId);
+    
+    // 4. Replies by Quote (General - using quoteKey)
+    await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, score, replyId);
 
-    // 3. Replies by Parent ID and Detailed Quote
-    await db.zAdd(`replies:uuid:${storyId}:quote:${quoteKey}:mostRecent`, timestamp, replyUniqueId);
+    // 5. Replies by Parent ID and Sanitized Quote Text
+    await db.zAdd(`replies:${parentId}:${quote.text}:mostRecent`, score, replyId);
 
-    // 4. Replies by Parent ID and Quote Text
-    await db.zAdd(`replies:${storyId}:${sanitizedQuoteText}:mostRecent`, timestamp, replyUniqueId);
+    // 6. Conditional Replies by Sanitized Quote Text Only
+    await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId);
+    // --- End reinstated indices ---
 
-    // 5. Conditional Replies by Quote Text Only
-    await db.zAdd(`replies:quote:${sanitizedQuoteText}:mostRecent`, timestamp, replyUniqueId);
-
-    // Increment the quote count
-    await db.hIncrBy(`${storyId}:quoteCounts`, sanitizedQuoteText, 1);
-
-    logger.info(`Created test reply with ID: ${replyUniqueId} for story: ${storyId}`);
+    logger.info(`Stored reply ${replyId} and updated indices for parent ${parentId}`);
 }
 
 export { seedDevStories }; 

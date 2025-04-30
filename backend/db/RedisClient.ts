@@ -9,7 +9,7 @@ Requirements:
 
 import { createClient, RedisClientType } from 'redis';
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
-import { RedisSortedSetItem } from '../types/index.js';
+import { RedisSortedSetItem, Quote } from '../types/index.js';
 import newLogger from '../logger.js';
 const logger = newLogger("RedisClient.js");
 
@@ -263,6 +263,69 @@ export class RedisClient extends DatabaseClientInterface {
     } catch (err) {
       logger.error('Redis zscan error:', err);
       throw err;
+    }
+  }
+
+  async keys(pattern: string): Promise<string[]> {
+    return this.client.keys(pattern);
+  }
+
+  /**
+   * Increments the count for a specific quote within a hash.
+   * Stores the quote object alongside the count for retrieval.
+   * Uses a Lua script for atomic operation.
+   * @param key The hash key (e.g., `parentId:quoteCounts`)
+   * @param field The field within the hash (unique key representing the quote)
+   * @param quoteValue The full Quote object
+   * @returns The new count after incrementing.
+   */
+  async hIncrementQuoteCount(key: string, field: string, quoteValue: Quote): Promise<number> {
+    logger.info(`Redis hIncrementQuoteCount called with key: ${key}, field: ${field}, quote:`, quoteValue);
+    try {
+      // Lua script to atomically get current count, increment, and store quote + new count
+      const script = `
+        local current = redis.call('HGET', KEYS[1], ARGV[1])
+        local count = 1
+        if current then
+          local decoded = cjson.decode(current)
+          count = decoded.count + 1
+        end
+        local newValue = cjson.encode({ quote = cjson.decode(ARGV[2]), count = count })
+        redis.call('HSET', KEYS[1], ARGV[1], newValue)
+        return count
+      `;
+      
+      // Ensure quoteValue is stringified for the Lua script
+      const stringifiedQuote = JSON.stringify(quoteValue);
+
+      // Define the script if it doesn't exist
+      // Using a simple SHA1 hash of the script as its name for caching
+      // Note: Redis caches scripts by SHA1 automatically, but defining helps ensure it's loaded.
+      const sha1 = await this.client.scriptLoad(script);
+
+      // Execute the script
+      const result = await this.client.evalSha(sha1, {
+        keys: [key],
+        arguments: [field, stringifiedQuote]
+      });
+
+      if (typeof result !== 'number') {
+          logger.error('Lua script for hIncrementQuoteCount did not return a number:', result);
+          throw new Error('Failed to increment quote count');
+      }
+
+      logger.info(`Redis hIncrementQuoteCount successful for field ${field}. New count: ${result}`);
+      return result;
+    } catch (err) {
+      logger.error('Redis hIncrementQuoteCount error:', err);
+      // Handle potential Lua script errors (e.g., cjson not available)
+      if (err instanceof Error && err.message.includes('NOSCRIPT')) {
+        logger.error('Lua script not found in cache, attempting to reload.');
+        // Potentially retry loading and executing, or throw a more specific error
+      } else if (err instanceof Error && err.message.includes('cjson')) {
+        logger.error('Lua script error likely related to cjson library. Ensure Redis has Lua scripting with cjson enabled.');
+      }
+      throw err; // Re-throw the error after logging
     }
   }
 } 

@@ -168,7 +168,7 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         }
     }
 
-    async lPush(key: string, value: any): Promise<any> {
+    async lPush(key: string, value: any): Promise<number> {
         const compressed = await this.compression.compress(value);
         return this.db.lPush(key, compressed);
     }
@@ -344,5 +344,12 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             logger.error('Error in zscan:', err);
             throw err;
         }
+    }
+
+    // Pass through hIncrementQuoteCount to the underlying database client
+    // Compression is not applied here as the method handles a specific structure
+    async hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number> {
+        // We expect the underlying client to handle the transaction logic
+        return this.db.hIncrementQuoteCount(key, field, quoteValue);
     }
 } 

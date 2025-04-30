@@ -92,4 +92,6 @@ export abstract class DatabaseClientInterface {
   zscan(key: string, cursor: string, options?: { match?: string; count?: number }): Promise<{ cursor: string | null; items: RedisSortedSetItem<string>[] }> {
     throw new Error('Method not implemented');
   }
+
+  abstract hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number>;
 } 

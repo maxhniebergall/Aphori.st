@@ -4,19 +4,20 @@ import { Request } from 'express';
 export interface DatabaseClient {
     connect: () => Promise<void>;
     disconnect?: () => Promise<void>;
-    isConnected?: () => boolean;
-    isReady?: () => boolean;
+    isConnected: () => Promise<boolean>;
+    isReady: () => Promise<boolean>;
     hGet: <T = any>(key: string, field: string, options?: { returnCompressed: boolean }) => Promise<T>;
     hGetAll: <T = any>(key: string, options?: { returnCompressed: boolean }) => Promise<Record<string, T>>;
-    hSet: (key: string, field: string, value: any) => Promise<void>;
+    hSet: (key: string, field: string, value: any) => Promise<number>;
     hIncrBy: (key: string, field: string, increment: number) => Promise<number>;
     get: <T = any>(key: string) => Promise<T>;
-    set: (key: string, value: any) => Promise<void>;
-    lPush: (key: string, value: any) => Promise<void>;
+    set: (key: string, value: any) => Promise<string | null>;
+    lPush: (key: string, value: any) => Promise<number>;
     lRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<T[]>;
     lSet: (key: string, index: number, value: any) => Promise<void>;
-    sAdd: (key: string, value: string) => Promise<void>;
-    zAdd: (key: string, score: number, value: string) => Promise<void>;
+    sAdd: (key: string, value: string) => Promise<number>;
+    sMembers: (key: string) => Promise<string[]>;
+    zAdd: (key: string, score: number, value: string) => Promise<number>;
     zRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<T[]>;
     zCard: (key: string) => Promise<number>;
     encodeKey: (id: string, prefix: string) => string;
@@ -26,6 +27,8 @@ export interface DatabaseClient {
     zscan: (key: string, cursor: string, options?: { match?: string; count?: number }) => Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }>;
     keys: (pattern: string) => Promise<string[]>;
     lLen: (key: string) => Promise<number>;
+    del: (key: string) => Promise<number>;
+    hIncrementQuoteCount: (key: string, field: string, quoteValue: any) => Promise<number>;
 }
 
 // User Types

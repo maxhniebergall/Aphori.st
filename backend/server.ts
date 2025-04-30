@@ -133,12 +133,14 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Extend the DatabaseClient type to include lLen
+// Extend the DatabaseClient type to include lLen and hIncrementQuoteCount
 type DatabaseClient = DatabaseClientBase & {
     lLen(key: string): Promise<number>;
+    hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number>;
 };
 
-const db: DatabaseClient = createDatabaseClient();
+// Cast the result to the extended type
+const db: DatabaseClient = createDatabaseClient() as DatabaseClient;
 
 let isDbReady = false;
 
@@ -160,6 +162,7 @@ await db.connect().then(() => {
     // Only seed development stories in non-production environments
     if (process.env.NODE_ENV !== 'production') {
         logger.info('Development environment detected, seeding default stories...');
+        // Cast db to the base interface for seeding
         seedDevStories(db);
     } else {
         logger.info('Production environment detected, skipping dev seed');
@@ -884,25 +887,29 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         const actualParentId = Array.isArray(newReply.parentId) ? newReply.parentId[0] : newReply.parentId;
         const replyId = newReply.id;
 
-        // 1. Index for "Replies by Quote (General)"
+        // 1. Index for "Replies by Quote (General - using quoteKey)"
         await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, score, replyId);
 
-        // 2. Index for "Replies by Parent ID and Detailed Quote"
+        // 2. Index for "Replies by Parent ID and Detailed Quote (using quoteKey)"
         await db.zAdd(`replies:uuid:${actualParentId}:quote:${quoteKey}:mostRecent`, score, replyId);
 
-        // Increment the quote count in the hash using the primary parent's ID.
-        await db.hIncrBy(`${actualParentId}:quoteCounts`, JSON.stringify(quote), 1);
+        // 3. Increment quote count using the new transactional method
+        await db.hIncrementQuoteCount(`${actualParentId}:quoteCounts`, quoteKey, quote);
 
-        // 3. Index for "Replies by Parent ID and Quote Text"
+        // --- Reinstate removed indices ---
+        // 4. Index for "Replies by Parent ID and Sanitized Quote Text"
         await db.zAdd(`replies:${actualParentId}:${quote.text}:mostRecent`, score, replyId);
 
-        // 4. Index for "Global Replies Feed" (all replies)
+        // 5. Index for "Global Replies Feed"
         await db.zAdd('replies:feed:mostRecent', score, replyId);
 
-        // 5. Index for "Conditional Replies by Quote Text Only"
+        // 6. Index for "Conditional Replies by Sanitized Quote Text Only"
         await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId);
-
+        // --- End reinstated indices ---
+        
         logger.info(`Created new reply with ID: ${replyId} for parent: ${actualParentId}`);
+
+        // Create a response object
         const response = {
             success: true,
             data: { id: replyId }
@@ -1032,12 +1039,25 @@ app.get<{
         const replies = await Promise.all(
             scanResult.items.map(async (item: RedisSortedSetItem<string>) => {
                 try {
-                    // Fetch the actual reply data using the ID
-                    const reply = await db.hGet(item.value, 'reply');
-                    logger.info(`[getReplies] Reply data for ID ${item.value}:`, reply);
-                    return reply;
+                    // Fetch the potentially stringified reply data using the ID
+                    const replyData = await db.hGet(item.value, 'reply');
+                    logger.info(`[getReplies] Raw reply data for ID ${item.value}:`, replyData);
+                    
+                    // Parse the data if it's a string
+                    if (typeof replyData === 'string') {
+                        const parsedReply = JSON.parse(replyData) as Reply;
+                        // Optional: Add validation to ensure it matches Reply structure
+                        return parsedReply;
+                    } else if (typeof replyData === 'object' && replyData !== null) {
+                        // If hGet somehow returned the object directly (less likely now)
+                        // Optional: Add validation here too
+                        return replyData as Reply;
+                    } else {
+                         logger.warn(`[getReplies] Unexpected data type or null received for reply ${item.value}:`, replyData);
+                         return null;
+                    }
                 } catch (err) {
-                    logger.error(`Error fetching reply ${item.value}:`, err);
+                    logger.error(`Error fetching or parsing reply ${item.value}:`, err);
                     return null;
                 }
             })
@@ -1146,20 +1166,36 @@ app.get<{ parentId: string }, CompressedApiResponse<Compressed<ExistingSelectabl
         return;
     }
     try {
-        // Retrieve the quote reply counts from Redis using the key pattern: "<parentId>:quoteCounts"
-        const rawQuoteCounts = await db.hGetAll(`${parentId}:quoteCounts`);
+        // Retrieve the quote reply counts from Firebase using the key pattern: "<parentId>:quoteCounts"
+        const rawQuoteData = await db.hGetAll(`${parentId}:quoteCounts`);
+
+        if (!rawQuoteData) {
+          // Handle case where no counts exist for this parent
+          const compressedResponse = await db.compress({ quoteCounts: [] });
+          const apiResponse: CompressedApiResponse<Compressed<ExistingSelectableQuotes>> = {
+              success: true,
+              compressedData: compressedResponse
+          };
+          res.setHeader('X-Data-Compressed', 'true');
+          res.send(apiResponse);
+          return;
+        }
 
         // Process the raw results into a Map<Quote, number>
         const quoteCountsMap = new Map<Quote, number>();
-        for (const [key, value] of Object.entries(rawQuoteCounts)) {
-            let parsedQuote: Quote;
-            try {
-                parsedQuote = JSON.parse(key) as Quote;
-            } catch (parseError) {
-                logger.error('Error parsing quote: [', key, '] with error: [', parseError, ']');
-                throw new Error('Invalid quote format');
+        for (const [_key, valueObj] of Object.entries(rawQuoteData)) {
+            // The valueObj should be { quote: QuoteObject, count: number }
+            if (valueObj && typeof valueObj === 'object' && valueObj.quote && typeof valueObj.count === 'number') {
+                // Ensure the quote structure is valid before adding
+                // You might want more robust validation based on the Quote type definition
+                if (valueObj.quote.text && valueObj.quote.sourceId && valueObj.quote.selectionRange) {
+                    quoteCountsMap.set(valueObj.quote as Quote, valueObj.count);
+                } else {
+                    logger.warn(`Invalid quote structure found in quoteCounts for parent ${parentId}:`, valueObj.quote);
+                }
+            } else {
+                logger.warn(`Invalid data structure found in quoteCounts for parent ${parentId}:`, valueObj);
             }
-            quoteCountsMap.set(parsedQuote, Number(value));
         }
         
         // Convert the Map into an array of entries.
