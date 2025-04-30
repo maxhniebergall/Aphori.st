@@ -108,31 +108,30 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
         // We found a draft specifically for this key (root/parent/quote)
         // Set the content from this specific draft
         setReplyContentState(loadedDraft.content); 
-        // Ensure the quote state matches the loaded draft's quote, 
-        // though it should already match because currentPersistenceKey depends on replyQuote.
-        // This is more of a safeguard.
+        // Ensure the quote state matches the loaded draft's quote.
+        // This should ideally always match because currentPersistenceKey depends on replyQuote.
+        // If it doesn't match, log a warning but prioritize the quote state 
+        // that generated the key, which is already in replyQuoteState.
         if (JSON.stringify(replyQuote) !== JSON.stringify(loadedDraft.quote)) {
-            console.warn("Mismatch between current quote and loaded draft quote for the same key. Check logic.");
-            // Decide how to handle: override with loadedDraft.quote or keep current?
-            // Keeping current seems safer as it's what generated the key.
-            // setReplyQuoteState(loadedDraft.quote); 
+            console.warn("Mismatch between current quote and loaded draft quote for the same key. This might indicate stale data or a logic issue. Using current quote.");
+            // We don't call setReplyQuoteState here to avoid potential re-renders/loops
+            // and because the current replyQuote is what formed the key.
         }
       } else {
-        // If no specific draft for this key, clear the content
+        // If no specific draft for this key, clear the content state
+        // We don't clear the quote state here, as the user might have just selected it
         setReplyContentState(''); 
       }
     } else {
-        // If key is null (context incomplete), clear the content
+        // If key is null (context incomplete), clear the content state
         setReplyContentState('');
     }
-    // Ensure setReplyQuoteState is not added here, avoid potential loops
-  }, [currentPersistenceKey, replyQuote]); // Depend on key and quote
+    // Do NOT add setReplyQuoteState to dependencies, it would cause loops.
+    // replyQuote is already part of currentPersistenceKey generation.
+  }, [currentPersistenceKey, replyQuote]); // Depend on key and the current quote state.
 
   // clearReplyState - now also removes from localStorage
   const clearReplyState = useCallback(() => {
-    if (currentPersistenceKey) {
-      removeReplyContent(currentPersistenceKey);
-    }
     setReplyTargetState(null);
     setReplyContentState('');
     setReplyQuoteState(null);

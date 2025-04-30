@@ -216,7 +216,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       if (isReplyActive && isCurrentlyReplyTarget) {
         // User clicked "Cancel Reply"
         console.log('[handleReplyButtonClick] Action: Cancelling reply.');
-        clearReplyState();
+        clearReplyState(); // Clears target, quote, content, and localStorage entry
       } else {
         // User clicked "Reply" or "Select Different Node"
         console.log('[handleReplyButtonClick] Action: Initiating reply or changing target.');
@@ -230,50 +230,56 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         }
 
         if (loadedDraft) {
-          // Draft found - load its state
+          // Draft found - load its state into context
           console.log('[handleReplyButtonClick] Draft found. Setting state:', { target: nodeToRender, quote: loadedDraft.quote, content: loadedDraft.content });
           setReplyTarget(nodeToRender);
-          setReplyQuote(loadedDraft.quote);
-          setReplyContent(loadedDraft.content); // Set content directly
+          setReplyQuote(loadedDraft.quote); // Set the quote from the draft
+          setReplyContent(loadedDraft.content); // Set the content from the draft
           setReplyError(null);
-          setIsReplyOpen(true);
+          setIsReplyOpen(true); // Ensure reply editor opens
         } else {
-          // No draft found - start fresh reply (select entire node text as quote)
+          // No draft found - start fresh reply, selecting entire node text as the default quote
           console.log('[handleReplyButtonClick] No draft found. Creating default quote.');
           setReplyTarget(nodeToRender);
           const nodeText = nodeToRender.textContent?.trim();
           console.log(`[handleReplyButtonClick] Node text content (trimmed): "${nodeText}"`);
           if (!nodeText || nodeText.length === 0) {
             console.error('[handleReplyButtonClick] Error: Cannot create quote: node has no text content.');
-            throw new Error('Cannot create quote: node has no text content');
+            // Set an error state instead of throwing, or handle gracefully
+            setReplyError('Cannot start reply: Node has no content to quote.');
+            return; // Stop execution if no text content
           }
-          const defaultQuote: Quote = new Quote(
-            nodeText,
-            nodeToRender.rootNodeId,
-            { start: 0, end: nodeText.length }
+          // Create the default quote spanning the entire text
+          const defaultQuote = new Quote(
+            nodeText, // Use the full trimmed text
+            nodeToRender.id, // Provide the sourceId
+            { start: 0, end: nodeText.length } // Range covering the whole text
           );
-          console.log('[handleReplyButtonClick] Created defaultQuote:', defaultQuote);
-          if (Quote.isValid(defaultQuote) === false) {
-            console.error('[handleReplyButtonClick] Error: Failed to create valid default quote.', defaultQuote);
-            throw new Error('Failed to create valid default quote for reply');
-          }
-          console.log('[handleReplyButtonClick] Setting state with default quote:', { target: nodeToRender, quote: defaultQuote, content: '' });
-          setReplyQuote(defaultQuote);
-          setReplyContent(''); // Start with empty content for new reply
-          setReplyError(null);
-          setIsReplyOpen(true);
+          console.log('[handleReplyButtonClick] Setting default quote:', defaultQuote);
+          setReplyQuote(defaultQuote); // Set the default quote
+          setReplyContent(''); // Start with empty content for the new reply
+          setReplyError(null); // Clear any previous errors
+          setIsReplyOpen(true); // Ensure reply editor opens
         }
+        // After setting state (either from draft or default), dispatch resize
         window.dispatchEvent(new Event('resize'));
       }
     } catch (error) {
-      console.error('[handleReplyButtonClick] Caught error:', error);
-      setReplyError(error instanceof Error ? error.message : 'Failed to handle reply action');
-      // Consider clearing state partially on error? Maybe not.
+      console.error('[handleReplyButtonClick] Error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred while handling the reply action.';
+      setReplyError(errorMessage);
     }
   }, [
-    clearReplyState, setReplyTarget, setReplyQuote, setReplyContent, // Added setReplyContent
-    nodeToRender, setReplyError, isReplyActive, setIsReplyOpen, replyTarget, 
-    rootUUID // Added rootUUID
+    nodeToRender, 
+    replyTarget, 
+    isReplyActive, 
+    clearReplyState, 
+    setReplyError, 
+    setReplyTarget, 
+    setReplyQuote, 
+    setIsReplyOpen,
+    rootUUID, // Add rootUUID dependency
+    setReplyContent // Add setReplyContent dependency
   ]);
 
   // Navigation functions with pagination - FIXED
@@ -506,11 +512,15 @@ function useReplyContextSelective(): Pick<
     setReplyContent: context.setReplyContent,
     rootUUID: context.rootUUID
   }), [
+    context.setReplyTarget,
     context.replyTarget,
+    context.setReplyQuote,
     context.replyQuote,
     context.clearReplyState,
     context.replyError,
+    context.setReplyError,
     context.isReplyOpen,
+    context.setIsReplyOpen,
     context.isReplyActive,
     context.setReplyContent,
     context.rootUUID
