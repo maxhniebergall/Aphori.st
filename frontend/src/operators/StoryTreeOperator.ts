@@ -62,19 +62,17 @@ class StoryTreeOperator extends BaseOperator {
   // Add property to hold ReplyContext setters
   private replyContextSetters: ReplyContextSetters | null = null;
   // Loading flag
-  private isLoadingMore: boolean = false;
-  // Track which level is currently being loaded
   private loadingLevelNumber: number | null = null;
 
-  // Initialize with a valid root quote that represents the entire content
-
+  // Queue implementation
+  private pendingLoadRequests: number[] = [];
+  private isLoadingLevel: boolean = false;
 
   constructor() {
     super();
     // Removed React hooks from here.
     // Bind methods
     this.loadMoreItems = this.loadMoreItems.bind(this);
-    this.loadSingleLevel = this.loadSingleLevel.bind(this);
     this.fetchStoryTree = this.fetchStoryTree.bind(this);
     this.validateNode = this.validateNode.bind(this);
   }
@@ -635,204 +633,252 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
-  // Remove startIndex parameter, determine levelNumber from context state
-  public loadSingleLevel = async (): Promise<void> => {
-    // Read state inside the function to get the latest
-    const currentState = this.store?.state;
-    const currentLevelsLength = currentState?.storyTree?.levels?.length ?? 0;
-    const levelNumber = currentLevelsLength; // Level to load is the current length
-
-    // Check the internal boolean flag first
-    if (this.isLoadingMore) {
-      // If already loading, check if it's for the *same level* we are about to load
-      if (this.loadingLevelNumber === levelNumber) {
-        return;
-      } else {
-        // This case should ideally not happen if loadMore calls are sequential, 
-        // but handles potential edge cases where a load for N+1 starts before N finishes releasing the lock.
-        return;
+  // New public method called by UI
+  public requestLoadNextLevel(): void {
+      const state = this.getState();
+      if (!state || !state.storyTree) {
+          console.warn("[Queue] Cannot request next level, state not ready.");
+          return;
       }
+      const nextLevelNumber = state.storyTree.levels.length;
+
+      // Prevent adding duplicates if already loading or queued
+      if (this.isLoadingLevel && this.loadingLevelNumber === nextLevelNumber) {
+          console.log(`[Queue] Level ${nextLevelNumber} is already being processed.`);
+          return;
+      }
+      if (this.pendingLoadRequests.includes(nextLevelNumber)) {
+          console.log(`[Queue] Level ${nextLevelNumber} is already in the queue.`);
+          return;
+      }
+
+      console.log(`[Queue] Request received for level ${nextLevelNumber}. Queue length: ${this.pendingLoadRequests.length}`);
+      this.pendingLoadRequests.push(nextLevelNumber);
+      // Sort queue to ensure levels are processed sequentially? Generally FIFO is fine here.
+      // this.pendingLoadRequests.sort((a, b) => a - b); // Optional: Keep sorted
+      this.processLoadQueue(); // Attempt to process immediately
+  }
+
+  private async processLoadQueue(): Promise<void> {
+      if (this.isLoadingLevel || this.pendingLoadRequests.length === 0) {
+          return; // Already processing or queue is empty
+      }
+
+      this.isLoadingLevel = true;
+      // Get the next level (FIFO)
+      const levelToLoad = this.pendingLoadRequests.shift();
+
+      if (levelToLoad === undefined) { // Safety check
+           this.isLoadingLevel = false;
+           return;
+      }
+
+      console.log(`[Queue] Starting processing for level ${levelToLoad}. Remaining in queue: ${this.pendingLoadRequests.length}`);
+      this.loadingLevelNumber = levelToLoad; // Track current level
+
+      // Ensure store exists before dispatching START loading action
+      // We can dispatch this based on the queue state now
+      if (this.store?.dispatch) {
+        this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: true });
+      }
+
+      try {
+          // Call the actual loading logic, passing the specific level number from the queue
+          await this.executeLoadLevel(levelToLoad);
+          console.log(`[Queue] Finished processing level ${levelToLoad}`);
+      } catch (error) {
+          // executeLoadLevel should handle its own errors/dispatch SET_ERROR
+          console.error(`[Queue] Error processing level ${levelToLoad} in processLoadQueue:`, error);
+          // Ensure error state is set if executeLoadLevel failed to do so
+          if (this.store?.dispatch) {
+            this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Queue processing failed for level ${levelToLoad}: ${error instanceof Error ? error.message : String(error)}` });
+          }
+          // Dispatch LastLevel for the *failed* level to prevent further loading attempts on this branch?
+          // This mirrors the error handling within executeLoadLevel
+          this.dispatchLastLevel(levelToLoad);
+
+      } finally {
+          this.isLoadingLevel = false;
+          this.loadingLevelNumber = null;
+
+          // Dispatch context update for loading state immediately
+          if (this.store?.dispatch) {
+            this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false });
+          } else {
+            console.error("StoryTreeOperator: Store not available for dispatching SET_LOADING_MORE false in queue.");
+          }
+
+          // IMPORTANT: Trigger the next check immediately after finishing
+          // Use setTimeout to yield to event loop briefly, allowing state updates to potentially propagate
+          // before the next queue check (although sequential execution should handle most cases)
+          setTimeout(() => this.processLoadQueue(), 0);
+      }
+  }
+
+  // Renamed from loadSingleLevel - Now accepts the level number from the queue processor
+  private executeLoadLevel = async (levelNumber: number): Promise<void> => {
+    // NO LONGER NEEDED: Internal locking via this.isLoadingMore / this.loadingLevelNumber check at start
+    // NO LONGER NEEDED: setTimeout wrapper for releasing lock
+
+    // We still need the store dispatch reference
+    const dispatch = this.store?.dispatch;
+    if (!dispatch) {
+      console.error("[executeLoadLevel] Store or dispatch not available.");
+      // Cannot proceed and cannot set error state - this is bad.
+      // The queue's finally block will run, but this level failed silently.
+      throw new Error("Store not available in executeLoadLevel"); // Throw to be caught by processLoadQueue
     }
 
-    // Belt-and-suspenders: Also check the shared context state
-    // This check might be redundant now with the level-specific lock, but keep for safety?
-    if (currentState?.isLoadingMore) {
-      return;
-    }
-      
-    this.isLoadingMore = true; // Set internal lock
-    this.loadingLevelNumber = levelNumber; // Set level being loaded
-
-    // Access dispatch via this.store
-    // Ensure store exists before dispatching
-    if (this.store?.dispatch) {
-      this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: true }); // Dispatch START loading action
-    } else {
-      this.isLoadingMore = false;
-      return; // Can't proceed without dispatch
-    }
+    // Keep the SET_LOADING_MORE dispatched by the queue processor
+    // dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: true }); // MOVED to processLoadQueue start
 
     try {
-      // Log the level number we are actually processing
-      console.log(`StoryTreeOperator: Starting loadSingleLevel processing for level ${levelNumber}`);
+      // Log the level number we are actually processing (passed from queue)
+      console.log(`StoryTreeOperator: Starting executeLoadLevel processing for level ${levelNumber}`);
 
-      if (!this.store) {
-          throw new StoryTreeError('Store not initialized');
-      }
-      
-      // Re-read state here? Or rely on the one fetched at the start?
-      // Let's re-read to be absolutely sure we have the latest before validation
-      const state = this.getState();  
+      const state = this.getState(); // Get current state WHEN THIS level is processed
 
       { // Validate inputs and state
         if (!state.storyTree) {
           const errorMsg = `StoryTreeOperator: storyTree not initialized`;
           throw new StoryTreeError(errorMsg);
         }
-        // Validate levelNumber directly
+        // Validate levelNumber passed from queue
         if (levelNumber < 1) {
           const errorMsg = `Start level number ${levelNumber} is less than 1, which is not allowed`;
           throw new StoryTreeError(errorMsg);
         }
-        // Adjusted check: Ensure we are only trying to load the *next* available level
-        if (levelNumber !== state.storyTree.levels.length) { 
-            console.warn(`[loadSingleLevel] Attempting to load level ${levelNumber}, but current levels length is ${state.storyTree.levels.length}. Stopping.`);
-            // This prevents loading levels out of order if Virtuoso triggers rapidly
-            return; // Stop if not loading the immediate next level
+
+        // CRITICAL CHECK: Ensure the level number we are processing matches the expected next level in the *current* state
+        // This prevents issues if the state somehow got ahead (e.g., manual state manipulation?) while this was queued
+        const expectedLevelNumber = state.storyTree.levels.length;
+        if (levelNumber !== expectedLevelNumber) {
+            console.warn(`[executeLoadLevel] Attempting to load level ${levelNumber} from queue, but current state expects level ${expectedLevelNumber}. Stopping.`);
+            // Do NOT dispatch LastLevel here, as state might be inconsistent. Just stop processing this queued item.
+            // The queue will proceed to the next item if any.
+            return;
         }
-        // Skip root level (level 0) - This check might be redundant now if levelNumber starts at 1
-        // but keep for safety, although startIndex should come from levels.length which is >= 1
+
+        // Skip root level (level 0) - This check is likely redundant if levelNumber starts at 1
         if (levelNumber === 0) {
-           console.warn(`[loadSingleLevel] Attempting to load level 0, which is not allowed. Stopping.`);
+           console.warn(`[executeLoadLevel] Attempting to load level 0, which is not allowed. Stopping.`);
            return;
         }
       }
       const parentLevel = state.storyTree.levels[levelNumber-1];
-      
+
       // Ensure parentLevel is not undefined before checking isLastLevel
       if (typeof parentLevel === 'undefined') {
-         console.error(`[loadSingleLevel] Parent level ${levelNumber - 1} is undefined when trying to load level ${levelNumber}. State length: ${state.storyTree?.levels?.length}`);
-         // This indicates a state inconsistency or rapid firing despite the lock?
+         console.error(`[executeLoadLevel] Parent level ${levelNumber - 1} is undefined when trying to load level ${levelNumber}. State length: ${state.storyTree?.levels?.length}`);
          throw new StoryTreeError(`Parent level ${levelNumber - 1} is undefined.`);
       }
 
       // Check if parent level is incorrectly marked as last
       if (isLastLevel(parentLevel)) {
-          console.warn(`[loadSingleLevel] Parent level ${levelNumber - 1} is marked as LastLevel, cannot load level ${levelNumber}. Stopping.`);
+          console.warn(`[executeLoadLevel] Parent level ${levelNumber - 1} is marked as LastLevel, cannot load level ${levelNumber}. Stopping.`);
+          // Don't dispatchLastLevel here, just stop processing this level.
           return; // Stop loading
       }
-      
+
       const parentLevelAsLevel : StoryTreeLevel = parentLevel as StoryTreeLevel;
-      const rootNodeId = state.storyTree.post.id;
-      { // continue validation
+      const rootNodeId = state.storyTree.post.id; // Moved after state.storyTree check
+
+      { // continue validation (selected node in parent)
         // This check might be redundant now after the explicit undefined check above, but keep for structure
-        if (!parentLevel) { 
-          this.dispatchLastLevel(levelNumber);
-          // Use return instead of break since loop is gone
-          return; 
+        if (!parentLevel) { // Should be caught by undefined check now
+          this.dispatchLastLevel(levelNumber); // Still dispatch if parentLevel logically doesn't exist
+          return;
         }
-        // Get the parent level for the first level we want to load
         const selectedNode = getSelectedNodeHelper(parentLevelAsLevel);
-        if (!selectedNode) { // Simplified check: !selectedNode implies !parentLevel check is redundant if parentLevel existed
-          // Log the state *right before* throwing the error
-          console.error(`[loadSingleLevel] Error condition reached: Selected node not found for parent level ${levelNumber - 1} when loading level ${levelNumber}.`);
-          console.error(`[loadSingleLevel] Parent Level Data: ${JSON.stringify(parentLevel)}`);
-          console.error(`[loadSingleLevel] Current Levels State: ${JSON.stringify(state.storyTree.levels)}`);
-          const errorMsg = `Selected node not found for level ${levelNumber} (based on parent level ${levelNumber-1});
- parentLevel: ${JSON.stringify(parentLevel)};
- levels: ${JSON.stringify(state.storyTree.levels)}`;
-          throw new StoryTreeError(errorMsg);
+        if (!selectedNode) {
+          console.error(`[executeLoadLevel] Error condition reached: Selected node not found for parent level ${levelNumber - 1} when loading level ${levelNumber}.`);
+          console.error(`[executeLoadLevel] Parent Level Data: ${JSON.stringify(parentLevel)}`);
+          console.error(`[executeLoadLevel] Current Levels State: ${JSON.stringify(state.storyTree.levels)}`);
+          const errorMsg = `Selected node not found for level ${levelNumber} (based on parent level ${levelNumber-1}); parentLevel: ${JSON.stringify(parentLevel)}; levels: ${JSON.stringify(state.storyTree.levels)}`;
+          // Dispatch last level here as we cannot proceed with loading children
+          this.dispatchLastLevel(levelNumber);
+          throw new StoryTreeError(errorMsg); // Throw to ensure SET_ERROR is potentially dispatched by caller/queue
         }
       }
       const selectedNodeOfParentLevel = getSelectedNodeHelper(parentLevelAsLevel);
       if (!selectedNodeOfParentLevel) {
-          // This should ideally be caught by the check above, but keep as safeguard
-          console.error(`[loadSingleLevel] Safeguard check failed: Selected node is null/undefined for parent level ${levelNumber-1}.`);
+          console.error(`[executeLoadLevel] Safeguard check failed: Selected node is null/undefined for parent level ${levelNumber-1}.`);
+          this.dispatchLastLevel(levelNumber); // Dispatch last level
           throw new StoryTreeError(`Selected node not found for level ${levelNumber-1}`);
       }
       const parentId = selectedNodeOfParentLevel.id;
-      const parentText = selectedNodeOfParentLevel.textContent;
-      { // continue validation
-        if (!parentId || !parentText) {
-          console.warn(`[loadSingleLevel] Missing parentId or parentText for level ${levelNumber - 1}. Cannot load level ${levelNumber}.`);
-          // Dispatch last level for the level we *tried* to load
+      const parentText = selectedNodeOfParentLevel.textContent; // This might not be needed if we only use the quote
+      { // continue validation (parent id/text)
+        if (!parentId) { // Removed parentText check - only ID and quote are essential for fetching
+          console.warn(`[executeLoadLevel] Missing parentId for level ${levelNumber - 1}. Cannot load level ${levelNumber}.`);
           this.dispatchLastLevel(levelNumber);
           return;
         }
       }
       const quoteCountsFromParent = selectedNodeOfParentLevel.quoteCounts;
-      { // continue validation
+      { // continue validation (parent quote counts)
         if (!quoteCountsFromParent || !quoteCountsFromParent.quoteCounts || quoteCountsFromParent.quoteCounts.length === 0) {
-          console.log(`[loadSingleLevel] Parent node ${parentId} level ${levelNumber-1} has no quotes. Dispatching LastLevel for ${levelNumber}.`);
+          console.log(`[executeLoadLevel] Parent node ${parentId} level ${levelNumber-1} has no quotes. Dispatching LastLevel for ${levelNumber}.`);
           this.dispatchLastLevel(levelNumber);
-          return;
+          return; // This is a valid end-of-branch condition
         }
       }
-      try {
-        // Determine the quote in the PARENT level that should lead to the children we are loading now.
-        // This defaults to the currently selected quote *within* the parent level's node.
-        let quoteInParentToFetchChildrenFor = getSelectedQuoteInThisLevel(parentLevelAsLevel); 
 
-        // If no quote is selected in the parent, or if the selected one has no replies, pick the most quoted one.
+      // Inner try/catch for the fetching part
+      try {
+        let quoteInParentToFetchChildrenFor = getSelectedQuoteInThisLevel(parentLevelAsLevel);
         const parentHasQuoteSelected = !!quoteInParentToFetchChildrenFor;
         let selectedParentQuoteHasReplies = false;
         if (parentHasQuoteSelected) {
            selectedParentQuoteHasReplies = quoteCountsFromParent.quoteCounts.some(
-            ([quote, count]) => count > 0 && areQuotesEqual(quote, quoteInParentToFetchChildrenFor)
+            ([quote, count]) => count > 0 && areQuotesEqual(quote, quoteInParentToFetchChildrenFor!) // Add non-null assertion
           );
         }
 
         if (!parentHasQuoteSelected || !selectedParentQuoteHasReplies) {
             const mostQuotedInParent = this.mostQuoted(quoteCountsFromParent);
             if (mostQuotedInParent === null) {
-              console.log(`[loadSingleLevel] No quote selected in parent, or selected has no replies, and no other quotes have replies for level ${levelNumber-1}. Dispatching LastLevel for ${levelNumber}.`);
+              console.log(`[executeLoadLevel] No quote selected/replies, and no other quotes have replies for level ${levelNumber-1}. Dispatching LastLevel for ${levelNumber}.`);
               this.dispatchLastLevel(levelNumber);
               return;
             } else {
-              console.log(`[loadSingleLevel] No quote selected/no replies for selected, using most quoted from parent level ${levelNumber-1}:`, mostQuotedInParent);
+              console.log(`[executeLoadLevel] Using most quoted from parent level ${levelNumber-1}:`, mostQuotedInParent);
               quoteInParentToFetchChildrenFor = mostQuotedInParent;
-              // OPTIONAL: Dispatch an update to the parent level's selectedQuoteInThisLevel? 
-              // Or let the UI handle selection explicitly? Let's not dispatch for now.
             }
         }
 
-        // We MUST have a valid quote at this point to proceed
         if (!quoteInParentToFetchChildrenFor) {
-           console.error(`[loadSingleLevel] Logic error: quoteInParentToFetchChildrenFor is null/undefined after checks. Cannot fetch replies. Parent Level:`, parentLevelAsLevel);
-           // Dispatch last level as we cannot proceed without a quote
+           console.error(`[executeLoadLevel] Logic error: quoteInParentToFetchChildrenFor is null/undefined after checks. Parent Level:`, parentLevelAsLevel);
            this.dispatchLastLevel(levelNumber);
-           return; 
-           // throw new StoryTreeError('Failed to determine parent quote for fetching children.'); // Alternative: throw error
+           return;
         }
 
-        // Fetch replies using the determined quote from the parent
         const sortingCriteria = 'mostRecent';
-        // Now quoteInParentToFetchChildrenFor is guaranteed to be a Quote
-        const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, quoteInParentToFetchChildrenFor, sortingCriteria, 5); 
-        
+        const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, quoteInParentToFetchChildrenFor, sortingCriteria, 5);
+
         if (!maybeFirstReplies) {
-           console.warn(`[loadSingleLevel] fetchFirstRepliesForLevel returned null for level ${levelNumber}. Assuming end of branch.`);
+           console.warn(`[executeLoadLevel] fetchFirstRepliesForLevel returned null for level ${levelNumber}. Assuming end of branch.`);
            this.dispatchLastLevel(levelNumber);
            return;
         }
-        
+
         if (maybeFirstReplies.data.length === 0) {
-           console.log(`[loadSingleLevel] fetchFirstRepliesForLevel returned 0 replies for level ${levelNumber}. Dispatching LastLevel.`);
+           console.log(`[executeLoadLevel] fetchFirstRepliesForLevel returned 0 replies for level ${levelNumber}. Dispatching LastLevel.`);
            this.dispatchLastLevel(levelNumber);
            return;
         }
-        
+
         const pagination = maybeFirstReplies.pagination;
         const firstReplies: Reply[] = maybeFirstReplies.data;
         const quoteCountsMap = new Map<Quote, QuoteCounts>();
-        
+
         await Promise.all(firstReplies.map(async (reply: Reply) => {
           try {
               const quoteCounts = await this.fetchQuoteCounts(reply.id);
               quoteCountsMap.set(reply.quote, quoteCounts);
           } catch (qcError) {
-              console.error(`[loadSingleLevel] Failed to fetch quote counts for reply ${reply.id}:`, qcError);
-              quoteCountsMap.set(reply.quote, { quoteCounts: [] }); // Store empty counts on error
+              console.error(`[executeLoadLevel] Failed to fetch quote counts for reply ${reply.id}:`, qcError);
+              quoteCountsMap.set(reply.quote, { quoteCounts: [] });
           }
         }));
 
@@ -844,14 +890,13 @@ class StoryTreeOperator extends BaseOperator {
             parentId: [parentId],
             levelNumber: levelNumber,
             textContent: reply.text,
-            repliedToQuote: quoteInParentToFetchChildrenFor, // Link back to the parent quote
+            repliedToQuote: quoteInParentToFetchChildrenFor,
             quoteCounts: quoteCountsMap.get(reply.quote),
             authorId: reply.authorId,
             createdAt: reply.createdAt,
           } as StoryTreeNode);
         });
-        
-        // Determine initial selected quote *within* the first node of the *newly loaded* level
+
         const selectedNodeForNewLevel = siblingsForQuote[0];
         const initialSelectedQuoteInNewLevel = selectedNodeForNewLevel.quoteCounts ? this.mostQuoted(selectedNodeForNewLevel.quoteCounts) : null;
 
@@ -859,59 +904,40 @@ class StoryTreeOperator extends BaseOperator {
           rootNodeId,
           [parentId],
           levelNumber,
-          quoteInParentToFetchChildrenFor, // This is the quote selected in the parent that led to this level
-          initialSelectedQuoteInNewLevel, // This is the default selection *within* the first node of *this* level
-          selectedNodeForNewLevel, // The default selected node for this new level
-          { levelsMap: [[quoteInParentToFetchChildrenFor, siblingsForQuote]] }, // Siblings keyed by the parent quote
+          quoteInParentToFetchChildrenFor,
+          initialSelectedQuoteInNewLevel,
+          selectedNodeForNewLevel,
+          { levelsMap: [[quoteInParentToFetchChildrenFor, siblingsForQuote]] },
           pagination
         );
-        
-        await this.dispatchNewLevel(level);
-        
-      } catch (error) {
-         console.error(`[loadSingleLevel] Error processing level ${levelNumber}:`, error);
-         if (this.store?.dispatch) {
-             this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to process level ${levelNumber}: ${error instanceof Error ? error.message : String(error)}` });
-         }
-         // Don't automatically dispatch LastLevel on error, let the error state handle it?
-         // Or maybe dispatch LastLevel to prevent further loading attempts?
-         // Let's dispatch LastLevel to be safe and stop further loading on this branch.
+
+        // Use dispatch directly here
+        dispatch({ type: ACTIONS.REPLACE_LEVEL_DATA, payload: level }); // Correct Action Type
+
+      } catch (fetchError) {
+         console.error(`[executeLoadLevel] Inner error fetching/processing replies for level ${levelNumber}:`, fetchError);
+         // Dispatch error state
+         dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to process replies for level ${levelNumber}: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}` });
+         // Dispatch LastLevel to prevent further loading attempts on this branch after error
          this.dispatchLastLevel(levelNumber);
+         // Re-throw? No, let the queue handle the overall state.
       }
 
-    } catch (error) {
-        console.error(`[loadSingleLevel] Outer error during loadSingleLevel for level ${levelNumber}:`, error);
-        if (this.store?.dispatch) {
-          this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to load level ${levelNumber}: ${error instanceof Error ? error.message : String(error)}` });
-        }
+    } catch (outerError) { // Catch errors from initial checks/state validation
+        console.error(`[executeLoadLevel] Outer error during executeLoadLevel for level ${levelNumber}:`, outerError);
+        // Dispatch error state if not already handled (e.g., by selectedNode check)
+        dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to load level ${levelNumber}: ${outerError instanceof Error ? outerError.message : String(outerError)}` });
+        // Ensure LastLevel is dispatched if error occurs before inner try block or if thrown from checks
+        // Avoid double-dispatch if already done (e.g. missing selected node case)
+        // This might require checking state again or a flag, maybe simpler to just dispatch again.
+        this.dispatchLastLevel(levelNumber); // Dispatch LastLevel to be safe. Reducer handles duplicates if necessary.
+        // Re-throw the error to be caught by the queue processor's try/catch
+        throw outerError;
     } finally {
-      // Dispatch context update immediately
-      if (this.store?.dispatch) {
-        this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false }); 
-      } else {
-        console.error("StoryTreeOperator: Store not available for dispatching SET_LOADING_MORE false.");
-      }
-
-      // Reset internal locks on the next tick to allow context state to propagate
-      setTimeout(() => {
-        // Why setTimeout(0)?
-        // In React StrictMode, the calling component (`VirtualizedStoryList` via Virtuoso's `endReached`)
-        // might invoke this `loadSingleLevel` function twice in rapid succession.
-        // The first call sets internal locks (`isLoadingMore`, `loadingLevelNumber`) and dispatches a context
-        // update (`SET_LOADING_MORE: false`) in the `finally` block immediately.
-        // However, React state updates are not synchronous. If we reset the internal locks immediately too,
-        // the second invocation might run *before* the context state update propagates. It would then
-        // see the *internal* locks as released (false/null) and incorrectly start a duplicate load.
-        // By using setTimeout(0), we yield to the event loop, pushing the reset of the *internal* locks
-        // to the next tick. This gives React time to process the context state update. When the second
-        // invocation runs, it correctly sees the *internal* locks are still engaged from the first call
-        // and skips the duplicate load. The internal locks are then safely reset later when the timeout executes.
-        this.isLoadingMore = false; // Release internal lock
-        this.loadingLevelNumber = null; // Clear level being loaded
-      }, 0);
-
+       // Loading state is now handled by the queue processor's finally block
+       // dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false }); // MOVED
     }
-  };
+  } // End of executeLoadLevel
 
   private mostQuoted(quoteCounts: QuoteCounts | null): Quote | null { // Allow null input
     if (!quoteCounts || !quoteCounts.quoteCounts || quoteCounts.quoteCounts.length === 0) {

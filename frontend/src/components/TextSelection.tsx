@@ -18,7 +18,8 @@ interface TextSelectionProps {
   children: React.ReactNode;
   selectAll?: boolean;
   selectedQuote?: Quote;
-  [key: string]: any; // For additional props like aria attributes
+  initialQuote?: Quote;
+  ['aria-label']?: string;
 }
 
 /**
@@ -33,21 +34,22 @@ const TextSelection: React.FC<TextSelectionProps> = ({
   children,
   selectAll = false,
   selectedQuote,
-  ...restProps
+  initialQuote,
+  'aria-label': ariaLabel
 }) => {
-  // Memoize the props to prevent unnecessary re-renders
-  const memoizedProps = useMemo(() => ({
+  // Memoize the props for the hook
+  const hookProps = useMemo(() => ({
     selectAll,
-    selectedQuote,
-  }), [selectAll, selectedQuote]);
+    selectedQuote: initialQuote,
+  }), [selectAll, initialQuote]);
   
-  // Use the text selection hook with minimal functionality for the quote container
+  // Use the text selection hook, passing the initial quote
   const { 
     containerRef, 
     eventHandlers, 
     containerText,
     isSelecting
-  } = useTextSelection(memoizedProps);
+  } = useTextSelection(hookProps);
 
   // Memoize styles to prevent re-renders - use proper TypeScript CSSProperties
   const containerStyle = useMemo((): CSSProperties => ({ 
@@ -81,7 +83,7 @@ const TextSelection: React.FC<TextSelectionProps> = ({
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
-      {...restProps}
+      aria-label={ariaLabel}
     >
       {displayText}
     </div>

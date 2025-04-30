@@ -16,14 +16,25 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { StoryTreeNode } from '../types/types';      
 import { Quote } from '../types/quote';
+// Import persistence utilities
+import {
+  generateReplyKey,
+  saveReplyContent,
+  loadReplyContent,
+  removeReplyContent,
+  // No need to import findLatestDraftForParent here, it's used by the component
+} from '../utils/replyPersistence'; 
 
-interface ReplyContextType {
+// Make interface exportable
+export interface ReplyContextType {
   replyTarget: StoryTreeNode | null;
   setReplyTarget: (target: StoryTreeNode | null) => void;
   replyContent: string;
   setReplyContent: (content: string) => void;
   replyQuote: Quote | null;
   setReplyQuote: (quote: Quote | null) => void;
+  rootUUID: string | null;
+  setRootUUID: (uuid: string | null) => void;
   isReplyActive: boolean;
   clearReplyState: () => void;
   replyError: string | null;
@@ -45,31 +56,90 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
   const [replyQuote, setReplyQuoteState] = useState<Quote | null>(null);
   const [replyError, setReplyErrorState] = useState<string | null>(null);
   const [isReplyOpen, setIsReplyOpenState] = useState<boolean>(false);
+  const [rootUUID, setRootUUIDState] = useState<string | null>(null);
 
-  // Logging wrappers
-  const setReplyTarget = (target: StoryTreeNode | null) => {
+  // Generate the current persistence key based on state
+  const currentPersistenceKey = useMemo(() => {
+    if (rootUUID && replyTarget && replyQuote) {
+      return generateReplyKey(rootUUID, replyTarget.id, replyQuote);
+    }
+    return null;
+  }, [rootUUID, replyTarget, replyQuote]);
+
+  // Wrapper for setReplyTarget
+  const setReplyTarget = useCallback((target: StoryTreeNode | null) => {
     setReplyTargetState(target);
-  };
-  const setReplyContent = (content: string) => {
-    setReplyContentState(content);
-  };
-  const setReplyQuote = (quote: Quote | null) => {
-    setReplyQuoteState(quote);
-  };
-  const setReplyError = (error: string | null) => {
-    setReplyErrorState(error);
-  };
-  const setIsReplyOpen = (isOpen: boolean) => {
-    setIsReplyOpenState(isOpen);
-  };
-
-  const clearReplyState = useCallback(() => {
-    setReplyTarget(null);
-    setReplyContent('');
-    setReplyQuote(null);
-    setReplyError(null);
-    setIsReplyOpen(false);
   }, []);
+
+  // Wrapper for setReplyContent - saves content *and quote* to localStorage
+  const setReplyContent = useCallback((content: string) => {
+    setReplyContentState(content);
+    // Only save if we have a key AND a quote object currently set
+    if (currentPersistenceKey && replyQuote) { 
+      saveReplyContent(currentPersistenceKey, content, replyQuote); // Pass quote
+    } 
+  }, [currentPersistenceKey, replyQuote]);
+
+  // Wrapper for setReplyQuote
+  const setReplyQuote = useCallback((quote: Quote | null) => {
+    setReplyQuoteState(quote);
+  }, []);
+
+  // Wrapper for setRootUUID
+  const setRootUUID = useCallback((uuid: string | null) => {
+    setRootUUIDState(uuid);
+  }, []);
+
+  // Wrapper for setReplyError
+  const setReplyError = useCallback((error: string | null) => {
+    setReplyErrorState(error);
+  }, []);
+
+  // Wrapper for setIsReplyOpen
+  const setIsReplyOpen = useCallback((isOpen: boolean) => {
+    setIsReplyOpenState(isOpen);
+  }, []);
+
+  // Load content *and potentially quote* when context key changes
+  useEffect(() => {
+    if (currentPersistenceKey) {
+      const loadedDraft = loadReplyContent(currentPersistenceKey);
+      if (loadedDraft !== null) {
+        // We found a draft specifically for this key (root/parent/quote)
+        // Set the content from this specific draft
+        setReplyContentState(loadedDraft.content); 
+        // Ensure the quote state matches the loaded draft's quote, 
+        // though it should already match because currentPersistenceKey depends on replyQuote.
+        // This is more of a safeguard.
+        if (JSON.stringify(replyQuote) !== JSON.stringify(loadedDraft.quote)) {
+            console.warn("Mismatch between current quote and loaded draft quote for the same key. Check logic.");
+            // Decide how to handle: override with loadedDraft.quote or keep current?
+            // Keeping current seems safer as it's what generated the key.
+            // setReplyQuoteState(loadedDraft.quote); 
+        }
+      } else {
+        // If no specific draft for this key, clear the content
+        setReplyContentState(''); 
+      }
+    } else {
+        // If key is null (context incomplete), clear the content
+        setReplyContentState('');
+    }
+    // Ensure setReplyQuoteState is not added here, avoid potential loops
+  }, [currentPersistenceKey, replyQuote]); // Depend on key and quote
+
+  // clearReplyState - now also removes from localStorage
+  const clearReplyState = useCallback(() => {
+    if (currentPersistenceKey) {
+      removeReplyContent(currentPersistenceKey);
+    }
+    setReplyTargetState(null);
+    setReplyContentState('');
+    setReplyQuoteState(null);
+    setReplyErrorState(null);
+    setIsReplyOpenState(false);
+    // Keep rootUUID as it's tied to the page, not the specific reply action
+  }, [currentPersistenceKey]);
 
   const value = useMemo(() => ({
     replyTarget,
@@ -78,19 +148,36 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
     setReplyContent,
     replyQuote,
     setReplyQuote,
+    rootUUID,       // Expose rootUUID
+    setRootUUID,    // Expose setter
     isReplyActive: replyTarget !== null,
     clearReplyState,
     replyError,
     setReplyError,
     isReplyOpen,
     setIsReplyOpen
-  }), [replyTarget, replyContent, replyQuote, clearReplyState, replyError, isReplyOpen]);
+  }), [
+      replyTarget, 
+      replyContent, 
+      replyQuote, 
+      rootUUID, // Add rootUUID dependency
+      clearReplyState, 
+      replyError, 
+      isReplyOpen, 
+      setReplyTarget, // Include setters used by value
+      setReplyContent, 
+      setReplyQuote, 
+      setRootUUID, 
+      setReplyError, 
+      setIsReplyOpen
+    ]);
 
-  useEffect(() => {
-    return () => {
-      clearReplyState();
-    };
-  }, [clearReplyState]);
+  // Removed cleanup useEffect as clearReplyState handles removal now
+  // useEffect(() => {
+  //   return () => {
+  //     // No need to clear here, components manage their state
+  //   };
+  // }, [clearReplyState]);
 
   return (
     <ReplyContext.Provider value={value}>

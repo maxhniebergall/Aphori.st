@@ -26,13 +26,15 @@ interface UseTextSelectionReturn {
   eventHandlers: {
     onMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
     onMouseUp: (event: React.MouseEvent<HTMLDivElement>) => void;
+    onTouchStart: (event: React.TouchEvent<HTMLDivElement>) => void;
     onTouchEnd: (event: React.TouchEvent<HTMLDivElement>) => void;
   };
   containerText: string;
   isSelecting: boolean;
 }
 
-// Helper functions for DOM manipulation during active selection
+// --- START: Helper Functions --- 
+
 const removeTemporaryHighlights = (element: HTMLElement): void => {
   const temporaryHighlights = element.querySelectorAll('span.temporary-highlight');
   temporaryHighlights.forEach((highlight) => {
@@ -89,65 +91,106 @@ const highlightTemporarySelection = (element: HTMLElement, startOffset: number, 
 };
 
 function onSelectionCompleted(quote: Quote, container: HTMLElement, setReplyQuote: (quote: Quote) => void){
-  highlightTemporarySelection(container, quote.selectionRange.start, quote.selectionRange.end)
+  // No need to highlight here anymore, the effect handles it based on context changes
+  // highlightTemporarySelection(container, quote.selectionRange.start, quote.selectionRange.end)
   setReplyQuote(quote);
 }
-
-// Throttled animation loop used during mouse/touch move
-const throttledAnimationLoop = throttle(
-  (
-    event: Event, 
-    container: React.RefObject<HTMLDivElement | null>, 
-    startOffset: number, 
-    mouseDownRef: React.MutableRefObject<boolean>
-  ) => {
-    if (!mouseDownRef.current || !container.current) {
-      if (container.current) {
-        removeTemporaryHighlights(container.current);
-      }
-      return;
-    }
-    
-    const endOffset = getCurrentOffset(container.current, event);
-    if (endOffset !== null) {
-      const minOffset = Math.min(startOffset, endOffset);
-      const maxOffset = Math.max(startOffset, endOffset);
-      
-      // Use DOM manipulation for active selection
-      highlightTemporarySelection(container.current, minOffset, maxOffset);
-    }
-  },
-  16
-);
 
 // Helper function to get coordinates for a specific text offset
 const getCoordsForOffset = (
   container: HTMLElement,
   offset: number
 ): { x: number; y: number } | null => {
-  const nodeAndOffset = findNodeAndOffset(container, offset);
-  if (!nodeAndOffset) return null;
-
-  const { node, offset: nodeOffset } = nodeAndOffset;
-
+  // --- START: Special handling for offset 0 ---
+  if (offset === 0) {
+    try {
+      const style = window.getComputedStyle(container);
+      const paddingLeft = parseFloat(style.paddingLeft) || 0;
+      const paddingTop = parseFloat(style.paddingTop) || 0;
+      // Estimate half line height (adjust if needed, e.g., from computed style)
+      const approxHalfLineHeight = 10; 
+      const coords = { x: paddingLeft, y: paddingTop + approxHalfLineHeight };
+      return coords;
+    } catch (e) {
+        console.error("[getCoordsForOffset] Error getting padding for offset 0:", e);
+        // Fallback if padding calculation fails for some reason
+        return { x: 8, y: 18 }; // Use fallback values
+    }
+  }
+  // --- END: Special handling for offset 0 ---
+  
   try {
     const range = document.createRange();
-    // Ensure the offset is within the node's bounds
-    const clampedOffset = Math.min(nodeOffset, node.textContent?.length ?? 0);
-    range.setStart(node, clampedOffset);
-    range.setEnd(node, clampedOffset); // Use the same point for start and end to get a collapsed range
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    let currentNode: Node | null = null; // Type explicitly
+    let currentOffset = 0;
+    let found = false;
+
+    // Find the text node and the specific offset within it
+    while ((currentNode = walker.nextNode())) { // Assign within loop condition
+      // Ensure it's a Text node before proceeding
+      if (currentNode.nodeType !== Node.TEXT_NODE) continue;
+
+      const node = currentNode as Text;
+      const length = node.textContent?.length ?? 0;
+
+      if (currentOffset + length >= offset) {
+        const nodeOffset = offset - currentOffset;
+        // Clamp nodeOffset to be within the current node's bounds
+        const clampedNodeOffset = Math.min(Math.max(0, nodeOffset), length);
+
+        // --- Revised Range Setting --- 
+        if (offset === 0) {
+          // Special case for the very beginning
+          range.setStart(node, 0);
+          range.collapse(true); // Collapse to the start
+        } else if (offset > 0 && offset === (container.textContent?.length ?? 0)) {
+          // Special case for the very end
+          range.setStart(node, clampedNodeOffset);
+          range.collapse(false); // Collapse to the end
+        } 
+        else {
+           // For middle points, collapse at the specific offset
+           range.setStart(node, clampedNodeOffset);
+           range.collapse(true); // Collapse to the start of the offset point
+        }
+        // --- End Revised Range Setting --- 
+
+        found = true;
+        break;
+      }
+      currentOffset += length;
+    }
+
+    if (!found) {
+        console.warn(`[getCoordsForOffset] Could not find text node for offset ${offset}`);
+        // Attempt fallback: try placing at the end of the container
+        range.selectNodeContents(container);
+        range.collapse(false); // Collapse to the end
+    }
 
     const rect = range.getBoundingClientRect();
+    if (!rect) {
+      console.warn(`[getCoordsForOffset] getBoundingClientRect failed for offset ${offset}`);
+      return null;
+    }
+    
     const containerRect = container.getBoundingClientRect();
+    if (!containerRect) {
+        console.warn(`[getCoordsForOffset] Container getBoundingClientRect failed`);
+        return null; // Cannot calculate relative position
+    }
+
+    const resultCoords = {
+      x: rect.left - containerRect.left,
+      y: rect.top - containerRect.top + rect.height / 2, // Center vertically relative to the line height at that point
+    };
 
     // Calculate position relative to the container
-    // Adjust slightly to position the handle nicely (e.g., center it vertically)
-    return {
-      x: rect.left - containerRect.left,
-      y: rect.top - containerRect.top + rect.height / 2, // Center vertically on the line
-    };
+    return resultCoords;
+
   } catch (e) {
-    console.error("Error calculating coordinates for offset:", e);
+    console.error("Error calculating coordinates for offset:", offset, e);
     return null;
   }
 };
@@ -205,7 +248,15 @@ const getOffsetFromCoordinates = (
   // Modern approach
   if (document.caretPositionFromPoint) {
     const caretPos = document.caretPositionFromPoint(clientX, clientY);
-    if (!caretPos || !container.contains(caretPos.offsetNode)) return null; // Ensure point is within container
+    // Ensure point is within container AND not directly on a handle span itself
+    if (!caretPos || !container.contains(caretPos.offsetNode)) {
+      return null; 
+    }
+    // Check if the caret is directly on a handle element
+    if (caretPos.offsetNode.nodeType === Node.ELEMENT_NODE && (caretPos.offsetNode as HTMLElement).classList.contains('selection-handle')) {
+      return null; 
+    }
+
     range = document.createRange();
     range.setStart(caretPos.offsetNode, caretPos.offset);
     range.collapse(true); // Collapse to a single point
@@ -220,6 +271,15 @@ const getOffsetFromCoordinates = (
   }
 
   if (!range) return null;
+
+  // --- START: Check if click target IS a handle (Alternative check) ---
+  // This checks the element directly under the point, which might be more robust
+  // if caretPositionFromPoint sometimes returns the text node *next* to the handle
+  const targetElement = document.elementFromPoint(clientX, clientY);
+  if (targetElement && container.contains(targetElement) && targetElement.classList.contains('selection-handle')) {
+      return null; // Ignore clicks/drags starting directly on handles
+  }
+  // --- END: Check if click target IS a handle ---
 
   // Calculate offset relative to the container's start
   const containerRange = document.createRange();
@@ -248,13 +308,67 @@ const getOffsetFromCoordinates = (
       }
       // Clamp offset to container text length
       const maxOffset = container.textContent?.length ?? 0;
-      return Math.min(Math.max(0, currentOffset), maxOffset);
+      const finalOffset = Math.min(Math.max(0, currentOffset), maxOffset);
+      return finalOffset;
 
   } catch (e) {
       console.error("Error calculating offset from range:", e);
       return null;
   }
 };
+
+// --- END: Helper Functions ---
+
+// --- START: Throttled Animation Loop --- 
+
+// Define throttled loop AFTER helper functions it uses
+const throttledAnimationLoop = throttle(
+  (
+    event: MouseEvent | TouchEvent, 
+    container: React.RefObject<HTMLDivElement | null>, 
+    startOffsetRef: React.RefObject<number>, // Pass refs explicitly
+    endOffsetRef: React.RefObject<number>,   // Pass refs explicitly
+    startHandleRef: React.RefObject<HTMLSpanElement | null>,
+    endHandleRef: React.RefObject<HTMLSpanElement | null>,
+    activeHandleRef: React.RefObject<'start' | 'end' | null>
+  ) => {
+    if (!container.current) return;
+    
+    const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
+    const clientY = 'touches' in event ? event.touches[0].clientY : event.clientY;
+
+    const currentOffset = getOffsetFromCoordinates( // <-- Now defined before use
+      container.current, 
+      clientX, 
+      clientY
+    );
+    
+    if (currentOffset !== null) {
+      // Update the appropriate offset based on which handle is being dragged
+      // Or update endOffset if initiating a new selection (activeHandleRef.current is null)
+      if (activeHandleRef.current === 'start') {
+        startOffsetRef.current = currentOffset;
+      } else {
+        // Default to updating end offset during initial drag or when dragging end handle
+        endOffsetRef.current = currentOffset; 
+      }
+
+      // Read the potentially updated refs
+      const startOffset = startOffsetRef.current ?? 0;
+      const endOffset = endOffsetRef.current ?? 0;
+      const minOffset = Math.min(startOffset, endOffset);
+      const maxOffset = Math.max(startOffset, endOffset);
+
+      // Update visual highlight and handle positions
+      highlightTemporarySelection(container.current, minOffset, maxOffset);
+      updateHandlePositions(container.current, startHandleRef.current, endHandleRef.current, startOffset, endOffset); // <-- Now defined before use
+    }
+  },
+  16, // 16ms throttle for ~60fps
+  { leading: true, trailing: true } // Ensure it runs immediately and after the last event
+);
+
+// --- END: Throttled Animation Loop --- 
 
 /**
  * Manages text selection ONLY within the quote container for creating new selections.
@@ -280,6 +394,7 @@ const getOffsetFromCoordinates = (
  *   eventHandlers: {
  *     onMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void,
  *     onMouseUp: (event: React.MouseEvent<HTMLDivElement>) => void,
+ *     onTouchStart: (event: React.TouchEvent<HTMLDivElement>) => void,
  *     onTouchEnd: (event: React.TouchEvent<HTMLDivElement>) => void,
  *   },
  *   containerText: string,
@@ -295,434 +410,398 @@ export function useTextSelection({
   selectedQuote,
 }: UseTextSelectionProps): UseTextSelectionReturn {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const startOffsetRef = useRef<number>(0);
+  const endOffsetRef = useRef<number>(0);
+  const mouseDownRef = useRef<boolean>(false); // Still useful to track overall down state
+  const isDraggingHandleRef = useRef<boolean>(false); // Track if a handle drag is active
   const [containerText, setContainerText] = useState<string>('');
-  const [isSelecting, setIsSelecting] = useState<boolean>(false);
-  
-  // Replace useState with useRef
-  // const [handlesVisible, setHandlesVisible] = useState<boolean>(false);
-  const handlesVisibleRef = useRef<boolean>(false);
-  // const [draggingHandle, setDraggingHandle] = useState<'start' | 'end' | null>(null);
-  const draggingHandleRef = useRef<'start' | 'end' | null>(null);
+  const [isSelecting, setIsSelecting] = useState<boolean>(false); // Tracks general selection activity
+  const { setReplyQuote, replyTarget } = useReplyContext(); // Get replyTarget to read its ID
 
-  // Refs for listener functions to ensure correct removal
-  const handleGlobalDragMoveRef = useRef<((event: MouseEvent | TouchEvent) => void) | null>(null);
-  const handleGlobalDragEndRef = useRef<((event: MouseEvent | TouchEvent) => void) | null>(null);
-
-  const boundThrottledAnimationRef = useRef<((e: Event) => void) | null>(null);
-  const mouseIsDownRef = useRef(false);
-  const isDraggingRef = useRef(false);
-
-  // Refs for selection offsets - replacing initialOffsetRef and finalOffsetRef for live updates
-  const selectionStartOffsetRef = useRef<number>(0);
-  const selectionEndOffsetRef = useRef<number>(0);
-
-  // Refs for handle DOM elements (we'll create/manage these)
   const startHandleRef = useRef<HTMLSpanElement | null>(null);
   const endHandleRef = useRef<HTMLSpanElement | null>(null);
+  const activeHandleRef = useRef<'start' | 'end' | null>(null);
 
-  const { 
-    setReplyQuote 
-  } = useReplyContext();
-
-  // Track the ID for which the initial quote was set
-  const initialQuoteSetForIdRef = useRef<string | null>(null);
-
-  // Forward declare handleMouseDownOnHandle because addHandles needs it
-  const handleMouseDownOnHandle = useRef<((event: MouseEvent | TouchEvent, handleType: 'start' | 'end') => void) | null>(null);
-
-  // Update container text when the ref changes
+  // --- START: Handle Creation/Cleanup Effect ---
   useEffect(() => {
-    if (containerRef.current) {
-      setContainerText(containerRef.current.textContent || '');
-      // Reset initial quote tracking if container ID changes
-      if (containerRef.current.id !== initialQuoteSetForIdRef.current) {
-        initialQuoteSetForIdRef.current = null; 
+    const containerElement = containerRef.current;
+    if (!containerElement) return;
+
+    // Create Start Handle if it doesn't exist
+    if (!startHandleRef.current) {
+      startHandleRef.current = document.createElement('span');
+      startHandleRef.current.className = 'selection-handle start';
+      startHandleRef.current.style.display = 'none'; // Initially hidden
+      containerElement.appendChild(startHandleRef.current);
+    }
+
+    // Create End Handle if it doesn't exist
+    if (!endHandleRef.current) {
+      endHandleRef.current = document.createElement('span');
+      endHandleRef.current.className = 'selection-handle end';
+      endHandleRef.current.style.display = 'none'; // Initially hidden
+      containerElement.appendChild(endHandleRef.current);
+    }
+
+    // Cleanup function to remove handles on unmount or container change
+    return () => {
+      if (startHandleRef.current && startHandleRef.current.parentNode === containerElement) {
+        containerElement.removeChild(startHandleRef.current);
+        startHandleRef.current = null; // Clear ref
+      }
+      if (endHandleRef.current && endHandleRef.current.parentNode === containerElement) {
+        containerElement.removeChild(endHandleRef.current);
+        endHandleRef.current = null; // Clear ref
+      }
+    };
+  }, []); // Run only once when the component mounts and containerRef is potentially set
+  // --- END: Handle Creation/Cleanup Effect ---
+
+  // Define handlers with dependencies
+  const handleMouseMove = useCallback((event: MouseEvent) => {
+    if (!mouseDownRef.current) return; // Only run if mouse is down
+
+    // Don't need to update endOffsetRef here anymore, throttled loop handles it
+    throttledAnimationLoop(
+      event, 
+      containerRef, 
+      startOffsetRef, // Pass refs
+      endOffsetRef, 
+      startHandleRef, 
+      endHandleRef,
+      activeHandleRef
+    );
+  }, []); // Remove refs from deps, throttle uses them directly
+
+  const handleGlobalMouseUp = useCallback(() => {
+    if (!mouseDownRef.current) return;
+    const container = containerRef.current;
+    mouseDownRef.current = false;
+    isDraggingHandleRef.current = false; // Reset handle drag state
+    activeHandleRef.current = null;      // Reset active handle
+    setIsSelecting(false);
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleGlobalMouseUp);
+    throttledAnimationLoop.cancel(); // Cancel any pending throttle calls
+
+    if (container) {
+      // Final offsets are now correctly set in the refs by the move handler/throttle
+      const finalStart = startOffsetRef.current ?? 0;
+      const finalEnd = endOffsetRef.current ?? 0;
+      
+      // Word boundary adjustment should only happen if it was NOT a drag
+      // We need a way to differentiate click vs drag vs handle drag.
+      // Let's assume for now if start and end are still very close, it was likely a click.
+      // A more robust way might involve tracking mouse movement distance.
+      let adjustedStart = Math.min(finalStart, finalEnd);
+      let adjustedEnd = Math.max(finalStart, finalEnd);
+      
+      // Simple click detection (adjust threshold as needed)
+      const wasLikelyClick = Math.abs(finalStart - finalEnd) <= 2;
+
+      if (wasLikelyClick) {
+        const { start, end } = getWordBoundaries(container.textContent || '', adjustedStart); // Use start pos for word find
+        adjustedStart = start;
+        adjustedEnd = end;
+      }
+
+      const adjustedText = container.textContent?.slice(adjustedStart, adjustedEnd) ?? '';
+
+      if (adjustedText.trim().length > 0) {
+        // Use replyTarget.id from context if available, otherwise fallback
+        const rootNodeId = replyTarget?.rootNodeId || 'unknown-root'; 
+        const quote = new Quote(adjustedText, rootNodeId, { start: adjustedStart, end: adjustedEnd });
+        if (Quote.isValid(quote)) {
+          onSelectionCompleted(quote, container, setReplyQuote);
+          // Final visual state
+          highlightTemporarySelection(container, adjustedStart, adjustedEnd);
+          updateHandlePositions(container, startHandleRef.current, endHandleRef.current, adjustedStart, adjustedEnd);
+        } else {
+          removeTemporaryHighlights(container);
+          updateHandlePositions(container, startHandleRef.current, endHandleRef.current, 0, 0);
+        }
+      } else {
+        // If selection is empty, clear visuals
+        removeTemporaryHighlights(container);
+        updateHandlePositions(container, startHandleRef.current, endHandleRef.current, 0, 0);
       }
     }
-  }, []); // Keep dependencies minimal
+  }, [setReplyQuote, handleMouseMove, replyTarget]); // Removed refs, added replyTarget
 
-  const removeHandles = useCallback(() => {
-    if (startHandleRef.current) {
-        startHandleRef.current.remove();
-        startHandleRef.current = null;
-    }
-    if (endHandleRef.current) {
-        endHandleRef.current.remove();
-        endHandleRef.current = null;
-    }
-    handlesVisibleRef.current = false;
-    if (containerRef.current) {
-        removeTemporaryHighlights(containerRef.current);
-    }
-  }, []);
+  // Forward declare native touch handlers
+  const handleTouchMoveNativeRef = useRef<((event: TouchEvent) => void) | null>(null);
+  const handleTouchEndNativeRef = useRef<((event: TouchEvent) => void) | null>(null);
 
-  const addHandles = useCallback((container: HTMLElement, startOffset: number, endOffset: number) => {
-      if (getComputedStyle(container).position === 'static') {
-          container.style.position = 'relative';
+  handleTouchMoveNativeRef.current = (event: TouchEvent) => {
+     if (!mouseDownRef.current) return;
+     event.preventDefault(); // Prevent scrolling while dragging selection/handle
+
+     // Don't need to update endOffsetRef here
+     throttledAnimationLoop(
+       event, 
+       containerRef, 
+       startOffsetRef, 
+       endOffsetRef, 
+       startHandleRef, 
+       endHandleRef,
+       activeHandleRef
+     );
+  };
+
+  handleTouchEndNativeRef.current = (event: TouchEvent) => {
+    // Mostly mirrors handleGlobalMouseUp logic
+    if (!mouseDownRef.current) return;
+    const container = containerRef.current;
+    mouseDownRef.current = false;
+    isDraggingHandleRef.current = false;
+    activeHandleRef.current = null;
+    setIsSelecting(false);
+    if (handleTouchMoveNativeRef.current) {
+      document.removeEventListener('touchmove', handleTouchMoveNativeRef.current);
+    }
+    if (handleTouchEndNativeRef.current) {
+      document.removeEventListener('touchend', handleTouchEndNativeRef.current);
+    }
+    throttledAnimationLoop.cancel();
+
+    if (container) {
+      const finalStart = startOffsetRef.current ?? 0;
+      const finalEnd = endOffsetRef.current ?? 0;
+      let adjustedStart = Math.min(finalStart, finalEnd);
+      let adjustedEnd = Math.max(finalStart, finalEnd);
+
+      // Simple tap detection
+      const wasLikelyTap = Math.abs(finalStart - finalEnd) <= 2;
+
+      if (wasLikelyTap) {
+        const { start, end } = getWordBoundaries(container.textContent || '', adjustedStart);
+        adjustedStart = start;
+        adjustedEnd = end;
       }
-      const onHandleMouseDown = handleMouseDownOnHandle.current; // Get current ref value
-      if (!onHandleMouseDown) return; // Should not happen if initialized correctly
 
+      const adjustedText = container.textContent?.slice(adjustedStart, adjustedEnd) ?? '';
+      if (adjustedText.trim().length > 0) {
+         const rootNodeId = replyTarget?.rootNodeId || 'unknown-root'; 
+         const quote = new Quote(adjustedText, rootNodeId, { start: adjustedStart, end: adjustedEnd });
+         if (Quote.isValid(quote)) {
+             onSelectionCompleted(quote, container, setReplyQuote);
+             highlightTemporarySelection(container, adjustedStart, adjustedEnd);
+             updateHandlePositions(container, startHandleRef.current, endHandleRef.current, adjustedStart, adjustedEnd);
+         } else { 
+             removeTemporaryHighlights(container);
+             updateHandlePositions(container, startHandleRef.current, endHandleRef.current, 0, 0);
+         }
+      } else {
+          removeTemporaryHighlights(container);
+          updateHandlePositions(container, startHandleRef.current, endHandleRef.current, 0, 0);
+      }
+    }
+  };
+
+  // Common logic for starting selection (mouse or touch)
+  const startSelection = useCallback((event: MouseEvent | TouchEvent) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Check if the target is a handle
+    const target = event.target as HTMLElement;
+    let handleType: 'start' | 'end' | null = null;
+    if (target === startHandleRef.current) {
+      handleType = 'start';
+    } else if (target === endHandleRef.current) {
+      handleType = 'end';
+    }
+    
+    activeHandleRef.current = handleType;
+    isDraggingHandleRef.current = !!handleType;
+    mouseDownRef.current = true;
+    setIsSelecting(true);
+
+    // If not dragging a handle, calculate initial start/end from event position
+    if (!isDraggingHandleRef.current) {
+      const offset = getOffsetFromCoordinates(
+        container,
+        'touches' in event ? event.touches[0].clientX : event.clientX,
+        'touches' in event ? event.touches[0].clientY : event.clientY
+      ) ?? 0;
+      startOffsetRef.current = offset;
+      endOffsetRef.current = offset;
+    } 
+    // If dragging a handle, the offsets are already set, don't reset them
+    
+    // Initial visual update
+    highlightTemporarySelection(container, startOffsetRef.current, endOffsetRef.current);
+    updateHandlePositions(container, startHandleRef.current, endHandleRef.current, startOffsetRef.current, endOffsetRef.current);
+    
+    // Add global listeners
+    if ('touches' in event) {
+      if (handleTouchMoveNativeRef.current) {
+        document.addEventListener('touchmove', handleTouchMoveNativeRef.current, { passive: false });
+      }
+      if (handleTouchEndNativeRef.current) {
+        document.addEventListener('touchend', handleTouchEndNativeRef.current);
+      }
+    } else {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleGlobalMouseUp);
+    }
+  }, [handleMouseMove, handleGlobalMouseUp]); // Add handle refs?
+
+  // --- Effects --- 
+
+  // Effect to initialize selection based on the passed selectedQuote prop
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Always update based on the prop, regardless of mouse state
+    if (selectedQuote?.selectionRange) {
+      const { start, end } = selectedQuote.selectionRange;
+      startOffsetRef.current = start;
+      endOffsetRef.current = end;
+      highlightTemporarySelection(container, start, end);
+      updateHandlePositions(container, startHandleRef.current, endHandleRef.current, start, end);
+    } else {
+      removeTemporaryHighlights(container);
+      startOffsetRef.current = 0;
+      endOffsetRef.current = 0;
+      updateHandlePositions(container, startHandleRef.current, endHandleRef.current, 0, 0);
+    }
+  }, [selectedQuote]); // Keep dependency only on selectedQuote
+
+  // Effect to handle selectAll prop (Simplified)
+  useEffect(() => {
+    const container = containerRef.current;
+    // Only act if mouse is not down
+    if (selectAll && container && !mouseDownRef.current) {
+      const textLength = container.textContent?.length ?? 0;
+      if (textLength > 0) {
+        startOffsetRef.current = 0;
+        endOffsetRef.current = textLength;
+        highlightTemporarySelection(container, 0, textLength);
+        updateHandlePositions(container, startHandleRef.current, endHandleRef.current, 0, textLength);
+        
+        // Also trigger onSelectionCompleted for selectAll
+        const rootNodeId = replyTarget?.rootNodeId || 'unknown-root'; 
+        const quote = new Quote(container.textContent ?? '', rootNodeId, { start: 0, end: textLength });
+        if (Quote.isValid(quote)) {
+            onSelectionCompleted(quote, container, setReplyQuote);
+        }
+      }
+    }
+    // No explicit clearing needed here, handled by the selectedQuote effect
+  }, [selectAll, selectedQuote, setReplyQuote, replyTarget]); // Added dependencies
+
+  // --- Container Ref Setter --- 
+
+  const setContainerRef = useCallback((node: HTMLDivElement | null) => {
+    // Cleanup previous node's listeners first
+    const oldNode = containerRef.current;
+    if (oldNode) {
+        // Remove handle listeners if they were attached
+        if (startHandleRef.current) {
+            startHandleRef.current.removeEventListener('touchstart', startSelection as EventListener);
+            startHandleRef.current.removeEventListener('mousedown', startSelection as EventListener);
+        }
+        if (endHandleRef.current) {
+            endHandleRef.current.removeEventListener('touchstart', startSelection as EventListener);
+            endHandleRef.current.removeEventListener('mousedown', startSelection as EventListener);
+        }
+        // It's safer to remove global listeners on unmount/node change
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleGlobalMouseUp);
+        if (handleTouchMoveNativeRef.current) {
+          document.removeEventListener('touchmove', handleTouchMoveNativeRef.current);
+        }
+        if (handleTouchEndNativeRef.current) {
+          document.removeEventListener('touchend', handleTouchEndNativeRef.current);
+        }
+    }
+
+    // Set the new node
+    containerRef.current = node;
+
+    if (node) {
+      setContainerText(node.textContent || '');
+      // Create/append handles if they don't exist
       if (!startHandleRef.current) {
           startHandleRef.current = document.createElement('span');
           startHandleRef.current.className = 'selection-handle start';
-          // Use the captured onHandleMouseDown
-          startHandleRef.current.addEventListener('mousedown', (e) => onHandleMouseDown(e, 'start'));
-          startHandleRef.current.addEventListener('touchstart', (e) => onHandleMouseDown(e, 'start'), { passive: false });
-          container.appendChild(startHandleRef.current);
+          startHandleRef.current.style.display = 'none'; // Initially hidden
+          startHandleRef.current.addEventListener('touchstart', startSelection as EventListener, { passive: false });
+          startHandleRef.current.addEventListener('mousedown', startSelection as EventListener);
+          node.appendChild(startHandleRef.current);
       }
       if (!endHandleRef.current) {
           endHandleRef.current = document.createElement('span');
           endHandleRef.current.className = 'selection-handle end';
-          // Use the captured onHandleMouseDown
-          endHandleRef.current.addEventListener('mousedown', (e) => onHandleMouseDown(e, 'end'));
-          endHandleRef.current.addEventListener('touchstart', (e) => onHandleMouseDown(e, 'end'), { passive: false });
-          container.appendChild(endHandleRef.current);
+          endHandleRef.current.style.display = 'none'; // Initially hidden
+          endHandleRef.current.addEventListener('touchstart', startSelection as EventListener, { passive: false });
+          endHandleRef.current.addEventListener('mousedown', startSelection as EventListener);
+          node.appendChild(endHandleRef.current);
       }
-      updateHandlePositions(container, startHandleRef.current, endHandleRef.current, startOffset, endOffset);
-      handlesVisibleRef.current = true;
-  // Depend only on the ref container, not the function itself
-  }, [handleMouseDownOnHandle]);
-
-  // Now define handleMouseDownOnHandle and assign it to the ref
-  handleMouseDownOnHandle.current = (event: MouseEvent | TouchEvent, handleType: 'start' | 'end') => {
-       event.stopPropagation();
-       if (!containerRef.current) return;
-       draggingHandleRef.current = handleType;
-       const container = containerRef.current;
-
-       // Define and store listener functions in refs
-       handleGlobalDragMoveRef.current = (moveEvent: MouseEvent | TouchEvent) => {
-           moveEvent.preventDefault();
-           if (!containerRef.current) return; // Re-check container
-           const container = containerRef.current; // Re-get container
-
-           const newOffset = getCurrentOffset(container, moveEvent);
-
-           if (newOffset !== null) {
-                // Keep track of the handle being dragged
-                const handleType = draggingHandleRef.current;
-                let nextStart = selectionStartOffsetRef.current;
-                let nextEnd = selectionEndOffsetRef.current;
-
-                // Update the offset corresponding to the dragged handle
-                if (handleType === 'start') {
-                    nextStart = newOffset;
-                } else if (handleType === 'end') {
-                    nextEnd = newOffset;
-                }
-
-                // Update the refs directly with potentially crossed-over values
-                selectionStartOffsetRef.current = nextStart;
-                selectionEndOffsetRef.current = nextEnd;
-
-                // Highlight and update positions - they handle swapped values correctly
-                highlightTemporarySelection(container, nextStart, nextEnd);
-                updateHandlePositions(container, startHandleRef.current, endHandleRef.current, nextStart, nextEnd);
-           } else {
-               // console.log("getCurrentOffset returned null during handle drag");
-           }
-       };
-
-       handleGlobalDragEndRef.current = (endEvent: MouseEvent | TouchEvent) => {
-            endEvent.preventDefault();
-
-            // --- FIX 1: Implement listener removal ---
-            if (handleGlobalDragMoveRef.current) {
-                window.removeEventListener('mousemove', handleGlobalDragMoveRef.current);
-                window.removeEventListener('touchmove', handleGlobalDragMoveRef.current);
-            }
-            // Remove self (mouseup/touchend) listener
-            if (handleGlobalDragEndRef.current) {
-                window.removeEventListener('mouseup', handleGlobalDragEndRef.current);
-                window.removeEventListener('touchend', handleGlobalDragEndRef.current);
-            }
-            // --- End Fix 1 ---
-
-            // Clear refs AFTER removing listeners
-            handleGlobalDragMoveRef.current = null;
-            handleGlobalDragEndRef.current = null;
-
-            const currentContainer = containerRef.current;
-            if (!currentContainer) {
-                draggingHandleRef.current = null;
-                return;
-            }
-
-            // --- Normalize offsets BEFORE finalization ---
-            const offset1 = selectionStartOffsetRef.current;
-            const offset2 = selectionEndOffsetRef.current;
-            const finalStartOffset = Math.min(offset1, offset2);
-            const finalEndOffset = Math.max(offset1, offset2);
-            // ---
-
-            // Final position update using the potentially inverted offsets from refs,
-            // as updateHandlePositions calculates coords based on absolute values.
-            updateHandlePositions(
-                currentContainer,
-                startHandleRef.current,
-                endHandleRef.current,
-                offset1, // Use original ref values for positioning
-                offset2
-            );
-
-            // Check validity and finalize using NORMALIZED offsets
-            if (finalStartOffset <= finalEndOffset && currentContainer.id) {
-                 // Use normalized offsets for slicing text
-                 const selectedText = currentContainer.textContent?.slice(finalStartOffset, finalEndOffset) || '';
-                 // Store normalized offsets in the Quote object
-                 const quote = new Quote(
-                     selectedText,
-                     currentContainer.id,
-                     { start: finalStartOffset, end: finalEndOffset }
-                 );
-                 setReplyQuote(quote);
-                 // Highlight remains visible until next mousedown clears it via removeHandles
-            } else {
-                 // Only remove highlight if something else went wrong (e.g., no container.id)
-                 removeTemporaryHighlights(currentContainer);
-            }
-            draggingHandleRef.current = null;
-       }; // End of handleGlobalDragEndRef.current definition
-
-       // Add listeners using the refs (ensure refs are assigned first)
-       if (handleGlobalDragMoveRef.current) {
-           window.addEventListener('mousemove', handleGlobalDragMoveRef.current, { passive: false });
-           window.addEventListener('touchmove', handleGlobalDragMoveRef.current, { passive: false });
-       }
-       if (handleGlobalDragEndRef.current) {
-           window.addEventListener('mouseup', handleGlobalDragEndRef.current);
-           window.addEventListener('touchend', handleGlobalDragEndRef.current);
-       }
-  }; // End of handleMouseDownOnHandle.current assignment
-
-  const cleanupEventListeners = useCallback(() => {
-    if (boundThrottledAnimationRef.current && containerRef.current) {
-      containerRef.current.removeEventListener('mousemove', boundThrottledAnimationRef.current);
-      containerRef.current.removeEventListener('touchmove', boundThrottledAnimationRef.current, { capture: true });
-      boundThrottledAnimationRef.current = null;
+      // Update positions based on current refs (might be 0 initially)
+      updateHandlePositions(node, startHandleRef.current, endHandleRef.current, startOffsetRef.current, endOffsetRef.current);
+    } else {
+      // Clear refs if node is null
+      startHandleRef.current?.remove();
+      endHandleRef.current?.remove();
+      startHandleRef.current = null;
+      endHandleRef.current = null;
     }
-    
-    // Also clean up any temporary highlights
-    if (containerRef.current) {
-      removeTemporaryHighlights(containerRef.current);
-    }
-    
-    // End selection mode
-    setIsSelecting(false);
+  }, [startSelection, handleMouseMove, handleGlobalMouseUp]); // Add startSelection dependency
+
+  // Cleanup global listeners on unmount
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+      if (handleTouchMoveNativeRef.current) {
+        document.removeEventListener('touchmove', handleTouchMoveNativeRef.current);
+      }
+      if (handleTouchEndNativeRef.current) {
+        document.removeEventListener('touchend', handleTouchEndNativeRef.current);
+      }
+      throttledAnimationLoop.cancel();
+      // Ensure handles are removed from DOM if component unmounts
+      startHandleRef.current?.remove();
+      endHandleRef.current?.remove();
+    };
+  }, [handleMouseMove, handleGlobalMouseUp]); // Correct dependencies
+
+  // --- Event Handlers for Component --- 
+
+  const handleMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+     startSelection(event.nativeEvent); // Pass native event
+  }, [startSelection]);
+
+  const handleMouseUp = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    // The global mouse up handles finalization, this one might not be needed
+    // or could be used for specific container-level logic if mouseDown originated here.
+    // For simplicity, let global handler manage it.
   }, []);
 
-  const handleMouseDown = useCallback((event: MouseEvent | TouchEvent) => {
-    if (!containerRef.current) return;
-    const container = containerRef.current;
-    removeHandles(); // Now defined
-    event.preventDefault();
-    setIsSelecting(true);
-    mouseIsDownRef.current = true;
-    isDraggingRef.current = false;
-    const startOffset = getCurrentOffset(container, event);
-    selectionStartOffsetRef.current = startOffset ?? 0;
+  const handleTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    // This handler is NOT attached via setContainerRef anymore
+    // It should be attached via the onTouchStart prop from eventHandlers
+    startSelection(event.nativeEvent);
+  }, [startSelection]);
 
-    boundThrottledAnimationRef.current = (e: Event) => {
-      if (e.cancelable) e.preventDefault();
-      isDraggingRef.current = true;
-      // Safe to use non-null here because we set it above
-      throttledAnimationLoop(
-        e, 
-        containerRef, 
-        selectionStartOffsetRef.current, 
-        mouseIsDownRef
-      );
-    };
-
-    if (event.type === 'touchstart') {
-      containerRef.current.addEventListener('touchmove', boundThrottledAnimationRef.current, { passive: false, capture: true });
-    } else {
-      containerRef.current.addEventListener('mousemove', boundThrottledAnimationRef.current);
-    }
-  }, [removeHandles]);
-
-  const endAnimationLoop = useCallback(
-    (event: MouseEvent | TouchEvent): Quote | null => {
-      event.preventDefault();
-      event.stopPropagation();
-      mouseIsDownRef.current = false;
-      isDraggingRef.current = false;
-      cleanupEventListeners();
-      
-      if (!containerRef.current) return null;
-      
-      const endOffsetValue = getCurrentOffset(containerRef.current, event);
-      selectionEndOffsetRef.current = endOffsetValue ?? 0; // Default to 0 if null
-      let startOffset = selectionStartOffsetRef.current;
-      let endOffset = selectionEndOffsetRef.current; // Use the updated ref value
-      
-      if (startOffset > endOffset) {
-        const temp = startOffset;
-        startOffset = endOffset;
-        endOffset = temp;
-      }
-      
-      const quote: Quote = new Quote(
-        containerRef.current.textContent?.slice(startOffset, endOffset) || '',
-        containerRef.current.id, 
-        {
-          start: startOffset,
-          end: endOffset
-        },
-      );
-      
-      return quote;
-    },
-    [cleanupEventListeners]
-  );
-
-  const handleMouseUp = useCallback((event: MouseEvent | TouchEvent) => {
-    if (!mouseIsDownRef.current || !containerRef.current) return;
-    const container = containerRef.current;
-    let finalStartOffset: number | null = null;
-    let finalEndOffset: number | null = null;
-    let quote: Quote | null = null;
-
-    if (!isDraggingRef.current) {
-      // Click -> Word Selection
-      const offset = selectionStartOffsetRef.current;
-      if (offset !== null && container.id) {
-        const text = container.textContent || '';
-        const { start, end } = getWordBoundaries(text, offset);
-        finalStartOffset = start;
-        finalEndOffset = end;
-        const selectedText = text.slice(start, end);
-        quote = new Quote(selectedText, container.id, { start, end });
-      }
-    } else {
-      // Drag -> Finalize drag offsets
-      event.preventDefault();
-      event.stopPropagation();
-
-      const endOffsetValue = getCurrentOffset(container, event);
-      selectionEndOffsetRef.current = endOffsetValue ?? selectionStartOffsetRef.current;
-
-      if (selectionStartOffsetRef.current > selectionEndOffsetRef.current) {
-        const temp = selectionStartOffsetRef.current;
-        selectionStartOffsetRef.current = selectionEndOffsetRef.current;
-        selectionEndOffsetRef.current = temp;
-      }
-      finalStartOffset = selectionStartOffsetRef.current;
-      finalEndOffset = selectionEndOffsetRef.current;
-
-      if (container.id) {
-          const selectedText = container.textContent?.slice(finalStartOffset, finalEndOffset) || '';
-          quote = new Quote(selectedText, container.id, { start: finalStartOffset, end: finalEndOffset });
-      }
-    }
-
-    cleanupEventListeners();
-    mouseIsDownRef.current = false;
-    isDraggingRef.current = false;
-    setIsSelecting(false);
-
-    if (finalStartOffset !== null && finalEndOffset !== null && finalStartOffset <= finalEndOffset && quote) {
-      selectionStartOffsetRef.current = finalStartOffset;
-      selectionEndOffsetRef.current = finalEndOffset;
-
-      highlightTemporarySelection(container, finalStartOffset, finalEndOffset);
-      addHandles(container, finalStartOffset, finalEndOffset);
-      setReplyQuote(quote);
-    } else {
-      removeTemporaryHighlights(container);
-    }
-  }, [cleanupEventListeners, setReplyQuote, addHandles]);
-
-  // Global cleanup in case of lost mouseup/touchend events
-  useEffect(() => {
-    const handleGlobalMouseUp = () => {
-      if (mouseIsDownRef.current) {
-        mouseIsDownRef.current = false;
-        if (containerRef.current) {
-          removeTemporaryHighlights(containerRef.current);
-        }
-        cleanupEventListeners();
-      }
-    };
-    window.addEventListener('mouseup', handleGlobalMouseUp);
-    window.addEventListener('touchend', handleGlobalMouseUp);
-    return () => {
-      window.removeEventListener('mouseup', handleGlobalMouseUp);
-      window.removeEventListener('touchend', handleGlobalMouseUp);
-    };
-  }, [cleanupEventListeners]);
-
-  // Effect: handle INITIAL selectedQuote
-  useEffect(() => {
-    if (containerRef.current && containerRef.current.id) {
-      const currentContainerId = containerRef.current.id;
-      
-      if (selectedQuote && initialQuoteSetForIdRef.current !== currentContainerId) {
-        
-        if (selectedQuote.sourceId === currentContainerId) {
-          highlightTemporarySelection(containerRef.current, selectedQuote.selectionRange.start, selectedQuote.selectionRange.end);
-          
-          initialQuoteSetForIdRef.current = currentContainerId;
-        } else {
-          console.warn("useTextSelection: selectedQuote sourceId does not match container id. Initial highlight skipped.", {
-            quoteSourceId: selectedQuote.sourceId,
-            containerId: currentContainerId
-          });
-          initialQuoteSetForIdRef.current = null; 
-        }
-      } 
-      else if (!selectedQuote && initialQuoteSetForIdRef.current === currentContainerId) {
-        removeTemporaryHighlights(containerRef.current);
-        initialQuoteSetForIdRef.current = null;
-      }
-    }
-  }, [selectedQuote, containerRef.current]); 
-
-  // Wrap our internal handlers for React events
-  const onMouseDownHandler = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    handleMouseDown(event.nativeEvent);
-  }, [handleMouseDown]);
-  
-  const onTouchStartHandler = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    handleMouseDown(event.nativeEvent);
-  }, [handleMouseDown]);
-  
-  const onMouseUpHandler = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    handleMouseUp(event.nativeEvent);
-  }, [handleMouseUp]);
-  
-  const onTouchEndHandler = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    handleMouseUp(event.nativeEvent);
-  }, [handleMouseUp]);
-
-  // Define a native touchstart handler
-  const handleTouchStartNative = (event: TouchEvent) => {
-    event.preventDefault();
-    handleMouseDown(event);
-  };
-
-  // Create a callback ref that attaches the native listener as soon as the container is set
-  const setContainerRef = (node: HTMLDivElement | null) => {
-    if (containerRef.current) {
-      // Remove existing listener if containerRef was set before
-      containerRef.current.removeEventListener('touchstart', handleTouchStartNative);
-    }
-    containerRef.current = node;
-    if (node) {
-      node.addEventListener('touchstart', handleTouchStartNative, { passive: false, capture: true });
-      setContainerText(node.textContent || '');
-    }
-  };
+  const handleTouchEnd = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    // Similar to mouseup, let the global handler manage finalization.
+    // handleTouchEndNativeRef.current?.(event.nativeEvent); 
+  }, []);
 
   return {
     containerRef: setContainerRef as React.RefObject<HTMLDivElement> & ((node: HTMLDivElement | null) => void),
     eventHandlers: {
-      onMouseDown: onMouseDownHandler,
-      onMouseUp: onMouseUpHandler,
-      onTouchEnd: onTouchEndHandler,
+      onMouseDown: handleMouseDown,
+      onMouseUp: handleMouseUp, 
+      // Need onTouchStart here instead of onTouchEnd for initiation
+      onTouchStart: handleTouchStart, 
+      onTouchEnd: handleTouchEnd, // Keep onTouchEnd for completeness, though global handles it
     },
     containerText,
-    isSelecting,
+    isSelecting
   };
 } 

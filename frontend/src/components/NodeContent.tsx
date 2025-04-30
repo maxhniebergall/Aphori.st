@@ -20,7 +20,6 @@ import HighlightedText from './HighlightedText';
 import { QuoteCounts, StoryTreeNode } from '../types/types';
 import { Quote, areQuotesEqual } from '../types/quote';
 import { useHighlighting } from '../hooks/useHighlighting';
-import { useReplyContext } from '../context/ReplyContext';
 
 interface NodeContentProps {
   node: StoryTreeNode;
@@ -28,6 +27,7 @@ interface NodeContentProps {
   isReplyTargetNode?: boolean;
   existingSelectableQuotes?: QuoteCounts;
   currentLevelSelectedQuote?: Quote | null;
+  initialQuoteForReply?: Quote | null;
 }
 
 /**
@@ -91,8 +91,10 @@ const areNodeContentPropsEqual = (prevProps: NodeContentProps, nextProps: NodeCo
   // Compare callback function by reference
   const callbackChanged = prevProps.onExistingQuoteSelectionComplete !== nextProps.onExistingQuoteSelectionComplete;
 
+  const initialQuoteChanged = !compareNullableQuotes(prevProps.initialQuoteForReply, nextProps.initialQuoteForReply);
+
   // Return true if none of the relevant props have changed
-  return !nodeChanged && !isReplyTargetChanged && !existingQuotesChanged && !currentLevelSelectedQuoteChanged && !callbackChanged;
+  return !nodeChanged && !isReplyTargetChanged && !existingQuotesChanged && !currentLevelSelectedQuoteChanged && !callbackChanged && !initialQuoteChanged;
 };
 
 const NodeContent: React.FC<NodeContentProps> = ({
@@ -100,16 +102,9 @@ const NodeContent: React.FC<NodeContentProps> = ({
   onExistingQuoteSelectionComplete: onExistingQuoteSelectionComplete = () => {},
   isReplyTargetNode = false,
   existingSelectableQuotes,
-  currentLevelSelectedQuote
+  currentLevelSelectedQuote,
+  initialQuoteForReply
 }) => {
-  // Get replyQuote from context
-  const { replyQuote } = useReplyContext();
-  
-  // Memoize the text content to prevent unnecessary re-renders
-  const textContent = useMemo(() => {
-    return node.textContent || '';
-  }, [node.textContent]);
-
   // Reference to the main content container
   const mainContentRef = useRef<HTMLDivElement>(null);
 
@@ -133,7 +128,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
     handleSegmentClick,
     selectedQuote // Destructure selectedQuote from the hook's return
   } = useHighlighting({
-    text: textContent,
+    text: node.textContent || '',
     selectedQuote: currentLevelSelectedQuote ?? undefined,
     existingSelectableQuotes: memoizedExistingSelectableQuotes,
     // Wrap the callback passed *to* the hook to log the quote received from HighlightedText/useHighlighting
@@ -171,7 +166,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
       >
         <MemoizedHighlightedText
           nodeId={node.id}
-          text={textContent}
+          text={node.textContent || ''}
           selections={selections}
           quoteCounts={memoizedExistingSelectableQuotes}
           onSegmentClick={handleSegmentClick}
@@ -188,6 +183,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
             <MemoizedTextSelection
               node={node}
               aria-label="Selectable text for reply"
+              initialQuote={initialQuoteForReply ?? undefined}
             >
               {quoteContainerText}
             </MemoizedTextSelection>
