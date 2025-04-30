@@ -1,0 +1,11 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "path_to_your_data": {
+      "$dataId": {
+        ".indexOn": "score"
+      }
+    }
+  }
+}
