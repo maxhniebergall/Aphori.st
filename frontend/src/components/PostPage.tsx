@@ -23,6 +23,13 @@ import { PostCreationRequest } from '../types/types';
 
 const MAX_POST_LENGTH = 5000;
 const MIN_POST_LENGTH = 100;
+const LOCAL_STORAGE_KEY = 'postContent';
+const EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
+
+interface StoredContent {
+  content: string;
+  timestamp: number;
+}
 
 const PostPage: React.FC = (): JSX.Element => {
   const [content, setContent] = useState<string>('');
@@ -36,20 +43,18 @@ const PostPage: React.FC = (): JSX.Element => {
   const [isLengthExceeded, setIsLengthExceeded] = useState<boolean>(false);
   const [isLengthInsufficient, setIsLengthInsufficient] = useState<boolean>(false);
 
-  useEffect(() => {
-    if (!state?.verified) {
-      setError(loggedOutMessage);
-    } else {
-      // Clear login error if verified, but preserve length errors
-      if (error === loggedOutMessage) {
-        setError('');
-      }
-    }
-  }, [state?.verified, loggedOutMessage, error]);
-
   const handleContentChange = (value?: string) => {
     const newContent = value || '';
     setContent(newContent);
+
+    // Save content to localStorage
+    if (newContent) {
+        const dataToStore: StoredContent = { content: newContent, timestamp: Date.now() };
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataToStore));
+    } else {
+        // If content is empty, remove it from storage
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
 
     const length = newContent.length;
     let currentError = '';
@@ -72,6 +77,39 @@ const PostPage: React.FC = (): JSX.Element => {
         setError(currentError);
     }
   };
+
+  useEffect(() => {
+    // Load saved content from localStorage on mount
+    const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (savedData) {
+      try {
+        const { content: savedContent, timestamp }: StoredContent = JSON.parse(savedData);
+        const now = Date.now();
+        if (now - timestamp < EXPIRATION_MS) {
+          setContent(savedContent);
+          // Re-validate loaded content length
+          handleContentChange(savedContent); // Call handleContentChange to set initial error state if needed
+        } else {
+          // Clear expired content
+          localStorage.removeItem(LOCAL_STORAGE_KEY);
+        }
+      } catch (error) {
+        console.error("Failed to parse saved post content:", error);
+        localStorage.removeItem(LOCAL_STORAGE_KEY); // Clear corrupted data
+      }
+    }
+  }, []); // Empty dependency array ensures this runs only once on mount
+
+  useEffect(() => {
+    if (!state?.verified) {
+      setError(loggedOutMessage);
+    } else {
+      // Clear login error if verified, but preserve length errors
+      if (error === loggedOutMessage) {
+        setError('');
+      }
+    }
+  }, [state?.verified, loggedOutMessage, error]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
@@ -126,6 +164,8 @@ const PostPage: React.FC = (): JSX.Element => {
         { storyTree: newPost }
       );
       navigate('/');
+      // Clear saved content on successful submission
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
     } catch (err: unknown) {
       if (typeof err === 'object' && err !== null) {
         const errorResponse = err as { response: { data: { message: string } } };
