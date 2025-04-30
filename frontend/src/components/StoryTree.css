@@ -482,3 +482,33 @@ h2 {
   -moz-user-select: text;
   -ms-user-select: text;
 }
+
+/* New rule for the error container */
+.error-container {
+  padding: 20px;
+  text-align: center;
+}
+
+/* Error message styling */
+.error-message {
+  color: #dc3545; /* Bootstrap danger color */
+  font-size: 1.1rem;
+  margin-bottom: 16px;
+}
+
+/* Error action button styling */
+.error-action {
+  background-color: #007bff; /* Bootstrap primary color */
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.2s ease;
+  /* margin-top is already applied via button rule, but can be adjusted here if needed */
+}
+
+.error-action:hover {
+  background-color: #0056b3;
+}

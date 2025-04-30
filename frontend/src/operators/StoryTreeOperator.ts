@@ -949,7 +949,7 @@ class StoryTreeOperator extends BaseOperator {
       await this.fetchStoryTree(rootUUID);
     } catch (error) {
       if (this.store && this.store.dispatch) {
-        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load story tree' });
+        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: 'It seems like this story tree does not exist.' });
       }
     } finally {
       // Ensure loading state is always reset after initialization attempt

@@ -164,30 +164,13 @@ function StoryTreeContent() {
   const navigate = useNavigate();
   const { state } = useStoryTree();
   const { uuid: rootUUID } = useParams<{ uuid: string }>();
-
-
-  // Use a minimal set of context values to prevent re-renders when replyContent changes
   const { replyTarget } = useReplyContext();
-
-  // Instead of returning a global loading spinner, we let VirtualizedStoryList handle progressive loading.
-  // Show error state if present
-  if (state.error) {
-    return (
-      <div className="error-container" role="alert">
-        <div className="error-message">{state.error}</div>
-        <button 
-          onClick={() => navigate('/feed')}
-          className="error-action"
-          aria-label="Return to feed"
-        >
-          Return to Feed
-        </button>
-      </div>
-    );
-  }
 
   // Memoize the UUID to prevent unnecessary re-renders
   const memoizedUUID = useMemo(() => rootUUID || '', [rootUUID]);
+
+  // Header is now rendered unconditionally
+  // The main content area will conditionally render error or list
 
   return (
     <div className="story-tree-container">
@@ -197,9 +180,25 @@ function StoryTreeContent() {
         onLogoClick={() => navigate('/feed')}
       />
       <main className="story-tree-content" role="main">
-        <MemoizedVirtualizedStoryList postRootId={memoizedUUID} />
+        {state.error ? (
+          // Render error UI if state.error is truthy
+          <div className="error-container" role="alert">
+            <div className="error-message">{state.error}</div>
+            <button 
+              onClick={() => navigate('/feed')}
+              className="error-action"
+              aria-label="Return to feed"
+            >
+              Return to Feed
+            </button>
+          </div>
+        ) : (
+          // Render the story list if there is no error
+          <MemoizedVirtualizedStoryList postRootId={memoizedUUID} />
+        )}
       </main>
-      {replyTarget && <ReplyEditor />}
+      {/* Reply editor remains conditional based on replyTarget */}
+      {replyTarget && <ReplyEditor />} 
     </div>
   );
 }
@@ -210,6 +209,8 @@ function StoryTreeSetupAndContent() {
   const { state: storyTreeState, dispatch: storyTreeDispatch } = useStoryTree();
   const { state: userState } = useUser();
   const { clearReplyState } = useReplyContext();
+  const { uuid: rootUUID } = useParams<{ uuid: string }>();
+  const navigate = useNavigate();
 
   // Define the reset function required by the operator interface
   const resetReplyState = useCallback(() => {
@@ -224,9 +225,47 @@ function StoryTreeSetupAndContent() {
     StoryTreeOperator.setUserContext({ state: userState });
     // Inject Reply context setters
     StoryTreeOperator.setReplyContextSetters({ resetReplyState });
-
-
   }, [storyTreeState, storyTreeDispatch, userState, resetReplyState]);
+
+  // Effect to initialize story tree and fetch data when rootUUID changes
+  useEffect(() => {
+    let mounted = true;
+
+    const initializeTree = async () => {
+      if (rootUUID && mounted) {
+        // Clear previous error before fetching new tree by setting payload to empty string
+        storyTreeDispatch({ type: 'SET_ERROR', payload: '' }); 
+        try {
+          await StoryTreeOperator.initializeStoryTree(rootUUID);
+        } catch (error: any) {
+          console.error('Failed to initialize story tree:', error);
+          if (mounted) {
+            // Determine if the error is likely a 'Not Found'
+            const errorMessage = error?.response?.status === 404 
+              ? `Story with ID '${rootUUID}' not found.` 
+              : 'It seems like this story tree does not exist.';
+            // Dispatch error state to context instead of navigating
+            storyTreeDispatch({ type: 'SET_ERROR', payload: errorMessage });
+          }
+        }
+      } else if (!rootUUID && mounted) {
+          // Handle case where UUID is missing in the URL path itself
+          // Clear previous error first by setting payload to empty string
+          storyTreeDispatch({ type: 'SET_ERROR', payload: '' }); 
+          storyTreeDispatch({ type: 'SET_ERROR', payload: 'No story ID provided.' });
+      }
+    };
+
+    initializeTree();
+
+    return () => {
+      mounted = false;
+      // Optional: Clear error when navigating away or changing UUID by setting payload to empty string
+      // storyTreeDispatch({ type: 'SET_ERROR', payload: '' });
+    };
+    // Ensure navigate is included if used inside effect, though it's not directly used here now.
+  }, [rootUUID, storyTreeDispatch]); 
+
 
   // Render the actual content component
   return <StoryTreeContent />;
@@ -234,44 +273,6 @@ function StoryTreeSetupAndContent() {
 
 // Wrapper component that renders the providers
 function StoryTreeHolder() {
-  const { uuid: rootUUID } = useParams<{ uuid: string }>();
-  const navigate = useNavigate();
-
-  // Initialize story tree and fetch data when rootUUID changes
-  // This effect remains here as it doesn't depend on the contexts being fetched *in this component*
-  useEffect(() => {
-    let mounted = true;
-
-    const initializeTree = async () => {
-      if (rootUUID && mounted) {
-        try {
-          // We assume initializeStoryTree handles resetting state if called again
-          // Operator needs contexts injected first, which happens in StoryTreeSetupAndContent
-          // Ensure operator is ready before calling initialize
-          // A slight delay or check might be needed if there's a race condition,
-          // but usually the effect in SetupAndContent runs before this outer one triggers initialize.
-          await StoryTreeOperator.initializeStoryTree(rootUUID);
-        } catch (error) {
-          console.error('Failed to initialize story tree:', error);
-          if (mounted) {
-            // Optionally navigate away or show a persistent error
-            // Consider dispatching error to StoryTreeContext instead of navigating
-             navigate('/feed');
-          }
-        }
-      }
-    };
-
-    // Need to ensure operator injection happens first.
-    // For simplicity now, we assume the inner effect runs first.
-    // A more robust solution might involve a state flag set by the inner effect.
-    initializeTree();
-
-    return () => {
-      mounted = false;
-    };
-  }, [rootUUID, navigate]);
-
   return (
     <StoryTreeProvider>
       <ReplyProvider>
