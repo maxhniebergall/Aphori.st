@@ -44,42 +44,91 @@ function useReplyContextForList() {
 
 const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ postRootId }) => {
   const { state } = useStoryTree();
-  const [isLocalLoading, setIsLocalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [levels, setLevels] = useState<Array<StoryTreeLevel>>([]);
   
   const { replyTarget } = useReplyContextForList();
-  const { isLoadingMore } = state; // Destructure after useStoryTree
+  const { isLoadingMore } = state;
 
-  // useEffects
-  // Load initial data
+  // --- HOOKS MUST BE CALLED UNCONDITIONALLY BEFORE EARLY RETURNS ---
+
+  // UPDATE: Effect syncs context levels AND triggers initial loading up to 5 levels
   useEffect(() => {
-    if (!postRootId) {
-      setIsLocalLoading(true);
+    // Check if storyTree exists before trying to access levels or load more
+    if (!postRootId || !state.storyTree) { 
+      // Clear local state if postRootId is invalid or storyTree isn't ready
+      setLevels([]);
+      setError(null); 
       return;
-    } else {
-      setIsLocalLoading(false);
     }
-  }, [postRootId]);
 
-  // UPDATE: Effect only syncs context levels to local state
-  useEffect(() => {
-    if (!postRootId) return;
-    const contextLevels = state?.storyTree?.levels || [];
-    // Always update local state when the effect runs (contextLevels reference changed)
-    setLevels(contextLevels);
-  }, [postRootId, state?.storyTree?.levels]);
+    const contextLevels = state.storyTree.levels || [];
+    setLevels(contextLevels); // Sync local state
+
+    // Initial loading logic
+    const targetInitialLevels = 5;
+    const loadedLevelCount = contextLevels.length;
+    const currentlyLoading = state.isLoadingMore;
+
+    // Determine if the last loaded level indicated the end of the story
+    const hasMoreLevels = loadedLevelCount === 0 || !contextLevels[loadedLevelCount - 1].isLastLevel;
+
+    // Check if we need more levels, are not loading, AND the last loaded level wasn't the final one
+    if (state.storyTree && loadedLevelCount < targetInitialLevels && !currentlyLoading && hasMoreLevels) {
+      storyTreeOperator.requestLoadNextLevel();
+    }
+
+  // Depend on postRootId, levels array reference, isLoadingMore, and storyTree existence
+  }, [postRootId, state?.storyTree, state?.storyTree?.levels, state.isLoadingMore]);
 
   // Set error
   useEffect(() => {
-    if (state?.error) {
+    // Check for error from state, ensuring it doesn't overwrite an existing local error inappropriately
+    if (state?.error && !error) { 
       // console.warn("VirtualizedStoryList: Error from state:", state.error);
       setError(state.error);
     }
-  }, [state?.error]);
+  // Depend on state.error and the local error state
+  }, [state?.error, error]); 
 
-  // Show initial loading state
-  if (isLocalLoading && !levels.length) {
+  // UPDATE: Define Virtuoso's itemContent function (Moved before returns)
+  const itemContent = useCallback((index: number, level: StoryTreeLevel) => {
+    if (!level) {
+      console.warn(`Virtuoso itemContent: Received null/undefined level data for index ${index}, rendering placeholder.`);
+      return <div style={{ height: '1px' }} />; 
+    }
+    const shouldHide = !!(replyTarget?.levelNumber) && 
+                       !!(getLevelNumber(level)) && 
+                       replyTarget.levelNumber < getLevelNumber(level)!;
+    return (
+      <MemoizedRow
+        levelData={level}
+        shouldHide={shouldHide}
+        index={index}
+      />
+    );
+  }, [replyTarget]);
+
+  // Restore the original loadMore callback (Moved before returns)
+  const loadMore = useCallback(() => {
+    if (isLoadingMore || !state.storyTree) { // Add check for storyTree
+      return;
+    }
+    storyTreeOperator.requestLoadNextLevel();
+  }, [isLoadingMore, state.storyTree]); // Add state.storyTree dependency
+
+  // UPDATE: Define computeItemKey (Moved before returns)
+  const computeItemKey = useCallback((index: number, level: StoryTreeLevel): React.Key => {
+    const levelNum = getLevelNumber(level);
+    const rootId = level?.midLevel?.rootNodeId ?? level?.lastLevel?.rootNodeId ?? `fallback-${index}`;
+    return `${rootId}-level-${levelNum ?? index}`;
+  }, []);
+
+  // --- CONDITIONAL RETURNS MOVED AFTER ALL HOOKS ---
+
+  // Show initial loading state: inferred if no levels, isLoadingMore is true, and no error
+  // Add check for !state.storyTree as well, maybe the operator isn't ready because of this
+  if ((!state.storyTree || !levels.length) && isLoadingMore && !error) {
     return (
       <div className="loading" role="alert" aria-busy="true">
         <div className="loading-spinner"></div>
@@ -93,47 +142,18 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     return <div className="error" role="alert">Error: {error}</div>;
   }
 
-  // UPDATE: Define Virtuoso's itemContent function
-  const itemContent = useCallback((index: number, level: StoryTreeLevel) => {
-    // level is now provided by Virtuoso from the `data` prop (local levels state)
-    if (!level) {
-      // This case might still happen if the levels array somehow contains null/undefined
-      console.warn(`Virtuoso itemContent: Received null/undefined level data for index ${index}, rendering placeholder.`);
-      return <div style={{ height: '1px' }} />; 
-    }
-
-    // Determine if the row should be hidden based on reply context
-    const shouldHide = !!(replyTarget?.levelNumber) && 
-                       !!(getLevelNumber(level)) && 
-                       replyTarget.levelNumber < getLevelNumber(level)!;
-
-    return (
-      <MemoizedRow
-        levelData={level}
-        shouldHide={shouldHide}
-        index={index}
-      />
-    );
-  // UPDATE dependency array - now depends on replyTarget only, as level comes from Virtuoso
-  }, [replyTarget]);
-
-  // Restore the original loadMore callback
-  const loadMore = useCallback(() => {
-    // Log when the callback is invoked
-    if (isLoadingMore) {
-      return;
-    }
-    // Call loadSingleLevel without startIndex
-    storyTreeOperator.loadSingleLevel()
-  }, [isLoadingMore]); // Correct dependency
-
-  // UPDATE: Define computeItemKey
-  const computeItemKey = useCallback((index: number, level: StoryTreeLevel): React.Key => {
-    const levelNum = getLevelNumber(level);
-    // Try to get rootNodeId safely, fall back to index if level data is incomplete
-    const rootId = level?.midLevel?.rootNodeId ?? level?.lastLevel?.rootNodeId ?? `fallback-${index}`;
-    return `${rootId}-level-${levelNum ?? index}`;
-  }, []); // Empty dependency array as helpers are pure functions
+  // --- RENDER THE LIST --- 
+  // Ensure we only render Virtuoso if we actually have levels to show
+  if (!levels || levels.length === 0) {
+      // Optional: Render a placeholder or different loading state if needed
+      // Or return null if nothing should be shown yet
+      return (
+        <div className="loading" role="alert" aria-busy="true">
+          <div className="loading-spinner"></div>
+          Preparing list...
+        </div>
+      );
+  }
 
   return (
     <div style={{ height: '100%' }} role="list" aria-label="Story tree content">
@@ -146,8 +166,8 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
         overscan={5}
         increaseViewportBy={{ top: 200, bottom: 200 }}
       />
-      {/* Keep loading indicator, check levels.length */}
-      {isLocalLoading && levels.length > 0 && (
+      {/* Loading more indicator: shown if levels exist and isLoadingMore is true */}
+      {levels.length > 0 && isLoadingMore && (
         <div className="loading-more" role="alert" aria-busy="true">
           <div className="loading-spinner"></div>
           Loading more...

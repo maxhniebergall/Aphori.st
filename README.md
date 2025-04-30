@@ -13,6 +13,9 @@ This repo is production ready.
 From the root directory (../Aphorist):
 docker-compose up --build
 
+### Start the firebase emulator for local firebase database for development
+firebase emulators:start --only database
+
 
 ## Main build command for production
 ### Build and run production services

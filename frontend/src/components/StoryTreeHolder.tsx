@@ -42,8 +42,7 @@ const ReplyEditor = () => {
     replyContent,
     setReplyContent,
     replyQuote,
-    setReplyTarget,
-    setReplyQuote 
+    clearReplyState
   } = useReplyContext();
 
   const MAX_REPLY_LENGTH = 1000;
@@ -72,13 +71,10 @@ const ReplyEditor = () => {
     }
   }, [setReplyContent]);
   
-  // Handle reply cancellation
+  // Handle reply cancellation or successful submission
   const handleReplyFinished = useCallback(() => {
-    // used for both cancel and submit
-    setReplyContent('');
-    setReplyTarget(null);
-    setReplyQuote(null);
-  }, [setReplyContent, setReplyTarget, setReplyQuote]);
+    clearReplyState(); // Call context's clear function
+  }, [clearReplyState]);
 
   if (!replyTarget || !replyQuote) {
     return null;
@@ -132,14 +128,28 @@ const ReplyEditor = () => {
               window.alert(`Reply text must be at least ${MIN_REPLY_LENGTH} characters long.`);
               return; // Stop the submission
             }
+
+            // Ensure replyTarget and replyQuote are available before submitting
+            if (!replyTarget || !replyQuote) {
+              console.error("Cannot submit reply without target or quote.");
+              window.alert("An error occurred. Please try restarting the reply.");
+              handleReplyFinished(); // Clear state on error
+              return;
+            }
+
             try {
-              // Use trimmed content for submission
               const result = await StoryTreeOperator.submitReply(trimmedReplyContent, replyTarget.id, replyQuote);
               if (!result.error) {
-                handleReplyFinished();
+                handleReplyFinished(); // Clear state (including localStorage) on success
+              } else {
+                 // Handle specific submission errors if needed, but don't clear state
+                 // User might want to fix the content and retry
+                 window.alert(`Failed to submit reply: ${result.error}`); 
               }
             } catch (error) {
               console.error("Error during reply submission:", error);
+              window.alert("An unexpected error occurred during submission.");
+              // Don't clear state here either, allow retry
             }
           }}
           className="submit-reply-button"
@@ -208,14 +218,22 @@ function StoryTreeSetupAndContent() {
   // Hooks are now called safely inside the providers
   const { state: storyTreeState, dispatch: storyTreeDispatch } = useStoryTree();
   const { state: userState } = useUser();
-  const { clearReplyState } = useReplyContext();
-  const { uuid: rootUUID } = useParams<{ uuid: string }>();
+  const { clearReplyState, setRootUUID } = useReplyContext();
+  const { uuid: rootUUIDFromParams } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
+
+  // Memoize the root UUID from params to prevent unnecessary effect runs
+  const rootUUID = useMemo(() => rootUUIDFromParams || null, [rootUUIDFromParams]);
 
   // Define the reset function required by the operator interface
   const resetReplyState = useCallback(() => {
     clearReplyState();
   }, [clearReplyState]);
+
+  // Effect to update rootUUID in ReplyContext when it changes
+  useEffect(() => {
+    setRootUUID(rootUUID);
+  }, [rootUUID, setRootUUID]);
 
   // Effect to initialize the operator with contexts and setters
   useEffect(() => {

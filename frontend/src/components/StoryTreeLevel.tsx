@@ -8,7 +8,7 @@
  * - Communicate height changes to parent components for proper virtualization
  */
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useContext } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReplyContext } from '../context/ReplyContext';
@@ -27,6 +27,8 @@ import {
   getPagination,
   isMidLevel,
 } from '../utils/levelDataHelpers';
+import { findLatestDraftForParent } from '../utils/replyPersistence';
+import { ReplyContextType } from '../context/ReplyContext';
 
 interface StoryTreeLevelProps {
   levelData: LevelData;
@@ -72,7 +74,9 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     setReplyError,
     isReplyOpen,
     setIsReplyOpen,
-    isReplyActive
+    isReplyActive,
+    setReplyContent,
+    rootUUID
   } = useReplyContextSelective();
   const initialPagination = getPagination(levelData); // Moved calculation before useState
   const [pagination, setPagination] = useState<Pagination>(initialPagination || { hasMore: false, totalCount: 0, nextCursor: undefined }); // Ensure initial value is always valid Pagination
@@ -195,40 +199,81 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     [nodeToRender, levelData, setReplyError] // Dependencies updated
   );
 
-  // Handle reply button click with improved functionality - moved up
+  // Handle reply button click - checks for draft first
   const handleReplyButtonClick = useCallback((): void => {
+    // Add detailed logging here
+    console.log('[handleReplyButtonClick] Triggered for node:', nodeToRender?.id);
+    
     if (!nodeToRender) {
+      console.error('[handleReplyButtonClick] Error: nodeToRender is null/undefined.');
       setReplyError('Cannot create reply: no valid node selected');
       return;
     }
     const isCurrentlyReplyTarget = replyTarget?.id === nodeToRender?.id; // Local check
+    console.log(`[handleReplyButtonClick] isCurrentlyReplyTarget: ${isCurrentlyReplyTarget}, isReplyActive: ${isReplyActive}`);
+
     try {
       if (isReplyActive && isCurrentlyReplyTarget) {
+        // User clicked "Cancel Reply"
+        console.log('[handleReplyButtonClick] Action: Cancelling reply.');
         clearReplyState();
       } else {
-        setReplyTarget(nodeToRender);
-        if (!nodeToRender.textContent || nodeToRender.textContent.trim().length === 0) {
-          throw new Error('Cannot create quote: node has no text content');
+        // User clicked "Reply" or "Select Different Node"
+        console.log('[handleReplyButtonClick] Action: Initiating reply or changing target.');
+        
+        // Check for existing draft for this parent node
+        let loadedDraft = null;
+        console.log(`[handleReplyButtonClick] Checking draft with rootUUID: ${rootUUID}, parentId: ${nodeToRender.id}`);
+        if (rootUUID) { // Ensure rootUUID is available
+          loadedDraft = findLatestDraftForParent(rootUUID, nodeToRender.id);
+          console.log('[handleReplyButtonClick] Result of findLatestDraftForParent:', loadedDraft);
         }
-        const quote: Quote = new Quote(
-          nodeToRender.textContent.trim(),
-          nodeToRender.rootNodeId,
-          { start: 0, end: nodeToRender.textContent.trim().length }
-        );
-        if (Quote.isValid(quote) === false) {
-          throw new Error('Failed to create valid quote for reply');
+
+        if (loadedDraft) {
+          // Draft found - load its state
+          console.log('[handleReplyButtonClick] Draft found. Setting state:', { target: nodeToRender, quote: loadedDraft.quote, content: loadedDraft.content });
+          setReplyTarget(nodeToRender);
+          setReplyQuote(loadedDraft.quote);
+          setReplyContent(loadedDraft.content); // Set content directly
+          setReplyError(null);
+          setIsReplyOpen(true);
+        } else {
+          // No draft found - start fresh reply (select entire node text as quote)
+          console.log('[handleReplyButtonClick] No draft found. Creating default quote.');
+          setReplyTarget(nodeToRender);
+          const nodeText = nodeToRender.textContent?.trim();
+          console.log(`[handleReplyButtonClick] Node text content (trimmed): "${nodeText}"`);
+          if (!nodeText || nodeText.length === 0) {
+            console.error('[handleReplyButtonClick] Error: Cannot create quote: node has no text content.');
+            throw new Error('Cannot create quote: node has no text content');
+          }
+          const defaultQuote: Quote = new Quote(
+            nodeText,
+            nodeToRender.rootNodeId,
+            { start: 0, end: nodeText.length }
+          );
+          console.log('[handleReplyButtonClick] Created defaultQuote:', defaultQuote);
+          if (Quote.isValid(defaultQuote) === false) {
+            console.error('[handleReplyButtonClick] Error: Failed to create valid default quote.', defaultQuote);
+            throw new Error('Failed to create valid default quote for reply');
+          }
+          console.log('[handleReplyButtonClick] Setting state with default quote:', { target: nodeToRender, quote: defaultQuote, content: '' });
+          setReplyQuote(defaultQuote);
+          setReplyContent(''); // Start with empty content for new reply
+          setReplyError(null);
+          setIsReplyOpen(true);
         }
-        setReplyQuote(quote);
-        setReplyError(null);
-        setIsReplyOpen(true);
         window.dispatchEvent(new Event('resize'));
       }
     } catch (error) {
+      console.error('[handleReplyButtonClick] Caught error:', error);
       setReplyError(error instanceof Error ? error.message : 'Failed to handle reply action');
+      // Consider clearing state partially on error? Maybe not.
     }
   }, [
-    clearReplyState, setReplyTarget, setReplyQuote, nodeToRender, setReplyError,
-    isReplyActive, setIsReplyOpen, replyTarget // Added replyTarget dependency
+    clearReplyState, setReplyTarget, setReplyQuote, setReplyContent, // Added setReplyContent
+    nodeToRender, setReplyError, isReplyActive, setIsReplyOpen, replyTarget, 
+    rootUUID // Added rootUUID
   ]);
 
   // Navigation functions with pagination - FIXED
@@ -401,6 +446,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
                 isReplyTargetNode={isReplyTarget}
                 existingSelectableQuotes={memoizedQuoteCounts}
                 currentLevelSelectedQuote={currentLevelSelectedQuote ?? undefined}
+                initialQuoteForReply={isReplyTarget ? replyQuote : null}
               />
             )}
             <MemoizedNodeFooter
@@ -429,10 +475,23 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 // This prevents re-renders when replyContent changes
 // NOTE: This function itself is NOT a hook, but it CALLS hooks (useMemo, useContext).
 // The convention is to name functions starting with 'use' if they call hooks inside.
-function useReplyContextSelective() {
-  const context = useReplyContext(); // useContext is a hook
+function useReplyContextSelective(): Pick<
+  ReplyContextType,
+  | 'setReplyTarget'
+  | 'replyTarget'
+  | 'setReplyQuote'
+  | 'replyQuote'
+  | 'clearReplyState'
+  | 'replyError'
+  | 'setReplyError'
+  | 'isReplyOpen'
+  | 'setIsReplyOpen'
+  | 'isReplyActive'
+  | 'setReplyContent'
+  | 'rootUUID'
+> {
+  const context = useReplyContext(); // Use the base hook
 
-  // useMemo is a hook
   return useMemo(() => ({
     setReplyTarget: context.setReplyTarget,
     replyTarget: context.replyTarget,
@@ -443,15 +502,18 @@ function useReplyContextSelective() {
     setReplyError: context.setReplyError,
     isReplyOpen: context.isReplyOpen,
     setIsReplyOpen: context.setIsReplyOpen,
-    isReplyActive: context.isReplyActive
+    isReplyActive: context.isReplyActive,
+    setReplyContent: context.setReplyContent,
+    rootUUID: context.rootUUID
   }), [
     context.replyTarget,
     context.replyQuote,
     context.clearReplyState,
     context.replyError,
     context.isReplyOpen,
-    context.isReplyActive
-    // Intentionally NOT including replyContent which changes with every keystroke
+    context.isReplyActive,
+    context.setReplyContent,
+    context.rootUUID
   ]);
 }
 
