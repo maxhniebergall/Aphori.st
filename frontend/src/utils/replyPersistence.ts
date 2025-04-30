@@ -104,11 +104,13 @@ export function findLatestDraftForParent(rootUUID: string, parentId: string): St
   const searchPrefix = `${STORAGE_PREFIX}${rootUUID}-${parentId}-`;
 
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(searchPrefix)) {
+    // Iterate safely through localStorage keys
+    const keys = Object.keys(localStorage);
+    for (const key of keys) {
+      if (key.startsWith(searchPrefix)) {
         const draft = loadReplyContent(key); // Use loadReplyContent for parsing and expiration check
         if (draft) {
+          // Check if this draft is more recent than the current latest
           if (!latestDraft || draft.timestamp > latestDraft.timestamp) {
             latestDraft = draft;
           }
