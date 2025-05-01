@@ -30,7 +30,7 @@
 
 import express, { Request, Response, NextFunction, RequestHandler } from "express";
 import { createDatabaseClient } from './db/index.js';
-import newLogger from './logger.js';
+import logger from './logger.js';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
@@ -69,11 +69,11 @@ import { getQuoteKey } from './utils/quoteUtils.js';
 import { createCursor, decodeCursor } from './utils/cursorUtils.js';
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
+import requestLogger from './middleware/requestLogger.js';
 
 dotenv.config();
 
 const PORT = process.env.PORT || 5050;
-const logger = newLogger("server.js");
 
 // Load build hash
 let BUILD_HASH = 'development';
@@ -87,6 +87,9 @@ try {
 
 const app = express();
 app.use(express.json());
+
+// Add the request logging middleware early
+app.use(requestLogger);
 
 // Trust proxy - required for rate limiting behind Cloud Run
 app.set('trust proxy', 1);
