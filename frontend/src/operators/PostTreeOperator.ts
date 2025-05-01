@@ -148,7 +148,7 @@ class PostTreeOperator extends BaseOperator {
    *                          (Handled - Propagation / Depends on Caller/UI).
    */
   private async fetchPostTree(uuid: string): Promise<void> {
-    const url = `${process.env.REACT_APP_API_URL}/api/getPost/${uuid}`;
+    const url = `${process.env.REACT_APP_API_URL}/api/posts/${uuid}`;
     try {
       const compressedPost = await this.retryApiCallSimplified<Compressed<Post>>(
         () => axios.get<CompressedApiResponse<Compressed<Post>>>(url, {
@@ -261,7 +261,7 @@ class PostTreeOperator extends BaseOperator {
     }
     
     // Use static method for encoding
-    const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId[0]}/${Quote.toEncodedString(selectedQuoteParent)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
+    const url = `${process.env.REACT_APP_API_URL}/api/replies/getReplies/${parentId[0]}/${Quote.toEncodedString(selectedQuoteParent)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
     
     try {
       const compressedPaginatedResponse = await this.retryApiCallSimplified<Compressed<CursorPaginatedResponse<Reply>>>(
@@ -335,7 +335,7 @@ class PostTreeOperator extends BaseOperator {
 
   private async fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
     // Use static method for encoding
-    const url = `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId}/${Quote.toEncodedString(selectedQuote)}/${sortingCriteria}?limit=${limit}`;
+    const url = `${process.env.REACT_APP_API_URL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(selectedQuote)}/${sortingCriteria}?limit=${limit}`;
     
     try {
       const compressedPaginatedResponse = await this.retryApiCallSimplified<Compressed<CursorPaginatedResponse<Reply>>>(
@@ -366,7 +366,7 @@ class PostTreeOperator extends BaseOperator {
    * @returns A promise resolving to QuoteCounts.
    */
   private async fetchQuoteCounts(id: string): Promise<QuoteCounts> {
-    const url = `${process.env.REACT_APP_API_URL}/api/getQuoteCounts/${id}`;
+    const url = `${process.env.REACT_APP_API_URL}/api/replies/quoteCounts/${id}`;
     const compressedResponse = await this.retryApiCallSimplified<Compressed<ExistingSelectableQuotesApiFormat>>(
       () => axios.get(url, {
         validateStatus: status => status === 200
@@ -422,7 +422,7 @@ class PostTreeOperator extends BaseOperator {
         'Error loading more items', 
         statusCode, 
         // Use static method for encoding
-        `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId}/${Quote.toEncodedString(quote)}/mostRecent`,
+        `${process.env.REACT_APP_API_URL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(quote)}/mostRecent`,
         error
       );
       throw postTreeErr;
@@ -607,7 +607,7 @@ class PostTreeOperator extends BaseOperator {
       // Get the user ID, which will throw if user is not authenticated
       const authorId = this.getUserId();
 
-      const response = await axios.post<CreateReplyResponse>(`${process.env.REACT_APP_API_URL}/api/createReply`, {
+      const response = await axios.post<CreateReplyResponse>(`${process.env.REACT_APP_API_URL}/api/replies/createReply`, {
         text,
         parentId: [parentId], // Ensure parentId is always an array
         quote,
