@@ -32,9 +32,9 @@ const SignupPage = () => {
         try {
             setIsChecking(true);
             setError('');
-            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/check-user-id/${id}`);
+            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/auth/check-user-id/${id}`);
             if (!response.data.success) {
-                setError(response.data.error);
+                setError(response.data.error || 'User ID is unavailable.');
                 return false;
             }
             return response.data.available;
@@ -88,12 +88,10 @@ const SignupPage = () => {
                     sendMagicLink(email, true);
                 }
 
-                const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/signup`, payload);
+                const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/auth/signup`, payload);
 
-                if (!response.data.success) {
-                    setError(response.data.error);
-                    return;
-                } else {
+                if (response.data.success) {
+                    // Dispatch action to update user state (id, email, token)
                     // Redirect to login page for magic link authentication 
                     navigate(`/verify?token=${verificationToken}`, { 
                         state: { 
@@ -101,6 +99,8 @@ const SignupPage = () => {
                             userId 
                         } 
                     });
+                } else {
+                    setError(response.data.error);
                 }
             }
         } catch (error) {

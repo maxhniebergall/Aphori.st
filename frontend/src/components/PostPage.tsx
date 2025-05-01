@@ -24,7 +24,7 @@ import CharCount from './CharCount';
 
 const MAX_POST_LENGTH = 5000;
 const MIN_POST_LENGTH = 100;
-const LOCAL_STORAGE_KEY = 'postContent';
+const LOCAL_STORAGE_KEY = ' ';
 const EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
 
 interface StoredContent {
@@ -146,7 +146,7 @@ const PostPage: React.FC = (): JSX.Element => {
       };
 
       await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/createPostTree`,
+        `${process.env.REACT_APP_API_URL}/api/posts/createPostTree`,
         { postTree: newPost }
       );
       navigate('/');
