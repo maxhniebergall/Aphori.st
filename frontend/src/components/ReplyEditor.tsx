@@ -64,11 +64,17 @@ const ReplyEditor = () => {
           {...editorOptions}
         />
       </div>
-      <CharCount 
-        currentLength={replyContent.length}
-        maxLength={MAX_REPLY_LENGTH}
-        minLength={MIN_REPLY_LENGTH}
-      />
+      <div className="char-count-container">
+        {replyContent === "Yes!" ? (
+          <span>"Yes!" is always allowed</span>
+        ) : (
+          <CharCount 
+            currentLength={replyContent.length}
+            maxLength={MAX_REPLY_LENGTH}
+            minLength={MIN_REPLY_LENGTH}
+          />  
+        )}
+      </div>
       <div className="reply-actions" role="group" aria-label="Reply actions">
         <button 
           onClick={async () => {

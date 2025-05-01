@@ -876,6 +876,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         // Validate reply text length using trimmed text
         const MAX_REPLY_LENGTH = 1000;
         const MIN_REPLY_LENGTH = 50;
+        const IGNORE_MIN_REPLY_LENGTH = ["Yes!"]
         if (trimmedText.length > MAX_REPLY_LENGTH) {
             res.status(400).json({
                 success: false,
@@ -883,7 +884,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
             });
             return;
         }
-        if (trimmedText.length < MIN_REPLY_LENGTH) {
+        if (!IGNORE_MIN_REPLY_LENGTH.includes(trimmedText) && trimmedText.length < MIN_REPLY_LENGTH) {
             res.status(400).json({
                 success: false,
                 error: `Reply text must be at least ${MIN_REPLY_LENGTH} characters long.`
