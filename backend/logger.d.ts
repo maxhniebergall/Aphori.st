@@ -1,3 +1,4 @@
-import { Logger } from 'winston';
+import { Logger as PinoLogger } from 'pino';
 
-export default function newLogger(module: string): Logger; 
+declare const logger: PinoLogger;
+export default logger; 
