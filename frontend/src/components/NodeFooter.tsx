@@ -79,6 +79,39 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
   return (
     <div className="story-tree-node-footer">
       <div className="footer-left">
+          <svg version="1.1" id="Icons" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 0 32 32" xmlSpace="preserve" fill="none" width="77" height="40" stroke="currentColor">
+            <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
+            <g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g>
+            <g id="SVGRepo_iconCarrier">                 
+                <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
+                <g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g>
+                <g id="SVGRepo_iconCarrier"> 
+                  <path 
+                    className="st0" 
+                    d="M16.8,9.3l9.4,9.3c1,1,1,2.6,0,3.6l0,0c-1,1-2.6,1-3.6,0l-5.8-5.7c-0.5-0.5-1.2-0.5-1.7,0l-5.8,5.7 c-1,1-2.6,1-3.6,0l0,0c-1-1-1-2.6,0-3.6l9.4-9.3C15.6,8.9,16.4,8.9,16.8,9.3z"
+                    fill="#90EE90"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeMiterlimit="10"
+                    transform="translate(0, -3)"
+                  >
+                  </path> 
+                </g>
+              <text
+                x="8"
+                y="8"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                  fill="#90EE90"
+                  fontSize="12"
+                  transform="translate(8.5, 20)"
+                >
+                  Yes!
+                </text>
+            </g>
+          </svg>
         <button 
           className={getReplyButtonClass()} 
           onClick={() => { 
