@@ -31,6 +31,7 @@ import { ReplyProvider, useReplyContext } from '../context/ReplyContext';
 import StoryTreeOperator from '../operators/StoryTreeOperator';
 import React from 'react';
 import { useUser } from '../context/UserContext';
+import CharCount from './CharCount';
 
 // Memoized content component to prevent unnecessary re-renders
 const MemoizedVirtualizedStoryList = React.memo(VirtualizedStoryList);
@@ -93,16 +94,11 @@ const ReplyEditor = () => {
           {...editorOptions}
         />
       </div>
-      <div 
-        style={{
-          textAlign: 'left',
-          fontSize: '0.8em',
-          marginTop: '4px',
-          color: replyContent.length < MIN_REPLY_LENGTH || replyContent.length > MAX_REPLY_LENGTH ? 'red' : 'inherit'
-        }}
-      >
-        {replyContent.length} / {MIN_REPLY_LENGTH} (min) - {MAX_REPLY_LENGTH} (max)
-      </div>
+      <CharCount 
+        currentLength={replyContent.length}
+        maxLength={MAX_REPLY_LENGTH}
+        minLength={MIN_REPLY_LENGTH}
+      />
       <div className="reply-actions" role="group" aria-label="Reply actions">
         <button 
           onClick={async () => {

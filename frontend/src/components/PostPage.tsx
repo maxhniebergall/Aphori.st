@@ -20,6 +20,7 @@ import Header from './Header';
 import { useUser } from '../context/UserContext';
 import { Link } from 'react-router-dom';
 import { PostCreationRequest } from '../types/types';
+import CharCount from './CharCount';
 
 const MAX_POST_LENGTH = 5000;
 const MIN_POST_LENGTH = 100;
@@ -38,8 +39,6 @@ const PostPage: React.FC = (): JSX.Element => {
   const navigate = useNavigate();
   const { state } = useUser();
   const loggedOutMessage: string = 'Please sign in to create a post';
-  const lengthExceededError: string = `Post content cannot exceed ${MAX_POST_LENGTH} characters.`;
-  const lengthInsufficientError: string = `Post content must be at least ${MIN_POST_LENGTH} characters without leading and trailing whitespace.`;
   const [isLengthExceeded, setIsLengthExceeded] = useState<boolean>(false);
   const [isLengthInsufficient, setIsLengthInsufficient] = useState<boolean>(false);
 
@@ -57,25 +56,17 @@ const PostPage: React.FC = (): JSX.Element => {
     }
 
     const length = newContent.length;
-    let currentError = '';
     let exceeded = false;
     let insufficient = false;
 
     if (length > MAX_POST_LENGTH) {
-      currentError = lengthExceededError;
       exceeded = true;
     } else if (length > 0 && length < MIN_POST_LENGTH) {
-      currentError = lengthInsufficientError;
       insufficient = true;
     }
 
     setIsLengthExceeded(exceeded);
     setIsLengthInsufficient(insufficient);
-
-    // Update error only if it's a length-related error or clearing one
-    if (currentError || error === lengthExceededError || error === lengthInsufficientError) {
-        setError(currentError);
-    }
   };
 
   useEffect(() => {
@@ -133,24 +124,19 @@ const PostPage: React.FC = (): JSX.Element => {
 
     // Check length before attempting submission using trimmed content
     if (trimmedContent.length > MAX_POST_LENGTH) {
-      setError(lengthExceededError);
       setIsLengthExceeded(true); // Keep state updated for UI feedback
-      window.alert(lengthExceededError);
+      window.alert(`Post content cannot exceed ${MAX_POST_LENGTH} characters.`); // Keep alert
       return;
     }
     if (trimmedContent.length < MIN_POST_LENGTH) {
-      setError(lengthInsufficientError);
       setIsLengthInsufficient(true); // Keep state updated for UI feedback
-      window.alert(lengthInsufficientError);
+      window.alert(`Post content must be at least ${MIN_POST_LENGTH} characters without leading and trailing whitespace.`); // Keep alert
       return;
     }
 
     // Clear length errors if checks pass
     setIsLengthExceeded(false);
     setIsLengthInsufficient(false);
-    if (error === lengthExceededError || error === lengthInsufficientError) {
-        setError('');
-    }
 
     setIsSubmitting(true);
     setError(''); // Clear previous errors before new attempt
@@ -209,9 +195,11 @@ const PostPage: React.FC = (): JSX.Element => {
                 }}
               />
             </div>
-            <div className="char-count" style={{ color: isLengthExceeded || isLengthInsufficient? 'red' : 'inherit' }}>
-              {content.length}/{MAX_POST_LENGTH}
-            </div>
+            <CharCount 
+              currentLength={content.length}
+              maxLength={MAX_POST_LENGTH}
+              minLength={MIN_POST_LENGTH}
+            />
           </div>
 
           <button 
