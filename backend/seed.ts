@@ -11,15 +11,14 @@ Requirements:
 import { createClient, RedisClientType } from 'redis';
 import { uuidv7obj } from "uuidv7";
 import { Uuid25 } from "uuid25";
-import newLogger from './logger.js';
+import logger from './logger.js';
 import { createDatabaseClient } from './db/index.js';
 import { DatabaseClientInterface } from './db/DatabaseClientInterface.js';
 import { FeedItem, Post, Reply, Quote } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { randomInt } from 'crypto';
 
-const logger = newLogger("seed.ts");
-
+// const logger = newLogger("seed.ts"); // Removed incorrect instantiation
 
 interface StoryContent {
     content: string;
@@ -80,6 +79,7 @@ async function seedDevStories(dbClient: DatabaseClientInterface): Promise<void> 
                 content: story.content,
                 authorId: 'seed_user',
                 createdAt: new Date().toISOString(),
+                parentId: null,
             };
 
             // Store in Redis, ensuring consistency with create/get endpoints

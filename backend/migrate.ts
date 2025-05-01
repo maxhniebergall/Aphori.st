@@ -33,14 +33,13 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 import { createDatabaseClient } from './db/index.js';
-import newLogger from './logger.js';
+import logger from './logger.js';
 import { Post, Reply, Quote } from './types/index.js';
 import { DatabaseClient } from './types/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RedisClient } from './db/RedisClient.js';
 
-const logger = newLogger('migrate.ts');
 const DLQ_FILE = 'migration_dlq.json';
 
 // Create Redis client directly for feed item operations
@@ -314,21 +313,16 @@ async function migratePostTrees(db: DatabaseClient): Promise<void> {
                 content = `# ${oldNode.metadata.title}\n\n${content}`;
             }
             
-            // Create unified node structure for a story
-            const unifiedNode: UnifiedNode = {
+            // Create structure matching the Post type
+            const postNode: Post = {
                 id: oldNode.id,
-                type: 'story',
                 content: content,
-                metadata: {
-                    // Convert parentId from string|null to string[]|null
-                    parentId: oldNode.parentId ? [oldNode.parentId] : null,
-                    author: oldNode.metadata.author || '',
-                    createdAt: oldNode.metadata.createdAt || new Date().toISOString(),
-                    quote: oldNode.metadata.quote || undefined
-                }
+                parentId: oldNode.parentId,
+                authorId: oldNode.metadata.author || '',
+                createdAt: oldNode.metadata.createdAt || new Date().toISOString(),
             };
             
-            const newDataStr = JSON.stringify(unifiedNode);
+            const newDataStr = JSON.stringify(postNode);
             await db.hSet(storyId, 'postTree', newDataStr);
             logger.info(`Migrated story tree ${storyId}`);
         } catch(err) {
@@ -369,25 +363,29 @@ async function migrateReplies(db: DatabaseClient): Promise<void> {
                 continue;
             }
             // If already migrated (i.e. field 'content' exists), skip
-            if ((oldReply as any).content) {
-                logger.info(`Reply ${replyId} already migrated.`);
+            if ((oldReply as any).text && (oldReply as any).authorId) {
+                logger.info(`Reply ${replyId} seems already migrated (has text/authorId). Skipping.`);
                 continue;
             }
             
-            // Create unified node structure for a reply
-            const unifiedNode: UnifiedNode = {
+            // Validate required quote field for new Reply format
+            if (!oldReply.quote) {
+                logger.error(`Reply ${replyId} is missing required quote data. Skipping migration.`);
+                // TODO: Add to DLQ if necessary
+                continue;
+            }
+            
+            // Create structure matching the Reply type
+            const replyNode: Reply = {
                 id: oldReply.id,
-                type: 'reply',
-                content: oldReply.text,
-                metadata: {
-                    parentId: oldReply.parentId,
-                    author: oldReply.metadata.author,
-                    createdAt: oldReply.metadata.createdAt || new Date().toISOString(),
-                    quote: oldReply.quote || undefined
-                }
+                text: oldReply.text,
+                parentId: oldReply.parentId,
+                authorId: oldReply.metadata.author,
+                createdAt: oldReply.metadata.createdAt || new Date().toISOString(),
+                quote: oldReply.quote
             };
             
-            const newDataStr = JSON.stringify(unifiedNode);
+            const newDataStr = JSON.stringify(replyNode);
             await db.hSet(replyId, 'reply', newDataStr);
             logger.info(`Migrated reply ${replyId}`);
         } catch(err) {
