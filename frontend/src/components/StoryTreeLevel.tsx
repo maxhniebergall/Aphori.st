@@ -481,6 +481,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
               />
             )}
             <MemoizedNodeFooter
+              nodeData={nodeToRender}
               currentIndex={nodeToRender ? siblings.findIndex(sibling => sibling.id === nodeToRender.id) : -1} 
               totalSiblings={siblings.length}
               onReplyClick={handleReplyButtonClick}
