@@ -54,15 +54,25 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         return this.db.set(key, compressed);
     }
 
+    /**
+     * Retrieves a value from a hash field, handling potential decompression.
+     * @param key The hash key.
+     * @param field The field within the hash.
+     * @param options Options, e.g., { returnCompressed: true } to skip decompression.
+     * @returns The potentially decompressed value, or null if not found.
+     * @throws {Error} If key/field validation fails, or if decompression or the underlying database call fails.
+     *                 (Handled - Propagation: Errors are caught and re-thrown).
+     */
     async hGet(key: string, field: string | string[], options: CompressionOptions = { returnCompressed: false }): Promise<any> {
         logger.info(`hGet called with key: ${key}, field: ${field}`);
         
         // Validation
         if (!key || typeof key !== 'string') {
+            // Handled - Propagation: Validation error, caught by local try/catch and re-thrown.
             throw new Error('Key must be a non-empty string');
         }
-
-        if (!field) {
+        if (!field) { // Check if field exists and is non-empty
+            // Handled - Propagation: Validation error, caught by local try/catch and re-thrown.
             throw new Error('Field is required');
         }
 
@@ -93,10 +103,20 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             return result;
         } catch (err) {
             logger.error('Error in hGet:', err);
+            // Handled - Propagation: Re-throws error from underlying DB call or decompression.
             throw err;
         }
     }
 
+    /**
+     * Sets a value in a hash field, handling compression.
+     * @param key The hash key.
+     * @param field The field within the hash.
+     * @param value The value to set (will be compressed).
+     * @returns Result from the underlying database client (e.g., 1 for Redis).
+     * @throws {Error} If key/field/value validation fails, compression fails, or the underlying database call fails.
+     *                 (Handled - Propagation: Errors are caught and re-thrown).
+     */
     async hSet(key: string, field: string, value: any): Promise<any> {
         logger.info(`hSet called with:`, {
             key: key,
@@ -123,12 +143,14 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             // Additional validation for compressed data
             if (typeof compressed !== 'string') {
                 logger.error('Compression did not return a string:', typeof compressed);
+                // Handled - Propagation: Validation error, caught by local try/catch and re-thrown.
                 throw new Error('Compressed value must be a string');
             }
 
             return this.db.hSet(key, field, compressed);
         } catch (err) {
             logger.error('Error in hSet:', err);
+            // Handled - Propagation: Re-throws error from validation, compression, or underlying DB call.
             throw err;
         }
     }
@@ -164,6 +186,7 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             return decompressedData;
         } catch (err) {
             logger.error('Error in hGetAll:', err);
+            // Handled - Propagation: Re-throws error from underlying DB call or decompression.
             throw err;
         }
     }
@@ -201,6 +224,15 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         return this.db.sMembers(key);
     }
 
+    /**
+     * Adds a member with a score to a sorted set, handling compression of the member value.
+     * @param key The sorted set key.
+     * @param score The score (must be a number).
+     * @param value The member value (will be compressed).
+     * @returns Result from the underlying database client (e.g., 1 if added, 0 if updated for Redis).
+     * @throws {Error} If key/score/value validation fails, compression fails, or the underlying database call fails.
+     *                 (Handled - Propagation: Errors are caught and re-thrown).
+     */
     async zAdd(key: string, score: number, value: any): Promise<any> {
         logger.info(`CompressedDatabaseClient zAdd called with:`, {
             key: key,
@@ -229,6 +261,7 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             // Additional validation for compressed data
             if (typeof compressed !== 'string') {
                 logger.error('Compression did not return a string:', typeof compressed);
+                // Handled - Propagation: Validation error, caught by local try/catch and re-thrown.
                 throw new Error('Compressed value must be a string');
             }
 
@@ -237,6 +270,7 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             return result;
         } catch (err) {
             logger.error('Error in zAdd:', err);
+            // Handled - Propagation: Re-throws error from validation, compression, or underlying DB call.
             throw err;
         }
     }
@@ -286,6 +320,16 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         return this.db.hIncrBy(key, field, increment);
     }
 
+    /**
+     * Retrieves a range of members from a sorted set by score, in descending order, handling decompression.
+     * @param key The sorted set key.
+     * @param max The maximum score.
+     * @param min The minimum score.
+     * @param options Optional parameters like { limit }.
+     * @returns An array of decompressed members.
+     * @throws {Error} If decompression or the underlying database call fails.
+     *                 (Handled - Propagation: Errors are caught and re-thrown).
+     */
     async zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<T[]> {
         try {
             const items = await this.db.zRevRangeByScore(key, max, min, options);
@@ -309,10 +353,20 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             return decompressedItems.filter((item): item is NonNullable<typeof item> => item !== null) as T[];
         } catch (err) {
             logger.error('Error in zRevRangeByScore:', err);
+            // Handled - Propagation: Re-throws error from underlying DB call or decompression.
             throw err;
         }
     }
 
+    /**
+     * Scans a sorted set, handling decompression of member values.
+     * @param key The sorted set key.
+     * @param cursor The cursor from the previous scan (or '0' to start).
+     * @param options Optional MATCH pattern or COUNT.
+     * @returns An object containing the next cursor and an array of decompressed items ({ score, value }).
+     * @throws {Error} If decompression or the underlying database call fails (except for 'ERR invalid cursor').
+     *                 (Handled - Propagation: Errors are caught and re-thrown).
+     */
     async zscan(key: string, cursor: string = '0', options?: { match?: string; count?: number }): Promise<{ cursor: string | null; items: RedisSortedSetItem<string>[] }> {
         logger.info(`CompressedDatabaseClient zscan called with:`, {
             key,
@@ -342,6 +396,7 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
                 return { cursor: null, items: [] };
             }
             logger.error('Error in zscan:', err);
+            // Handled - Propagation: Re-throws error from underlying DB call or decompression.
             throw err;
         }
     }

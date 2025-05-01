@@ -8,6 +8,14 @@ import { DatabaseCompression } from './DatabaseCompression.js';
 // Singleton instance holder
 let instance = null;
 
+/**
+ * Creates and returns a singleton instance of the database client (either Redis or Firebase),
+ * wrapped with a compression layer.
+ * Reads environment variables (DB_TYPE, FIREBASE_*, REDIS_*) to configure the client.
+ * @returns {DatabaseClientInterface} The singleton database client instance.
+ * @throws {Error} If required environment variables (e.g., FIREBASE_CREDENTIAL in production) are missing or invalid.
+ *                 (Handled - By Design: Crashes app on start).
+ */
 export function createDatabaseClient() {
     // Return existing instance if it exists
     if (instance) {
@@ -38,6 +46,7 @@ export function createDatabaseClient() {
             // Production connection logic (requires credentials)
             console.log('Configuring production Firebase...');
             if (!process.env.FIREBASE_CREDENTIAL) {
+                // Handled - By Design: Crashes app on start if essential Firebase config is missing.
                 throw new Error('FIREBASE_CREDENTIAL environment variable is not set for production mode.');
             }
             try {
@@ -47,6 +56,7 @@ export function createDatabaseClient() {
                  console.log(`Using production Firebase Database at: ${firebaseConfig.databaseURL}`);
             } catch (e) {
                  console.error("Failed to parse FIREBASE_CREDENTIAL:", e);
+                 // Handled - By Design: Crashes app on start if essential Firebase config is invalid.
                  throw new Error('FIREBASE_CREDENTIAL environment variable contains invalid JSON.');
             }
         }

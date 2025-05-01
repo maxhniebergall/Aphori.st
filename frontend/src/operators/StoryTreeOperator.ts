@@ -35,7 +35,7 @@ import StoryTreeError from '../errors/StoryTreeError';
 import { Compressed } from '../types/compressed';
 import compression from '../utils/compression';
 import { 
-  createMidLevel, 
+  createMidLevel,
   getSelectedQuoteInParent,
   getSelectedQuoteInThisLevel,
   getParentId,
@@ -78,6 +78,11 @@ class StoryTreeOperator extends BaseOperator {
   }
 
   // Method to inject the store (state and dispatch) from a React functional component
+  /**
+   * Injects the Redux-like store (state and dispatch) into the operator.
+   * Must be called before methods requiring store access.
+   * @param store Object containing the current state and dispatch function.
+   */
   public setStore(store: { state: StoryTreeState, dispatch: React.Dispatch<Action> }): void {
     this.store = store;
   }
@@ -92,15 +97,31 @@ class StoryTreeOperator extends BaseOperator {
     this.replyContextSetters = setters;
   }
 
+  /**
+   * Retrieves the current story tree state from the injected store.
+   * @returns The current StoryTreeState.
+   * @throws {StoryTreeError} If the store has not been initialized via setStore.
+   *                          (Handled - Depends on Caller/UI: Initialization error).
+   */
   private getState() {
     if (!this.store) {
+      // Handled - Depends on Caller/UI: Initialization error. Indicates programming error.
+      // Calling component should ensure initialization or handle via Error Boundary.
       throw new StoryTreeError("Store not initialized in StoryTreeOperator. Call setStore() with the appropriate context.");
     }
     return this.store.state;
   }
 
+  /**
+   * Retrieves the current user's ID from the injected user context.
+   * @returns The user ID string.
+   * @throws {StoryTreeError} If the user context or user ID is not available (user not authenticated).
+   *                          (Handled - Depends on Caller/UI: Authentication error).
+   */
   private getUserId(): string {
-    if (!this.userContext?.state.user) {
+    if (!this.userContext?.state?.user?.id) {
+      // Handled - Depends on Caller/UI: Authentication error.
+      // Calling component should handle (e.g., prompt login) or use Error Boundary.
       throw new StoryTreeError("User not authenticated. Please log in to submit replies.");
     }
     return this.userContext.state.user.id;
@@ -122,7 +143,9 @@ class StoryTreeOperator extends BaseOperator {
    *
    * @param uuid - The unique identifier for the root node of the story tree.
    * @returns A promise that resolves to the fully constructed StoryTree object.
-   * @throws {StoryTreeError} Throws an error if fetching or processing the story tree data fails.
+   * @throws {StoryTreeError} Throws an error if fetching or processing the story tree data fails,
+   *                          or if decompression fails.
+   *                          (Handled - Propagation / Depends on Caller/UI).
    */
   private async fetchStoryTree(uuid: string): Promise<void> {
     const url = `${process.env.REACT_APP_API_URL}/api/getPost/${uuid}`;
@@ -135,6 +158,8 @@ class StoryTreeOperator extends BaseOperator {
 
       const decompressedPost = await compression.decompress<Post>(compressedPost);
       if (!decompressedPost) {
+        // Handled - Depends on Caller/UI: Data corruption/API issue.
+        // Calling component should handle (e.g., show error message) or use Error Boundary.
         throw new StoryTreeError('Failed to decompress post');
       }
 
@@ -365,11 +390,13 @@ class StoryTreeOperator extends BaseOperator {
    * @param stopIndex - The stopping index for pagination.
    * @requires that the level already exists in the state
    * // TODO we need to introduce the cache here so that requesting existing items doesn't trigger a new fetch (for those items)
+   * @throws {StoryTreeError} If the provided quote is invalid or if fetching/dispatching replies fails.
+   *                          (Handled - Depends on Caller/UI).
    */
   public async loadMoreItems(parentId: string, levelNumber: number, quote: Quote, startIndex: number, stopIndex: number): Promise<void> {
-
-    // Validate the quote simply
     if (!quote || !Quote.isValid(quote)) {
+      // Handled - Depends on Caller: Input validation error.
+      // Calling component should ensure valid quote or handle via Error Boundary.
       console.error('Invalid quote provided to loadMoreItems:', quote);
       throw new StoryTreeError('Invalid quote provided to loadMoreItems');
     }
@@ -559,6 +586,17 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
+  /**
+   * Submits a new reply to the backend.
+   * On success, triggers a background refresh of the relevant story tree level.
+   * @param text The content of the reply.
+   * @param parentId The ID of the node being replied to.
+   * @param quote The specific quote within the parent node being replied to.
+   * @returns A promise resolving to an object with either `replyId` on success or `error` on failure.
+   * @throws {StoryTreeError} If the user is not authenticated (checked by getUserId).
+   *                          (Handled - Depends on Caller/UI).
+   * Note: API call errors are caught and returned in the error property, not thrown.
+   */
   public async submitReply(text: string, parentId: string, quote: Quote): Promise<{ replyId?: string; error?: string }> {
     // Ensure reply context setters are available before proceeding
     if (!this.replyContextSetters) {
@@ -578,41 +616,33 @@ class StoryTreeOperator extends BaseOperator {
         }
       });
 
-      if (!response.data.success || !response.data.data?.id) {
-        return { error: response.data.error || 'Unknown error occurred during reply submission' };
-      }
+    if (!response.data.success || !response.data.data?.id) {
+      return { error: response.data.error || 'Unknown error occurred during reply submission' };
+    }
 
-      const newReplyId = response.data.data.id;
-      console.log(`[submitReply] Reply successfully submitted with ID: ${newReplyId}`);
+    const newReplyId = response.data.data.id;
+    console.log(`[submitReply] Reply successfully submitted with ID: ${newReplyId}`);
 
-      // --- Refetch Logic ---
-      const state = this.getState();
-      if (state.storyTree && state.storyTree.levels) {
-        // Find the index of the parent level
-        const parentLevelIndex = state.storyTree.levels.findIndex(level =>
-          isMidLevel(level) && level.midLevel?.selectedNode.id === parentId
-        );
+    // --- Refetch Logic ---
+    const state = this.getState();
+    if (state.storyTree && state.storyTree.levels) {
+      // Find the index of the parent level
+      const parentLevelIndex = state.storyTree.levels.findIndex(level =>
+        isMidLevel(level) && level.midLevel?.selectedNode.id === parentId
+      );
 
-        if (parentLevelIndex !== -1) {
-          const targetLevelIndex = parentLevelIndex + 1;
-          console.log(`[submitReply] Triggering refresh for level ${targetLevelIndex} after submitting reply to parent ${parentId}`);
-          // --- MODIFICATION: Await refreshLevel for debugging ---
-          await this.refreshLevel(targetLevelIndex, parentId, quote);
-          /* Original code:
-          this.refreshLevel(targetLevelIndex, parentId, quote).catch(err => {
-             console.error(`[submitReply] Error during background level refresh:`, err);
-             // Optionally dispatch an error notification here
-          });
-          */
-          // --- END MODIFICATION ---
-        } else {
-          console.error(`[submitReply] Could not find parent level index for parentId: ${parentId}. Cannot refresh level.`);
-          // Handle this case - maybe dispatch an error or warning?
-        }
+      if (parentLevelIndex !== -1) {
+        const targetLevelIndex = parentLevelIndex + 1;
+        console.log(`[submitReply] Triggering refresh for level ${targetLevelIndex} after submitting reply to parent ${parentId}`);
+        await this.refreshLevel(targetLevelIndex, parentId, quote);
       } else {
-         console.warn(`[submitReply] Story tree or levels not found in state after reply submission. Cannot refresh level.`);
+        console.error(`[submitReply] Could not find parent level index for parentId: ${parentId}. Cannot refresh level.`);
+        // Handle this case - maybe dispatch an error or warning?
       }
-      // --- End Refetch Logic ---
+    } else {
+       console.warn(`[submitReply] Story tree or levels not found in state after reply submission. Cannot refresh level.`);
+    }
+    // --- End Refetch Logic ---
 
       // Reset Reply UI State BEFORE returning
       this.replyContextSetters.resetReplyState();
@@ -710,17 +740,24 @@ class StoryTreeOperator extends BaseOperator {
       }
   }
 
-  // Renamed from loadSingleLevel - Now accepts the level number from the queue processor
+  /**
+   * Executes the logic to load data for a specific level number.
+   * This is called internally by the queue processor.
+   * @param levelNumber The level number to load.
+   * @throws {Error} If the store is not available when needed.
+   *                 (Handled - Internally: Caught by processLoadQueue).
+   * @throws {StoryTreeError} If validation fails (e.g., storyTree not initialized, invalid level number,
+   *                          parent level not found, selected node in parent not found) or if fetching data fails.
+   *                          (Handled - Propagation/Depends on Caller/UI: Thrown errors caught by processLoadQueue or propagate).
+   */
   private executeLoadLevel = async (levelNumber: number): Promise<void> => {
-    // NO LONGER NEEDED: Internal locking via this.isLoadingMore / this.loadingLevelNumber check at start
-    // NO LONGER NEEDED: setTimeout wrapper for releasing lock
 
     // We still need the store dispatch reference
     const dispatch = this.store?.dispatch;
     if (!dispatch) {
       console.error("[executeLoadLevel] Store or dispatch not available.");
-      // Cannot proceed and cannot set error state - this is bad.
-      // The queue's finally block will run, but this level failed silently.
+      // Handled - Internally: This specific error is caught by the processLoadQueue method's
+      // try/catch block, which logs and dispatches a SET_ERROR action.
       throw new Error("Store not available in executeLoadLevel"); // Throw to be caught by processLoadQueue
     }
 
@@ -765,6 +802,8 @@ class StoryTreeOperator extends BaseOperator {
       // Ensure parentLevel is not undefined before checking isLastLevel
       if (typeof parentLevel === 'undefined') {
          console.error(`[executeLoadLevel] Parent level ${levelNumber - 1} is undefined when trying to load level ${levelNumber}. State length: ${state.storyTree?.levels?.length}`);
+         // Handled - Depends on Caller/UI: Logic error/unexpected state.
+         // Calling component should handle via Error Boundary.
          throw new StoryTreeError(`Parent level ${levelNumber - 1} is undefined.`);
       }
 
@@ -982,18 +1021,35 @@ class StoryTreeOperator extends BaseOperator {
 
   public dispatchNewLevel(level: StoryTreeLevel): void {
     if (!this.store || !this.store.dispatch) {
+      // Handled - Depends on Caller/UI: Initialization error.
+      // Calling component should ensure initialization or handle via Error Boundary.
       throw new StoryTreeError('Dispatch not initialized in StoryTreeOperator.');
     }
     this.store.dispatch({ type: ACTIONS.INCLUDE_NODES_IN_LEVELS, payload: [level] });
   }
 
+  /**
+   * Sets the selected node for a given level and triggers updates for subsequent levels if necessary.
+   * @param node The StoryTreeNode to select.
+   * @throws {StoryTreeError} If the store/dispatch/state is not initialized.
+   *                          (Handled - Depends on Caller/UI: Initialization error).
+   * @throws {StoryTreeError} If fetching/processing data for the next level fails.
+   *                          (Handled: Catches error, dispatches SET_ERROR, marks next level as LastLevel).
+   */
   public async setSelectedNode(node: StoryTreeNode): Promise<void> {
-    if (!this.store || !this.store.dispatch || !this.store.state || !this.store.state.storyTree) {
-        throw new StoryTreeError('Store, state, or story tree not initialized for setSelectedNode');
+    const dispatch = this.store?.dispatch;
+    if (!dispatch) {
+      // Handled - Depends on Caller/UI: Initialization error.
+      // Calling component should ensure initialization or handle via Error Boundary.
+      throw new StoryTreeError('Dispatch not initialized in StoryTreeOperator.');
+    }
+    const state = this.getState();
+    if (!state || !state.storyTree) {
+      // Handled - Depends on Caller/UI: Initialization error.
+      // Calling component should ensure initialization or handle via Error Boundary.
+      throw new StoryTreeError('Store, state, or story tree not initialized for setSelectedNode');
     }
 
-    const state = this.store.state;
-    const dispatch = this.store.dispatch;
     const levelNumber = node.levelNumber;
     const targetLevel = state.storyTree?.levels[levelNumber];
     const nextLevelNumber = levelNumber + 1;
@@ -1160,29 +1216,46 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
-  // Modified to fetch replies for the new quote and update subsequent levels
+  /**
+   * Sets the selected quote for a specific node within a given level.
+   * This updates the current level's state and fetches/replaces the data for the next level based on the new quote.
+   * @param quote The Quote to select.
+   * @param node The node within the level where the quote is selected.
+   * @param level The current StoryTreeLevel object.
+   * @throws {StoryTreeError} If store/dispatch is not initialized, input quote/node/level is invalid,
+   *                          or if fetching/processing data for the next level fails.
+   *                          (Handled - Depends on Caller/UI).
+   */
   public async setSelectedQuoteForNodeInLevel(quote: Quote, node: StoryTreeNode, level: StoryTreeLevel): Promise<void> {
-    if (!this.store || !this.store.dispatch || !this.store.state.storyTree) {
+    const dispatch = this.store?.dispatch;
+    const storyTree = this.store?.state.storyTree;
+    if (!this.store) {
+      // This could theoretically happen in production, but should be very rare and fixed by user page refresh, so we'll just log a warning.
+      console.warn('[setSelectedQuoteForNodeInLevel] Store not initialized');
+      return;
+    }
+    if (!dispatch || !storyTree) {
+      // Handled - Depends on Caller/UI: Initialization error.
+      // Calling component should ensure initialization or handle via Error Boundary.
       throw new StoryTreeError('Store or story tree not initialized for setSelectedQuoteForNodeInLevel');
     }
-
-    // Validate the quote
     if (!quote || !Quote.isValid(quote)) {
+      // Handled - Depends on Caller: Input validation error.
+      // Calling component should ensure valid quote or handle via Error Boundary.
       throw new StoryTreeError('Invalid quote provided');
     }
-
-    // Validate the node
-    if (!node || !node.id) {
+    if (!node) {
+      // Handled - Depends on Caller: Input validation error.
+      // Calling component should ensure valid node or handle via Error Boundary.
       throw new StoryTreeError('Invalid node provided');
     }
-
-    // Validate the level is a MidLevel
-    if (!level || !isMidLevel(level)) {
+    if (!isMidLevel(level)) {
+      // Handled - Depends on Caller: Input/Logic validation error.
+      // Calling component should ensure correct level type or handle via Error Boundary.
       throw new StoryTreeError('Invalid level provided: must be a MidLevel');
     }
 
     console.log('[StoryTreeOperator] setSelectedQuoteForNodeInLevel called with quote:', quote, 'node:', node, 'level:', level);
-    console.log('[StoryTreeOperator] State before update:', this.store.state);
 
     // 1. Update the selected quote for the current level (N)
     const levelNumber = level.midLevel!.levelNumber; // Get level number (safe due to isMidLevel check)
@@ -1308,22 +1381,6 @@ class StoryTreeOperator extends BaseOperator {
       });
     }
   }
-
-  private fullQuoteFromText(parentText: string, parentId: string): Quote {
-    if (!parentText || !parentId) {
-      throw new StoryTreeError('Invalid parent text or parent ID');
-    }
-    if (parentText.length === 0) {
-      throw new StoryTreeError('Parent text is empty, but must not be');
-    }
-    if (parentId.length === 0) {
-      throw new StoryTreeError('Parent ID is empty, but must not be');
-    }
-    return new Quote(parentText, parentId, {
-      start: 0,
-      end: parentText.length
-    });
-  } 
 
   /**
    * Handles the logic for navigating to the next sibling node within a given level.
