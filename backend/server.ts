@@ -745,6 +745,9 @@ app.post('/api/createPostTree', authenticateToken, ((async (req: AuthenticatedRe
         await db.hSet(uuid, 'postTree', JSON.stringify(formattedPostTree));
         await db.lPush('allPostTreeIds', uuid);
 
+        // Add post ID to user's set of posts
+        await db.sAdd(`user:${req.user.id}:posts`, uuid);
+
         // Add to feed items (only root-level posts go to feed)
         const feedItem = {
             id: uuid,
@@ -920,6 +923,9 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
 
         // 3. Increment quote count using the new transactional method
         await db.hIncrementQuoteCount(`${actualParentId}:quoteCounts`, quoteKey, quote);
+
+        // Add reply ID to user's set of replies
+        await db.sAdd(`user:${user.id}:replies`, replyId);
 
         // --- Reinstate removed indices ---
         // 4. Index for "Replies by Parent ID and Sanitized Quote Text"
