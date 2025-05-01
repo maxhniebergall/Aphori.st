@@ -145,9 +145,9 @@ function Feed(): JSX.Element {
     }
   }, [fetchFeedItems, pagination.hasMore, pagination.nextCursor]);
 
-  const navigateToStoryTree = useCallback(
+  const navigateToPostTree = useCallback(
     (nodeId: string) => {
-      navigate(`/storyTree/${nodeId}`);
+      navigate(`/postTree/${nodeId}`);
     },
     [navigate]
   );
@@ -169,7 +169,7 @@ function Feed(): JSX.Element {
               if(!item?.id) {
                 console.warn("Encountered item with missing ID - navigation skipped");
               } else {
-                navigateToStoryTree(item.id);
+                navigateToPostTree(item.id);
               }
             }}
             initial={{ opacity: 0 }}

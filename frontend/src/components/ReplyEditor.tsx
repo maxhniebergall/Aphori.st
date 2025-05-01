@@ -3,7 +3,7 @@ import MDEditor from '@uiw/react-md-editor';
 import '@uiw/react-md-editor/markdown-editor.css';
 import rehypeSanitize from 'rehype-sanitize';
 import { useReplyContext } from '../context/ReplyContext';
-import StoryTreeOperator from '../operators/StoryTreeOperator';
+import PostTreeOperator from '../operators/PostTreeOperator';
 import CharCount from './CharCount';
 
 // Separate Reply Editor component to isolate rendering when content changes
@@ -111,7 +111,7 @@ const ReplyEditor = () => {
             }
 
             try {
-              const result = await StoryTreeOperator.submitReply(trimmedReplyContent, replyTarget.id, replyQuote);
+              const result = await PostTreeOperator.submitReply(trimmedReplyContent, replyTarget.id, replyQuote);
               if (!result.error) {
                 handleReplyFinished(); // Clear state (including localStorage) on success
               } else {

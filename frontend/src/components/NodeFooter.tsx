@@ -9,11 +9,11 @@
 
 import React, { useCallback } from 'react';
 import { useReplyContext } from '../context/ReplyContext';
-import { StoryTreeNode } from '../types/types';
+import { PostTreeNode } from '../types/types';
 import { Quote } from '../types/quote';
 
 interface NodeFooterProps {
-  nodeData: StoryTreeNode;
+  nodeData: PostTreeNode;
   currentIndex: number;
   totalSiblings: number;
   onReplyClick: () => void;
@@ -101,7 +101,7 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
   }, [nodeData, setReplyTarget, setReplyContent, setIsReplyOpen]);
 
   return (
-    <div className="story-tree-node-footer">
+    <div className="post-tree-node-footer">
       <div className="footer-left">
         <div className="footer-left-upvote" onClick={handleUpvoteClick}>
           {upvoteSVG()}

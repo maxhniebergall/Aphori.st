@@ -11,10 +11,10 @@ import React, { useMemo, CSSProperties } from 'react';
 import { useTextSelection } from '../hooks/useTextSelection';
 import './TextSelection.css';
 import { Quote } from '../types/quote';
-import { StoryTreeNode } from '../types/types';
+import { PostTreeNode } from '../types/types';
 
 interface TextSelectionProps {
-  node: StoryTreeNode;
+  node: PostTreeNode;
   children: React.ReactNode;
   selectAll?: boolean;
   selectedQuote?: Quote;

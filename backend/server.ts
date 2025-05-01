@@ -3,7 +3,7 @@
 - Accepts development token in non-production environments
 - Handles quote metadata in story creation and retrieval
 - Stores quote data with source post ID and selection range
-- Creates posts (storyTrees) with new schema structure separating posts from replies
+- Creates posts (postTrees) with new schema structure separating posts from replies
 - Handles reply creation with quote references and parent tracking
 - Creates formatted story trees with metadata and node structure
 - Manages feed items for root-level posts only
@@ -706,16 +706,16 @@ app.get('/health', (req: Request, res: Response): void => {
     res.status(200).json({ status: 'healthy' });
 });
 
-app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/createPostTree', authenticateToken, ((async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const { storyTree } = req.body as { storyTree: PostCreationRequest };
-        if (!storyTree || !storyTree.content) {
-            res.status(400).json({ error: 'StoryTree data with content is required' });
+        const { postTree } = req.body as { postTree: PostCreationRequest };
+        if (!postTree || !postTree.content) {
+            res.status(400).json({ error: 'PostTree data with content is required' });
             return;
         }
 
         // Trim the content
-        const trimmedContent = storyTree.content.trim();
+        const trimmedContent = postTree.content.trim();
 
         // Validate content length using trimmed content
         const MAX_POST_LENGTH = 5000;
@@ -733,7 +733,7 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         const uuid = generateCondensedUuid();
         
         // Create the full object using trimmed content
-        const formattedStoryTree = {
+        const formattedPostTree = {
             id: uuid,
             content: trimmedContent,
             parentId: null, // Root-level posts always have null parentId
@@ -742,23 +742,23 @@ app.post('/api/createStoryTree', authenticateToken, ((async (req: AuthenticatedR
         } as Post;
 
         // Store in Redis
-        await db.hSet(uuid, 'storyTree', JSON.stringify(formattedStoryTree));
-        await db.lPush('allStoryTreeIds', uuid);
+        await db.hSet(uuid, 'postTree', JSON.stringify(formattedPostTree));
+        await db.lPush('allPostTreeIds', uuid);
 
         // Add to feed items (only root-level posts go to feed)
         const feedItem = {
             id: uuid,
             text: trimmedContent,
             authorId: req.user.id,
-            createdAt: formattedStoryTree.createdAt
+            createdAt: formattedPostTree.createdAt
         } as FeedItem;
         await db.lPush('feedItems', JSON.stringify(feedItem));
         logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
 
-        logger.info(`Created new StoryTree with UUID: ${uuid}`);
+        logger.info(`Created new PostTree with UUID: ${uuid}`);
         res.json({ id: uuid });
     } catch (err) {
-        logger.error('Error creating StoryTree:', err);
+        logger.error('Error creating PostTree:', err);
         res.status(500).json({ error: 'Server error' });
     }
 }) as unknown as RequestHandler));
@@ -1136,7 +1136,7 @@ app.get<{
 
 /**
  * @route   GET /api/getPost/:uuid
- * @desc    Retrieves a post, a top level storyTree element
+ * @desc    Retrieves a post, a top level postTree element
  * @access  Public
  */
 app.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/api/getPost/:uuid', async (req, res) => {
@@ -1146,8 +1146,8 @@ app.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/api/getPost
         return; 
     }
     try {
-        // Fetch using the correct field key 'storyTree'
-        let maybePostString = await db.hGet(uuid, 'storyTree', { returnCompressed: false });
+        // Fetch using the correct field key 'postTree'
+        let maybePostString = await db.hGet(uuid, 'postTree', { returnCompressed: false });
         if (!maybePostString || typeof maybePostString !== 'string') {
             // If not found or not a string, return 404
             res.status(404).json({ success: false, error: 'Node not found or invalid format' });

@@ -146,8 +146,8 @@ const PostPage: React.FC = (): JSX.Element => {
       };
 
       await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/createStoryTree`,
-        { storyTree: newPost }
+        `${process.env.REACT_APP_API_URL}/api/createPostTree`,
+        { postTree: newPost }
       );
       navigate('/');
       // Clear saved content on successful submission

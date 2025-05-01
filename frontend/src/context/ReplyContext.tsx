@@ -14,7 +14,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { StoryTreeNode } from '../types/types';      
+import { PostTreeNode } from '../types/types';      
 import { Quote } from '../types/quote';
 // Import persistence utilities
 import {
@@ -27,8 +27,8 @@ import {
 
 // Make interface exportable
 export interface ReplyContextType {
-  replyTarget: StoryTreeNode | null;
-  setReplyTarget: (target: StoryTreeNode | null) => void;
+  replyTarget: PostTreeNode | null;
+  setReplyTarget: (target: PostTreeNode | null) => void;
   replyContent: string;
   setReplyContent: (content: string) => void;
   replyQuote: Quote | null;
@@ -51,7 +51,7 @@ interface ReplyProviderProps {
 }
 
 export function ReplyProvider({ children }: ReplyProviderProps) {
-  const [replyTarget, setReplyTargetState] = useState<StoryTreeNode | null>(null);
+  const [replyTarget, setReplyTargetState] = useState<PostTreeNode | null>(null);
   const [replyContent, setReplyContentState] = useState<string>('');
   const [replyQuote, setReplyQuoteState] = useState<Quote | null>(null);
   const [replyError, setReplyErrorState] = useState<string | null>(null);
@@ -67,7 +67,7 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
   }, [rootUUID, replyTarget, replyQuote]);
 
   // Wrapper for setReplyTarget
-  const setReplyTarget = useCallback((target: StoryTreeNode | null) => {
+  const setReplyTarget = useCallback((target: PostTreeNode | null) => {
     setReplyTargetState(target);
   }, []);
 

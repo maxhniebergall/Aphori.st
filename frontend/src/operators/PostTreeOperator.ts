@@ -13,25 +13,25 @@
  * - Issue 2: Added submitReply method to support reply submission
  * - **Update:** Uses unified node backend API for fetching individual nodes.
  * - **Update:** loadMoreItems method now utilizes levelNumber and quote to fetch the correct sibling nodes.
- * - **Refactor:** fetchStoryTree now returns a complete StoryTree object rather than a StoryTreeLevel[].
+ * - **Refactor:** fetchPostTree now returns a complete PostTree object rather than a PostTreeLevel[].
  * - **Refactor:** Removed direct usage of React hooks; introduced dependency injection to receive the store (state & dispatch).
  * - **Update:** During initial story tree loading, fetches actual reply counts and pagination data for each level
  *   by calling the /api/getReplies endpoint instead of using hardcoded placeholder pagination.
- * - **Refactor:** Modularized fetchStoryTree by extracting helper functions addTitleLevel, addContentLevel, and updateLevelsPagination.
+ * - **Refactor:** Modularized fetchPostTree by extracting helper functions addTitleLevel, addContentLevel, and updateLevelsPagination.
  * - **Enhancement:** Improved error handling & logging with custom error types and detailed context.
  * - **Enhancement:** Added stricter type definitions using generics in response handlers.
  * - **Enhancement:** State updates now follow immutable patterns.
- * - **Recovery:** Re-added initializeStoryTree to support initialization of the story tree.
+ * - **Recovery:** Re-added initializePostTree to support initialization of the story tree.
  *
  * - TODO:
  * - Implement caching with CacheService
  */
 
-import { ACTIONS, StoryTreeNode, StoryTreeState, StoryTreeLevel, Action, StoryTree, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat, LastLevel } from '../types/types';
+import { ACTIONS, PostTreeNode, PostTreeState, PostTreeLevel, Action, PostTree, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat, LastLevel } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
 import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
-import StoryTreeError from '../errors/StoryTreeError';
+import PostTreeError from '../errors/PostTreeError';
 import { Compressed } from '../types/compressed';
 import compression from '../utils/compression';
 import { 
@@ -55,9 +55,9 @@ interface ReplyContextSetters {
   // Add other setters if needed directly by the operator
 }
 
-class StoryTreeOperator extends BaseOperator {
+class PostTreeOperator extends BaseOperator {
   // Introduce a store property to hold state and dispatch injected from a React component.
-  private store: { state: StoryTreeState, dispatch: React.Dispatch<Action> } | null = null;
+  private store: { state: PostTreeState, dispatch: React.Dispatch<Action> } | null = null;
   private userContext: { state: { user: { id: string } | null } } | null = null;
   // Add property to hold ReplyContext setters
   private replyContextSetters: ReplyContextSetters | null = null;
@@ -73,7 +73,7 @@ class StoryTreeOperator extends BaseOperator {
     // Removed React hooks from here.
     // Bind methods
     this.loadMoreItems = this.loadMoreItems.bind(this);
-    this.fetchStoryTree = this.fetchStoryTree.bind(this);
+    this.fetchPostTree = this.fetchPostTree.bind(this);
     this.validateNode = this.validateNode.bind(this);
   }
 
@@ -83,7 +83,7 @@ class StoryTreeOperator extends BaseOperator {
    * Must be called before methods requiring store access.
    * @param store Object containing the current state and dispatch function.
    */
-  public setStore(store: { state: StoryTreeState, dispatch: React.Dispatch<Action> }): void {
+  public setStore(store: { state: PostTreeState, dispatch: React.Dispatch<Action> }): void {
     this.store = store;
   }
 
@@ -99,15 +99,15 @@ class StoryTreeOperator extends BaseOperator {
 
   /**
    * Retrieves the current story tree state from the injected store.
-   * @returns The current StoryTreeState.
-   * @throws {StoryTreeError} If the store has not been initialized via setStore.
+   * @returns The current PostTreeState.
+   * @throws {PostTreeError} If the store has not been initialized via setStore.
    *                          (Handled - Depends on Caller/UI: Initialization error).
    */
   private getState() {
     if (!this.store) {
       // Handled - Depends on Caller/UI: Initialization error. Indicates programming error.
       // Calling component should ensure initialization or handle via Error Boundary.
-      throw new StoryTreeError("Store not initialized in StoryTreeOperator. Call setStore() with the appropriate context.");
+      throw new PostTreeError("Store not initialized in PostTreeOperator. Call setStore() with the appropriate context.");
     }
     return this.store.state;
   }
@@ -115,19 +115,19 @@ class StoryTreeOperator extends BaseOperator {
   /**
    * Retrieves the current user's ID from the injected user context.
    * @returns The user ID string.
-   * @throws {StoryTreeError} If the user context or user ID is not available (user not authenticated).
+   * @throws {PostTreeError} If the user context or user ID is not available (user not authenticated).
    *                          (Handled - Depends on Caller/UI: Authentication error).
    */
   private getUserId(): string {
     if (!this.userContext?.state?.user?.id) {
       // Handled - Depends on Caller/UI: Authentication error.
       // Calling component should handle (e.g., prompt login) or use Error Boundary.
-      throw new StoryTreeError("User not authenticated. Please log in to submit replies.");
+      throw new PostTreeError("User not authenticated. Please log in to submit replies.");
     }
     return this.userContext.state.user.id;
   }
 
-  validateNode(level: any): level is StoryTreeLevel {
+  validateNode(level: any): level is PostTreeLevel {
     return level &&
       typeof level === 'object' &&
       typeof level.rootNodeId === 'string' &&
@@ -142,12 +142,12 @@ class StoryTreeOperator extends BaseOperator {
    * The rest of the story tree nodes are fetched asynchronously as needed.
    *
    * @param uuid - The unique identifier for the root node of the story tree.
-   * @returns A promise that resolves to the fully constructed StoryTree object.
-   * @throws {StoryTreeError} Throws an error if fetching or processing the story tree data fails,
+   * @returns A promise that resolves to the fully constructed PostTree object.
+   * @throws {PostTreeError} Throws an error if fetching or processing the story tree data fails,
    *                          or if decompression fails.
    *                          (Handled - Propagation / Depends on Caller/UI).
    */
-  private async fetchStoryTree(uuid: string): Promise<void> {
+  private async fetchPostTree(uuid: string): Promise<void> {
     const url = `${process.env.REACT_APP_API_URL}/api/getPost/${uuid}`;
     try {
       const compressedPost = await this.retryApiCallSimplified<Compressed<Post>>(
@@ -160,11 +160,11 @@ class StoryTreeOperator extends BaseOperator {
       if (!decompressedPost) {
         // Handled - Depends on Caller/UI: Data corruption/API issue.
         // Calling component should handle (e.g., show error message) or use Error Boundary.
-        throw new StoryTreeError('Failed to decompress post');
+        throw new PostTreeError('Failed to decompress post');
       }
 
       // Add the root post content and fetch its quote counts
-      // updates storyTree.levels as a side effect
+      // updates postTree.levels as a side effect
       // fetches quote counts async, so we don't immediately have quote counts after this runs
       await this.addPostContentToLevelZero(decompressedPost); // this part seems to be working
 
@@ -172,25 +172,25 @@ class StoryTreeOperator extends BaseOperator {
     } catch (error) {
       const axiosErr = error as AxiosError;
       const statusCode = axiosErr.response?.status;
-      const storyTreeErr = new StoryTreeError('Error fetching root node', statusCode, url, error);
+      const postTreeErr = new PostTreeError('Error fetching root node', statusCode, url, error);
       
       if (this.store && this.store.dispatch) {
-        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: storyTreeErr.message });
+        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
       }
-      throw storyTreeErr;
+      throw postTreeErr;
     }
   }
 
   /**
    * Helper method to add the content for level 0 of the story tree (the post)
    *
-   * @param storyTree - The StoryTree object being built.
+   * @param postTree - The PostTree object being built.
    * @param post - The post data received from the API.
    */
   private async addPostContentToLevelZero(post: Post): Promise<void> {
     const quoteCounts = await this.fetchQuoteCounts(post.id);
 
-    const contentNode: StoryTreeNode = {
+    const contentNode: PostTreeNode = {
       id: post.id,
       rootNodeId: post.id,
       parentId: [],
@@ -238,7 +238,7 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
-  private async fetchAndDispatchReplies(level: StoryTreeLevel, sortingCriteria: string, limit: number = 5, cursor: string | undefined = undefined) {
+  private async fetchAndDispatchReplies(level: PostTreeLevel, sortingCriteria: string, limit: number = 5, cursor: string | undefined = undefined) {
     let cursorString = cursor;
     if (cursor === undefined) {
       const pagination = getPagination(level);
@@ -279,7 +279,7 @@ class StoryTreeOperator extends BaseOperator {
           const quoteCounts = await this.fetchQuoteCounts(reply.id);
           quoteCountsMap.set(reply.quote, quoteCounts);
         }));
-        const replyNodes: StoryTreeNode[] = repliesData.map((reply: Reply) => ({
+        const replyNodes: PostTreeNode[] = repliesData.map((reply: Reply) => ({
           id: reply.id,
           rootNodeId: rootNodeId,
           parentId: reply.parentId,
@@ -311,7 +311,7 @@ class StoryTreeOperator extends BaseOperator {
             payload: [newLevelData]
           });
         } else {
-          throw new StoryTreeError('Store not initialized when dispatching replies');
+          throw new PostTreeError('Store not initialized when dispatching replies');
         }
       } else {
         // Dispatch an action to indicate the end of this branch if needed
@@ -325,10 +325,10 @@ class StoryTreeOperator extends BaseOperator {
     } catch (error) {
       const axiosErr = error as AxiosError;
       const statusCode = axiosErr.response?.status;
-      const storyTreeErr = new StoryTreeError('Error fetching or dispatching replies', statusCode, url, error);
+      const postTreeErr = new PostTreeError('Error fetching or dispatching replies', statusCode, url, error);
       
       if (this.store && this.store.dispatch) {
-        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: storyTreeErr.message });
+        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
       }
     }
   }
@@ -350,10 +350,10 @@ class StoryTreeOperator extends BaseOperator {
     } catch (error) {
       const axiosErr = error as AxiosError;
       const statusCode = axiosErr.response?.status;
-      const storyTreeErr = new StoryTreeError('Error fetching first replies', statusCode, url, error);
+      const postTreeErr = new PostTreeError('Error fetching first replies', statusCode, url, error);
       
       if (this.store && this.store.dispatch) {
-        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: storyTreeErr.message });
+        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
       }
       return null;
     }
@@ -374,7 +374,7 @@ class StoryTreeOperator extends BaseOperator {
     );
     const decompressedResponse = await compression.decompress<ExistingSelectableQuotesApiFormat>(compressedResponse);
     if (!decompressedResponse || !decompressedResponse.quoteCounts) {
-      throw new StoryTreeError('Invalid data received for quote counts');
+      throw new PostTreeError('Invalid data received for quote counts');
     }
     return {quoteCounts: decompressedResponse.quoteCounts};
   }
@@ -390,7 +390,7 @@ class StoryTreeOperator extends BaseOperator {
    * @param stopIndex - The stopping index for pagination.
    * @requires that the level already exists in the state
    * // TODO we need to introduce the cache here so that requesting existing items doesn't trigger a new fetch (for those items)
-   * @throws {StoryTreeError} If the provided quote is invalid or if fetching/dispatching replies fails.
+   * @throws {PostTreeError} If the provided quote is invalid or if fetching/dispatching replies fails.
    *                          (Handled - Depends on Caller/UI).
    */
   public async loadMoreItems(parentId: string, levelNumber: number, quote: Quote, startIndex: number, stopIndex: number): Promise<void> {
@@ -398,7 +398,7 @@ class StoryTreeOperator extends BaseOperator {
       // Handled - Depends on Caller: Input validation error.
       // Calling component should ensure valid quote or handle via Error Boundary.
       console.error('Invalid quote provided to loadMoreItems:', quote);
-      throw new StoryTreeError('Invalid quote provided to loadMoreItems');
+      throw new PostTreeError('Invalid quote provided to loadMoreItems');
     }
 
     const limit = stopIndex - startIndex;
@@ -408,30 +408,30 @@ class StoryTreeOperator extends BaseOperator {
         // this block is used to fetch the replies and update the state, including the quoteCounts
 
         const state = this.getState();
-          if (!state?.storyTree) {
+          if (!state?.postTree) {
             return;
           }
-        const currentLevel = state.storyTree.levels[levelNumber];
+        const currentLevel = state.postTree.levels[levelNumber];
         await this.fetchAndDispatchReplies(currentLevel, sortingCriteria, limit); 
       }
       
     } catch (error) {
       const axiosErr = error as AxiosError;
       const statusCode = axiosErr.response?.status;
-      const storyTreeErr = new StoryTreeError(
+      const postTreeErr = new PostTreeError(
         'Error loading more items', 
         statusCode, 
         // Use static method for encoding
         `${process.env.REACT_APP_API_URL}/api/getReplies/${parentId}/${Quote.toEncodedString(quote)}/mostRecent`,
         error
       );
-      throw storyTreeErr;
+      throw postTreeErr;
     }
   }
 
   /**
    * Fetches the first page of replies for a given parent ID and quote,
-   * transforms them into StoryTreeNodes, creates a new StoryTreeLevel,
+   * transforms them into PostTreeNodes, creates a new PostTreeLevel,
    * and dispatches an action to update the state.
    *
    * @param targetLevelIndex The index of the level to refresh/create.
@@ -440,11 +440,11 @@ class StoryTreeOperator extends BaseOperator {
    */
   private async refreshLevel(targetLevelIndex: number, parentId: string, quoteInParent: Quote): Promise<void> {
     if (!this.store) {
-      throw new StoryTreeError('Store not initialized in refreshLevel');
+      throw new PostTreeError('Store not initialized in refreshLevel');
     }
     const state = this.getState();
-    if (!state.storyTree) {
-      throw new StoryTreeError('StoryTree not initialized in refreshLevel');
+    if (!state.postTree) {
+      throw new PostTreeError('PostTree not initialized in refreshLevel');
     }
 
     // Set loading state
@@ -472,15 +472,15 @@ class StoryTreeOperator extends BaseOperator {
         limit
       );
 
-      let newLevel: StoryTreeLevel;
+      let newLevel: PostTreeLevel;
 
       if (repliesResponse && repliesResponse.data.length > 0) {
-        // Transform replies into StoryTreeNodes
-        const nodes: StoryTreeNode[] = await Promise.all(repliesResponse.data.map(async (reply): Promise<StoryTreeNode> => {
+        // Transform replies into PostTreeNodes
+        const nodes: PostTreeNode[] = await Promise.all(repliesResponse.data.map(async (reply): Promise<PostTreeNode> => {
           const quoteCounts = await this.fetchQuoteCounts(reply.id); // Fetch quote counts for each reply
           return {
             id: reply.id,
-            rootNodeId: state.storyTree!.post.id, // Use rootNodeId from the existing story tree
+            rootNodeId: state.postTree!.post.id, // Use rootNodeId from the existing story tree
             parentId: [parentId], // The parent ID is the node we are refreshing replies for
             levelNumber: targetLevelIndex,
             textContent: reply.text,
@@ -504,7 +504,7 @@ class StoryTreeOperator extends BaseOperator {
 
         // Create the new MidLevel
         newLevel = createMidLevel(
-          state.storyTree!.post.id,
+          state.postTree!.post.id,
           [parentId],
           targetLevelIndex,
           quoteInParent, // The quote selected *in the parent* that led to this level
@@ -520,7 +520,7 @@ class StoryTreeOperator extends BaseOperator {
            isLastLevel: true,
            midLevel: null,
            lastLevel: {
-               rootNodeId: state.storyTree.post.id,
+               rootNodeId: state.postTree.post.id,
                levelNumber: targetLevelIndex
            }
         };
@@ -528,7 +528,7 @@ class StoryTreeOperator extends BaseOperator {
 
       // --- Parent Level Update ---
       const parentLevelIndex = targetLevelIndex - 1;
-      const parentLevel = state.storyTree.levels[parentLevelIndex];
+      const parentLevel = state.postTree.levels[parentLevelIndex];
 
       if (parentLevel && isMidLevel(parentLevel)) {
         const parentNode = getSelectedNodeHelper(parentLevel);
@@ -593,14 +593,14 @@ class StoryTreeOperator extends BaseOperator {
    * @param parentId The ID of the node being replied to.
    * @param quote The specific quote within the parent node being replied to.
    * @returns A promise resolving to an object with either `replyId` on success or `error` on failure.
-   * @throws {StoryTreeError} If the user is not authenticated (checked by getUserId).
+   * @throws {PostTreeError} If the user is not authenticated (checked by getUserId).
    *                          (Handled - Depends on Caller/UI).
    * Note: API call errors are caught and returned in the error property, not thrown.
    */
   public async submitReply(text: string, parentId: string, quote: Quote): Promise<{ replyId?: string; error?: string }> {
     // Ensure reply context setters are available before proceeding
     if (!this.replyContextSetters) {
-        console.error("[submitReply] ReplyContext setters not initialized in StoryTreeOperator.");
+        console.error("[submitReply] ReplyContext setters not initialized in PostTreeOperator.");
         return { error: 'Internal configuration error: Reply context not available.' };
     }
     try {
@@ -625,9 +625,9 @@ class StoryTreeOperator extends BaseOperator {
 
     // --- Refetch Logic ---
     const state = this.getState();
-    if (state.storyTree && state.storyTree.levels) {
+    if (state.postTree && state.postTree.levels) {
       // Find the index of the parent level
-      const parentLevelIndex = state.storyTree.levels.findIndex(level =>
+      const parentLevelIndex = state.postTree.levels.findIndex(level =>
         isMidLevel(level) && level.midLevel?.selectedNode.id === parentId
       );
 
@@ -652,7 +652,7 @@ class StoryTreeOperator extends BaseOperator {
 
     } catch (error) {
       console.error("[submitReply] Error submitting reply:", error); // Log the full error
-      if (error instanceof StoryTreeError) {
+      if (error instanceof PostTreeError) {
         return { error: error.message };
       }
       const axiosErr = error as AxiosError<CreateReplyResponse>;
@@ -666,11 +666,11 @@ class StoryTreeOperator extends BaseOperator {
   // New public method called by UI
   public requestLoadNextLevel(): void {
       const state = this.getState();
-      if (!state || !state.storyTree) {
+      if (!state || !state.postTree) {
           console.warn("[Queue] Cannot request next level, state not ready.");
           return;
       }
-      const nextLevelNumber = state.storyTree.levels.length;
+      const nextLevelNumber = state.postTree.levels.length;
 
       // Prevent adding duplicates if already loading or queued
       if (this.isLoadingLevel && this.loadingLevelNumber === nextLevelNumber) {
@@ -730,7 +730,7 @@ class StoryTreeOperator extends BaseOperator {
           if (this.store?.dispatch) {
             this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false });
           } else {
-            console.error("StoryTreeOperator: Store not available for dispatching SET_LOADING_MORE false in queue.");
+            console.error("PostTreeOperator: Store not available for dispatching SET_LOADING_MORE false in queue.");
           }
 
           // IMPORTANT: Trigger the next check immediately after finishing
@@ -746,7 +746,7 @@ class StoryTreeOperator extends BaseOperator {
    * @param levelNumber The level number to load.
    * @throws {Error} If the store is not available when needed.
    *                 (Handled - Internally: Caught by processLoadQueue).
-   * @throws {StoryTreeError} If validation fails (e.g., storyTree not initialized, invalid level number,
+   * @throws {PostTreeError} If validation fails (e.g., postTree not initialized, invalid level number,
    *                          parent level not found, selected node in parent not found) or if fetching data fails.
    *                          (Handled - Propagation/Depends on Caller/UI: Thrown errors caught by processLoadQueue or propagate).
    */
@@ -766,24 +766,24 @@ class StoryTreeOperator extends BaseOperator {
 
     try {
       // Log the level number we are actually processing (passed from queue)
-      console.log(`StoryTreeOperator: Starting executeLoadLevel processing for level ${levelNumber}`);
+      console.log(`PostTreeOperator: Starting executeLoadLevel processing for level ${levelNumber}`);
 
       const state = this.getState(); // Get current state WHEN THIS level is processed
 
       { // Validate inputs and state
-        if (!state.storyTree) {
-          const errorMsg = `StoryTreeOperator: storyTree not initialized`;
-          throw new StoryTreeError(errorMsg);
+        if (!state.postTree) {
+          const errorMsg = `PostTreeOperator: postTree not initialized`;
+          throw new PostTreeError(errorMsg);
         }
         // Validate levelNumber passed from queue
         if (levelNumber < 1) {
           const errorMsg = `Start level number ${levelNumber} is less than 1, which is not allowed`;
-          throw new StoryTreeError(errorMsg);
+          throw new PostTreeError(errorMsg);
         }
 
         // CRITICAL CHECK: Ensure the level number we are processing matches the expected next level in the *current* state
         // This prevents issues if the state somehow got ahead (e.g., manual state manipulation?) while this was queued
-        const expectedLevelNumber = state.storyTree.levels.length;
+        const expectedLevelNumber = state.postTree.levels.length;
         if (levelNumber !== expectedLevelNumber) {
             console.warn(`[executeLoadLevel] Attempting to load level ${levelNumber} from queue, but current state expects level ${expectedLevelNumber}. Stopping.`);
             // Do NOT dispatch LastLevel here, as state might be inconsistent. Just stop processing this queued item.
@@ -797,14 +797,14 @@ class StoryTreeOperator extends BaseOperator {
            return;
         }
       }
-      const parentLevel = state.storyTree.levels[levelNumber-1];
+      const parentLevel = state.postTree.levels[levelNumber-1];
 
       // Ensure parentLevel is not undefined before checking isLastLevel
       if (typeof parentLevel === 'undefined') {
-         console.error(`[executeLoadLevel] Parent level ${levelNumber - 1} is undefined when trying to load level ${levelNumber}. State length: ${state.storyTree?.levels?.length}`);
+         console.error(`[executeLoadLevel] Parent level ${levelNumber - 1} is undefined when trying to load level ${levelNumber}. State length: ${state.postTree?.levels?.length}`);
          // Handled - Depends on Caller/UI: Logic error/unexpected state.
          // Calling component should handle via Error Boundary.
-         throw new StoryTreeError(`Parent level ${levelNumber - 1} is undefined.`);
+         throw new PostTreeError(`Parent level ${levelNumber - 1} is undefined.`);
       }
 
       // Check if parent level is incorrectly marked as last
@@ -814,8 +814,8 @@ class StoryTreeOperator extends BaseOperator {
           return; // Stop loading
       }
 
-      const parentLevelAsLevel : StoryTreeLevel = parentLevel as StoryTreeLevel;
-      const rootNodeId = state.storyTree.post.id; // Moved after state.storyTree check
+      const parentLevelAsLevel : PostTreeLevel = parentLevel as PostTreeLevel;
+      const rootNodeId = state.postTree.post.id; // Moved after state.postTree check
 
       { // continue validation (selected node in parent)
         // This check might be redundant now after the explicit undefined check above, but keep for structure
@@ -827,18 +827,18 @@ class StoryTreeOperator extends BaseOperator {
         if (!selectedNode) {
           console.error(`[executeLoadLevel] Error condition reached: Selected node not found for parent level ${levelNumber - 1} when loading level ${levelNumber}.`);
           console.error(`[executeLoadLevel] Parent Level Data: ${JSON.stringify(parentLevel)}`);
-          console.error(`[executeLoadLevel] Current Levels State: ${JSON.stringify(state.storyTree.levels)}`);
-          const errorMsg = `Selected node not found for level ${levelNumber} (based on parent level ${levelNumber-1}); parentLevel: ${JSON.stringify(parentLevel)}; levels: ${JSON.stringify(state.storyTree.levels)}`;
+          console.error(`[executeLoadLevel] Current Levels State: ${JSON.stringify(state.postTree.levels)}`);
+          const errorMsg = `Selected node not found for level ${levelNumber} (based on parent level ${levelNumber-1}); parentLevel: ${JSON.stringify(parentLevel)}; levels: ${JSON.stringify(state.postTree.levels)}`;
           // Dispatch last level here as we cannot proceed with loading children
           this.dispatchLastLevel(levelNumber);
-          throw new StoryTreeError(errorMsg); // Throw to ensure SET_ERROR is potentially dispatched by caller/queue
+          throw new PostTreeError(errorMsg); // Throw to ensure SET_ERROR is potentially dispatched by caller/queue
         }
       }
       const selectedNodeOfParentLevel = getSelectedNodeHelper(parentLevelAsLevel);
       if (!selectedNodeOfParentLevel) {
           console.error(`[executeLoadLevel] Safeguard check failed: Selected node is null/undefined for parent level ${levelNumber-1}.`);
           this.dispatchLastLevel(levelNumber); // Dispatch last level
-          throw new StoryTreeError(`Selected node not found for level ${levelNumber-1}`);
+          throw new PostTreeError(`Selected node not found for level ${levelNumber-1}`);
       }
       const parentId = selectedNodeOfParentLevel.id;
       const parentText = selectedNodeOfParentLevel.textContent; // This might not be needed if we only use the quote
@@ -916,7 +916,7 @@ class StoryTreeOperator extends BaseOperator {
           }
         }));
 
-        const siblingsForQuote : Array<StoryTreeNode> = [];
+        const siblingsForQuote : Array<PostTreeNode> = [];
         firstReplies.forEach(reply => {
           siblingsForQuote.push({
             id: reply.id,
@@ -928,13 +928,13 @@ class StoryTreeOperator extends BaseOperator {
             quoteCounts: quoteCountsMap.get(reply.quote),
             authorId: reply.authorId,
             createdAt: reply.createdAt,
-          } as StoryTreeNode);
+          } as PostTreeNode);
         });
 
         const selectedNodeForNewLevel = siblingsForQuote[0];
         const initialSelectedQuoteInNewLevel = selectedNodeForNewLevel.quoteCounts ? this.mostQuoted(selectedNodeForNewLevel.quoteCounts) : null;
 
-        const level: StoryTreeLevel = createMidLevel(
+        const level: PostTreeLevel = createMidLevel(
           rootNodeId,
           [parentId],
           levelNumber,
@@ -995,18 +995,18 @@ class StoryTreeOperator extends BaseOperator {
    * 
    * Requirements:
    * - Dispatch the start of the story tree load.
-   * - Fetch the complete story tree using fetchStoryTree.
+   * - Fetch the complete story tree using fetchPostTree.
    * - Update the store with the initial story tree data.
    */
-  public async initializeStoryTree(rootUUID: string): Promise<void> {
+  public async initializePostTree(rootUUID: string): Promise<void> {
     try {
       if (!this.store || !this.store.dispatch) {
-        throw new StoryTreeError('Dispatch not initialized in StoryTreeOperator.');
+        throw new PostTreeError('Dispatch not initialized in PostTreeOperator.');
       }
       // Dispatch an action to start loading the story tree.
       this.store.dispatch({ type: ACTIONS.START_STORY_TREE_LOAD, payload: { rootNodeId: rootUUID } });
       // Fetch the complete story tree.
-      await this.fetchStoryTree(rootUUID);
+      await this.fetchPostTree(rootUUID);
     } catch (error) {
       if (this.store && this.store.dispatch) {
         this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: 'It seems like this story tree does not exist.' });
@@ -1019,39 +1019,39 @@ class StoryTreeOperator extends BaseOperator {
     }
   }
 
-  public dispatchNewLevel(level: StoryTreeLevel): void {
+  public dispatchNewLevel(level: PostTreeLevel): void {
     if (!this.store || !this.store.dispatch) {
       // Handled - Depends on Caller/UI: Initialization error.
       // Calling component should ensure initialization or handle via Error Boundary.
-      throw new StoryTreeError('Dispatch not initialized in StoryTreeOperator.');
+      throw new PostTreeError('Dispatch not initialized in PostTreeOperator.');
     }
     this.store.dispatch({ type: ACTIONS.INCLUDE_NODES_IN_LEVELS, payload: [level] });
   }
 
   /**
    * Sets the selected node for a given level and triggers updates for subsequent levels if necessary.
-   * @param node The StoryTreeNode to select.
-   * @throws {StoryTreeError} If the store/dispatch/state is not initialized.
+   * @param node The PostTreeNode to select.
+   * @throws {PostTreeError} If the store/dispatch/state is not initialized.
    *                          (Handled - Depends on Caller/UI: Initialization error).
-   * @throws {StoryTreeError} If fetching/processing data for the next level fails.
+   * @throws {PostTreeError} If fetching/processing data for the next level fails.
    *                          (Handled: Catches error, dispatches SET_ERROR, marks next level as LastLevel).
    */
-  public async setSelectedNode(node: StoryTreeNode): Promise<void> {
+  public async setSelectedNode(node: PostTreeNode): Promise<void> {
     const dispatch = this.store?.dispatch;
     if (!dispatch) {
       // Handled - Depends on Caller/UI: Initialization error.
       // Calling component should ensure initialization or handle via Error Boundary.
-      throw new StoryTreeError('Dispatch not initialized in StoryTreeOperator.');
+      throw new PostTreeError('Dispatch not initialized in PostTreeOperator.');
     }
     const state = this.getState();
-    if (!state || !state.storyTree) {
+    if (!state || !state.postTree) {
       // Handled - Depends on Caller/UI: Initialization error.
       // Calling component should ensure initialization or handle via Error Boundary.
-      throw new StoryTreeError('Store, state, or story tree not initialized for setSelectedNode');
+      throw new PostTreeError('Store, state, or story tree not initialized for setSelectedNode');
     }
 
     const levelNumber = node.levelNumber;
-    const targetLevel = state.storyTree?.levels[levelNumber];
+    const targetLevel = state.postTree?.levels[levelNumber];
     const nextLevelNumber = levelNumber + 1;
     const rootNodeId = node.rootNodeId; // Assuming consistent rootNodeId
 
@@ -1103,11 +1103,11 @@ class StoryTreeOperator extends BaseOperator {
 
     // --- Step 3: Check if the *next* level (N+1) needs updating ---
     // Re-add explicit null check to satisfy linter
-    if (!state.storyTree) {
-        console.error("[setSelectedNode] state.storyTree became null unexpectedly before checking next level.");
+    if (!state.postTree) {
+        console.error("[setSelectedNode] state.postTree became null unexpectedly before checking next level.");
         return; 
     }
-    const nextLevel = state.storyTree.levels[nextLevelNumber];
+    const nextLevel = state.postTree.levels[nextLevelNumber];
     let nextLevelNeedsUpdate = true; // Assume update needed unless proven otherwise
 
     if (nextLevel && isMidLevel(nextLevel)) {
@@ -1145,7 +1145,7 @@ class StoryTreeOperator extends BaseOperator {
         const parentIdForNextLevel = node.id;
 
         try {
-            let nextLevelData: StoryTreeLevel;
+            let nextLevelData: PostTreeLevel;
 
             if (quoteToDriveNextLevel) {
                 // Fetch replies for the driving quote
@@ -1162,11 +1162,11 @@ class StoryTreeOperator extends BaseOperator {
                       const quoteCounts = await this.fetchQuoteCounts(reply.id);
                       quoteCountsMap.set(reply.quote, quoteCounts);
                     }));
-                    const siblingsForQuote: Array<StoryTreeNode> = firstReplies.map(reply => ({
+                    const siblingsForQuote: Array<PostTreeNode> = firstReplies.map(reply => ({
                       id: reply.id, rootNodeId: rootNodeId, parentId: [parentIdForNextLevel], levelNumber: nextLevelNumber,
                       textContent: reply.text, repliedToQuote: quoteToDriveNextLevel,
                       quoteCounts: quoteCountsMap.get(reply.quote), authorId: reply.authorId, createdAt: reply.createdAt,
-                    } as StoryTreeNode));
+                    } as PostTreeNode));
                     const selectedNodeForNewLevel = siblingsForQuote[0];
                     const initialSelectedQuoteInNewLevel = selectedNodeForNewLevel.quoteCounts ? this.mostQuoted(selectedNodeForNewLevel.quoteCounts) : null;
 
@@ -1204,12 +1204,12 @@ class StoryTreeOperator extends BaseOperator {
 
         } catch (error) {
              console.error(`[setSelectedNode] Error fetching or processing data for level ${nextLevelNumber}:`, error);
-            const storyTreeErr = new StoryTreeError(`Failed to update level ${nextLevelNumber}: ${error instanceof Error ? error.message : String(error)}`);
-            dispatch({ type: ACTIONS.SET_ERROR, payload: storyTreeErr.message });
-            // Add null check before accessing storyTree again for rootNodeId
-            const finalRootNodeId = state.storyTree ? state.storyTree.post.id : 'unknown_root'; // Fallback ID
+            const postTreeErr = new PostTreeError(`Failed to update level ${nextLevelNumber}: ${error instanceof Error ? error.message : String(error)}`);
+            dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
+            // Add null check before accessing postTree again for rootNodeId
+            const finalRootNodeId = state.postTree ? state.postTree.post.id : 'unknown_root'; // Fallback ID
             // Mark N+1 as LastLevel on error
-            const errorLevelData: StoryTreeLevel = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: finalRootNodeId }, midLevel: null };
+            const errorLevelData: PostTreeLevel = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: finalRootNodeId }, midLevel: null };
              dispatch({ type: ACTIONS.REPLACE_LEVEL_DATA, payload: errorLevelData });
              dispatch({ type: ACTIONS.CLEAR_LEVELS_AFTER, payload: { levelNumber: nextLevelNumber } });
         }
@@ -1221,41 +1221,41 @@ class StoryTreeOperator extends BaseOperator {
    * This updates the current level's state and fetches/replaces the data for the next level based on the new quote.
    * @param quote The Quote to select.
    * @param node The node within the level where the quote is selected.
-   * @param level The current StoryTreeLevel object.
-   * @throws {StoryTreeError} If store/dispatch is not initialized, input quote/node/level is invalid,
+   * @param level The current PostTreeLevel object.
+   * @throws {PostTreeError} If store/dispatch is not initialized, input quote/node/level is invalid,
    *                          or if fetching/processing data for the next level fails.
    *                          (Handled - Depends on Caller/UI).
    */
-  public async setSelectedQuoteForNodeInLevel(quote: Quote, node: StoryTreeNode, level: StoryTreeLevel): Promise<void> {
+  public async setSelectedQuoteForNodeInLevel(quote: Quote, node: PostTreeNode, level: PostTreeLevel): Promise<void> {
     const dispatch = this.store?.dispatch;
-    const storyTree = this.store?.state.storyTree;
+    const postTree = this.store?.state.postTree;
     if (!this.store) {
       // This could theoretically happen in production, but should be very rare and fixed by user page refresh, so we'll just log a warning.
       console.warn('[setSelectedQuoteForNodeInLevel] Store not initialized');
       return;
     }
-    if (!dispatch || !storyTree) {
+    if (!dispatch || !postTree) {
       // Handled - Depends on Caller/UI: Initialization error.
       // Calling component should ensure initialization or handle via Error Boundary.
-      throw new StoryTreeError('Store or story tree not initialized for setSelectedQuoteForNodeInLevel');
+      throw new PostTreeError('Store or story tree not initialized for setSelectedQuoteForNodeInLevel');
     }
     if (!quote || !Quote.isValid(quote)) {
       // Handled - Depends on Caller: Input validation error.
       // Calling component should ensure valid quote or handle via Error Boundary.
-      throw new StoryTreeError('Invalid quote provided');
+      throw new PostTreeError('Invalid quote provided');
     }
     if (!node) {
       // Handled - Depends on Caller: Input validation error.
       // Calling component should ensure valid node or handle via Error Boundary.
-      throw new StoryTreeError('Invalid node provided');
+      throw new PostTreeError('Invalid node provided');
     }
     if (!isMidLevel(level)) {
       // Handled - Depends on Caller: Input/Logic validation error.
       // Calling component should ensure correct level type or handle via Error Boundary.
-      throw new StoryTreeError('Invalid level provided: must be a MidLevel');
+      throw new PostTreeError('Invalid level provided: must be a MidLevel');
     }
 
-    console.log('[StoryTreeOperator] setSelectedQuoteForNodeInLevel called with quote:', quote, 'node:', node, 'level:', level);
+    console.log('[PostTreeOperator] setSelectedQuoteForNodeInLevel called with quote:', quote, 'node:', node, 'level:', level);
 
     // 1. Update the selected quote for the current level (N)
     const levelNumber = level.midLevel!.levelNumber; // Get level number (safe due to isMidLevel check)
@@ -1271,7 +1271,7 @@ class StoryTreeOperator extends BaseOperator {
     
     // Add this check to satisfy the linter, although isMidLevel should have handled it
     if (!isMidLevel(level)) {
-      throw new StoryTreeError('Internal error: Level type changed unexpectedly');
+      throw new PostTreeError('Internal error: Level type changed unexpectedly');
     }
 
     // Use non-null assertion (!) since the isMidLevel checks above guarantee it's not null.
@@ -1286,7 +1286,7 @@ class StoryTreeOperator extends BaseOperator {
       // Fetch using 'quote' which is the selection made in level N
       const maybeFirstReplies = await this.fetchFirstRepliesForLevel(nextLevelNumber, parentId, quote, sortingCriteria, limit);
 
-      let nextLevelData: StoryTreeLevel;
+      let nextLevelData: PostTreeLevel;
 
       if (maybeFirstReplies && maybeFirstReplies.data.length > 0) {
         const firstReplies: Reply[] = maybeFirstReplies.data;
@@ -1299,7 +1299,7 @@ class StoryTreeOperator extends BaseOperator {
           quoteCountsMap.set(reply.quote, quoteCounts);
         }));
 
-        const siblingsForQuote: Array<StoryTreeNode> = firstReplies.map(reply => ({
+        const siblingsForQuote: Array<PostTreeNode> = firstReplies.map(reply => ({
           id: reply.id,
           rootNodeId: rootNodeId,
           parentId: [parentId],
@@ -1309,7 +1309,7 @@ class StoryTreeOperator extends BaseOperator {
           quoteCounts: quoteCountsMap.get(reply.quote), 
           authorId: reply.authorId,
           createdAt: reply.createdAt,
-        } as StoryTreeNode));
+        } as PostTreeNode));
 
         // Determine initial selected quote *within* the first node of the *new* level N+1
         const selectedNodeForNewLevel = siblingsForQuote[0];
@@ -1334,7 +1334,7 @@ class StoryTreeOperator extends BaseOperator {
         });
 
       } else {
-        // No replies found, create a LastLevel marker according to StoryTreeLevel structure
+        // No replies found, create a LastLevel marker according to PostTreeLevel structure
         nextLevelData = {
           isLastLevel: true,
           lastLevel: { levelNumber: nextLevelNumber, rootNodeId: rootNodeId },
@@ -1363,12 +1363,12 @@ class StoryTreeOperator extends BaseOperator {
 
     } catch (error) {
        // Optionally dispatch an error state update
-       const storyTreeErr = new StoryTreeError(`Failed to load replies for the selected quote: ${error instanceof Error ? error.message : String(error)}`);
+       const postTreeErr = new PostTreeError(`Failed to load replies for the selected quote: ${error instanceof Error ? error.message : String(error)}`);
         if (this.store && this.store.dispatch) {
-            this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: storyTreeErr.message });
+            this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
         }
        // Rethrow or handle as appropriate
-       throw storyTreeErr; 
+       throw postTreeErr; 
     }
   }
 
@@ -1389,12 +1389,12 @@ class StoryTreeOperator extends BaseOperator {
   public async handleNavigateNextSibling(levelNumber: number, expectedCurrentNodeId: string | null): Promise<void> {
     console.log(`[Operator] Handling NAVIGATE_NEXT_SIBLING for Level: ${levelNumber}, expecting ${expectedCurrentNodeId}`);
     const state = this.getState();
-    if (!state.storyTree) {
+    if (!state.postTree) {
       console.warn("[handleNavigateNextSibling] Story tree not initialized.");
       return;
     }
 
-    const targetLevel = state.storyTree.levels[levelNumber];
+    const targetLevel = state.postTree.levels[levelNumber];
     if (!targetLevel || !isMidLevel(targetLevel)) {
       console.warn(`[handleNavigateNextSibling] Target level ${levelNumber} not found or not a MidLevel.`);
       return;
@@ -1437,7 +1437,7 @@ class StoryTreeOperator extends BaseOperator {
     } else {
       console.log("[handleNavigateNextSibling] Already at the last sibling.");
       // TODO: Potentially trigger loading more if pagination.hasMore is true?
-      // The logic in StoryTreeLevelComponent already handles this, maybe keep it there?
+      // The logic in PostTreeLevelComponent already handles this, maybe keep it there?
     }
   }
 
@@ -1448,12 +1448,12 @@ class StoryTreeOperator extends BaseOperator {
   public async handleNavigatePrevSibling(levelNumber: number, expectedCurrentNodeId: string | null): Promise<void> {
     console.log(`[Operator] Handling NAVIGATE_PREV_SIBLING for Level: ${levelNumber}, expecting ${expectedCurrentNodeId}`);
     const state = this.getState();
-    if (!state.storyTree) {
+    if (!state.postTree) {
       console.warn("[handleNavigatePrevSibling] Story tree not initialized.");
       return;
     }
 
-    const targetLevel = state.storyTree.levels[levelNumber];
+    const targetLevel = state.postTree.levels[levelNumber];
     if (!targetLevel || !isMidLevel(targetLevel)) {
       console.warn(`[handleNavigatePrevSibling] Target level ${levelNumber} not found or not a MidLevel.`);
       return;
@@ -1500,7 +1500,7 @@ class StoryTreeOperator extends BaseOperator {
 }
 
 // Create and export a single instance
-const storyTreeOperator = new StoryTreeOperator();
-export default storyTreeOperator;
+const postTreeOperator = new PostTreeOperator();
+export default postTreeOperator;
 
 

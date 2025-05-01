@@ -1,9 +1,8 @@
 import React, { useEffect } from 'react';
-import StoryTreeHolder from './StoryTreeHolder';
-import './StoryTree.css';
+import './PostTree.css';
 import { useUser } from '../context/UserContext';
-
-function StoryTreePage() {
+import PostTreeHolder from './PostTreeHolder';
+function PostTreePage() {
   const { state } = useUser();
 
   useEffect(() => {
@@ -12,10 +11,10 @@ function StoryTreePage() {
   }, [state?.user]);
 
   return (
-    <div className="story-tree-page">
-      <StoryTreeHolder />
+    <div className="post-tree-page">
+      <PostTreeHolder />
     </div>
   );
 }
 
-export default StoryTreePage;
+export default PostTreePage;

@@ -82,8 +82,8 @@ import puppeteer from 'puppeteer';
         }));
 
         // Format the log based on the message type
-        if (msg.text().includes('StoryTreeOperator:')) {
-            console.log('\nStoryTreeOperator Log:', ...args);
+        if (msg.text().includes('PostTreeOperator:')) {
+            console.log('\nPostTreeOperator Log:', ...args);
         } else if (msg.text().includes('VirtualizedStoryList:')) {
             console.log('\nVirtualizedStoryList Log:', ...args);
         } else if (msg.text().includes('Row:')) {
@@ -108,7 +108,7 @@ import puppeteer from 'puppeteer';
     });
 
     console.log("Loading website...");
-    await page.goto('http://localhost:3000/storyTree/03dmk12gciydjae22h4phan7w', { 
+    await page.goto('http://localhost:3000/postTree/03dmk12gciydjae22h4phan7w', { 
         waitUntil: ['networkidle0', 'domcontentloaded', 'load']
     });
 
@@ -122,18 +122,18 @@ import puppeteer from 'puppeteer';
         return;
     }
 
-    // Then check for the story-tree-content
+    // Then check for the post-tree-content
     try {
-        const contentSelector = '.story-tree-content';
+        const contentSelector = '.post-tree-content';
         await page.waitForSelector(contentSelector, { timeout: 5000 });
-        console.log('Found story-tree-content element');
+        console.log('Found post-tree-content element');
 
         // Get all elements in the hierarchy
         const elements = await page.evaluate(() => {
             const result = {
                 root: document.querySelector('#root')?.outerHTML,
                 rootChildren: document.querySelector('#root > div')?.outerHTML,
-                storyTreeContent: document.querySelector('.story-tree-content')?.outerHTML,
+                postTreeContent: document.querySelector('.post-tree-content')?.outerHTML,
                 virtualizedList: document.querySelector('.story-list')?.outerHTML
             };
             return result;
@@ -152,7 +152,7 @@ import puppeteer from 'puppeteer';
                 return null;
             };
 
-            const content = document.querySelector('.story-tree-content');
+            const content = document.querySelector('.post-tree-content');
             if (!content) return null;
 
             const instance = getReactInstance(content);

@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useReducer, useLayoutEffect, ReactNode } from 'react';
-import { StoryTreeState, Action, StoryTreeLevel, StoryTree, StoryTreeNode, Siblings, LastLevel } from '../types/types';
+import { PostTreeState, Action, PostTreeLevel, PostTree, PostTreeNode, Siblings, LastLevel } from '../types/types';
 import { ACTIONS } from '../types/types';
-import StoryTreeErrorBoundary from './StoryTreeErrorBoundary';
-import storyTreeOperator from '../operators/StoryTreeOperator';
+import PostTreeErrorBoundary from './PostTreeErrorBoundary';
+import postTreeOperator from '../operators/PostTreeOperator';
 import { useUser } from './UserContext';
 import { Quote, areQuotesEqual } from '../types/quote';
 import { 
@@ -30,23 +30,23 @@ import {
  * - Editing state management
  * - Node removal tracking
  * - Quote metadata and reply counts handling
- * - Support for nested storyTree structure in node objects
+ * - Support for nested postTree structure in node objects
  * - Proper type checking for node structure
  * - Handle quote metadata
  * - Support for reply-based navigation
  * - TypeScript type safety and interfaces
  * - Provide state to UI components without exposing dispatch.
- * - Dispatch is centralized in StoryTreeOperator to handle all state updates.
+ * - Dispatch is centralized in PostTreeOperator to handle all state updates.
  */
 
-const initialState: StoryTreeState = {
-  storyTree: null,
+const initialState: PostTreeState = {
+  postTree: null,
   error: null,
   isLoadingMore: false,
 };
 
 // Helper function to find siblings for a quote in the array-based structure
-function findSiblingsForQuote(siblings: Siblings, quote: Quote | null): StoryTreeNode[] {
+function findSiblingsForQuote(siblings: Siblings, quote: Quote | null): PostTreeNode[] {
   const entry = siblings.levelsMap.find(([key]) => {
     if (key === null && quote === null) {
       return true;
@@ -63,7 +63,7 @@ function findSiblingsForQuote(siblings: Siblings, quote: Quote | null): StoryTre
   return entry ? entry[1] : [];
 }
 
-export function mergeLevels(existingLevels: Array<StoryTreeLevel>, newLevelsPayload: Array<StoryTreeLevel>): Array<StoryTreeLevel> {
+export function mergeLevels(existingLevels: Array<PostTreeLevel>, newLevelsPayload: Array<PostTreeLevel>): Array<PostTreeLevel> {
   const processedNewLevelIndices = new Set<number>();
   let overallChange = false; // Track if any level object reference changes
 
@@ -178,15 +178,15 @@ export function mergeLevels(existingLevels: Array<StoryTreeLevel>, newLevelsPayl
   return overallChange ? potentiallyUpdatedLevels : existingLevels;
 }
 
-function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState {
-  let nextState: StoryTreeState = state;
+function postTreeReducer(state: PostTreeState, action: Action): PostTreeState {
+  let nextState: PostTreeState = state;
   switch (action.type) {
     case ACTIONS.START_STORY_TREE_LOAD:
       {
         nextState = {
           ...state,
           isLoadingMore: true,
-          storyTree: {
+          postTree: {
             post: {
               id: action.payload.rootNodeId,
               content: '',
@@ -195,26 +195,26 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
             },
             levels: [],
             error: null
-          } as StoryTree
+          } as PostTree
         };
         break;
       }
     
     case ACTIONS.SET_INITIAL_STORY_TREE_DATA:
     {
-      if (!action.payload.storyTree) {
+      if (!action.payload.postTree) {
         nextState = {
           ...state,
           isLoadingMore: false,
           error: action.payload.error || state.error,
-          storyTree: null,
+          postTree: null,
         };
       } else {
         nextState = {
           ...state,
           isLoadingMore: false,
           error: null,
-          storyTree: action.payload.storyTree,
+          postTree: action.payload.postTree,
         };
       }
       break;
@@ -222,33 +222,33 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
     
     case ACTIONS.INCLUDE_NODES_IN_LEVELS:
       {
-        if (!state.storyTree) {
-          console.error("StoryTree is not initialized");
+        if (!state.postTree) {
+          console.error("PostTree is not initialized");
           return state;
         }
-        const updatedLevels = mergeLevels(state.storyTree.levels, action.payload);
+        const updatedLevels = mergeLevels(state.postTree.levels, action.payload);
         const updatedLevelNumbers = action.payload.map(lvl => getLevelNumber(lvl)).filter((n): n is number => typeof n === 'number');
         const maxUpdatedLevel = updatedLevelNumbers.length > 0 ? Math.max(...updatedLevelNumbers) : updatedLevels.length - 1;
         const truncatedLevels = updatedLevels.slice(0, maxUpdatedLevel + 1);
         nextState = {
           ...state,
-          storyTree: { ...state.storyTree, levels: truncatedLevels },
+          postTree: { ...state.postTree, levels: truncatedLevels },
         };
         break;
       }
 
     case ACTIONS.SET_SELECTED_NODE:
       {
-        if (!state.storyTree) {
-          console.error("SET_SELECTED_NODE: StoryTree is not initialized");
+        if (!state.postTree) {
+          console.error("SET_SELECTED_NODE: PostTree is not initialized");
           return state;
         }
 
-        const selectedNode: StoryTreeNode = action.payload;
+        const selectedNode: PostTreeNode = action.payload;
         const targetLevelNumber = selectedNode.levelNumber;
 
         // Use .map() for immutable update, similar to UPDATE_LEVEL_SELECTED_QUOTE
-        const newLevels = state.storyTree.levels.map(level => {
+        const newLevels = state.postTree.levels.map(level => {
           if (getLevelNumber(level) === targetLevelNumber) {
             // Call helper to get the immutably updated level object
             // This helper already creates new level and midLevel objects internally
@@ -261,9 +261,9 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
 
         nextState = {
           ...state,
-          storyTree: {
-            ...state.storyTree,
-            levels: newLevels as StoryTreeLevel[] // Use newLevels directly
+          postTree: {
+            ...state.postTree,
+            levels: newLevels as PostTreeLevel[] // Use newLevels directly
           }
         };
         break;
@@ -271,13 +271,13 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
 
     case ACTIONS.UPDATE_THIS_LEVEL_SELECTED_QUOTE:
       {
-        if (!state.storyTree) {
-          console.error("UPDATE_THIS_LEVEL_SELECTED_QUOTE: StoryTree is not initialized");
+        if (!state.postTree) {
+          console.error("UPDATE_THIS_LEVEL_SELECTED_QUOTE: PostTree is not initialized");
           return state;
         }
         const { levelNumber: targetLevelNumber, newQuote } = action.payload;
 
-        const newLevels = state.storyTree.levels.map(level => {
+        const newLevels = state.postTree.levels.map(level => {
           if (getLevelNumber(level) === targetLevelNumber) {
              // Use the helper function to update the quote immutably
             return setSelectedQuoteInThisLevelHelper(level, newQuote);
@@ -289,9 +289,9 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
 
         nextState = {
           ...state,
-          storyTree: {
-            ...state.storyTree,
-            levels: newLevels as StoryTreeLevel[]
+          postTree: {
+            ...state.postTree,
+            levels: newLevels as PostTreeLevel[]
           }
         };
         break;
@@ -299,15 +299,15 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
 
     case ACTIONS.SET_LAST_LEVEL:
       {
-        if (!state.storyTree) {
-          console.error("SET_LAST_LEVEL: StoryTree is not initialized");
+        if (!state.postTree) {
+          console.error("SET_LAST_LEVEL: PostTree is not initialized");
           return state;
         }
-        if (!state.storyTree.post?.id) {
+        if (!state.postTree.post?.id) {
            console.error("SET_LAST_LEVEL: Cannot determine rootNodeId from post");
            return state; // Or set error
         }
-        const rootNodeId = state.storyTree.post.id;
+        const rootNodeId = state.postTree.post.id;
         const lastLevelNumberInPayload = action.payload.levelNumber;
 
         // Create the LastLevel data part
@@ -316,41 +316,41 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
             rootNodeId: rootNodeId
         };
 
-        // Create the full StoryTreeLevel object representing the last level
-        const lastLevelAsStoryTreeLevel: StoryTreeLevel = {
+        // Create the full PostTreeLevel object representing the last level
+        const lastLevelAsPostTreeLevel: PostTreeLevel = {
             isLastLevel: true,
             midLevel: null, // Keep midLevel as null
             lastLevel: lastLevelData
         };
 
         // Find if the level already exists
-        const levelIndex = state.storyTree.levels.findIndex(level => getLevelNumber(level) === lastLevelNumberInPayload);
+        const levelIndex = state.postTree.levels.findIndex(level => getLevelNumber(level) === lastLevelNumberInPayload);
 
-        let newLevels: Array<StoryTreeLevel>;
+        let newLevels: Array<PostTreeLevel>;
         if (levelIndex !== -1) {
            // If level already exists, replace it and truncate any subsequent levels
            console.log(`[Reducer SET_LAST_LEVEL] Replacing existing level ${lastLevelNumberInPayload} at index ${levelIndex} with LastLevel object.`);
            newLevels = [
-               ...state.storyTree.levels.slice(0, levelIndex),
-               lastLevelAsStoryTreeLevel
+               ...state.postTree.levels.slice(0, levelIndex),
+               lastLevelAsPostTreeLevel
                // Truncate levels after this index
            ];
-        } else if (lastLevelNumberInPayload === state.storyTree.levels.length) {
+        } else if (lastLevelNumberInPayload === state.postTree.levels.length) {
             // If the level doesn't exist yet and it's the next sequential level, append it
              console.log(`[Reducer SET_LAST_LEVEL] Appending LastLevel object for new level ${lastLevelNumberInPayload}.`);
             newLevels = [
-               ...state.storyTree.levels,
-               lastLevelAsStoryTreeLevel
+               ...state.postTree.levels,
+               lastLevelAsPostTreeLevel
            ];
         } else {
             // Error case: Trying to set LastLevel for a non-existent, non-sequential level
-            console.error(`SET_LAST_LEVEL: Cannot set LastLevel for non-sequential level ${lastLevelNumberInPayload}. Current length: ${state.storyTree.levels.length}. State unchanged.`);
+            console.error(`SET_LAST_LEVEL: Cannot set LastLevel for non-sequential level ${lastLevelNumberInPayload}. Current length: ${state.postTree.levels.length}. State unchanged.`);
             return state; // Return unchanged state
         }
 
         nextState = {
           ...state,
-          storyTree: { ...state.storyTree, levels: newLevels }
+          postTree: { ...state.postTree, levels: newLevels }
         };
         break;
       }
@@ -376,8 +376,8 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
 
     case ACTIONS.REPLACE_LEVEL_DATA:
       {
-        if (!state.storyTree) {
-          console.error("REPLACE_LEVEL_DATA: StoryTree is not initialized");
+        if (!state.postTree) {
+          console.error("REPLACE_LEVEL_DATA: PostTree is not initialized");
           return state;
         }
         const newLevelPayload = action.payload;
@@ -387,7 +387,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
           return state;
         }
 
-        const currentLevels = state.storyTree.levels;
+        const currentLevels = state.postTree.levels;
         const levelIndex = currentLevels.findIndex(level => getLevelNumber(level) === levelNumberToReplace);
 
         let updatedLevels;
@@ -396,7 +396,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         if (isMidLevel(levelToInsert) && levelToInsert.midLevel) {
             const parentQuote = levelToInsert.midLevel.selectedQuoteInParent;
             const siblingsMap = levelToInsert.midLevel.siblings.levelsMap;
-            let firstSibling: StoryTreeNode | undefined = undefined;
+            let firstSibling: PostTreeNode | undefined = undefined;
 
             const entry = siblingsMap.find(([key]) => areQuotesEqual(key, parentQuote));
             if (entry && entry[1].length > 0) {
@@ -431,19 +431,19 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
 
         nextState = {
           ...state,
-          storyTree: { ...state.storyTree, levels: updatedLevels },
+          postTree: { ...state.postTree, levels: updatedLevels },
         };
         break;
       }
 
     case ACTIONS.CLEAR_LEVELS_AFTER:
       {
-        if (!state.storyTree) {
-          console.error("CLEAR_LEVELS_AFTER: StoryTree is not initialized");
+        if (!state.postTree) {
+          console.error("CLEAR_LEVELS_AFTER: PostTree is not initialized");
           return state;
         }
         const targetLevelNumber = action.payload.levelNumber;
-        const filteredLevels = state.storyTree.levels.filter(level => {
+        const filteredLevels = state.postTree.levels.filter(level => {
           const levelNum = getLevelNumber(level);
           // Use explicit if/else for clearer type narrowing
           if (levelNum === null || levelNum === undefined) {
@@ -458,7 +458,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
 
         nextState = {
           ...state,
-          storyTree: { ...state.storyTree, levels: filteredLevels },
+          postTree: { ...state.postTree, levels: filteredLevels },
         };
         break;
       }
@@ -480,7 +480,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
         // For now, we'll call it directly, acknowledging the impurity.
         console.log(`[Reducer] Received NAVIGATE_NEXT_SIBLING for level ${action.payload.levelNumber}`);
         // Pass the full payload including expectedCurrentNodeId
-        storyTreeOperator.handleNavigateNextSibling(action.payload.levelNumber, action.payload.expectedCurrentNodeId)
+        postTreeOperator.handleNavigateNextSibling(action.payload.levelNumber, action.payload.expectedCurrentNodeId)
           .catch(error => console.error("Error in handleNavigateNextSibling:", error)); // Log async errors
         return state; // Return current state, side effect handled by operator
       }
@@ -489,7 +489,7 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
        {
          console.log(`[Reducer] Received NAVIGATE_PREV_SIBLING for level ${action.payload.levelNumber}`);
          // Pass the full payload including expectedCurrentNodeId
-        storyTreeOperator.handleNavigatePrevSibling(action.payload.levelNumber, action.payload.expectedCurrentNodeId)
+        postTreeOperator.handleNavigatePrevSibling(action.payload.levelNumber, action.payload.expectedCurrentNodeId)
            .catch(error => console.error("Error in handleNavigatePrevSibling:", error)); // Log async errors
         return state; // Return current state, side effect handled by operator
       }
@@ -500,36 +500,36 @@ function storyTreeReducer(state: StoryTreeState, action: Action): StoryTreeState
   return nextState;
 }
 
-interface StoryTreeContextType {
-  state: StoryTreeState;
+interface PostTreeContextType {
+  state: PostTreeState;
   dispatch: React.Dispatch<Action>;
 }
 
-const StoryTreeContext = createContext<StoryTreeContextType | undefined>(undefined);
+const PostTreeContext = createContext<PostTreeContextType | undefined>(undefined);
 
-export function StoryTreeProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(storyTreeReducer, initialState);
+export function PostTreeProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(postTreeReducer, initialState);
   const userContext = useUser();
 
   // Use useLayoutEffect to synchronously inject the store and user context before child effects run.
   useLayoutEffect(() => {
-    storyTreeOperator.setStore({ state, dispatch });
-    storyTreeOperator.setUserContext(userContext);
+    postTreeOperator.setStore({ state, dispatch });
+    postTreeOperator.setUserContext(userContext);
   }, [state, dispatch, userContext]);
 
   return (
-    <StoryTreeErrorBoundary>
-      <StoryTreeContext.Provider value={{ state, dispatch }}>
+    <PostTreeErrorBoundary>
+      <PostTreeContext.Provider value={{ state, dispatch }}>
         {children}
-      </StoryTreeContext.Provider>
-    </StoryTreeErrorBoundary>
+      </PostTreeContext.Provider>
+    </PostTreeErrorBoundary>
   );
 }
 
-export function useStoryTree() {
-  const context = useContext(StoryTreeContext);
+export function usePostTree() {
+  const context = useContext(PostTreeContext);
   if (!context) {
-    throw new Error('useStoryTree must be used within a StoryTreeProvider');
+    throw new Error('usePostTree must be used within a PostTreeProvider');
   }
   return context;
 } 

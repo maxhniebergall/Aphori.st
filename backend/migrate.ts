@@ -2,8 +2,8 @@
 Migration Script for Unified Node Structure
 
 Requirements:
-- Migrate existing storyTree and reply records to the new unified node structure
-- For storyTree records with titles:
+- Migrate existing postTree and reply records to the new unified node structure
+- For postTree records with titles:
   - Prepend the title to the text content with markdown formatting (`# Title\n\nContent`)
   - Remove title field from metadata
 - For reply records:
@@ -60,7 +60,7 @@ interface OldStoryMetadata {
     quote?: Quote | null;
 }
 
-interface OldStoryTree {
+interface OldPostTree {
     id: string;
     text: string;
     parentId: string | null;
@@ -158,7 +158,7 @@ async function validateMigration(db: DatabaseClient): Promise<ValidationError[]>
     
     // Helper function to process a key
     async function validateKey(key: string, type: 'story' | 'reply' | 'feed'): Promise<void> {
-        const field = type === 'story' ? 'storyTree' : type === 'reply' ? 'reply' : 'feedItem';
+        const field = type === 'story' ? 'postTree' : type === 'reply' ? 'reply' : 'feedItem';
         try {
             const dataStr = await db.hGet(key, field, { returnCompressed: false });
             if (!dataStr) {
@@ -270,8 +270,8 @@ async function getFeedItems(db: DatabaseClient): Promise<string[]> {
     return feedItems;
 }
 
-// Migrate storyTree records
-async function migrateStoryTrees(db: DatabaseClient): Promise<void> {
+// Migrate postTree records
+async function migratePostTrees(db: DatabaseClient): Promise<void> {
     logger.info('Starting migration of story trees.');
     let storyIds: string[];
     try {
@@ -289,12 +289,12 @@ async function migrateStoryTrees(db: DatabaseClient): Promise<void> {
     
     for (const storyId of storyIds) {
         try {
-            const oldData = await db.hGet(storyId, 'storyTree', { returnCompressed: false });
+            const oldData = await db.hGet(storyId, 'postTree', { returnCompressed: false });
             if (!oldData) {
-                logger.warn(`No storyTree data found for ${storyId}`);
+                logger.warn(`No postTree data found for ${storyId}`);
                 continue;
             }
-            let oldNode: OldStoryTree;
+            let oldNode: OldPostTree;
             try {
                 // Handle both string and object data
                 oldNode = typeof oldData === 'string' ? JSON.parse(oldData) : oldData;
@@ -329,7 +329,7 @@ async function migrateStoryTrees(db: DatabaseClient): Promise<void> {
             };
             
             const newDataStr = JSON.stringify(unifiedNode);
-            await db.hSet(storyId, 'storyTree', newDataStr);
+            await db.hSet(storyId, 'postTree', newDataStr);
             logger.info(`Migrated story tree ${storyId}`);
         } catch(err) {
             logger.error(`Error migrating story tree ${storyId}:`, err);
@@ -439,7 +439,7 @@ async function migrate(db: DatabaseClient): Promise<void> {
         logger.info('Database connected for migration.');
         
         // Run migration
-        await migrateStoryTrees(db);
+        await migratePostTrees(db);
         await migrateReplies(db);
         await migrateFeedItems(db);
         logger.info('Migration completed. Starting validation...');
