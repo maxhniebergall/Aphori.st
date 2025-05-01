@@ -2,7 +2,7 @@
  * Requirements:
  * - React, useCallback - For component rendering and memoization
  * - Display story tree with virtualized list via VirtualizedStoryList (which now handles progressive loading)
- * - Handle root node initialization and data fetching (delegated to context and storyTreeOperator)
+ * - Handle root node initialization and data fetching (delegated to context and postTreeOperator)
  * - Properly size content accounting for header height
  * - Support sibling navigation
  * - Error handling for invalid root nodes
@@ -20,12 +20,12 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import './StoryTree.css';
+import './PostTree.css';
 import Header from './Header';
-import { StoryTreeProvider, useStoryTree } from '../context/StoryTreeContext';
+import { PostTreeProvider, usePostTree } from '../context/PostTreeContext';
 import VirtualizedStoryList from './VirtualizedStoryList';
 import { ReplyProvider, useReplyContext } from '../context/ReplyContext';
-import StoryTreeOperator from '../operators/StoryTreeOperator';
+import PostTreeOperator from '../operators/PostTreeOperator';
 import React from 'react';
 import { useUser } from '../context/UserContext';
 import ReplyEditor from './ReplyEditor';
@@ -34,9 +34,9 @@ import ReplyEditor from './ReplyEditor';
 const MemoizedVirtualizedStoryList = React.memo(VirtualizedStoryList);
 
 // Main content component
-function StoryTreeContent() {
+function PostTreeContent() {
   const navigate = useNavigate();
-  const { state } = useStoryTree();
+  const { state } = usePostTree();
   const { uuid: rootUUID } = useParams<{ uuid: string }>();
   const { replyTarget } = useReplyContext();
 
@@ -47,13 +47,13 @@ function StoryTreeContent() {
   // The main content area will conditionally render error or list
 
   return (
-    <div className="story-tree-container">
+    <div className="post-tree-container">
       <Header 
         title="Stories"
         subtitle="View and respond to stories"
         onLogoClick={() => navigate('/feed')}
       />
-      <main className="story-tree-content" role="main">
+      <main className="post-tree-content" role="main">
         {state.error ? (
           // Render error UI if state.error is truthy
           <div className="error-container" role="alert">
@@ -78,13 +78,12 @@ function StoryTreeContent() {
 }
 
 // New component to handle context consumption and operator setup
-function StoryTreeSetupAndContent() {
+function PostTreeSetupAndContent() {
   // Hooks are now called safely inside the providers
-  const { state: storyTreeState, dispatch: storyTreeDispatch } = useStoryTree();
+  const { state: postTreeState, dispatch: postTreeDispatch } = usePostTree();
   const { state: userState } = useUser();
   const { clearReplyState, setRootUUID } = useReplyContext();
   const { uuid: rootUUIDFromParams } = useParams<{ uuid: string }>();
-  const navigate = useNavigate();
 
   // Memoize the root UUID from params to prevent unnecessary effect runs
   const rootUUID = useMemo(() => rootUUIDFromParams || null, [rootUUIDFromParams]);
@@ -101,13 +100,13 @@ function StoryTreeSetupAndContent() {
 
   // Effect to initialize the operator with contexts and setters
   useEffect(() => {
-    // Inject StoryTree state/dispatch
-    StoryTreeOperator.setStore({ state: storyTreeState, dispatch: storyTreeDispatch });
+    // Inject PostTree state/dispatch
+    PostTreeOperator.setStore({ state: postTreeState, dispatch: postTreeDispatch });
     // Inject User context state
-    StoryTreeOperator.setUserContext({ state: userState });
+    PostTreeOperator.setUserContext({ state: userState });
     // Inject Reply context setters
-    StoryTreeOperator.setReplyContextSetters({ resetReplyState });
-  }, [storyTreeState, storyTreeDispatch, userState, resetReplyState]);
+    PostTreeOperator.setReplyContextSetters({ resetReplyState });
+  }, [postTreeState, postTreeDispatch, userState, resetReplyState]);
 
   // Effect to initialize story tree and fetch data when rootUUID changes
   useEffect(() => {
@@ -116,9 +115,9 @@ function StoryTreeSetupAndContent() {
     const initializeTree = async () => {
       if (rootUUID && mounted) {
         // Clear previous error before fetching new tree by setting payload to empty string
-        storyTreeDispatch({ type: 'SET_ERROR', payload: '' }); 
+        postTreeDispatch({ type: 'SET_ERROR', payload: '' }); 
         try {
-          await StoryTreeOperator.initializeStoryTree(rootUUID);
+          await PostTreeOperator.initializePostTree(rootUUID);
         } catch (error: any) {
           console.error('Failed to initialize story tree:', error);
           if (mounted) {
@@ -127,14 +126,14 @@ function StoryTreeSetupAndContent() {
               ? `Story with ID '${rootUUID}' not found.` 
               : 'It seems like this story tree does not exist.';
             // Dispatch error state to context instead of navigating
-            storyTreeDispatch({ type: 'SET_ERROR', payload: errorMessage });
+            postTreeDispatch({ type: 'SET_ERROR', payload: errorMessage });
           }
         }
       } else if (!rootUUID && mounted) {
           // Handle case where UUID is missing in the URL path itself
           // Clear previous error first by setting payload to empty string
-          storyTreeDispatch({ type: 'SET_ERROR', payload: '' }); 
-          storyTreeDispatch({ type: 'SET_ERROR', payload: 'No story ID provided.' });
+          postTreeDispatch({ type: 'SET_ERROR', payload: '' }); 
+          postTreeDispatch({ type: 'SET_ERROR', payload: 'No story ID provided.' });
       }
     };
 
@@ -143,25 +142,25 @@ function StoryTreeSetupAndContent() {
     return () => {
       mounted = false;
       // Optional: Clear error when navigating away or changing UUID by setting payload to empty string
-      // storyTreeDispatch({ type: 'SET_ERROR', payload: '' });
+      // postTreeDispatch({ type: 'SET_ERROR', payload: '' });
     };
     // Ensure navigate is included if used inside effect, though it's not directly used here now.
-  }, [rootUUID, storyTreeDispatch]); 
+  }, [rootUUID, postTreeDispatch]); 
 
 
   // Render the actual content component
-  return <StoryTreeContent />;
+  return <PostTreeContent />;
 }
 
 // Wrapper component that renders the providers
-function StoryTreeHolder() {
+function PostTreeHolder() {
   return (
-    <StoryTreeProvider>
+    <PostTreeProvider>
       <ReplyProvider>
-        <StoryTreeSetupAndContent />
+        <PostTreeSetupAndContent />
       </ReplyProvider>
-    </StoryTreeProvider>
+    </PostTreeProvider>
   );
 }
 
-export default StoryTreeHolder;
+export default PostTreeHolder;

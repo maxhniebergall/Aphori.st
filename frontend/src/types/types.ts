@@ -71,7 +71,7 @@ export interface FetchResult {
 }
 
 
-export interface StoryTreeNode { // this value only exists in the frontend. it combines the post and the levels of the story tree
+export interface PostTreeNode { // this value only exists in the frontend. it combines the post and the levels of the story tree
   id: string;
   rootNodeId: string;
   parentId: string[];
@@ -84,11 +84,11 @@ export interface StoryTreeNode { // this value only exists in the frontend. it c
 }
 
 export interface Siblings {
-  // Store siblings as an array of entries [Quote | null, StoryTreeNode[]] for better serialization
-  levelsMap: Array<[Quote | null, StoryTreeNode[]]>;
+  // Store siblings as an array of entries [Quote | null, PostTreeNode[]] for better serialization
+  levelsMap: Array<[Quote | null, PostTreeNode[]]>;
 }
 
-export interface StoryTreeLevel {
+export interface PostTreeLevel {
   isLastLevel: boolean;
   midLevel: MidLevel | null;
   lastLevel: LastLevel | null;
@@ -100,7 +100,7 @@ export interface MidLevel {
   levelNumber: number;
   selectedQuoteInParent: Quote | null;
   selectedQuoteInThisLevel: Quote | null;
-  selectedNode: StoryTreeNode;
+  selectedNode: PostTreeNode;
   siblings: Siblings;
   pagination: Pagination;
 }
@@ -111,14 +111,14 @@ export interface LastLevel {
   rootNodeId: string;
 }
 
-export interface StoryTree { // this is the story tree we assemble as the user navigates
+export interface PostTree { // this is the story tree we assemble as the user navigates
   post: Post;
-  levels: Array<StoryTreeLevel>; 
+  levels: Array<PostTreeLevel>; 
   error: string | null;
 }
 
-export interface StoryTreeState { // required to allow storyTree to be null before it is initialized
-  storyTree: StoryTree | null;
+export interface PostTreeState { // required to allow postTree to be null before it is initialized
+  postTree: PostTree | null;
   error: string | null;
   isLoadingMore: boolean;
 }
@@ -190,11 +190,11 @@ export const ACTIONS = {
 
 export type Action =
   | { type: typeof ACTIONS.START_STORY_TREE_LOAD; payload: { rootNodeId: string } }
-  | { type: typeof ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { storyTree: StoryTree; error?: never } | { storyTree?: never; error: string } }
-  | { type: typeof ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: StoryTreeLevel[] }
-  | { type: typeof ACTIONS.SET_SELECTED_NODE; payload: StoryTreeNode }
+  | { type: typeof ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { postTree: PostTree; error?: never } | { postTree?: never; error: string } }
+  | { type: typeof ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: PostTreeLevel[] }
+  | { type: typeof ACTIONS.SET_SELECTED_NODE; payload: PostTreeNode }
   | { type: typeof ACTIONS.UPDATE_THIS_LEVEL_SELECTED_QUOTE; payload: { levelNumber: number; newQuote: Quote | null } }
-  | { type: typeof ACTIONS.REPLACE_LEVEL_DATA; payload: StoryTreeLevel }
+  | { type: typeof ACTIONS.REPLACE_LEVEL_DATA; payload: PostTreeLevel }
   | { type: typeof ACTIONS.CLEAR_LEVELS_AFTER; payload: { levelNumber: number } }
   | { type: typeof ACTIONS.SET_LAST_LEVEL; payload: { levelNumber: number } } 
       // levelNumber is the number of the level immediately after the last level that has replies, will be filled with nulls

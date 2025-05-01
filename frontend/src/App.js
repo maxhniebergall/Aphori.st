@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import StoryTreePage from './components/StoryTreePage';
+import PostTreePage from './components/PostTreePage';
 import Feed from './components/Feed';
 import RequestMagicLink from './components/RequestMagicLink';
 import VerifyMagicLink from './components/VerifyMagicLink';
@@ -67,7 +67,7 @@ function App() {
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/verify" element={<VerifyMagicLink />} />
                 <Route path="/feed" element={<Feed />} />
-                <Route path="/storyTree/:uuid" element={<StoryTreePage />} />
+                <Route path="/postTree/:uuid" element={<PostTreePage />} />
                 <Route path="/post" element={<PostPage />} />
                 <Route path="/" element={<Feed />} />
 

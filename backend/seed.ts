@@ -59,7 +59,7 @@ async function seedDevStories(dbClient: DatabaseClientInterface): Promise<void> 
         // but can be kept for safety or if seedDevStories is called independently.
         try {
             await db.del('feedItems');
-            await db.del('allStoryTreeIds');
+            await db.del('allPostTreeIds');
             logger.info("Existing feed items cleared within seedDevStories using db client");
         } catch (err) {
             logger.error('Failed to delete existing keys within seedDevStories:', err);
@@ -83,9 +83,9 @@ async function seedDevStories(dbClient: DatabaseClientInterface): Promise<void> 
             };
 
             // Store in Redis, ensuring consistency with create/get endpoints
-            // Use field key 'storyTree' and store stringified JSON
-            await db.hSet(uuid, 'storyTree', JSON.stringify(formattedStory));
-            await db.lPush('allStoryTreeIds', uuid);
+            // Use field key 'postTree' and store stringified JSON
+            await db.hSet(uuid, 'postTree', JSON.stringify(formattedStory));
+            await db.lPush('allPostTreeIds', uuid);
 
             // Add to feed items (only root-level posts go to feed)
             const feedItem = {

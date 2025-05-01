@@ -1,16 +1,16 @@
-import { LastLevel, MidLevel, StoryTreeLevel, StoryTreeNode, Pagination, Siblings } from '../types/types';
+import { LastLevel, MidLevel, PostTreeLevel, PostTreeNode, Pagination, Siblings } from '../types/types';
 import { Quote } from '../types/quote';
 
 /**
- * Helper functions to access properties from the new StoryTreeLevel structure
- * These functions handle the new factorization of StoryTreeLevel into MidLevel and LastLevel
+ * Helper functions to access properties from the new PostTreeLevel structure
+ * These functions handle the new factorization of PostTreeLevel into MidLevel and LastLevel
  * They are pure functions without side effects.
  */
 
 /**
  * Check if a level is a LastLevel
  */
-export function isLastLevel(level: StoryTreeLevel): boolean {
+export function isLastLevel(level: PostTreeLevel): boolean {
   if ('isLastLevel' in level) {
     return level.isLastLevel || (level.lastLevel !== null && level.midLevel === null);
   }
@@ -20,7 +20,7 @@ export function isLastLevel(level: StoryTreeLevel): boolean {
 /**
  * Check if a level is a MidLevel
  */
-export function isMidLevel(level: StoryTreeLevel): boolean {
+export function isMidLevel(level: PostTreeLevel): boolean {
   if ('isLastLevel' in level) {
     return !level.isLastLevel && level.midLevel !== null;
   }
@@ -28,9 +28,9 @@ export function isMidLevel(level: StoryTreeLevel): boolean {
 }
 
 /**
- * Get the rootNodeId from a StoryTreeLevel or LastLevel
+ * Get the rootNodeId from a PostTreeLevel or LastLevel
  */
-export function getRootNodeId(level: StoryTreeLevel): string | undefined { 
+export function getRootNodeId(level: PostTreeLevel): string | undefined { 
   if (isLastLevel(level) && level.lastLevel) {
     return level.lastLevel.rootNodeId;
   } else if (isMidLevel(level) && level.midLevel) {
@@ -40,9 +40,9 @@ export function getRootNodeId(level: StoryTreeLevel): string | undefined {
 }
 
 /**
- * Get the levelNumber from a StoryTreeLevel or LastLevel
+ * Get the levelNumber from a PostTreeLevel or LastLevel
  */
-export function getLevelNumber(level: StoryTreeLevel): number | undefined {
+export function getLevelNumber(level: PostTreeLevel): number | undefined {
   if (isLastLevel(level) && level.lastLevel) {
     return level.lastLevel.levelNumber;
   } else if (isMidLevel(level) && level.midLevel) {
@@ -52,9 +52,9 @@ export function getLevelNumber(level: StoryTreeLevel): number | undefined {
 }
 
 /**
- * Get the parentId from a StoryTreeLevel
+ * Get the parentId from a PostTreeLevel
  */
-export function getParentId(level: StoryTreeLevel): string[] | undefined {
+export function getParentId(level: PostTreeLevel): string[] | undefined {
   if (isMidLevel(level) && level.midLevel) {
     return level.midLevel.parentId;
   }
@@ -62,9 +62,9 @@ export function getParentId(level: StoryTreeLevel): string[] | undefined {
 }
 
 /**
- * Get the selectedQuoteInParent from a StoryTreeLevel (the quote selected in the parent level)
+ * Get the selectedQuoteInParent from a PostTreeLevel (the quote selected in the parent level)
  */
-export function getSelectedQuoteInParent(level: StoryTreeLevel): Quote | null {
+export function getSelectedQuoteInParent(level: PostTreeLevel): Quote | null {
   if (isMidLevel(level) && level.midLevel) {
     return level.midLevel.selectedQuoteInParent;
   }
@@ -72,9 +72,9 @@ export function getSelectedQuoteInParent(level: StoryTreeLevel): Quote | null {
 }
 
 /**
- * Get the selectedQuoteInThisLevel from a StoryTreeLevel (the quote selected within this level's node)
+ * Get the selectedQuoteInThisLevel from a PostTreeLevel (the quote selected within this level's node)
  */
-export function getSelectedQuoteInThisLevel(level: StoryTreeLevel): Quote | null {
+export function getSelectedQuoteInThisLevel(level: PostTreeLevel): Quote | null {
   if (isMidLevel(level) && level.midLevel) {
     return level.midLevel.selectedQuoteInThisLevel;
   }
@@ -82,11 +82,11 @@ export function getSelectedQuoteInThisLevel(level: StoryTreeLevel): Quote | null
 }
 
 /**
- * Set the selectedQuoteInThisLevel in a StoryTreeLevel
+ * Set the selectedQuoteInThisLevel in a PostTreeLevel
  * 
  * Pure Function
  */
-export function setSelectedQuoteInThisLevelHelper(level: StoryTreeLevel, quote: Quote | null): StoryTreeLevel {
+export function setSelectedQuoteInThisLevelHelper(level: PostTreeLevel, quote: Quote | null): PostTreeLevel {
   if (isMidLevel(level) && level.midLevel) {
     const newLevel = {
       ...level,
@@ -105,9 +105,9 @@ export function setSelectedQuoteInThisLevelHelper(level: StoryTreeLevel, quote: 
 }
 
 /**
- * Get the selectedNode from a StoryTreeLevel
+ * Get the selectedNode from a PostTreeLevel
  */
-export function getSelectedNodeHelper(level: StoryTreeLevel): StoryTreeNode | undefined {
+export function getSelectedNodeHelper(level: PostTreeLevel): PostTreeNode | undefined {
   if (isMidLevel(level) && level.midLevel) {
     return level.midLevel.selectedNode;
   }
@@ -115,12 +115,12 @@ export function getSelectedNodeHelper(level: StoryTreeLevel): StoryTreeNode | un
 }
 
 /**
- * Set the selectedNode in a StoryTreeLevel
+ * Set the selectedNode in a PostTreeLevel
  * Pure Function
  * (No side effects; does not dispatch)
  * Should be used to create a larger value which will be dispatched
  */
-export function setSelectedNodeHelper(level: StoryTreeLevel, node: StoryTreeNode): StoryTreeLevel {
+export function setSelectedNodeHelper(level: PostTreeLevel, node: PostTreeNode): PostTreeLevel {
   if (isMidLevel(level) && level.midLevel) {
     return {
       ...level,
@@ -134,9 +134,9 @@ export function setSelectedNodeHelper(level: StoryTreeLevel, node: StoryTreeNode
 }
 
 /**
- * Get the siblings from a StoryTreeLevel
+ * Get the siblings from a PostTreeLevel
  */
-export function getSiblings(level: StoryTreeLevel): Siblings | undefined {
+export function getSiblings(level: PostTreeLevel): Siblings | undefined {
   if (isMidLevel(level) && level.midLevel) {
     return level.midLevel.siblings;
   }
@@ -144,9 +144,9 @@ export function getSiblings(level: StoryTreeLevel): Siblings | undefined {
 }
 
 /**
- * Get the pagination from a StoryTreeLevel
+ * Get the pagination from a PostTreeLevel
  */
-export function getPagination(level: StoryTreeLevel): Pagination | undefined {
+export function getPagination(level: PostTreeLevel): Pagination | undefined {
   if (isMidLevel(level) && level.midLevel) {
     return level.midLevel.pagination;
   }
@@ -154,7 +154,7 @@ export function getPagination(level: StoryTreeLevel): Pagination | undefined {
 }
 
 /**
- * Create a MidLevel StoryTreeLevel
+ * Create a MidLevel PostTreeLevel
 
  * Pure Function
  * (No side effects; does not dispatch)
@@ -166,10 +166,10 @@ export function createMidLevel(
   levelNumber: number,
   selectedQuoteInParent: Quote | null,
   selectedQuoteInThisLevel: Quote | null,
-  selectedNode: StoryTreeNode,
+  selectedNode: PostTreeNode,
   siblings: Siblings,
   pagination: Pagination
-): StoryTreeLevel {
+): PostTreeLevel {
   return {
     isLastLevel: false,
     midLevel: {
@@ -187,7 +187,7 @@ export function createMidLevel(
 }
 
 /**
- * Create a LastLevel StoryTreeLevel
+ * Create a LastLevel PostTreeLevel
  * Pure Function
  * (No side effects; does not dispatch)
  * Should be used to create a larger value which will be dispatched
@@ -195,7 +195,7 @@ export function createMidLevel(
 export function createLastLevel(
   rootNodeId: string,
   levelNumber: number
-): StoryTreeLevel {
+): PostTreeLevel {
   return {
     isLastLevel: true,
     midLevel: null,
@@ -208,7 +208,7 @@ export function createLastLevel(
 
 // Helper function to update siblings for a quote in the array-based structure
 // Now returns original siblings reference if nodes for the quote are unchanged.
-export function updateSiblingsForQuoteHelper(siblings: Siblings, quote: Quote | null, nodes: StoryTreeNode[]): Siblings {
+export function updateSiblingsForQuoteHelper(siblings: Siblings, quote: Quote | null, nodes: PostTreeNode[]): Siblings {
   const index = siblings.levelsMap.findIndex(([key]) => {
     if (key === null && quote === null) {
       return true;

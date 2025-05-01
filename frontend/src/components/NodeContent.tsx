@@ -3,7 +3,7 @@
  * - Render node text including markdown and text selection using TextSelection
  * - If the node has a quote, render it via QuoteRenderer
  * - Provide callback support for text selection completed event
- * - TypeScript support for props, including StoryTreeLevel type
+ * - TypeScript support for props, including PostTreeLevel type
  * - Yarn for package management
  * - Proper error handling
  * - Loading state management
@@ -17,12 +17,12 @@
 import React, { useMemo, useCallback, useRef, useEffect, useState } from 'react';
 import TextSelection from './TextSelection';
 import HighlightedText from './HighlightedText';
-import { QuoteCounts, StoryTreeNode } from '../types/types';
+import { QuoteCounts, PostTreeNode } from '../types/types';
 import { Quote, areQuotesEqual } from '../types/quote';
 import { useHighlighting } from '../hooks/useHighlighting';
 
 interface NodeContentProps {
-  node: StoryTreeNode;
+  node: PostTreeNode;
   onExistingQuoteSelectionComplete?: (quote: Quote) => void;
   isReplyTargetNode?: boolean;
   existingSelectableQuotes?: QuoteCounts;
@@ -108,9 +108,9 @@ const NodeContent: React.FC<NodeContentProps> = ({
   // Reference to the main content container
   const mainContentRef = useRef<HTMLDivElement>(null);
 
-  // Memoize the callback passed down from StoryTreeLevelComponent
+  // Memoize the callback passed down from PostTreeLevelComponent
   const memoizedOnExistingQuoteSelectionComplete = useCallback((selectedQuote: Quote) => {
-    // This log confirms what NodeContent passes up to StoryTreeLevelComponent
+    // This log confirms what NodeContent passes up to PostTreeLevelComponent
     
     onExistingQuoteSelectionComplete(selectedQuote);
   }, [onExistingQuoteSelectionComplete]);
@@ -179,7 +179,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
       {/* Render the quote container ONLY if this node is the reply target */}
       {isReplyTargetNode && (
         <div className="quote-container" role="region" aria-label="Quoted content for reply">
-          <blockquote className="story-tree-node-quote">
+          <blockquote className="post-tree-node-quote">
             <MemoizedTextSelection
               node={node}
               aria-label="Selectable text for reply"

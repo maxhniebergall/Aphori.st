@@ -5,7 +5,7 @@
  * - Support for infinite loading
  * - Support for reply mode
  * - TypeScript support
- * - Utilize StoryTreeContext for state management
+ * - Utilize PostTreeContext for state management
  * - Yarn for package management
  * - Proper error handling
  * - Loading state management
@@ -18,10 +18,10 @@
 
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { Virtuoso } from 'react-virtuoso';
-import { useStoryTree } from '../context/StoryTreeContext';
+import { usePostTree } from '../context/PostTreeContext';
 import { useReplyContext } from '../context/ReplyContext';
-import { LastLevel, StoryTreeLevel } from '../types/types';
-import storyTreeOperator from '../operators/StoryTreeOperator';
+import { LastLevel, PostTreeLevel } from '../types/types';
+import postTreeOperator from '../operators/PostTreeOperator';
 import { MemoizedRow } from './Row';
 import { getLevelNumber, isLastLevel } from '../utils/levelDataHelpers';
 
@@ -43,9 +43,9 @@ function useReplyContextForList() {
 }
 
 const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ postRootId }) => {
-  const { state } = useStoryTree();
+  const { state } = usePostTree();
   const [error, setError] = useState<string | null>(null);
-  const [levels, setLevels] = useState<Array<StoryTreeLevel>>([]);
+  const [levels, setLevels] = useState<Array<PostTreeLevel>>([]);
   
   const { replyTarget } = useReplyContextForList();
   const { isLoadingMore } = state;
@@ -54,15 +54,15 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
 
   // UPDATE: Effect syncs context levels AND triggers initial loading up to 5 levels
   useEffect(() => {
-    // Check if storyTree exists before trying to access levels or load more
-    if (!postRootId || !state.storyTree) { 
-      // Clear local state if postRootId is invalid or storyTree isn't ready
+    // Check if postTree exists before trying to access levels or load more
+    if (!postRootId || !state.postTree) { 
+      // Clear local state if postRootId is invalid or postTree isn't ready
       setLevels([]);
       setError(null); 
       return;
     }
 
-    const contextLevels = state.storyTree.levels || [];
+    const contextLevels = state.postTree.levels || [];
     setLevels(contextLevels); // Sync local state
 
     // Initial loading logic
@@ -74,12 +74,12 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     const hasMoreLevels = loadedLevelCount === 0 || !contextLevels[loadedLevelCount - 1].isLastLevel;
 
     // Check if we need more levels, are not loading, AND the last loaded level wasn't the final one
-    if (state.storyTree && loadedLevelCount < targetInitialLevels && !currentlyLoading && hasMoreLevels) {
-      storyTreeOperator.requestLoadNextLevel();
+    if (state.postTree && loadedLevelCount < targetInitialLevels && !currentlyLoading && hasMoreLevels) {
+      postTreeOperator.requestLoadNextLevel();
     }
 
-  // Depend on postRootId, levels array reference, isLoadingMore, and storyTree existence
-  }, [postRootId, state?.storyTree, state?.storyTree?.levels, state.isLoadingMore]);
+  // Depend on postRootId, levels array reference, isLoadingMore, and postTree existence
+  }, [postRootId, state?.postTree, state?.postTree?.levels, state.isLoadingMore]);
 
   // Set error
   useEffect(() => {
@@ -92,7 +92,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   }, [state?.error, error]); 
 
   // UPDATE: Define Virtuoso's itemContent function (Moved before returns)
-  const itemContent = useCallback((index: number, level: StoryTreeLevel) => {
+  const itemContent = useCallback((index: number, level: PostTreeLevel) => {
     if (!level) {
       console.warn(`Virtuoso itemContent: Received null/undefined level data for index ${index}, rendering placeholder.`);
       return <div style={{ height: '1px' }} />; 
@@ -111,14 +111,14 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
 
   // Restore the original loadMore callback (Moved before returns)
   const loadMore = useCallback(() => {
-    if (isLoadingMore || !state.storyTree) { // Add check for storyTree
+    if (isLoadingMore || !state.postTree) { // Add check for postTree
       return;
     }
-    storyTreeOperator.requestLoadNextLevel();
-  }, [isLoadingMore, state.storyTree]); // Add state.storyTree dependency
+    postTreeOperator.requestLoadNextLevel();
+  }, [isLoadingMore, state.postTree]); // Add state.postTree dependency
 
   // UPDATE: Define computeItemKey (Moved before returns)
-  const computeItemKey = useCallback((index: number, level: StoryTreeLevel): React.Key => {
+  const computeItemKey = useCallback((index: number, level: PostTreeLevel): React.Key => {
     const levelNum = getLevelNumber(level);
     const rootId = level?.midLevel?.rootNodeId ?? level?.lastLevel?.rootNodeId ?? `fallback-${index}`;
     return `${rootId}-level-${levelNum ?? index}`;
@@ -127,8 +127,8 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   // --- CONDITIONAL RETURNS MOVED AFTER ALL HOOKS ---
 
   // Show initial loading state: inferred if no levels, isLoadingMore is true, and no error
-  // Add check for !state.storyTree as well, maybe the operator isn't ready because of this
-  if ((!state.storyTree || !levels.length) && isLoadingMore && !error) {
+  // Add check for !state.postTree as well, maybe the operator isn't ready because of this
+  if ((!state.postTree || !levels.length) && isLoadingMore && !error) {
     return (
       <div className="loading" role="alert" aria-busy="true">
         <div className="loading-spinner"></div>

@@ -15,10 +15,10 @@ import { debounce } from 'lodash';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
-import { StoryTreeLevel as LevelData, Pagination, StoryTreeNode, QuoteCounts, ACTIONS } from '../types/types';
+import { PostTreeLevel as LevelData, Pagination, PostTreeNode, QuoteCounts, ACTIONS } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
-import storyTreeOperator from '../operators/StoryTreeOperator';
-import { useStoryTree } from '../context/StoryTreeContext';
+import postTreeOperator from '../operators/PostTreeOperator';
+import { usePostTree } from '../context/PostTreeContext';
 import { 
   getSelectedQuoteInParent,
   getSelectedQuoteInThisLevel,
@@ -32,7 +32,7 @@ import {
 import { findLatestDraftForParent } from '../utils/replyPersistence';
 import { ReplyContextType } from '../context/ReplyContext';
 
-interface StoryTreeLevelProps {
+interface PostTreeLevelProps {
   levelData: LevelData;
   reportHeight?: (height: number) => void;
 }
@@ -51,11 +51,11 @@ const MemoizedNodeFooter = React.memo(NodeFooter,
 // Memoize NodeContent using the comparison function defined within NodeContent.tsx
 const MemoizedNodeContent = React.memo(NodeContent);
 
-export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
+export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
   levelData,
   reportHeight,
 }) => {
-  const { dispatch } = useStoryTree();
+  const { dispatch } = usePostTree();
 
   // Debounce the navigation actions
   const debouncedNavigateNext = useMemo(
@@ -63,13 +63,13 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       const levelNumber = getLevelNumber(levelData);
       const currentNodeId = getSelectedNodeHelper(levelData)?.id ?? null;
       if (levelNumber !== undefined && currentNodeId !== null) { 
-        console.log(`[StoryTreeLevel] Dispatching NAVIGATE_NEXT_SIBLING for level ${levelNumber}, expecting node ${currentNodeId}`);
+        console.log(`[PostTreeLevel] Dispatching NAVIGATE_NEXT_SIBLING for level ${levelNumber}, expecting node ${currentNodeId}`);
         dispatch({ 
           type: ACTIONS.NAVIGATE_NEXT_SIBLING, 
           payload: { levelNumber, expectedCurrentNodeId: currentNodeId }
         });
       } else {
-        console.log(`[StoryTreeLevel] Navigation dispatch skipped (Next). Level: ${levelNumber}, CurrentNodeId: ${currentNodeId}`);
+        console.log(`[PostTreeLevel] Navigation dispatch skipped (Next). Level: ${levelNumber}, CurrentNodeId: ${currentNodeId}`);
       }
     }, 100, { leading: true, trailing: false }),
     [dispatch, levelData]
@@ -79,19 +79,19 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       const levelNumber = getLevelNumber(levelData);
       const currentNodeId = getSelectedNodeHelper(levelData)?.id ?? null;
       if (levelNumber !== undefined && currentNodeId !== null) { 
-        console.log(`[StoryTreeLevel] Dispatching NAVIGATE_PREV_SIBLING for level ${levelNumber}, expecting node ${currentNodeId}`);
+        console.log(`[PostTreeLevel] Dispatching NAVIGATE_PREV_SIBLING for level ${levelNumber}, expecting node ${currentNodeId}`);
         dispatch({ 
           type: ACTIONS.NAVIGATE_PREV_SIBLING, 
           payload: { levelNumber, expectedCurrentNodeId: currentNodeId }
         });
       } else {
-        console.log(`[StoryTreeLevel] Navigation dispatch skipped (Prev). Level: ${levelNumber}, CurrentNodeId: ${currentNodeId}`);
+        console.log(`[PostTreeLevel] Navigation dispatch skipped (Prev). Level: ${levelNumber}, CurrentNodeId: ${currentNodeId}`);
       }
     }, 100, { leading: true, trailing: false }),
     [dispatch, levelData]
   );
 
-  // Log the props received by StoryTreeLevelComponent for debugging propagation
+  // Log the props received by PostTreeLevelComponent for debugging propagation
 
   // Core state hooks moved to top
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -149,7 +149,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
     const relevantQuoteKey = getSelectedQuoteInParent(levelData); // Use helper
 
     if (!siblingsData || siblingsData.levelsMap.length === 0) {
-      console.warn("No siblings data or map found in StoryTreeLevel:", levelData);
+      console.warn("No siblings data or map found in PostTreeLevel:", levelData);
       return [];
     }
 
@@ -224,7 +224,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
         if (!nodeToRender) {
           throw new Error('Cannot create reply: no valid node selected');
         }
-        await storyTreeOperator.setSelectedQuoteForNodeInLevel(quote, nodeToRender, levelData);
+        await postTreeOperator.setSelectedQuoteForNodeInLevel(quote, nodeToRender, levelData);
         window.dispatchEvent(new Event('resize'));
       } catch (error) {
         setReplyError(error instanceof Error ? error.message : 'Failed to set reply target'); // TODO: why is this a reply error?
@@ -324,7 +324,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
             setIsLoading(false);
             return;
         }
-        await storyTreeOperator.loadMoreItems(
+        await postTreeOperator.loadMoreItems(
           parentIdArr[0], levelNum, selQuoteParent, siblings.length, siblings.length + 3
         );
         // Dispatch the action *after* loading more items completes
@@ -416,7 +416,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // Skip rendering if not a MidLevel
   if (!isMidLevel(levelData)) {
     return (
-      <div ref={containerRef} className="story-tree-level-container">
+      <div ref={containerRef} className="post-tree-level-container">
         <div className="last-level-indicator">
           End of thread
         </div>
@@ -429,7 +429,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   // without valid initial pagination derived from a non-MidLevel.
   // However, the hook itself is already moved up. The check here is for logic flow.
   if (!initialPagination) {
-    console.error("StoryTreeLevelComponent: Rendered without valid initial pagination, this might indicate an issue.", levelData);
+    console.error("PostTreeLevelComponent: Rendered without valid initial pagination, this might indicate an issue.", levelData);
     return null; // Or return some placeholder/error state
   }
 
@@ -439,7 +439,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
 
   // Early return if we don't have a valid node
   if (!nodeToRender?.rootNodeId) {
-    console.warn("StoryTreeLevelComponent: nodeToRender or its rootNodeId is missing. Rendering null.", { nodeToRender, levelData });
+    console.warn("PostTreeLevelComponent: nodeToRender or its rootNodeId is missing. Rendering null.", { nodeToRender, levelData });
     return null;
   }
 
@@ -448,7 +448,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   return (
     <div
       ref={containerRef}
-      className="story-tree-level-container"
+      className="post-tree-level-container"
       style={{
         position: 'relative',
         width: '100%'
@@ -457,7 +457,7 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
       <AnimatePresence mode="wait">
         <div {...bind()} style={{ touchAction: 'none' }}>
           <motion.div
-            className={`story-tree-node ${isReplyTarget ? 'reply-target' : ''}`}
+            className={`post-tree-node ${isReplyTarget ? 'reply-target' : ''}`}
             key={nodeToRender?.rootNodeId + levelData.midLevel?.levelNumber}
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
@@ -554,4 +554,4 @@ function useReplyContextSelective(): Pick<
 }
 
 // Use React.memo to memoize the entire component
-export default React.memo(StoryTreeLevelComponent); 
+export default React.memo(PostTreeLevelComponent); 

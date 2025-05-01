@@ -4,18 +4,18 @@
  * - Encapsulate error code, message, endpoint, and additional details.
  */
 
-class StoryTreeError extends Error {
+class PostTreeError extends Error {
   public statusCode?: number;
   public endpoint?: string;
   public details?: any;
 
   constructor(message: string, statusCode?: number, endpoint?: string, details?: any) {
     super(message);
-    this.name = "StoryTreeError";
+    this.name = "PostTreeError";
     this.statusCode = statusCode;
     this.endpoint = endpoint;
     this.details = details;
   }
 }
 
-export default StoryTreeError; 
+export default PostTreeError; 

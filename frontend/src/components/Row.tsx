@@ -2,13 +2,13 @@
  * Unified Row Component
  * This file contains a single component that handles all row functionality:
  * - Dynamic height management with resize observation
- * - StoryTreeLevel rendering with navigation callbacks
+ * - PostTreeLevel rendering with navigation callbacks
  * - Virtualization support for react-window
  */
 
 import React, { useRef, useMemo, memo, useCallback, useEffect } from 'react';
-import StoryTreeLevelComponent from './StoryTreeLevel';
-import { StoryTreeLevel, StoryTreeNode, ACTIONS } from '../types/types';
+import PostTreeLevelComponent from './PostTreeLevel';
+import { PostTreeLevel, PostTreeNode, ACTIONS } from '../types/types';
 import { Quote, areQuotesEqual } from '../types/quote';
 import { 
   getSelectedQuoteInParent,
@@ -17,13 +17,13 @@ import {
   isMidLevel,
   getLevelNumber,
 } from '../utils/levelDataHelpers';
-import storyTreeOperator from '../operators/StoryTreeOperator';
-import { useStoryTree } from '../context/StoryTreeContext';
+import postTreeOperator from '../operators/PostTreeOperator';
+import { usePostTree } from '../context/PostTreeContext';
 import { useReplyContext } from '../context/ReplyContext';
 
 // Row Component Props - update to remove react-window and sizing props
 interface RowProps {
-  levelData: StoryTreeLevel;
+  levelData: PostTreeLevel;
   shouldHide: boolean;
   index: number;
 }
@@ -44,7 +44,7 @@ const Row: React.FC<RowProps> = memo(
       return <div style={{ height: '1px', overflow: 'hidden' }} aria-hidden="true" />;
     }
 
-    const { dispatch } = useStoryTree();
+    const { dispatch } = usePostTree();
     const { isReplyActive } = useReplyContext();
     const levelNumber = useMemo(() => getLevelNumber(levelData), [levelData]);
 
@@ -53,7 +53,7 @@ const Row: React.FC<RowProps> = memo(
       // No need to check shouldHide here, handled above
       return (
         <div className="normal-row-content" style={{ margin: 0 }}>
-          <StoryTreeLevelComponent
+          <PostTreeLevelComponent
             levelData={levelData}
           />
         </div>
