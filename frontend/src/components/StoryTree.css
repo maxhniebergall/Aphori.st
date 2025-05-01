@@ -188,6 +188,8 @@ button {
 .footer-left {  
   flex: 1;
   text-align: left;
+  display: flex;
+  align-items: flex-end;
 }
 
 .footer-right {
@@ -511,4 +513,22 @@ h2 {
 
 .error-action:hover {
   background-color: #0056b3;
+}
+
+/* Yes button styling */
+.upvote-button {
+  background-color: #90EE90; /* Light Green */
+  color: #333; /* Darker text for better contrast on light green */
+  border: none;
+  padding: 0px 0px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  margin-right: 0; /* Minimize margin */
+}
+
+.upvote-button:hover {
+  background-color: #7CCD7C; /* Slightly darker green on hover */
 }
