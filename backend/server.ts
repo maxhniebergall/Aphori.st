@@ -42,7 +42,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { 
-    DatabaseClient as DatabaseClientBase, 
+    DatabaseClient as DatabaseClientType,
+    DatabaseClientBase,
     User, 
     ExistingUser,
     UserResult, 
@@ -70,6 +71,10 @@ import { createCursor, decodeCursor } from './utils/cursorUtils.js';
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
 import requestLogger from './middleware/requestLogger.js';
+import authRoutes, { setDb as setAuthDb } from './routes/auth.js';
+import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
+import postRoutes, { setDb as setPostDb } from './routes/posts.js';
+import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
 
 dotenv.config();
 
@@ -136,14 +141,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Extend the DatabaseClient type to include lLen and hIncrementQuoteCount
-type DatabaseClient = DatabaseClientBase & {
-    lLen(key: string): Promise<number>;
-    hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number>;
-};
-
-// Cast the result to the extended type
-const db: DatabaseClient = createDatabaseClient() as DatabaseClient;
+// Use the imported type for the db instance
+const db: DatabaseClientType = createDatabaseClient() as DatabaseClientType;
 
 let isDbReady = false;
 
@@ -170,8 +169,15 @@ await db.connect().then(() => {
     } else {
         logger.info('Production environment detected, skipping dev seed');
     }
+
+    // Inject DB instance into route modules
+    setAuthDb(db);
+    setFeedDb(db);
+    setPostDb(db);
+    setReplyDb(db);
+    logger.info('Database instance injected into route modules.');
 }).catch((err: Error) => {
-    logger.error('Database connection failed: %O', err);
+    logger.error({ err }, 'Database connection failed');
     process.exit(1);
 });
 
@@ -195,12 +201,14 @@ const authenticateToken = (req: Request, res: Response, next: NextFunction): voi
     }
 
     if (!process.env.AUTH_TOKEN_SECRET) {
+        logger.error('AUTH_TOKEN_SECRET not configured.');
         res.status(500).json({ error: 'Auth token secret not configured.' });
         return;
     }
 
     jwt.verify(token, process.env.AUTH_TOKEN_SECRET, (err: jwt.VerifyErrors | null, decoded: any) => {
         if (err) {
+            logger.warn({ err: err.message, tokenProvided: true }, 'Invalid token verification');
             res.status(403).json({ error: 'Invalid token.' });
             return;
         }
@@ -225,7 +233,7 @@ app.get('/api/feed', async (req: Request, res: Response<CompressedApiResponse<Co
         }
     }
 
-    logger.info("Handling request for feed with cursor", cursor, "and limit", limit);
+    logger.info("Handling request for feed with cursor %d and limit %d", cursor, limit);
     
     try {
         logger.info('Current db connection state: %O', {
@@ -278,7 +286,7 @@ app.get('/api/feed', async (req: Request, res: Response<CompressedApiResponse<Co
         const parsedItems: FeedItem[] = [];
         for (const rawItem of fetchedRawItems) {
             if (typeof rawItem !== 'string') {
-                logger.warn('Found non-string item in feedItems list:', rawItem);
+                logger.warn('Found non-string item in feedItems list: %O', rawItem);
                 continue; // Skip non-string items if any exist
             }
             try {
@@ -286,11 +294,11 @@ app.get('/api/feed', async (req: Request, res: Response<CompressedApiResponse<Co
                 if (isValidFeedItem(item)) {
                     parsedItems.push(item);
                 } else {
-                    logger.warn('Found invalid FeedItem structure after parsing:', item);
+                    logger.warn('Found invalid FeedItem structure after parsing: %O', item);
                     // Optionally, handle invalid items (e.g., skip, log, move to DLQ)
                 }
             } catch (parseError) {
-                logger.error('Failed to parse feed item JSON:', rawItem, parseError);
+                logger.error('Failed to parse feed item JSON: %s, Error: %O', rawItem, parseError);
                 // Optionally, handle parse errors
             }
         }
@@ -298,7 +306,7 @@ app.get('/api/feed', async (req: Request, res: Response<CompressedApiResponse<Co
         // Assign the successfully parsed and validated items
         const feedItems: FeedItem[] = parsedItems;
 
-        logger.info("Parsed feed items: %O", feedItems);
+        logger.info("Parsed feed items: %d items", feedItems.length);
         
         // Create the response object with cursor-based pagination
         const data = {
@@ -323,8 +331,11 @@ app.get('/api/feed', async (req: Request, res: Response<CompressedApiResponse<Co
         res.send(response);
     } catch (error) {
         if (error instanceof Error) {
-            logger.error('Error fetching feed items:', error);
+            logger.error('Error fetching feed items: %O', error);
             res.status(500).json({success: false, error: 'Internal server error' });
+        } else {
+             logger.error('Unknown error fetching feed items: %O', error);
+             res.status(500).json({success: false, error: 'Internal server error' });
         }
     }
 });
@@ -409,7 +420,7 @@ const createUser = async (id: string, email: string): Promise<UserResult> => {
             data: newUser
         };
     } catch (error) {
-        logger.error('Database error creating user:', error);
+        logger.error('Database error creating user: %O', error);
         return {
             success: false,
             error: 'Server error creating user'
@@ -421,21 +432,20 @@ const createUser = async (id: string, email: string): Promise<UserResult> => {
 const requiredEnvVars: string[] = [];
 if (process.env.NODE_ENV === 'production') {
     requiredEnvVars.push(
-        'FIREBASE_CREDENTIAL', 
-        'FIREBASE_DATABASE_URL', 
         'MAGIC_LINK_SECRET', 
         'AUTH_TOKEN_SECRET',
         'EMAIL_HOST',
         'EMAIL_PORT',
         'EMAIL_USERNAME',
-        'EMAIL_PASSWORD'
+        'EMAIL_PASSWORD',
+        'REDIS_URL' // Add REDIS_URL if applicable
     );
 }
 
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {
-    console.error(`FATAL ERROR: Missing required environment variables: ${missingEnvVars.join(', ')}`);
+    logger.fatal(`FATAL ERROR: Missing required environment variables: ${missingEnvVars.join(', ')}`);
     process.exit(1); // Exit immediately
 }
 // --- End Environment Variable Checks ---
@@ -508,7 +518,7 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req: Request, res
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-        logger.error(`Invalid email format: ${email}`);
+        logger.error('Invalid email format: %s', email);
         res.status(400).json({ 
             success: false,
             error: 'Invalid email format'
@@ -520,7 +530,7 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req: Request, res
         // Check if user exists
         const userResult = await getUserByEmail(email);
         const isSignup = isSignupInRequest === true || userResult?.error === 'User not found'; // If user doesn't exist, we're doing a signup
-        logger.info("Server: send-magic-link request", req.body, "isSignup: ", isSignup, "userResult: ", userResult);
+        logger.info({ body: req.body, isSignup, userResult }, "Server: send-magic-link request");
         
         let token;
         if (process.env.NODE_ENV == 'production') {
@@ -546,13 +556,13 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req: Request, res
         `;
 
         await sendEmail(email, subject, html);
-        logger.info(`Magic link sent successfully to: ${email}`);
+        logger.info('Magic link sent successfully to: %s', email);
         res.json({ 
             success: true,
             message: 'Magic link sent to your email'
         });
     } catch (error) {
-        logger.error('Failed to send magic link:', error);
+        logger.error('Failed to send magic link: %O', error);
         res.status(500).json({ 
             success: false,
             error: 'Failed to send magic link'
@@ -567,7 +577,7 @@ app.post('/api/auth/send-magic-link', magicLinkLimiter, async (req: Request, res
  */
 app.post('/api/auth/verify-magic-link', async (req: Request, res: Response): Promise<void> => {
     const { token } = req.body;
-    logger.info('Received verify-magic-link request with token:', token);
+    logger.info('Received verify-magic-link request with token: %s', token ? 'present' : 'absent');
 
     if (!token) {
         logger.warn('No token provided in request');
@@ -582,17 +592,17 @@ app.post('/api/auth/verify-magic-link', async (req: Request, res: Response): Pro
         logger.info('Attempting to verify JWT token');
         // Startup Check: MAGIC_LINK_SECRET presence is checked at application startup.
         const decoded = jwt.verify(token, process.env.MAGIC_LINK_SECRET as string);
-        logger.info('Successfully decoded token:', decoded);
+        logger.info('Successfully decoded token: %O', decoded);
         if (typeof decoded !== 'object' || !decoded.email) {
             throw new Error('Invalid token payload');
         }
 
-        logger.info('Looking up user by email:', decoded.email);
+        logger.info('Looking up user by email: %s', decoded.email);
         const userResult = await getUserByEmail(decoded.email);
-        logger.info('User lookup result:', userResult);
+        logger.info('User lookup result: %O', userResult);
 
         if (!userResult.success) {
-            logger.warn('User not found for email:', decoded.email);
+            logger.warn('User not found for email: %s', decoded.email);
             res.status(401).json({ 
                 success: false,
                 error: 'User not found',
@@ -602,13 +612,13 @@ app.post('/api/auth/verify-magic-link', async (req: Request, res: Response): Pro
         }
 
         // Generate auth token
-        logger.info('Generating auth token for user:', userResult.data);
+        logger.info('Generating auth token for user: %O', userResult.data);
         if (!userResult.data) {
             throw new Error('User data not found');
         }
         const authToken = generateAuthToken(userResult.data);
 
-        logger.info('Successfully verified magic link for user:', userResult.data.id);
+        logger.info('Successfully verified magic link for user: %s', userResult.data.id);
         res.json({ 
             success: true,
             data: {
@@ -621,14 +631,9 @@ app.post('/api/auth/verify-magic-link', async (req: Request, res: Response): Pro
         });
     } catch (error) {
         if (error instanceof Error) {
-            logger.error('Error verifying magic link:', {
-                error: error.message,
-                name: error.name,
-                stack: error.stack,
-                token
-            });
+            logger.error({ err: error, tokenProvided: !!token }, 'Error verifying magic link');
         } else {
-            logger.error('Unknown error verifying magic link', error);
+            logger.error({ error, tokenProvided: !!token }, 'Unknown error verifying magic link');
         }
         res.status(400).json({ 
             success: false,
@@ -686,7 +691,7 @@ app.post('/api/auth/verify-token', async (req: Request, res: Response): Promise<
             }
         });
     } catch (error) {
-        logger.error('Token verification failed:', error);
+        logger.error('Token verification failed: %O', error);
         res.status(400).json({ 
             success: false,
             error: 'Invalid or expired token'
@@ -759,12 +764,12 @@ app.post('/api/createPostTree', authenticateToken, ((async (req: AuthenticatedRe
             createdAt: formattedPostTree.createdAt
         } as FeedItem;
         await db.lPush('feedItems', JSON.stringify(feedItem));
-        logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
+        logger.info('Added feed item for story %s', uuid);
 
-        logger.info(`Created new PostTree with UUID: ${uuid}`);
+        logger.info('Created new PostTree with UUID: %s', uuid);
         res.json({ id: uuid });
     } catch (err) {
-        logger.error('Error creating PostTree:', err);
+        logger.error('Error creating PostTree: %O', err);
         res.status(500).json({ error: 'Server error' });
     }
 }) as unknown as RequestHandler));
@@ -794,7 +799,7 @@ app.get('/api/check-user-id/:id', async (req: Request<{ id: string }>, res: Resp
             available: !userResult.success
         });
     } catch (error) {
-        logger.error('Error checking user ID availability:', error);
+        logger.error('Error checking user ID availability: %O', error);
         res.status(500).json({ 
             success: false,
             error: 'Server error checking ID availability',
@@ -851,7 +856,7 @@ app.post('/api/signup', async (req: Request, res: Response): Promise<void> => {
         authToken = generateAuthToken(result.data);
     }
 
-    logger.info(`Created new user: ${JSON.stringify(result.data)}`);
+    logger.info('Created new user: %s', result.data.id);
     res.json({ 
         success: true,
         message: 'User created successfully',
@@ -941,7 +946,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId);
         // --- End reinstated indices ---
         
-        logger.info(`Created new reply with ID: ${replyId} for parent: ${actualParentId}`);
+        logger.info('Created new reply with ID: %s for parent: %s', replyId, actualParentId);
 
         // Create a response object
         const response = {
@@ -950,7 +955,7 @@ app.post('/api/createReply', authenticateToken, async (req: Request, res: Respon
         } as CompressedApiResponse<{ id: string }>;
         res.send(response);
     } catch (err) {
-        logger.error('Error creating reply:', err);
+        logger.error('Error creating reply: %O', err);
         res.status(500).json({ 
             success: false, 
             error: 'Server error' 
@@ -1002,7 +1007,7 @@ app.get('/api/getRepliesFeed', async (req: Request, res: Response<CompressedApiR
         res.setHeader('X-Data-Compressed', 'true');
         res.send(response);
     } catch (err) {
-        logger.error('Error fetching replies feed:', err);
+        logger.error('Error fetching replies feed: %O', err);
         res.status(500).json({success: false, error: 'Server error' });
     }
 }); 
@@ -1034,7 +1039,7 @@ app.get<{
             try {
                 quoteObj = JSON.parse(decodedQuote);
             } catch (e) {
-                logger.error('Error parsing quote: [', decodedQuote, "] with error: [", e, "]");
+                logger.error({ quote: decodedQuote, err: e }, 'Error parsing quote');
                 throw new Error('Invalid quote format');
             }
         } catch (error) {
@@ -1058,8 +1063,8 @@ app.get<{
 
         // Generate a unique key for the quote using its properties.
         const quoteKey = getQuoteKey(quoteObj);
-        logger.info('[getReplies] Decoded quote:', quoteObj);
-        logger.info('[getReplies] Constructed Redis key:', `replies:uuid:${uuid}:quote:${quoteKey}:${sortingCriteria}`);
+        logger.info({ quote: quoteObj }, '[getReplies] Decoded quote');
+        logger.info('[getReplies] Constructed Redis key: %s', `replies:uuid:${uuid}:quote:${quoteKey}:${sortingCriteria}`);
         
         // Cursor-based pagination handling via query parameters.
         const limit = parseInt(req.query.limit as string) || 10;
@@ -1072,7 +1077,7 @@ app.get<{
         // Step 1: Get reply IDs from the sorted set using ZSCAN
         const scanCursor = cursor || '0';
         const scanResult = await db.zscan(sortedSetKey, scanCursor, { count: limit });
-        logger.info('[getReplies] Number of reply IDs found:', scanResult.items.length);
+        logger.info('[getReplies] Number of reply IDs found: %d', scanResult.items.length);
         
         const matchingRepliesCount = await db.zCard(sortedSetKey);
         
@@ -1081,14 +1086,14 @@ app.get<{
             // If there are more items to scan, set the next cursor
             nextCursor = scanResult.cursor;
         }
-        logger.info('[getReplies] scanResult:', scanResult);
+        logger.info({ scanResult }, '[getReplies] scanResult');
         // Step 2: Fetch the actual reply data for each ID
         const replies = await Promise.all(
             scanResult.items.map(async (item: RedisSortedSetItem<string>) => {
                 try {
                     // Fetch the potentially stringified reply data using the ID
                     const replyData = await db.hGet(item.value, 'reply');
-                    logger.info(`[getReplies] Raw reply data for ID ${item.value}:`, replyData);
+                    logger.info({ replyId: item.value, dataPresent: !!replyData }, '[getReplies] Raw reply data fetched');
                     
                     // Parse the data if it's a string
                     if (typeof replyData === 'string') {
@@ -1100,17 +1105,17 @@ app.get<{
                         // Optional: Add validation here too
                         return replyData as Reply;
                     } else {
-                         logger.warn(`[getReplies] Unexpected data type or null received for reply ${item.value}:`, replyData);
+                         logger.warn({ replyId: item.value, dataType: typeof replyData }, '[getReplies] Unexpected data type or null received');
                          return null;
                     }
                 } catch (err) {
-                    logger.error(`Error fetching or parsing reply ${item.value}:`, err);
+                    logger.error({ replyId: item.value, err }, `Error fetching or parsing reply`);
                     return null;
                 }
             })
         );
 
-        logger.info('[getReplies] All fetched replies:', replies);
+        logger.info('[getReplies] All fetched replies count: %d', replies.length);
         // Filter out any null values from failed fetches
         const validReplies = replies.filter((reply: Reply | null): reply is Reply => reply !== null);
         
@@ -1134,7 +1139,7 @@ app.get<{
         };
         res.send(CompressedApiResponse);
     } catch (err) {
-        logger.error('Error fetching replies by quote:', err);
+        logger.error('Error fetching replies by quote: %O', err);
         const errorResponse: CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>> = {
             success: false,
             error: 'Server error'
@@ -1168,7 +1173,7 @@ app.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/api/getPost
         try {
             maybePost = JSON.parse(maybePostString);
         } catch (parseError) {
-            logger.error('Failed to parse post JSON:', maybePostString, parseError);
+            logger.error('Failed to parse post JSON: %s, Error: %O', maybePostString, parseError);
             res.status(500).json({ success: false, error: 'Failed to parse post data' });
             return;
         }
@@ -1186,7 +1191,7 @@ app.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/api/getPost
 
         // Validate post structure
         if (!isValidPost(maybePost)) {
-            logger.error('Invalid post structure returned from database:', maybePost);
+            logger.error('Invalid post structure returned from database: %O', maybePost);
             res.status(500).json({ success: false, error: 'Invalid post data' });
             return;
         }
@@ -1199,7 +1204,7 @@ app.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/api/getPost
         res.setHeader('X-Data-Compressed', 'true');
         res.send(CompressedApiResponse);
     } catch (error) {
-        logger.error('Error in getPost endpoint:', error);
+        logger.error('Error in getPost endpoint: %O', error);
         res.status(500).json({ success: false, error: 'Server error' });
     }
 });
@@ -1238,10 +1243,10 @@ app.get<{ parentId: string }, CompressedApiResponse<Compressed<ExistingSelectabl
                 if (valueObj.quote.text && valueObj.quote.sourceId && valueObj.quote.selectionRange) {
                     quoteCountsMap.set(valueObj.quote as Quote, valueObj.count);
                 } else {
-                    logger.warn(`Invalid quote structure found in quoteCounts for parent ${parentId}:`, valueObj.quote);
+                    logger.warn({ parentId, quote: valueObj.quote }, 'Invalid quote structure found in quoteCounts');
                 }
             } else {
-                logger.warn(`Invalid data structure found in quoteCounts for parent ${parentId}:`, valueObj);
+                logger.warn({ parentId, data: valueObj }, 'Invalid data structure found in quoteCounts');
             }
         }
         
@@ -1258,12 +1263,19 @@ app.get<{ parentId: string }, CompressedApiResponse<Compressed<ExistingSelectabl
         res.setHeader('X-Data-Compressed', 'true');
         res.send(CompressedApiResponse);
     } catch (error) {
-        logger.error('Error retrieving quote counts for parent ID %s: %s', parentId, error);
+        logger.error({ parentId, err: error }, 'Error retrieving quote counts');
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
-// Existing routes...
+// --- Mount Routers ---
+app.use('/api/auth', authRoutes); 
+app.use('/api/feed', feedRoutes); 
+// Apply authenticateToken middleware ONLY to routes that require it
+app.use('/api/posts', authenticateToken, postRoutes); 
+app.use('/api/replies', authenticateToken, replyRoutes);
+
+// --- Start Server ---
 app.listen(PORT, () => {
     logger.info(`Server is running on port ${PORT}`);
     logger.info(`Build hash: ${BUILD_HASH}`);

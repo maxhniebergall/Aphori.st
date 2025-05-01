@@ -1,7 +1,7 @@
 import { Request } from 'express';
 
 // Database Types
-export interface DatabaseClient {
+export interface DatabaseClientBase {
     connect: () => Promise<void>;
     disconnect?: () => Promise<void>;
     isConnected: () => Promise<boolean>;
@@ -30,6 +30,11 @@ export interface DatabaseClient {
     del: (key: string) => Promise<number>;
     hIncrementQuoteCount: (key: string, field: string, quoteValue: any) => Promise<number>;
 }
+
+// Export the base interface AND keep the extended one if needed for now,
+// or ideally, consolidate into one DatabaseClient interface.
+// For simplicity, let's rename the base and make the main one the extended one.
+export type DatabaseClient = DatabaseClientBase; // Keep this for now, or remove if all use the extended one
 
 // User Types
 export interface User {
@@ -142,6 +147,7 @@ export interface AuthTokenPayload extends User {
 export interface Post {
     id: string;
     content: string;
+    parentId: string | null;
     authorId: string;
     createdAt: string;
 }
