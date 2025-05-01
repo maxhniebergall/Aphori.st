@@ -61,7 +61,7 @@ const requestLogger = pinoHttp({
             requestMethod: req.method,
             requestUrl: req.originalUrl || req.url, // Use originalUrl if available
             // requestSize: req.headers['content-length'], // Need to parse potentially
-            remoteIp: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress, // Standard IP detection
+            remoteIp: req.ip || req.headers['x-forwarded-for'] || (req.socket ? req.socket.remoteAddress : undefined), // Standard IP detection, safely check socket
             userAgent: req.headers['user-agent'],
             referrer: req.headers['referer'],
             // protocol: req.protocol, // Available in express 5+ or need to infer

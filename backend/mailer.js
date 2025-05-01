@@ -1,10 +1,8 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-import newLogger from './logger.js';
+import logger from './logger.js';
 
 dotenv.config();
-
-const logger = newLogger("mailer.js");
 
 // Validate required environment variables
 const requiredEnvVars = ['EMAIL_HOST', 'EMAIL_PORT', 'EMAIL_USERNAME', 'EMAIL_PASSWORD'];

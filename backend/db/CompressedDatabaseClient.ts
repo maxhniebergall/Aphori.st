@@ -13,9 +13,7 @@
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 import { DatabaseCompression } from './DatabaseCompression.js';
 import { RedisSortedSetItem } from '../types/index.js';
-import newLogger from '../logger.js';
-
-const logger = newLogger("CompressedDatabaseClient.js");
+import logger from '../logger.js';
 
 interface CompressionOptions {
     returnCompressed: boolean;

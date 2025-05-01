@@ -10,8 +10,7 @@ Requirements:
 import { createClient, RedisClientType } from 'redis';
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 import { RedisSortedSetItem, Quote } from '../types/index.js';
-import newLogger from '../logger.js';
-const logger = newLogger("RedisClient.js");
+import logger from '../logger.js';
 
 export class RedisClient extends DatabaseClientInterface {
   private client: RedisClientType;
