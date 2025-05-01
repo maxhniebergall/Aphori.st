@@ -17,7 +17,8 @@ const ReplyEditor = () => {
   } = useReplyContext();
 
   const MAX_REPLY_LENGTH = 1000;
-  const MIN_REPLY_LENGTH = 50; // Define min length
+  const MIN_REPLY_LENGTH = 50;
+  const IGNORE_MIN_REPLY_LENGTH = ["Yes!"]
 
   // Memoize editor options
   const editorOptions = useMemo(() => ({
@@ -96,7 +97,7 @@ const ReplyEditor = () => {
               window.alert(`Reply text cannot exceed ${MAX_REPLY_LENGTH} characters.`);
               return; // Stop the submission
             }
-            if (trimmedReplyContent.length < MIN_REPLY_LENGTH) {
+            if (!IGNORE_MIN_REPLY_LENGTH.includes(trimmedReplyContent) && trimmedReplyContent.length < MIN_REPLY_LENGTH) {
               window.alert(`Reply text must be at least ${MIN_REPLY_LENGTH} characters long.`);
               return; // Stop the submission
             }

@@ -95,8 +95,9 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
     setReplyQuote(defaultQuote); // Set the default quote
     setReplyTarget(nodeData);
     setReplyContent("Yes!");
-    setIsReplyOpen(true);
     setReplyError(null); // Clear any previous errors
+
+    setIsReplyOpen(true);
   }, [nodeData, setReplyTarget, setReplyContent, setIsReplyOpen]);
 
   return (
