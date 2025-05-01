@@ -56,18 +56,6 @@ export const StoryTreeLevelComponent: React.FC<StoryTreeLevelProps> = ({
   reportHeight,
 }) => {
   const { dispatch } = useStoryTree();
-  // --- DEBUG: Strict Mode Check ---
-  useEffect(() => {
-    const levelId = getLevelNumber(levelData) ?? 'unknown';
-    const nodeId = getSelectedNodeHelper(levelData)?.id ?? 'none';
-    console.log(`[StoryTreeLevel DEBUG] Mounting level ${levelId}, node ${nodeId}`);
-    return () => {
-      console.log(`[StoryTreeLevel DEBUG] UNmounting level ${levelId}, node ${nodeId}`);
-    };
-    // Run only on mount/unmount, but include levelData/node for logging context
-    // Be careful not to cause infinite loops if levelData changes too often without memoization
-  }, [levelData]);
-  // --- END DEBUG ---
 
   // Debounce the navigation actions
   const debouncedNavigateNext = useMemo(

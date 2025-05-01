@@ -27,11 +27,18 @@ export class DatabaseCompression {
      *
      * @param value - The Base64 encoded compressed string (or null/undefined).
      * @returns A promise that resolves to the parsed object, the raw decompressed string, or null.
+     * @throws {Error} If value is null/undefined, format is invalid, version mismatch, Base64 decoding fails,
+     *                 pako decompression fails, or JSON parsing fails.
+     *                 (Handled - Propagation / Depends on Caller).
      */
     decompress<T>(value: Compressed<T>): T | null {
         try {
             if (!value) {
+                // Handled - Depends on Caller: Internal validation. Calling code should handle.
                 throw new Error('No value provided');
+            }
+            if (typeof value !== 'object') {
+                throw new Error('Value is not of expected type, was [' + typeof value + ']');
             }
             if (value.c === false) {
                 const isb64 = isBase64(value.d);
@@ -47,12 +54,15 @@ export class DatabaseCompression {
                     return JSON.parse(text) as T;
                 }
 
+                // Handled - Depends on Caller: Internal validation. Calling code should handle.
                 throw new Error('Value is not of expected type');
             }
             if (!value.d) {
+                // Handled - Depends on Caller: Internal validation. Calling code should handle.
                 throw new Error('No compressed data found');
             }
             if (value.v !== 1) {
+                // Handled - Depends on Caller: Internal validation. Calling code should handle.
                 throw new Error('Unsupported version: ' + value.v);
             }
             const compressed = Buffer.from(value.d, 'base64');
@@ -62,10 +72,12 @@ export class DatabaseCompression {
                 return JSON.parse(text) as T;
             } catch (e) {
                 console.error('Compression: Failed to parse decompressed JSON:', e);
+                // Handled - Propagation: Re-throws JSON parsing error. Caller should handle.
                 throw e;
             }
         } catch (e) {
             console.error('Compression: Failed to decompress value:', e);
+            // Handled - Propagation: Re-throws error from pako or other issues. Caller should handle.
             throw e;
         }
     }
@@ -77,6 +89,8 @@ export class DatabaseCompression {
      *
      * @param value - A Base64 encoded string or already decoded value.
      * @returns A promise that resolves to the decoded value.
+     * @throws {Error} If input is not a string or object, or if Base64 decoding or JSON parsing fails.
+     *                 (Handled - Depends on Caller).
      */
      unencode<T>(value: T): T;
      unencode<T>(value: string): T;
@@ -85,6 +99,7 @@ export class DatabaseCompression {
             if (typeof value === 'object' && value !== null) {
                 return value as T;
             }
+            // Handled - Depends on Caller: Internal validation. Calling code should handle.
             throw new Error('Value is not of expected type');        
         }
         const encoded = Buffer.from(value, 'base64');

@@ -31,6 +31,8 @@ export class BaseOperator {
    * 
    * @param response - The AxiosResponse object.
    * @returns A promise resolving to the decompressed data of type T.
+   * @throws {Error} If handling the compressed response (e.g., decompression) fails.
+   *                 (Handled - Propagation: Re-throws error to calling operator).
    */
   async handleCompressedResponse<T = unknown>(response: AxiosResponse): Promise<T> {
     try {
@@ -62,6 +64,7 @@ export class BaseOperator {
       }
     } catch (error) {
       console.error("BaseOperator: Error handling compressed response:", error);
+      // Handled - Propagation: Re-throws error (e.g., from decompression) to the calling operator.
       throw error;
     }
   }
@@ -71,6 +74,8 @@ export class BaseOperator {
    *
    * @param item - The compressed item or stringified JSON.
    * @returns A promise resolving to the decompressed item of type T.
+   * @throws {Error} If decompressing or parsing the item fails.
+   *                 (Handled - Propagation: Re-throws error to calling operator).
    */
   async decompressItem<T = unknown>(item: any): Promise<T> {
     try {
@@ -100,6 +105,7 @@ export class BaseOperator {
       return item as T;
     } catch (error) {
       console.error("BaseOperator: Error decompressing item:", error);
+      // Handled - Propagation: Re-throws error (e.g., from decompression) to the calling operator.
       throw error;
     }
   }
@@ -112,6 +118,9 @@ export class BaseOperator {
    * @param delay - The delay between retries in milliseconds (default is 1000).
    * @returns A promise that resolves to the processed response data of type T.
    * 
+   * @throws {Error} If the API call fails (non-503 status) or returns success:false.
+   * @throws {Error} If the maximum number of retries is exceeded.
+   *                 (Handled - Propagation: Errors propagated to calling operator).
    */
   async retryApiCallSimplified<T = unknown>(apiCall: () => Promise<AxiosResponse<CompressedApiResponse<T>>>, retries = 3, delay = 1000): Promise<Compressed<T>> {
     for (let i = 0; i < retries; i++) {
@@ -124,16 +133,19 @@ export class BaseOperator {
             return response.data.compressedData as Compressed<T>;
           }
         } else {
-          throw new Error(response.data.error || 'Unknown error');
+          throw new Error(response.data.error || 'Unknown error, backend returned: ' + JSON.stringify(response.data));
         }
       } catch (error: any) {
-        if (error.response?.status === 503 && i < retries - 1) {
+        if (error.response && error.response.status === 503 && i < retries - 1) {
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
+        // Handled - Propagation: Re-throws non-retryable API errors or errors after retries,
+        // propagated to the calling operator.
         throw error;
       }
     }
+    // Handled - Propagation: Throws error after max retries exceeded, propagated to calling operator.
     throw new Error("Max retries exceeded");
   }
 

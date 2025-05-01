@@ -24,6 +24,14 @@ class FeedOperator extends BaseOperator {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    /**
+     * Fetches feed items, handling rate limiting and API retries.
+     * @param cursor The pagination cursor.
+     * @returns An object containing feed items and pagination info, or an error state.
+     * @throws {Error} If the API call returns no data after retries (internal throw).
+     *                 (Handled: Caught locally, returns { success: false, error: ... }).
+     * Note: Other errors from underlying API calls are caught and converted to the error state return.
+     */
     async getFeedItems(cursor: string) {
         // Rate limiting: wait if the last call was too recent
         const now = Date.now();
@@ -35,18 +43,14 @@ class FeedOperator extends BaseOperator {
         this.lastFeedCallTime = Date.now();
 
         try {
-            const compressedFeedItems = await this.retryApiCallSimplified<Compressed<FeedItemsResponse>>(
+            const compressedFeedItems = await this.retryApiCallSimplified<FeedItemsResponse>(
                 () => axios.get(`${this.baseURL}/api/feed`, {
                     params: { cursor },
                     validateStatus: status => status === 200
                 })
             );
-
-            if (!compressedFeedItems) {
-                throw new Error('No feed items received');
-            }
-            
-            const decompressedFeedItems = await compression.decompress<FeedItemsResponse>(compressedFeedItems);
+            // Decompress the feed items after fetching
+            const decompressedFeedItems = compression.decompress<FeedItemsResponse>(compressedFeedItems);
 
             // If response is already decompressed by BaseOperator
             if (decompressedFeedItems?.data && Array.isArray(decompressedFeedItems.data) && decompressedFeedItems.pagination) {

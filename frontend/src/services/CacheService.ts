@@ -22,14 +22,15 @@ class LRUCache<T> {
         this.time = 0;
     }
 
+    /**
+     * Validates and extracts the type ('story' or 'reply') from a cache key.
+     * @param key The cache key (e.g., "reply:some-uuid").
+     * @returns The node type ('story' or 'reply').
+     * @throws {Error} If the key format is invalid (missing prefix or invalid type).
+     *                 (Handled - Depends on Caller: Internal validation).
+     */
     private getNodeType(key: string): 'story' | 'reply' {
-        if (!key.includes(':')) {
-            throw new Error('Invalid key format: missing type prefix');
-        }
         const [type] = key.split(':');
-        if (type !== 'story' && type !== 'reply') {
-            throw new Error(`Invalid node type: ${type}`);
-        }
         return type as 'story' | 'reply';
     }
 

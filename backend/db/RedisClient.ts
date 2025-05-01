@@ -112,7 +112,6 @@ export class RedisClient extends DatabaseClientInterface {
   async zAdd(key: string, score: number, value: string): Promise<number> {
     logger.info(`Redis zAdd called with key: ${key}, score: ${score}, value: ${value}`);
     
-    // Validate inputs
     if (typeof score !== 'number') {
       logger.error(`Invalid score type: ${typeof score}`);
       throw new Error('Score must be a number');
@@ -122,21 +121,15 @@ export class RedisClient extends DatabaseClientInterface {
       logger.error('Missing required arguments');
       throw new Error('Key and value are required');
     }
-
-    try {
-      // Redis zAdd expects arguments in this order: key, [{score, value}]
-      const result = await this.client.zAdd(key, [
-        {
-          score: score,
-          value: value // Value is already a string from CompressedDatabaseClient
-        }
-      ]);
-      logger.info(`zAdd result: ${result}`);
-      return result;
-    } catch (err) {
-      logger.error('Redis zAdd error:', err);
-      throw err;
-    }
+    
+    const result = await this.client.zAdd(key, [
+      {
+        score: score,
+        value: value,
+      },
+    ]);
+    logger.info(`Redis zAdd successful for key ${key}. Result: ${result}`);
+    return result;
   }
 
   async del(key: string): Promise<number> {
@@ -318,14 +311,12 @@ export class RedisClient extends DatabaseClientInterface {
       return result;
     } catch (err) {
       logger.error('Redis hIncrementQuoteCount error:', err);
-      // Handle potential Lua script errors (e.g., cjson not available)
       if (err instanceof Error && err.message.includes('NOSCRIPT')) {
         logger.error('Lua script not found in cache, attempting to reload.');
-        // Potentially retry loading and executing, or throw a more specific error
       } else if (err instanceof Error && err.message.includes('cjson')) {
         logger.error('Lua script error likely related to cjson library. Ensure Redis has Lua scripting with cjson enabled.');
       }
-      throw err; // Re-throw the error after logging
+      throw err;
     }
   }
 } 

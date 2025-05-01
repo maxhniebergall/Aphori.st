@@ -12,6 +12,14 @@ export interface SelectionState {
 }
 // Custom class implementation for Quote allowing custom toString() behavior
 export class Quote {
+  /**
+   * Creates a new Quote instance.
+   * @param text The quoted text.
+   * @param sourceId The ID of the source node.
+   * @param selectionRange The start/end character indices of the selection.
+   * @throws {Error} If the created quote fails validation (e.g., missing fields).
+   *                 (Handled - Depends on Caller).
+   */
   constructor(
     public text: string,
     public sourceId: string,
@@ -24,6 +32,8 @@ export class Quote {
     }
 
     if (!Quote.isValid(this)) {
+      // Handled - Depends on Caller: Internal validation. Callers creating Quote objects
+      // are responsible for providing valid data or handling this exception.
       throw new Error('Invalid Quote created:' + JSON.stringify({
         text: this.text,
         sourceId: this.sourceId,
@@ -64,9 +74,14 @@ export class Quote {
    * A custom toString method that serializes the quote object.
    * We use encodeURIComponent and JSON.stringify to ensure that the resulting string
    * can be safely used in a URL if required.
+   * @param quote The Quote object to serialize.
+   * @returns URL-encoded JSON string representation of the quote.
+   * @throws {Error} If the input quote fails validation.
+   *                 (Handled - Depends on Caller).
    */
   public static toEncodedString(quote: Quote): string {
     if (!Quote.isValid(quote)) {
+      // Added back console.error
       console.error('Attempting to serialize invalid Quote:', {
         text: quote.text,
         sourceId: quote.sourceId,

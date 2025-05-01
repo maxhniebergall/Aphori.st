@@ -307,7 +307,6 @@ app.get('/api/feed', async (req: Request, res: Response<CompressedApiResponse<Co
                 totalCount: totalItems
             }
         } as FeedItemsResponse;
-        logger.info('Response object: %O', data);
         
         // Compress the final response
         const compressedData = await db.compress(data);
@@ -415,25 +414,56 @@ const createUser = async (id: string, email: string): Promise<UserResult> => {
     }
 };
 
+// --- Environment Variable Checks ---
+const requiredEnvVars: string[] = [];
+if (process.env.NODE_ENV === 'production') {
+    requiredEnvVars.push(
+        'FIREBASE_CREDENTIAL', 
+        'FIREBASE_DATABASE_URL', 
+        'MAGIC_LINK_SECRET', 
+        'AUTH_TOKEN_SECRET',
+        'EMAIL_HOST',
+        'EMAIL_PORT',
+        'EMAIL_USERNAME',
+        'EMAIL_PASSWORD'
+    );
+}
+
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+    console.error(`FATAL ERROR: Missing required environment variables: ${missingEnvVars.join(', ')}`);
+    process.exit(1); // Exit immediately
+}
+// --- End Environment Variable Checks ---
+
 // Helper Functions
+/**
+ * Generates a short-lived JWT for magic link authentication.
+ * @param email The user's email address.
+ * @returns The generated JWT.
+ * @throws {Error} If MAGIC_LINK_SECRET is not configured (should be caught at startup).
+ */
 const generateMagicToken = (email: string): string => {
-    if (!process.env.MAGIC_LINK_SECRET) {
-        throw new Error('Magic link secret not configured');
-    }
+    // Startup Check: MAGIC_LINK_SECRET presence is checked at application startup.
     return jwt.sign(
         { email } as TokenPayload,
-        process.env.MAGIC_LINK_SECRET,
+        process.env.MAGIC_LINK_SECRET as string, // Added 'as string' for type safety after check
         { expiresIn: '15m' } // Magic link valid for 15 minutes
     );
 };
 
+/**
+ * Generates a longer-lived JWT for user authentication after successful login.
+ * @param user The user object containing id and email.
+ * @returns The generated JWT.
+ * @throws {Error} If AUTH_TOKEN_SECRET is not configured (should be caught at startup).
+ */
 const generateAuthToken = (user: User): string => {
-    if (!process.env.AUTH_TOKEN_SECRET) {
-        throw new Error('Auth token secret not configured');
-    }
+    // Startup Check: AUTH_TOKEN_SECRET presence is checked at application startup.
     return jwt.sign(
         { id: user.id, email: user.email } as AuthTokenPayload,
-        process.env.AUTH_TOKEN_SECRET,
+        process.env.AUTH_TOKEN_SECRET as string, // Added 'as string' for type safety after check
         { expiresIn: '7d' } // Auth token valid for 7 days
     );
 };
@@ -547,10 +577,8 @@ app.post('/api/auth/verify-magic-link', async (req: Request, res: Response): Pro
 
     try {
         logger.info('Attempting to verify JWT token');
-        if (!process.env.MAGIC_LINK_SECRET) {
-            throw new Error('Magic link secret not configured');
-        }
-        const decoded = jwt.verify(token, process.env.MAGIC_LINK_SECRET);
+        // Startup Check: MAGIC_LINK_SECRET presence is checked at application startup.
+        const decoded = jwt.verify(token, process.env.MAGIC_LINK_SECRET as string);
         logger.info('Successfully decoded token:', decoded);
         if (typeof decoded !== 'object' || !decoded.email) {
             throw new Error('Invalid token payload');
@@ -635,10 +663,8 @@ app.post('/api/auth/verify-token', async (req: Request, res: Response): Promise<
     }
 
     try {
-        if (!process.env.AUTH_TOKEN_SECRET) {
-            throw new Error('Auth token secret not configured');
-        }
-        const decoded = jwt.verify(token, process.env.AUTH_TOKEN_SECRET) as AuthTokenPayload;
+        // Startup Check: AUTH_TOKEN_SECRET presence is checked at application startup.
+        const decoded = jwt.verify(token, process.env.AUTH_TOKEN_SECRET as string) as AuthTokenPayload;
         const userResult = await getUserById(decoded.id);
 
         if (!userResult.success) {
@@ -786,10 +812,8 @@ app.post('/api/signup', async (req: Request, res: Response): Promise<void> => {
     // If verificationToken is provided, verify it matches the email
     if (verificationToken) {
         try {
-            if (!process.env.MAGIC_LINK_SECRET) {
-                throw new Error('Magic link secret not configured');
-            }
-            const decoded = jwt.verify(verificationToken, process.env.MAGIC_LINK_SECRET);
+            // Startup Check: MAGIC_LINK_SECRET presence is checked at application startup.
+            const decoded = jwt.verify(verificationToken, process.env.MAGIC_LINK_SECRET as string);
             if (typeof decoded !== 'object' || !decoded.email) {
                 throw new Error('Invalid token payload');
             }
@@ -974,6 +998,19 @@ app.get('/api/getRepliesFeed', async (req: Request, res: Response<CompressedApiR
 }); 
 
 // Updated GET endpoint with generics for route params and response type.
+/**
+ * @route   GET /api/getReplies/:uuid/:quote/:sortingCriteria
+ * @desc    Retrieves replies associated with a specific quote on a parent node.
+ * @access  Public
+ * @param   {string} uuid - The ID of the parent node.
+ * @param   {string} quote - URL-encoded JSON string of the Quote object.
+ * @param   {SortingCriteria} sortingCriteria - Sorting order (e.g., 'mostRecent').
+ * @query   {number} [limit=10] - Max number of replies per page.
+ * @query   {string} [cursor] - Pagination cursor.
+ * @returns {CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>>} Compressed response with replies and pagination.
+ * @throws {Error} If the decoded quote parameter is invalid JSON.
+ *                 (Handled: Caught locally, returns 400 response).
+ */
 app.get<{ 
     uuid: string;
     quote: string; 

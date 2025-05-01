@@ -41,6 +41,14 @@ const sampleStories: StoryContent[] = [
     }
 ];
 
+/**
+ * Seeds the database with initial development stories.
+ * Clears existing feed items and story IDs before seeding.
+ * Uses the provided database client instance.
+ * @param dbClient The database client instance to use.
+ * @throws {Error} If clearing old data or creating initial stories fails.
+ *                 (Handled - By Design: Logs error and re-throws to stop seeding).
+ */
 async function seedDevStories(dbClient: DatabaseClientInterface): Promise<void> {
     try {
         db = dbClient; // Use the passed-in dbClient
@@ -92,13 +100,12 @@ async function seedDevStories(dbClient: DatabaseClientInterface): Promise<void> 
 
             logger.info(`Created new story with UUID: ${uuid}`);
         }
-
-        logger.info(`Successfully seeded ${sampleStories.length} stories`);
-
-        // Seed test replies
         await seedTestReplies(storyIds, storyContents);
+        logger.info("Successfully seeded dev stories.");
     } catch (error) {
-        logger.error('Error seeding stories:', error);
+        // Handled - By Design: Catches errors during initial story creation loop.
+        // Logs the error and re-throws to stop the entire seeding process if base stories fail.
+        logger.error('Error seeding dev stories:', error);
         throw error;
     }
 }
@@ -157,6 +164,14 @@ function calculateCharIndices(text: string, startWordIndex: number, endWordIndex
     return { start: startChar, end: endChar, excerpt: excerptText };
 }
 
+/**
+ * Seeds test replies for the given story IDs.
+ * Creates multiple levels of nested replies with generated quotes.
+ * @param storyIds Array of parent story IDs.
+ * @param storyContents Array of corresponding story content strings.
+ * @throws {Error} If storing replies or updating indices fails.
+ *                 (Handled - By Design: Logs error and re-throws, caught by seedDevStories).
+ */
 async function seedTestReplies(storyIds: string[], storyContents: string[]): Promise<void> {
     try {
         logger.info("Seeding test replies...");
@@ -296,11 +311,21 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
 
         logger.info(`Successfully seeded test replies for ${storyIds.length} stories`);
     } catch (error) {
+        // Handled - By Design: Catches errors during reply creation loops (including from storeReply).
+        // Logs the error and re-throws. The error is then caught by the main seedDevStories
+        // catch block, which logs again but *doesn't* re-throw, allowing the script to terminate
+        // after logging the failure without necessarily crashing the parent process.
         logger.error('Error seeding test replies:', error);
         throw error;
     }
 }
 
+/**
+ * Stores a single reply and updates relevant database indices.
+ * @param reply The reply object to store.
+ * @throws {Error} If any database operation (hSet, zAdd, hIncrementQuoteCount) fails.
+ *                 (Handled: Propagated up to seedTestReplies).
+ */
 async function storeReply(reply: Reply) {
     const parentId = reply.parentId[0]; // Assuming single parent for simplicity
     const quote = reply.quote;

@@ -317,6 +317,16 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   // Atomically sets or increments a quote count using a transaction
+  /**
+   * Atomically increments a quote count associated with a specific field (quoteKey) within a hash (parent node).
+   * Stores the quote object along with the count.
+   * @param key The key of the hash (e.g., parentId:quoteCounts).
+   * @param field The field within the hash, representing the quote (e.g., generated quote key).
+   * @param quoteValue The actual Quote object being referenced.
+   * @returns The new count after the increment.
+   * @throws {Error} If the Firebase transaction fails after internal retries.
+   *                 (Handled: Propagated to callers like server.ts routes).
+   */
   async hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number> {
     const sanitizedKey = this.sanitizeFirebaseKey(key);
     const sanitizedField = this.sanitizeFirebaseKey(field); // Sanitize field (quoteKey) too
@@ -345,6 +355,7 @@ export class FirebaseClient extends DatabaseClientInterface {
     } else {
       // Handle potential transaction failure or abortion
       console.error(`Transaction for ${sanitizedKey}/${sanitizedField} failed or was aborted.`);
+      // Handled: Propagated to callers (server.ts routes, seed.ts) which catch and handle.
       throw new Error(`Failed to update quote count for ${sanitizedKey}/${sanitizedField}`);
     }
   }

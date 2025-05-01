@@ -73,46 +73,54 @@ function Feed(): JSX.Element {
     hasMore: false,
     totalCount: 0
   });
+  const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Fetches feed items from the backend API.
+   * @param {string} [cursor] - Optional cursor for pagination.
+   * @returns {Promise<FetchResult>} The feed items and pagination info.
+   * @throws {Error} If the API response format is invalid or indicates an error.
+   *                 (Error is caught by calling useEffect/loadMoreItems and sets component error state).
+   */
   const fetchFeedItems = useCallback(async (cursor?: string): Promise<FetchResult> => {
-    try {
-      const response = await feedOperator.getFeedItems(cursor || "");
-      if (!isFeedResponse(response)) {
-        throw new Error('Invalid response format: ' + JSON.stringify(response));
-      }
-
-      if (!response.success) {
-        throw new Error(response.error || 'Unknown error');
-      }
-      
-      // Validate response data
-      if (!response.data || !Array.isArray(response.data)) {
-        throw new Error('Invalid response format: ' + JSON.stringify(response));
-      }
-
-      return {
-        data: response.data,
-        pagination: {
-          nextCursor: response.pagination.nextCursor,
-          prevCursor: response.pagination.prevCursor,
-          hasMore: response.pagination.hasMore,
-          totalCount: response.pagination.totalCount
-        }
-      };
-    } catch (error) {
-      throw error;
+    const response = await feedOperator.getFeedItems(cursor || "");
+    if (!isFeedResponse(response)) {
+      // Handled: Caught by useEffect/loadMoreItems, sets error state.
+      throw new Error('Invalid response format received from server.');
     }
+
+    if (!response.success) {
+      // Handled: Caught by useEffect/loadMoreItems, sets error state.
+      throw new Error(response.error || 'Unknown error from server.');
+    }
+      
+    if (!response.data || !Array.isArray(response.data)) {
+      // Handled: Caught by useEffect/loadMoreItems, sets error state.
+      throw new Error('Invalid data format received from server.');
+    }
+
+    return {
+      data: response.data,
+      pagination: {
+        nextCursor: response.pagination.nextCursor,
+        prevCursor: response.pagination.prevCursor,
+        hasMore: response.pagination.hasMore,
+        totalCount: response.pagination.totalCount
+      }
+    };
   }, []);
 
   // Load items when component mounts
   useEffect(() => {
     const loadItems = async () => {
+      setError(null);
       try {
         const result = await fetchFeedItems();
         setItems(result.data);
         setPagination(result.pagination);
       } catch (error) {
-        
+        console.error("Failed to load initial feed items:", error);
+        setError('Failed to load feed. Please try refreshing the page.');
       }
     };
     
@@ -123,6 +131,7 @@ function Feed(): JSX.Element {
   const loadMoreItems = useCallback(async () => {
     if (!pagination.hasMore) return;
     
+    setError(null);
     try {
       // Use empty string instead of undefined if nextCursor is not available
       const cursor = pagination.nextCursor || "";
@@ -131,7 +140,8 @@ function Feed(): JSX.Element {
       setItems(prevItems => [...prevItems, ...result.data]);
       setPagination(result.pagination);
     } catch (error) {
-      
+      console.error("Failed to load more feed items:", error);
+      setError('Failed to load more items. Please try again later.');
     }
   }, [fetchFeedItems, pagination.hasMore, pagination.nextCursor]);
 
@@ -150,6 +160,7 @@ function Feed(): JSX.Element {
         onLogoClick={() => navigate('/feed')}
       />
       <div className="feed">
+        {error && <div className="feed-error-message">{error}</div>}
         {items.map((item) => (
           <motion.div
             key={item.id}
