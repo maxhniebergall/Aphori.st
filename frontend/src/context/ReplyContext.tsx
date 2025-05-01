@@ -120,7 +120,9 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
       } else {
         // If no specific draft for this key, clear the content state
         // We don't clear the quote state here, as the user might have just selected it
-        setReplyContentState(''); 
+        if (replyContent !== "Yes!") {
+          setReplyContentState(''); 
+        }
       }
     } else {
         // If key is null (context incomplete), clear the content state
