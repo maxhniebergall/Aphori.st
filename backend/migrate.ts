@@ -52,7 +52,7 @@ const redisClient = new RedisClient(redisConfig);
 const db = createDatabaseClient();
 
 // Define interfaces for old data formats
-interface OldStoryMetadata {
+interface OldPostMetadata {
     title?: string;
     author?: string;
     createdAt?: string;
@@ -63,7 +63,7 @@ interface OldPostTree {
     id: string;
     text: string;
     parentId: string | null;
-    metadata: OldStoryMetadata;
+    metadata: OldPostMetadata;
 }
 
 interface OldReply {
@@ -90,9 +90,15 @@ interface OldFeedItem {
 
 interface ValidationError {
     id: string;
-    type: 'story' | 'reply' | 'feed';
+    type: 'post' | 'reply' | 'feed';
     error: string;
     data: any;
+}
+
+interface PostNodeData {
+    id: string;
+    type: 'post' | 'reply' | 'feed';
+    // other fields...
 }
 
 // Helper function to validate UnifiedNode structure
@@ -105,7 +111,7 @@ function isValidUnifiedNode(node: any): boolean {
     }
     
     // Check type value
-    if (node.type !== 'story' && node.type !== 'reply') {
+    if (node.type !== 'post' && node.type !== 'reply') {
         return false;
     }
     
@@ -156,8 +162,8 @@ async function validateMigration(db: DatabaseClient): Promise<ValidationError[]>
     const errors: ValidationError[] = [];
     
     // Helper function to process a key
-    async function validateKey(key: string, type: 'story' | 'reply' | 'feed'): Promise<void> {
-        const field = type === 'story' ? 'postTree' : type === 'reply' ? 'reply' : 'feedItem';
+    async function validateKey(key: string, type: 'post' | 'reply' | 'feed'): Promise<void> {
+        const field = type === 'post' ? 'postTree' : type === 'reply' ? 'reply' : 'feedItem';
         try {
             const dataStr = await db.hGet(key, field, { returnCompressed: false });
             if (!dataStr) {
@@ -185,11 +191,11 @@ async function validateMigration(db: DatabaseClient): Promise<ValidationError[]>
         }
     }
     
-    // Validate story trees
-    const storyIds = await getStoryIds(db);
-    logger.info(`Validating ${storyIds.length} story trees...`);
-    for (const id of storyIds) {
-        await validateKey(id, 'story');
+    // Validate post trees
+    const postIds = await getPostIds(db);
+    logger.info(`Validating ${postIds.length} post trees...`);
+    for (const id of postIds) {
+        await validateKey(id, 'post');
     }
     
     // Validate replies
@@ -221,17 +227,19 @@ function writeToDLQ(errors: ValidationError[]): void {
     logger.info(`Written ${errors.length} validation errors to ${DLQ_FILE}`);
 }
 
-// Helper function to get story IDs
-async function getStoryIds(db: DatabaseClient): Promise<string[]> {
-    // Get all story trees from the feed items
+// Helper function to get post IDs
+async function getPostIds(db: DatabaseClient): Promise<string[]> {
+    // Get all post trees from the feed items
     const feedItems = await db.lRange('feedItems', 0, -1);
-    const storyIds = new Set<string>();
+    const postIds = new Set<string>();
     
     for (const value of feedItems) {
         try {
             const item = JSON.parse(value);
-            if (item.id && item.id.startsWith('story-') && !item.id.includes('+')) {
-                storyIds.add(item.id);
+            // Assuming post IDs start with 'post-' or are UUIDs not containing '+'
+            // Adjust this logic based on your actual post ID format if needed
+            if (item.id && (item.id.startsWith('post-') || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.id)) && !item.id.includes('+')) {
+                postIds.add(item.id);
             }
         } catch (err) {
             // Skip invalid JSON
@@ -239,7 +247,7 @@ async function getStoryIds(db: DatabaseClient): Promise<string[]> {
         }
     }
     
-    return Array.from(storyIds);
+    return Array.from(postIds);
 }
 
 // Helper function to get reply IDs from a sorted set
@@ -271,26 +279,26 @@ async function getFeedItems(db: DatabaseClient): Promise<string[]> {
 
 // Migrate postTree records
 async function migratePostTrees(db: DatabaseClient): Promise<void> {
-    logger.info('Starting migration of story trees.');
-    let storyIds: string[];
+    logger.info('Starting migration of post trees.');
+    let postIds: string[];
     try {
-        storyIds = await getStoryIds(db);
-        if (!storyIds || storyIds.length === 0) {
-            logger.info("No story trees found.");
+        postIds = await getPostIds(db);
+        if (!postIds || postIds.length === 0) {
+            logger.info("No post trees found.");
             return;
         }
     } catch (err) {
-        logger.error('Error fetching story tree IDs:', err);
+        logger.error('Error fetching post tree IDs:', err);
         return;
     }
     
-    logger.info(`Found ${storyIds.length} story trees to migrate.`);
+    logger.info(`Found ${postIds.length} post trees to migrate.`);
     
-    for (const storyId of storyIds) {
+    for (const postId of postIds) {
         try {
-            const oldData = await db.hGet(storyId, 'postTree', { returnCompressed: false });
+            const oldData = await db.hGet(postId, 'postTree', { returnCompressed: false });
             if (!oldData) {
-                logger.warn(`No postTree data found for ${storyId}`);
+                logger.warn(`No postTree data found for ${postId}`);
                 continue;
             }
             let oldNode: OldPostTree;
@@ -298,12 +306,12 @@ async function migratePostTrees(db: DatabaseClient): Promise<void> {
                 // Handle both string and object data
                 oldNode = typeof oldData === 'string' ? JSON.parse(oldData) : oldData;
             } catch(err) {
-                logger.error(`Error parsing data for story ${storyId}:`, err);
+                logger.error(`Error parsing data for post ${postId}:`, err);
                 continue;
             }
             // If already migrated (i.e. field 'content' exists), skip
             if ((oldNode as any).content) {
-                logger.info(`Story ${storyId} already migrated.`);
+                logger.info(`Post ${postId} already migrated.`);
                 continue;
             }
             
@@ -323,10 +331,10 @@ async function migratePostTrees(db: DatabaseClient): Promise<void> {
             };
             
             const newDataStr = JSON.stringify(postNode);
-            await db.hSet(storyId, 'postTree', newDataStr);
-            logger.info(`Migrated story tree ${storyId}`);
+            await db.hSet(postId, 'postTree', newDataStr);
+            logger.info(`Migrated post tree ${postId}`);
         } catch(err) {
-            logger.error(`Error migrating story tree ${storyId}:`, err);
+            logger.error(`Error migrating post tree ${postId}:`, err);
         }
     }
 }

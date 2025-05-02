@@ -3,7 +3,7 @@
  * - Encapsulate dynamic height calculation for variable-sized rows
  * - Use ResizeObserver to react to DOM size changes and trigger height recalculation
  * - Support hidden nodes by setting the height to 0
- * - Provide a clean API for updating row sizes in VirtualizedStoryList
+ * - Provide a clean API for updating row sizes in VirtualizedPostList
  */
 
 import { useEffect } from 'react';

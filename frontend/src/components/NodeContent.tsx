@@ -168,7 +168,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
     <div 
       className="node-content"
       role="article"
-      aria-label={isReplyTargetNode ? 'Content being replied to' : 'Story content'}
+      aria-label={isReplyTargetNode ? 'Content being replied to' : 'Post content'}
     >
       {/* Main content area - ONLY for displaying highlights, never selectable */}
       <div 

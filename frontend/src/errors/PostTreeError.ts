@@ -1,7 +1,9 @@
 /**
  * Requirements:
- * - Custom error types for enhanced error context in the story tree application.
- * - Encapsulate error code, message, endpoint, and additional details.
+ * - Custom error types for enhanced error context in the post tree application.
+ * - Include HTTP status code where applicable.
+ * - Base PostTreeError class for common properties.
+ * - Specific error classes (e.g., NodeNotFoundError) for distinct error conditions.
  */
 
 class PostTreeError extends Error {

@@ -84,8 +84,8 @@ import puppeteer from 'puppeteer';
         // Format the log based on the message type
         if (msg.text().includes('PostTreeOperator:')) {
             console.log('\nPostTreeOperator Log:', ...args);
-        } else if (msg.text().includes('VirtualizedStoryList:')) {
-            console.log('\nVirtualizedStoryList Log:', ...args);
+        } else if (msg.text().includes('VirtualizedPostList:')) {
+            console.log('\nVirtualizedPostList Log:', ...args);
         } else if (msg.text().includes('Row:')) {
             console.log('\nRow Log:', ...args);
         } else if (msg.text().includes('RowContainer:')) {
@@ -134,7 +134,7 @@ import puppeteer from 'puppeteer';
                 root: document.querySelector('#root')?.outerHTML,
                 rootChildren: document.querySelector('#root > div')?.outerHTML,
                 postTreeContent: document.querySelector('.post-tree-content')?.outerHTML,
-                virtualizedList: document.querySelector('.story-list')?.outerHTML
+                virtualizedList: document.querySelector('.post-list')?.outerHTML
             };
             return result;
         });

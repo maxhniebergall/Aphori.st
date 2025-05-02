@@ -69,7 +69,7 @@ const Row: React.FC<RowProps> = memo(
         }}
         className="row-container"
         role="listitem"
-        aria-label="Story content"
+        aria-label="Post content row"
         // aria-hidden is removed as we return placeholder when hidden
       >
         {content}

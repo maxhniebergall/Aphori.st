@@ -181,7 +181,7 @@ export function mergeLevels(existingLevels: Array<PostTreeLevel>, newLevelsPaylo
 function postTreeReducer(state: PostTreeState, action: Action): PostTreeState {
   let nextState: PostTreeState = state;
   switch (action.type) {
-    case ACTIONS.START_STORY_TREE_LOAD:
+    case ACTIONS.START_POST_TREE_LOAD:
       {
         nextState = {
           ...state,
@@ -200,7 +200,7 @@ function postTreeReducer(state: PostTreeState, action: Action): PostTreeState {
         break;
       }
     
-    case ACTIONS.SET_INITIAL_STORY_TREE_DATA:
+    case ACTIONS.SET_INITIAL_POST_TREE_DATA:
     {
       if (!action.payload.postTree) {
         nextState = {

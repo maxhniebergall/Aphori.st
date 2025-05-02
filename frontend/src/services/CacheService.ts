@@ -2,7 +2,7 @@
  * Requirements:
  * - LRU cache implementation for Replies storage
  * - Memory-only caching with size limits
- * - Separate limits for stories and replies
+ * - Separate limits for posts and replies
  * - Cache invalidation strategy
  * - Type safety for all operations
  */
@@ -23,15 +23,15 @@ class LRUCache<T> {
     }
 
     /**
-     * Validates and extracts the type ('story' or 'reply') from a cache key.
+     * Validates and extracts the type ('post' or 'reply') from a cache key.
      * @param key The cache key (e.g., "reply:some-uuid").
-     * @returns The node type ('story' or 'reply').
+     * @returns The node type ('post' or 'reply').
      * @throws {Error} If the key format is invalid (missing prefix or invalid type).
      *                 (Handled - Depends on Caller: Internal validation).
      */
-    private getNodeType(key: string): 'story' | 'reply' {
+    private getNodeType(key: string): 'post' | 'reply' {
         const [type] = key.split(':');
-        return type as 'story' | 'reply';
+        return type as 'post' | 'reply';
     }
 
     get(key: string): T | null {

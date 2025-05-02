@@ -41,7 +41,7 @@ function isValidPost(item: any): item is Post {
 
 /**
  * @route   POST /posts/createPostTree
- * @desc    Create a new root post (story tree)
+ * @desc    Create a new root post (post tree)
  * @access  Authenticated
  */
 router.post('/createPostTree', authenticateToken, ((async (req: AuthenticatedRequest, res: Response) => {
@@ -87,17 +87,19 @@ router.post('/createPostTree', authenticateToken, ((async (req: AuthenticatedReq
             createdAt: formattedPostTree.createdAt
         };
         // await db.lPush('feedItems', JSON.stringify(feedItem));
-        // logger.info('Added feed item for story %s', uuid);
+        // logger.info('Added feed item for post %s', uuid);
 
         // Use new methods to add feed item and update counter
         try {
-            const feedItemKey = await db.addFeedItem(feedItem);
-            await db.incrementFeedCounter(1);
-            logger.info('Added feed item for story %s with key %s and incremented counter.', uuid, feedItemKey);
+            const feedItemKey = `feed:${req.user.id}`; // Key for the user's feed sorted set
+            const score = Date.now(); // Use timestamp as score for chronological sorting
+            await db.zAdd(feedItemKey, score, uuid);
+            await db.hIncrBy('feedItemCounts', feedItemKey, 1); // Increment feed item counter
+            logger.info('Added feed item for post %s with key %s and incremented counter.', uuid, feedItemKey);
         } catch (feedError) {
-            logger.error({ err: feedError, storyId: uuid }, 'Failed to add feed item or update counter');
-            // Decide if this should be a fatal error for the post creation
-            // For now, let's log the error but still return success for the post creation itself
+            logger.error({ err: feedError, postId: uuid }, 'Failed to add feed item or update counter');
+            // Decide if we should proceed without feed item or return error
+            // For now, log error and continue
         }
 
         logger.info('Created new PostTree with UUID: %s', uuid);
