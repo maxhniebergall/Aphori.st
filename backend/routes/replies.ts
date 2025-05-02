@@ -12,7 +12,8 @@ import {
     SortingCriteria,
     RedisSortedSetItem,
     ExistingSelectableQuotes,
-    Compressed
+    Compressed,
+    CursorPaginatedResponse
 } from '../types/index.js';
 import { getQuoteKey } from '../utils/quoteUtils.js';
 import { uuidv7obj } from 'uuidv7';
@@ -173,6 +174,166 @@ router.get<{ parentId: string }, CompressedApiResponse<Compressed<ExistingSelect
     } catch (error) {
         logger.error({ parentId, err: error }, 'Error retrieving quote counts');
         res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+/**
+ * @route   GET /getReplies/:parentId/:quote/:sortCriteria
+ * @desc    Retrieves replies associated with a specific quote on a parent node.
+ * @access  Authenticated (implicitly, as the router is mounted with auth)
+ * @param   {string} parentId - The ID of the parent node (previously uuid).
+ * @param   {string} quote - URL-encoded JSON string of the Quote object.
+ * @param   {SortingCriteria} sortCriteria - Sorting order (e.g., 'mostRecent').
+ * @query   {number} [limit=10] - Max number of replies per page.
+ * @query   {string} [cursor] - Pagination cursor (score for zscan).
+ * @returns {CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>>} Compressed response with replies and pagination.
+ */
+router.get<{
+    parentId: string;
+    quote: string;
+    sortCriteria: SortingCriteria
+}, CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>>>('/getReplies/:parentId/:quote/:sortCriteria', async (req, res) => {
+    try {
+        const { parentId, quote, sortCriteria } = req.params;
+        let quoteObj: Quote;
+
+        // Decode and parse the quote object from the URL parameter
+        try {
+            const decodedQuote = decodeURIComponent(quote);
+            try {
+                quoteObj = JSON.parse(decodedQuote);
+            } catch (e) {
+                logger.error({ parentId, quote: decodedQuote, err: e }, 'Error parsing quote');
+                throw new Error('Invalid quote format');
+            }
+        } catch (error) {
+            const errorResponse: CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>> = {
+                success: false,
+                error: 'Invalid quote object provided in URL parameter'
+            };
+            res.status(400).json(errorResponse);
+            return;
+        }
+
+        // Validate that the quote object includes the required fields.
+        if (!quoteObj.text || !quoteObj.sourceId || !quoteObj.selectionRange) {
+            const errorResponse: CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>> = {
+                success: false,
+                error: 'Quote object must include text, sourceId, and selectionRange fields'
+            };
+            res.status(400).json(errorResponse);
+            return;
+        }
+
+        // Generate a unique key for the quote using its properties.
+        const quoteKey = getQuoteKey(quoteObj);
+        logger.info({ parentId, quote: quoteObj, sortCriteria }, '[getReplies] Processing request');
+        
+        // Pagination parameters
+        const limit = parseInt(req.query.limit as string) || 10;
+        const cursor = req.query.cursor as string | undefined; // Cursor is the score for zscan, can be undefined
+
+        // Build the sorted set key for replies based on parent ID, full quote object key, and sorting criteria.
+        // Note: This key matches the one used in createReply
+        const sortedSetKey = `replies:uuid:${parentId}:quote:${quoteKey}:${sortCriteria}`;
+        logger.info('[getReplies] Constructed Redis key: %s', sortedSetKey);
+
+        // Get total count for pagination info
+        const totalCount = await db.zCard(sortedSetKey) || 0;
+
+        // Fetch reply IDs from the sorted set using zRangeByScore with limit
+        // We need scores to determine the next cursor.
+        // zscan cursor isn't reliable for pagination here as we need the score.
+        // Fetch one extra item to determine if there's more.
+        const fetchLimit = limit + 1;
+        
+        // Correct call using zRevRangeByScore
+        // Max score: If cursor exists, use it as the upper bound (inclusive). Otherwise, use Infinity.
+        // Min score: Always -Infinity to get all older items.
+        // Limit: Fetch one extra item to check for 'hasMore'.
+        const maxScore = cursor ? Number(cursor) : '+inf'; // Use '+inf' for Redis command
+        const minScore = '-inf';                       // Use '-inf' for Redis command
+        // Ensure T matches the expected structure returned by zRevRangeByScore 
+        // (which returns RedisSortedSetItem<T>, where T is the base type stored, potentially compressed)
+        // Let's assume the base type T stored via zAdd was the compressed reply ID string.
+        // Note: The RedisClient's zRevRangeByScore expects numeric scores, but internally converts to string for the command.
+        // We pass numbers or +/-inf strings here, relying on the client's internal String() conversion.
+        const maxScoreNum = maxScore === '+inf' ? Infinity : Number(maxScore); // Keep as number for interface
+        const minScoreNum = minScore === '-inf' ? -Infinity : Number(minScore); // Keep as number for interface
+
+        // Expect Array<{ score: number, value: string (replyId) }>
+        const rawReplyItemsWithScores = await db.zRevRangeByScore<string>(sortedSetKey, maxScoreNum, minScoreNum, { limit: fetchLimit });
+
+        // Fix the log message
+        logger.info('[getReplies] Fetched %d raw reply items from sorted set.', rawReplyItemsWithScores.length);
+
+        // Determine if there are more items beyond the requested limit
+        const hasMore = rawReplyItemsWithScores.length > limit;
+        const itemsToProcess = hasMore ? rawReplyItemsWithScores.slice(0, limit) : rawReplyItemsWithScores;
+        
+        // Extract the score of the last processed item for the next cursor
+        const nextCursor = hasMore ? itemsToProcess[itemsToProcess.length - 1]?.score.toString() : undefined;
+
+        // Fetch the actual reply data for each ID
+        const replies = await Promise.all(
+            // Map over itemsToProcess which is Array<{ score: number, value: string }>
+            itemsToProcess.map(async (item) => { 
+                let replyId = item.value; // Access reply ID from item.value
+                try {
+                    const replyData = await db.hGet(replyId, 'reply'); 
+                    // logger.info({ replyId: replyId, dataPresent: !!replyData }, '[getReplies] Raw reply data fetched');
+                    // Log the actual data received after hGet and decompression
+                    logger.info({ replyId: replyId, fetchedData: replyData }, '[getReplies] Decompressed reply data received');
+
+                    if (typeof replyData === 'object' && replyData !== null) {
+                        // Validate structure (add more checks as needed)
+                         if ('id' in replyData && 'text' in replyData && 'authorId' in replyData) {
+                            return replyData as Reply;
+                         } else {
+                            logger.warn({ replyId: replyId, data: replyData }, '[getReplies] Invalid reply structure found');
+                            return null;
+                         }
+                    } else {
+                         logger.warn({ replyId: replyId, dataType: typeof replyData }, '[getReplies] Unexpected data type or null after hGet');
+                         return null;
+                    }
+                } catch (err) {
+                    logger.error({ replyId: replyId, err }, `Error during hGet or processing for reply`);
+                    return null;
+                }
+            })
+        );
+
+        // Filter out any null values from failed fetches
+        const validReplies = replies.filter((reply: Reply | null): reply is Reply => reply !== null);
+        logger.info('[getReplies] Processed %d valid replies.', validReplies.length);
+
+        // Prepare the response object with cursor pagination info
+        const responseData = {
+            success: true,
+            data: validReplies,
+            pagination: {
+                nextCursor: nextCursor, // Use the score of the last item as the next cursor
+                hasMore: hasMore,
+                totalCount: totalCount
+            }
+        } as CursorPaginatedResponse<Reply>; // Make sure this type matches
+
+        // Compress and send the response
+        const compressedResponse = await db.compress(responseData) as Compressed<CursorPaginatedResponse<Reply>>;
+        res.setHeader('X-Data-Compressed', 'true');
+        const apiResponse: CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>> = {
+            success: true,
+            compressedData: compressedResponse
+        };
+        res.send(apiResponse);
+    } catch (err) {
+        logger.error('Error fetching replies by quote: %O', err);
+        const errorResponse: CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>> = {
+            success: false,
+            error: 'Server error fetching replies'
+        };
+        res.status(500).json(errorResponse);
     }
 });
 

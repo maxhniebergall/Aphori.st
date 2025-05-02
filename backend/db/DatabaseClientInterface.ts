@@ -85,7 +85,7 @@ export abstract class DatabaseClientInterface {
     throw new Error('Method not implemented');
   }
 
-  zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<RedisSortedSetItem<T>[]> {
+  zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<Array<{ score: number, value: T }>> {
     throw new Error('Method not implemented');
   }
 
@@ -98,4 +98,10 @@ export abstract class DatabaseClientInterface {
   abstract addFeedItem(item: any): Promise<string>;
 
   abstract incrementFeedCounter(amount: number): Promise<void>;
+
+  abstract getFeedItemsPage(limit: number, cursorKey?: string): Promise<{ items: any[], nextCursorKey: string | null }>;
+
+  keys(pattern: string): Promise<string[]> {
+    throw new Error('Method not implemented');
+  }
 } 

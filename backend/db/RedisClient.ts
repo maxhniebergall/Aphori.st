@@ -38,7 +38,6 @@ export class RedisClient extends DatabaseClientInterface {
   }
 
   async hGet(key: string, field: string): Promise<any> {
-    logger.info(`Redis hGet called with key: ${key}, field: ${field}`);
     try {
       const result = await this.client.hGet(key, field);
       logger.info(`Redis hGet result type: ${typeof result}`, { result });
@@ -147,7 +146,7 @@ export class RedisClient extends DatabaseClientInterface {
     }
   }
 
-  async zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<RedisSortedSetItem<T>[]> {
+  async zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<Array<{ score: number, value: T }>> {
     logger.info(`Redis zRevRangeByScore called with key: ${key}, max: ${max}, min: ${min}, options:`, options);
     
     try {
@@ -165,14 +164,14 @@ export class RedisClient extends DatabaseClientInterface {
       
       // Redis returns results as [value1, score1, value2, score2, ...]
       // Transform into array of {score, value} objects
-      const items: RedisSortedSetItem<T>[] = [];
+      const items: Array<{ score: number, value: T }> = [];
       if (Array.isArray(result)) {
         for (let i = 0; i < result.length; i += 2) {
           const value = result[i];
           const score = result[i + 1];
           if (value !== undefined && score !== undefined) {
-            const parsedScore = typeof score === 'string' ? parseFloat(score) : 
-                              typeof score === 'number' ? score : 
+            const parsedScore = typeof score === 'string' ? parseFloat(score) :
+                              typeof score === 'number' ? score :
                               Buffer.isBuffer(score) ? parseFloat(score.toString()) : 0;
             
             items.push({
@@ -317,5 +316,65 @@ export class RedisClient extends DatabaseClientInterface {
       }
       throw err;
     }
+  }
+
+  /**
+   * Simulates adding a feed item. In Redis, this might map to LPUSH or RPUSH.
+   * For consistency with Firebase push keys, this implementation is basic
+   * and doesn't generate a Redis-specific ID, relying on LPUSH semantics.
+   * @param item The item to add (assumed stringifiable).
+   * @returns A placeholder string, as LPUSH returns length, not a key.
+   */
+  async addFeedItem(item: any): Promise<string> {
+    // Using LPUSH on 'feedItems' key. Serialize item if it's not a string.
+    const value = typeof item === 'string' ? item : JSON.stringify(item);
+    await this.client.lPush('feedItems', value);
+    // LPUSH returns the new length of the list, not a unique key.
+    // Returning a placeholder or potentially the value itself might be options.
+    // For now, return a simple placeholder.
+    return "redis_lpush_success"; // Placeholder, actual key not generated
+  }
+
+  /**
+   * Increments a counter key in Redis.
+   * @param amount The amount to increment by.
+   */
+  async incrementFeedCounter(amount: number): Promise<void> {
+    // Using INCRBY on a dedicated counter key.
+    await this.client.incrBy('feedStats:itemCount', amount);
+    // INCRBY returns the new value, but the interface is void.
+  }
+
+  /**
+   * Placeholder implementation for fetching feed items by page.
+   * Redis typically uses LRANGE with numerical offsets, not key cursors.
+   * This needs a more sophisticated implementation if used with Redis
+   * (e.g., using sorted sets or custom indexing).
+   */
+  async getFeedItemsPage(limit: number, cursorKey?: string): Promise<{ items: any[], nextCursorKey: string | null }> {
+    logger.warn('getFeedItemsPage Redis implementation is a basic placeholder using LRANGE. Consider a more robust approach if using Redis for feed.');
+    // Basic LRANGE simulation - assumes cursorKey is parseable as start index if provided
+    const start = cursorKey ? parseInt(cursorKey, 10) : 0;
+    if (isNaN(start)) {
+        throw new Error('Invalid cursorKey for Redis getFeedItemsPage simulation.');
+    }
+    const end = start + limit -1; // Fetch limit items
+    // Need to handle potential JSON parsing errors for each item
+    const rawItems = await this.client.lRange('feedItems', start, end);
+    const items: any[] = [];
+    for (const rawItem of rawItems) {
+        try {
+            items.push(JSON.parse(rawItem));
+        } catch (e) {
+            logger.error({ err: e, rawItem }, 'Failed to parse feed item from Redis LRANGE');
+            // Skip invalid items
+        }
+    }
+
+    // Check if there are more items (basic check)
+    const nextItems = await this.client.lRange('feedItems', end + 1, end + 1);
+    const nextCursorKey = nextItems.length > 0 ? (end + 1).toString() : null;
+
+    return { items, nextCursorKey };
   }
 } 

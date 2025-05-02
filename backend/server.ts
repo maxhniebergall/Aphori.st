@@ -69,6 +69,7 @@ import authRoutes, { setDb as setAuthDb } from './routes/auth.js';
 import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
+import { authenticateToken } from './middleware/authMiddleware.js';
 
 dotenv.config();
 
@@ -159,7 +160,7 @@ await db.connect().then(() => {
     if (process.env.NODE_ENV !== 'production') {
         logger.info('Development environment detected, seeding default stories...');
         // Cast db to the base interface for seeding
-        seedDevStories(db);
+        // seedDevStories(db);
     } else {
         logger.info('Production environment detected, skipping dev seed');
     }
@@ -174,42 +175,6 @@ await db.connect().then(() => {
     logger.error({ err }, 'Database connection failed');
     process.exit(1);
 });
-
-const authenticateToken = (req: Request, res: Response, next: NextFunction): void => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
-    if (!token) {
-        res.status(401).json({ error: 'Token required.' });
-        return;
-    }
-
-    // In development, accept the dev token
-    if (process.env.NODE_ENV !== 'production' && token === 'dev_token') {
-        (req as AuthenticatedRequest).user = {
-            id: 'dev_user',
-            email: 'dev@aphori.st'
-        };
-        next();
-        return;
-    }
-
-    if (!process.env.AUTH_TOKEN_SECRET) {
-        logger.error('AUTH_TOKEN_SECRET not configured.');
-        res.status(500).json({ error: 'Auth token secret not configured.' });
-        return;
-    }
-
-    jwt.verify(token, process.env.AUTH_TOKEN_SECRET, (err: jwt.VerifyErrors | null, decoded: any) => {
-        if (err) {
-            logger.warn({ err: err.message, tokenProvided: true }, 'Invalid token verification');
-            res.status(403).json({ error: 'Invalid token.' });
-            return;
-        }
-        (req as AuthenticatedRequest).user = decoded as User;
-        next();
-    });
-};
 
 // Constants for user-related keys
 const USER_PREFIX = 'user';
@@ -247,7 +212,7 @@ app.get('/health', (req: Request, res: Response): void => {
 app.use('/api/auth', authRoutes);
 app.use('/api/feed', feedRoutes);
 // Apply authenticateToken middleware ONLY to routes that require it
-app.use('/api/posts', authenticateToken, postRoutes); 
+app.use('/api/posts', postRoutes); 
 app.use('/api/replies', authenticateToken, replyRoutes);
 
 // --- Start Server ---
