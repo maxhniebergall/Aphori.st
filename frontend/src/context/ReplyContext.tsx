@@ -37,6 +37,7 @@ export interface ReplyContextType {
   setRootUUID: (uuid: string | null) => void;
   isReplyActive: boolean;
   clearReplyState: () => void;
+  clearPersistedReplyDraft: () => void;
   replyError: string | null;
   setReplyError: (error: string | null) => void;
   isReplyOpen: boolean;
@@ -132,7 +133,7 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
     // replyQuote is already part of currentPersistenceKey generation.
   }, [currentPersistenceKey, replyQuote]); // Depend on key and the current quote state.
 
-  // clearReplyState - now also removes from localStorage
+  // clearReplyState - Clears only the in-memory state, not localStorage
   const clearReplyState = useCallback(() => {
     setReplyTargetState(null);
     setReplyContentState('');
@@ -140,6 +141,13 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
     setReplyErrorState(null);
     setIsReplyOpenState(false);
     // Keep rootUUID as it's tied to the page, not the specific reply action
+  }, []); // No dependency on currentPersistenceKey needed now
+
+  // Function specifically to remove the current draft from localStorage
+  const clearPersistedReplyDraft = useCallback(() => {
+    if (currentPersistenceKey) {
+      removeReplyContent(currentPersistenceKey);
+    }
   }, [currentPersistenceKey]);
 
   const value = useMemo(() => ({
@@ -153,23 +161,25 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
     setRootUUID,    // Expose setter
     isReplyActive: replyTarget !== null,
     clearReplyState,
+    clearPersistedReplyDraft, // Expose the new function
     replyError,
     setReplyError,
     isReplyOpen,
     setIsReplyOpen
   }), [
-      replyTarget, 
-      replyContent, 
-      replyQuote, 
+      replyTarget,
+      replyContent,
+      replyQuote,
       rootUUID, // Add rootUUID dependency
-      clearReplyState, 
-      replyError, 
-      isReplyOpen, 
+      clearReplyState,
+      clearPersistedReplyDraft, // Add dependency
+      replyError,
+      isReplyOpen,
       setReplyTarget, // Include setters used by value
-      setReplyContent, 
-      setReplyQuote, 
-      setRootUUID, 
-      setReplyError, 
+      setReplyContent,
+      setReplyQuote,
+      setRootUUID,
+      setReplyError,
       setIsReplyOpen
     ]);
 

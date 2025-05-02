@@ -13,7 +13,8 @@ const ReplyEditor = () => {
     replyContent,
     setReplyContent,
     replyQuote,
-    clearReplyState
+    clearReplyState,
+    clearPersistedReplyDraft
   } = useReplyContext();
 
   const MAX_REPLY_LENGTH = 1000;
@@ -45,7 +46,7 @@ const ReplyEditor = () => {
   
   // Handle reply cancellation or successful submission
   const handleReplyFinished = useCallback(() => {
-    clearReplyState(); // Call context's clear function
+    clearReplyState(); // Call context's clear function (only clears in-memory state)
   }, [clearReplyState]);
 
   if (!replyTarget || !replyQuote) {
@@ -113,7 +114,8 @@ const ReplyEditor = () => {
             try {
               const result = await PostTreeOperator.submitReply(trimmedReplyContent, replyTarget.id, replyQuote);
               if (!result.error) {
-                handleReplyFinished(); // Clear state (including localStorage) on success
+                clearReplyState(); // Clear in-memory state
+                clearPersistedReplyDraft(); // Remove from localStorage
               } else {
                  // Handle specific submission errors if needed, but don't clear state
                  // User might want to fix the content and retry
