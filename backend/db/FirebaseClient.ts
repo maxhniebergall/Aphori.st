@@ -126,18 +126,78 @@ export class FirebaseClient extends DatabaseClientInterface {
     return currentList.length;
   }
 
-  async lRange(key: string, start: number, end: number): Promise<any[]> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const snapshot = await this.db.ref(sanitizedKey).once('value');
-    const list = snapshot.val() || [];
-    return list.slice(start, end + 1);
+  // Deprecate lRange for feed items; use getFeedItemsPage instead.
+  // async lRange(key: string, start: number, end: number): Promise<any[]> {
+  //   const sanitizedKey = this.sanitizeFirebaseKey(key);
+  //   const snapshot = await this.db.ref(sanitizedKey).once('value');
+  //   const list = snapshot.val() || [];
+  //   return list.slice(start, end + 1);
+  // }
+
+  /**
+   * Fetches a page of feed items using key-based cursors.
+   * @param limit The maximum number of items to return.
+   * @param cursorKey The key of the item to start after (exclusive).
+   * @returns An object containing the list of items (newest first) and the key for the next older cursor.
+   */
+  async getFeedItemsPage(limit: number, cursorKey?: string): Promise<{ items: any[], nextCursorKey: string | null }> {
+    const feedItemsRef = this.db.ref('feedItems');
+    let query = feedItemsRef.orderByKey();
+
+    // If cursorKey is provided, end querying before that key to get older items
+    if (cursorKey) {
+      query = query.endBefore(cursorKey);
+    }
+
+    // Query limit + 1 items from the end (newest) to determine if there's a next older page
+    query = query.limitToLast(limit + 1);
+
+    const snapshot = await query.once('value');
+    const itemsData = snapshot.val() || {};
+    
+    const fetchedItems: Array<{ key: string, data: any }> = [];
+    // Data from limitToLast comes in ascending key order, process it
+    snapshot.forEach((childSnapshot) => {
+        fetchedItems.push({ key: childSnapshot.key as string, data: childSnapshot.val() });
+    });
+
+    let nextCursorKey: string | null = null;
+    let itemsForPage: any[] = [];
+
+    if (fetchedItems.length > limit) {
+        // The first item (oldest in this batch) is the cursor for the next older page
+        nextCursorKey = fetchedItems[0].key;
+        // The items for the current page are the rest (excluding the oldest one)
+        itemsForPage = fetchedItems.slice(1).map(item => ({ ...item.data, _key: item.key }));
+    } else {
+        // Less than limit items fetched, no older page
+        nextCursorKey = null;
+        itemsForPage = fetchedItems.map(item => ({ ...item.data, _key: item.key }));
+    }
+
+    // Reverse the items for the current page to be newest first
+    itemsForPage.reverse();
+
+    return { items: itemsForPage, nextCursorKey };
   }
 
+  /**
+   * Retrieves the total number of feed items by reading the dedicated counter.
+   * @returns The total count of feed items.
+   */
   async lLen(key: string): Promise<number> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const snapshot = await this.db.ref(sanitizedKey).once('value');
-    const list = snapshot.val() || [];
-    return list.length;
+    // Ensure the key is the expected feed items key, though we ignore it for the counter path
+    if (key !== 'feedItems') {
+      console.warn(`lLen called with unexpected key: ${key}. Reading feedStats counter anyway.`);
+    }
+    // Read the counter value directly
+    const counterRef = this.db.ref('feedStats/itemCount');
+    const snapshot = await counterRef.once('value');
+    return snapshot.val() || 0;
+    // const sanitizedKey = this.sanitizeFirebaseKey(key);
+    // const snapshot = await this.db.ref(sanitizedKey).once('value');
+    // const list = snapshot.val() || [];
+    // return list.length;
   }
 
   async sAdd(key: string, value: any): Promise<number> {
@@ -252,28 +312,52 @@ export class FirebaseClient extends DatabaseClientInterface {
     }
   }
 
-  async zRevRangeByScore(key: string, max: number, min: number, options?: { limit?: number }): Promise<any[]> {
+  async zRevRangeByScore(key: string, max: number, min: number, options?: { limit?: number }): Promise<Array<{ score: number, value: any }>> {
     const sanitizedKey = this.sanitizeFirebaseKey(key);
-    // Query the database using orderByChild on 'score'
-    const snapshot = await this.db.ref(sanitizedKey)
-      .orderByChild('score')
-      .startAt(min)
-      .endAt(max)
-      .once('value');
+    let query = this.db.ref(sanitizedKey).orderByKey(); // Order by key (which is the score)
 
-    const results: any[] = [];
+    // Firebase key ordering is lexicographical, so stringify scores for range queries
+    const minStr = String(min);
+    const maxStr = String(max);
+
+    query = query.startAt(minStr).endAt(maxStr);
+
+    // Apply limit using limitToLast for reverse order
+    if (options?.limit) {
+      query = query.limitToLast(options.limit);
+    }
+
+    const snapshot = await query.once('value');
+    const results: Array<{ score: number, value: any }> = [];
+    
+    // Snapshot is already limited and ordered (desc by key due to limitToLast implicitly reversing)
+    // Iterate directly
     snapshot.forEach((childSnapshot) => {
-      results.push(childSnapshot.val()); // Contains {score, value}
+      // The value stored under the score key is { score, value }
+      results.push(childSnapshot.val()); // This already pushes { score, value }
     });
 
-    // Reverse the results to simulate descending order
+    // Results from limitToLast are in ascending order of keys (scores) within the limited set.
+    // We need descending order (reverse chronological).
     results.reverse();
 
-    // Apply limit if provided
-    if (options?.limit) {
-      return results.slice(0, options.limit);
-    }
     return results;
+    
+    // Old implementation:
+    // const snapshot = await this.db.ref(sanitizedKey)
+    //   .orderByChild('score')
+    //   .startAt(min)
+    //   .endAt(max)
+    //   .once('value');
+    // const results: any[] = [];
+    // snapshot.forEach((childSnapshot) => {
+    //   results.push(childSnapshot.val()); // Contains {score, value}
+    // });
+    // results.reverse();
+    // if (options?.limit) {
+    //   return results.slice(0, options.limit);
+    // }
+    // return results;
   }
 
   // Simulate Redis ZSCAN using Firebase queries
@@ -358,5 +442,41 @@ export class FirebaseClient extends DatabaseClientInterface {
       // Handled: Propagated to callers (server.ts routes, seed.ts) which catch and handle.
       throw new Error(`Failed to update quote count for ${sanitizedKey}/${sanitizedField}`);
     }
+  }
+
+  /**
+   * Adds a feed item using Firebase push() to generate a unique, sortable key.
+   * @param item The FeedItem object to add.
+   * @returns The unique key generated by Firebase for the new item.
+   */
+  async addFeedItem(item: any): Promise<string> {
+    // We won't sanitize the 'feedItems' key itself, assuming it's a fixed path.
+    const feedItemsRef = this.db.ref('feedItems');
+    const newItemRef = await feedItemsRef.push(item);
+    if (!newItemRef.key) {
+      // Should theoretically never happen with push()
+      throw new Error('Failed to get push key for new feed item.');
+    }
+    return newItemRef.key;
+  }
+
+  /**
+   * Atomically increments or decrements the feed item counter.
+   * @param amount The amount to increment by (can be negative for decrement).
+   */
+  async incrementFeedCounter(amount: number): Promise<void> {
+    // We won't sanitize the 'feedStats/itemCount' key itself.
+    const counterRef = this.db.ref('feedStats/itemCount');
+    const transactionResult = await counterRef.transaction((currentValue) => {
+      return (currentValue || 0) + amount;
+    });
+
+    if (!transactionResult.committed) {
+      console.error('Transaction for incrementing feed counter failed or was aborted.');
+      // Decide on error handling: throw, retry, or log?
+      // Throwing for now, as failure might indicate a larger issue.
+      throw new Error('Failed to update feed item counter.');
+    }
+    // No return value needed for void
   }
 } 

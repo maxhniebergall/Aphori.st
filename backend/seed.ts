@@ -59,7 +59,8 @@ async function seedDevStories(dbClient: DatabaseClientInterface): Promise<void> 
         try {
             await db.del('feedItems');
             await db.del('allPostTreeIds');
-            logger.info("Existing feed items cleared within seedDevStories using db client");
+            await db.del('feedStats/itemCount'); // Also clear the counter
+            logger.info("Existing feed items and counter cleared within seedDevStories using db client");
         } catch (err) {
             logger.error('Failed to delete existing keys within seedDevStories:', err);
         }
@@ -95,8 +96,18 @@ async function seedDevStories(dbClient: DatabaseClientInterface): Promise<void> 
                 createdAt: formattedStory.createdAt
             } as FeedItem;
             // Ensure feed items are stored as strings, consistent with server.ts
-            await db.lPush('feedItems', JSON.stringify(feedItem));
-            logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
+            // await db.lPush('feedItems', JSON.stringify(feedItem));
+            // logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
+
+            // Use new methods to add feed item and update counter
+            try {
+                const feedItemKey = await db.addFeedItem(feedItem);
+                await db.incrementFeedCounter(1);
+                logger.info('Seeded feed item for story %s with key %s and incremented counter.', uuid, feedItemKey);
+            } catch (feedError) {
+                logger.error({ err: feedError, storyId: uuid }, 'Failed to seed feed item or update counter for story');
+                // If seeding a feed item fails, we might want to stop or log prominently
+            }
 
             logger.info(`Created new story with UUID: ${uuid}`);
         }
@@ -332,8 +343,8 @@ async function storeReply(reply: Reply) {
     const replyId = reply.id;
     const score = Date.now(); // Use current timestamp for score
 
-    // Store the reply object itself
-    await db.hSet(replyId, 'reply', JSON.stringify(reply));
+    // Store the reply object itself - PASS THE OBJECT DIRECTLY
+    await db.hSet(replyId, 'reply', reply);
 
     // Indexing - use safe quote key
     const quoteKey = getQuoteKey(quote);

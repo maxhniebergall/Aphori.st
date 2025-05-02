@@ -11,6 +11,7 @@ import {
 } from '../types/index.js';
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
+import { authenticateToken } from '../middleware/authMiddleware.js';
 
 // Use the imported type for the placeholder and the setDb function
 let db: DatabaseClientType;
@@ -43,7 +44,7 @@ function isValidPost(item: any): item is Post {
  * @desc    Create a new root post (story tree)
  * @access  Authenticated
  */
-router.post('/createPostTree', ((async (req: AuthenticatedRequest, res: Response) => {
+router.post('/createPostTree', authenticateToken, ((async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { postTree } = req.body as { postTree: PostCreationRequest };
         if (!postTree || !postTree.content) {
@@ -85,8 +86,19 @@ router.post('/createPostTree', ((async (req: AuthenticatedRequest, res: Response
             authorId: req.user.id,
             createdAt: formattedPostTree.createdAt
         };
-        await db.lPush('feedItems', JSON.stringify(feedItem));
-        logger.info('Added feed item for story %s', uuid);
+        // await db.lPush('feedItems', JSON.stringify(feedItem));
+        // logger.info('Added feed item for story %s', uuid);
+
+        // Use new methods to add feed item and update counter
+        try {
+            const feedItemKey = await db.addFeedItem(feedItem);
+            await db.incrementFeedCounter(1);
+            logger.info('Added feed item for story %s with key %s and incremented counter.', uuid, feedItemKey);
+        } catch (feedError) {
+            logger.error({ err: feedError, storyId: uuid }, 'Failed to add feed item or update counter');
+            // Decide if this should be a fatal error for the post creation
+            // For now, let's log the error but still return success for the post creation itself
+        }
 
         logger.info('Created new PostTree with UUID: %s', uuid);
         res.json({ id: uuid });

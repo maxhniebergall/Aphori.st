@@ -35,82 +35,51 @@ function isValidFeedItem(item: any): item is FeedItem {
  */
 router.get('/', async (req, res): Promise<void> => {
     const limit = parseInt(req.query.limit as string) || 10;
-    let cursor = 0;
+    // Cursor is now the Firebase push key (string) or undefined for the first page
+    const cursorKey = req.query.cursor as string | undefined; 
 
-    if (req.query.cursor) {
-        try {
-            const decodedCursor = decodeCursor(req.query.cursor as string);
-            cursor = parseInt(decodedCursor.id);
-        } catch (error) {
-            res.status(400).json({ success: false, error: 'Invalid cursor format' });
-            return;
-        }
-    }
-
-    logger.info("Handling request for feed with cursor %d and limit %d", cursor, limit);
+    logger.info("Handling request for feed with cursorKey %s and limit %d", cursorKey || 'start', limit);
 
     try {
+        // Connection state log might still be misleading, but keep it for now
         logger.info('Current db connection state: %O', {
-            connected: db.isConnected?.() || 'unknown',
-            ready: db.isReady?.() || 'unknown'
+            connected: await db.isConnected(), // Await the promise
+            ready: await db.isReady()       // Await the promise
         });
 
+        // Get total items using the updated lLen
         const totalItems = await db.lLen('feedItems');
+        logger.info('Total feed items count: %d', totalItems);
 
-        if (cursor < 0) {
-            res.status(400).json({ success: false, error: 'Cursor cannot be negative' });
-            return;
-        }
-        if (cursor > totalItems) {
-            res.status(400).json({ success: false, error: 'Cursor is beyond the end of the feed' });
-            return;
-        }
+        // Fetch page using the new method
+        // We pass returnCompressed: true to avoid double decompression (client + route)
+        // The CompressedDatabaseClient handles decompression based on this option.
+        const { items, nextCursorKey } = await db.getFeedItemsPage(limit, cursorKey);
 
-        const endIndex = Math.min(cursor + limit, totalItems);
-
-        logger.info('Attempting to fetch feed items from db with range: %O', {
-            cursor,
-            endIndex,
-            key: 'feedItems'
-        });
-
-        const fetchedRawItems: unknown = await db.lRange('feedItems', cursor, endIndex - 1, { returnCompressed: false });
-
-        if (!Array.isArray(fetchedRawItems)) {
-            throw new Error("Database did not return an array for feed items");
+        // No need to parse items here, getFeedItemsPage should return objects
+        // (FirebaseClient does, RedisClient placeholder parses JSON)
+        // Filter/validate items - we might still get non-FeedItem objects?
+        const feedItems: FeedItem[] = items.filter(isValidFeedItem);
+        if (feedItems.length !== items.length) {
+             logger.warn('Some items returned from getFeedItemsPage were not valid FeedItems.');
         }
 
-        const parsedItems: FeedItem[] = [];
-        for (const rawItem of fetchedRawItems) {
-            if (typeof rawItem !== 'string') {
-                logger.warn('Found non-string item in feedItems list: %O', rawItem);
-                continue;
-            }
-            try {
-                const item = JSON.parse(rawItem);
-                if (isValidFeedItem(item)) {
-                    parsedItems.push(item);
-                } else {
-                    logger.warn('Found invalid FeedItem structure after parsing: %O', item);
-                }
-            } catch (parseError) {
-                logger.error('Failed to parse feed item JSON: %s, Error: %O', rawItem, parseError);
-            }
-        }
+        logger.info("Fetched feed items: %d items", feedItems.length);
 
-        const feedItems: FeedItem[] = parsedItems;
-        logger.info("Parsed feed items: %d items", feedItems.length);
-
+        // Note: prevCursor logic is hard with key-based pagination forward-only
+        // We can't easily go back without storing previous keys or changing query direction.
+        // Setting prevCursor to undefined for now.
         const data = {
             data: feedItems,
             pagination: {
-                nextCursor: endIndex < totalItems ? createCursor(endIndex.toString(), Date.now(), 'story') : undefined,
-                prevCursor: cursor > 0 ? createCursor(Math.max(0, cursor - limit).toString(), Date.now(), 'story') : undefined,
-                hasMore: endIndex < totalItems,
+                nextCursor: nextCursorKey || undefined, // Use the key directly
+                prevCursor: undefined, // TODO: Implement prev cursor logic if needed
+                hasMore: nextCursorKey !== null,
                 totalCount: totalItems
             }
         } as FeedItemsResponse;
 
+        // Compress the final response
         const compressedData = await db.compress(data);
         const response: CompressedApiResponse<Compressed<FeedItemsResponse>> = {
             success: true,

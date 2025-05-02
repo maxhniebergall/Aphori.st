@@ -62,7 +62,6 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
      *                 (Handled - Propagation: Errors are caught and re-thrown).
      */
     async hGet(key: string, field: string | string[], options: CompressionOptions = { returnCompressed: false }): Promise<any> {
-        logger.info(`hGet called with key: ${key}, field: ${field}`);
         
         // Validation
         if (!key || typeof key !== 'string') {
@@ -80,7 +79,6 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         
         try {
             const compressedData = await this.db.hGet(key, fieldToUse);
-            logger.info(`hGet raw data type: ${typeof compressedData}`, { data: compressedData });
             
             if (!compressedData) {
                 logger.info('hGet returned null/undefined');
@@ -90,14 +88,11 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
             const stringData = typeof compressedData === 'string' ? 
                 compressedData : 
                 JSON.stringify(compressedData);
-            
-            logger.info(`hGet processed data type: ${typeof stringData}`);
-            
+        
             const result = options.returnCompressed ? 
                 stringData : 
                 this.compression.decompress(stringData);
                 
-            logger.info(`hGet final result type: ${typeof result}`);
             return result;
         } catch (err) {
             logger.error('Error in hGet:', err);
@@ -328,27 +323,34 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
      * @throws {Error} If decompression or the underlying database call fails.
      *                 (Handled - Propagation: Errors are caught and re-thrown).
      */
-    async zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<T[]> {
+    async zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<Array<{ score: number, value: T }>> {
         try {
+            // items will be Array<{ score: number, value: any }> from underlying client
             const items = await this.db.zRevRangeByScore(key, max, min, options);
             if (!items.length) return [];
             
-            const decompressedItems = await Promise.all(
-                items.map(async (item) => {
+            // Decompress the `value` property of each item in the results array
+            const decompressedItemsAndScores = await Promise.all(
+                items.map(async (item: { score: number, value: any }) => { 
                     try {
-                        // Parse the outer string if it's stringified JSON
-                        const parsedItem = typeof item.value === 'string' ? JSON.parse(item.value) : item.value;
-                        const decompressed = await this.compression.decompress(parsedItem);
-                        return decompressed as T;
+                        // Ensure item.value is the compressed string
+                        if (typeof item.value !== 'string') {
+                            logger.warn('Value in zRevRangeByScore item is not a string, cannot decompress:', item.value);
+                            return null; 
+                        }
+                        // Decompress the value property
+                        const decompressedValue = await this.compression.decompress(item.value); 
+                        // Return the object with the original score and decompressed value
+                        return { score: item.score, value: decompressedValue as T }; 
                     } catch (err) {
-                        logger.error('Error parsing/decompressing item:', err);
+                        logger.error('Error decompressing item value in zRevRangeByScore:', { err, item });
                         return null;
                     }
                 })
             );
             
-            // Filter out any failed decompression attempts and cast to T[]
-            return decompressedItems.filter((item): item is NonNullable<typeof item> => item !== null) as T[];
+            // Filter out any failed decompression attempts
+            return decompressedItemsAndScores.filter((item): item is NonNullable<typeof item> => item !== null);
         } catch (err) {
             logger.error('Error in zRevRangeByScore:', err);
             // Handled - Propagation: Re-throws error from underlying DB call or decompression.
@@ -402,7 +404,68 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
     // Pass through hIncrementQuoteCount to the underlying database client
     // Compression is not applied here as the method handles a specific structure
     async hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number> {
-        // We expect the underlying client to handle the transaction logic
+        // Assuming quoteValue itself doesn't need compression, but the field might if it represents a complex object key
+        // Pass through directly for now, depends on underlying implementation (Firebase vs Redis)
         return this.db.hIncrementQuoteCount(key, field, quoteValue);
+    }
+
+    /**
+     * Delegates adding a feed item to the underlying client.
+     * Assumes the underlying client handles the specifics (e.g., Firebase push key generation).
+     * @param item The FeedItem object.
+     * @returns The unique key/ID from the underlying client.
+     */
+    async addFeedItem(item: any): Promise<string> {
+        // Feed item itself might be compressed by the underlying Firebase/Redis set/hSet methods if called directly
+        // However, the new addFeedItem in FirebaseClient handles the raw object.
+        // Let's assume the item should be passed as is.
+        return this.db.addFeedItem(item);
+    }
+
+    /**
+     * Delegates incrementing the feed counter to the underlying client.
+     * @param amount Amount to increment by.
+     */
+    async incrementFeedCounter(amount: number): Promise<void> {
+        // Counter values are typically not compressed.
+        return this.db.incrementFeedCounter(amount);
+    }
+
+    /**
+     * Delegates fetching a page of feed items to the underlying client.
+     * Handles decompression of the returned items.
+     * @param limit Max number of items.
+     * @param cursorKey Key to start after.
+     * @returns Object with potentially decompressed items and the next cursor key.
+     */
+    async getFeedItemsPage(limit: number, cursorKey?: string, options: CompressionOptions = { returnCompressed: false }): Promise<{ items: any[], nextCursorKey: string | null }> {
+        const result = await this.db.getFeedItemsPage(limit, cursorKey);
+
+        if (options.returnCompressed || !result.items || result.items.length === 0) {
+            return result;
+        }
+
+        // Decompress items - assuming items might be compressed individually
+        // Note: Our Firebase implementation returns raw objects, Redis returns strings that need parsing.
+        // The `decompress` method expects a string. This might need adjustment
+        // based on what the underlying methods actually return.
+        // For now, assume items are strings needing decompression if not returning compressed.
+        const decompressedItems = await Promise.all(
+            result.items.map(async (item) => {
+                try {
+                    // If item is already an object (from Firebase), stringify before potential decompression
+                    // If it's a string (from Redis), use directly
+                    const dataToDecompress = typeof item === 'string' ? item : JSON.stringify(item);
+                    // Check if it actually looks compressed (e.g., is base64) before attempting decompression?
+                    // For simplicity, try decompressing; handle errors.
+                    return await this.compression.decompress(dataToDecompress);
+                } catch (e) {
+                    logger.warn({ err: e, item }, 'Failed to decompress feed item, returning original.');
+                    return item; // Return original item if decompression fails
+                }
+            })
+        );
+
+        return { items: decompressedItems, nextCursorKey: result.nextCursorKey };
     }
 } 

@@ -29,6 +29,9 @@ export interface DatabaseClientBase {
     lLen: (key: string) => Promise<number>;
     del: (key: string) => Promise<number>;
     hIncrementQuoteCount: (key: string, field: string, quoteValue: any) => Promise<number>;
+    addFeedItem: (item: any) => Promise<string>;
+    incrementFeedCounter: (amount: number) => Promise<void>;
+    getFeedItemsPage: (limit: number, cursorKey?: string) => Promise<{ items: any[], nextCursorKey: string | null }>;
 }
 
 // Export the base interface AND keep the extended one if needed for now,
