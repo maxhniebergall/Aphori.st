@@ -107,6 +107,7 @@ const NodeContent: React.FC<NodeContentProps> = ({
 }) => {
   // Reference to the main content container
   const mainContentRef = useRef<HTMLDivElement>(null);
+  const quoteContainerRef = useRef<HTMLDivElement>(null); // Ref for the quote container
 
   // Memoize the callback passed down from PostTreeLevelComponent
   const memoizedOnExistingQuoteSelectionComplete = useCallback((selectedQuote: Quote) => {
@@ -145,6 +146,19 @@ const NodeContent: React.FC<NodeContentProps> = ({
     
   }, [selections]);
 
+  // Effect to scroll the quote container into view when it becomes the reply target
+  useEffect(() => {
+    if (isReplyTargetNode && quoteContainerRef.current) {
+      // Timeout helps ensure rendering is complete before scrolling
+      setTimeout(() => {
+        quoteContainerRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center' // Center vertically
+        });
+      }, 50); // Small delay
+    }
+  }, [isReplyTargetNode]); // Dependency: run when reply target status changes
+
   // Safely handle the quote text for the blockquote display (use full text)
   const quoteContainerText = useMemo(() => {
     return node.textContent || '';
@@ -178,7 +192,12 @@ const NodeContent: React.FC<NodeContentProps> = ({
       {/* Quote container area - ALWAYS selectable if rendered */}
       {/* Render the quote container ONLY if this node is the reply target */}
       {isReplyTargetNode && (
-        <div className="quote-container" role="region" aria-label="Quoted content for reply">
+        <div 
+          ref={quoteContainerRef} // Attach the ref here
+          className="quote-container" 
+          role="region" 
+          aria-label="Quoted content for reply"
+        >
           <blockquote className="post-tree-node-quote">
             <MemoizedTextSelection
               node={node}
