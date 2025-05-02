@@ -1,7 +1,7 @@
 /**
  * Requirements:
- * - TypeScript interfaces and types for the story tree application
- * - Unified data model for stories and replies
+ * - TypeScript interfaces and types for the post tree application
+ * - Unified data model for posts and replies
  * - Comprehensive action types for all state changes
  * - Simple boolean loading state
  * - Error handling types
@@ -24,7 +24,7 @@ export interface ExistingSelectableQuotesApiFormat {
   quoteCounts: Array<[Quote, number]>;
 }
 
-export interface Post { // this is the value returned from the backend, representing the root node of the story tree
+export interface Post { // this is the value returned from the backend, representing the root node of the post tree
   id: string; // probably a UUID, appears in the URL; same as the rootNodeId
   content: string;
   quote?: Quote;
@@ -71,7 +71,7 @@ export interface FetchResult {
 }
 
 
-export interface PostTreeNode { // this value only exists in the frontend. it combines the post and the levels of the story tree
+export interface PostTreeNode { // this value only exists in the frontend. it combines the post and the levels of the post tree
   id: string;
   rootNodeId: string;
   parentId: string[];
@@ -111,7 +111,7 @@ export interface LastLevel {
   rootNodeId: string;
 }
 
-export interface PostTree { // this is the story tree we assemble as the user navigates
+export interface PostTree { // this is the post tree we assemble as the user navigates
   post: Post;
   levels: Array<PostTreeLevel>; 
   error: string | null;
@@ -125,7 +125,7 @@ export interface PostTreeState { // required to allow postTree to be null before
 
 // Cache Types
 export interface CacheKey {
-  type: 'story' | 'reply' | 'batch';
+  type: 'post' | 'reply' | 'batch';
   id: string;
 }
 
@@ -173,8 +173,8 @@ export interface Reply {
 }
 
 export const ACTIONS = {
-  START_STORY_TREE_LOAD: 'START_STORY_TREE_LOAD',
-  SET_INITIAL_STORY_TREE_DATA: 'SET_INITIAL_STORY_TREE_DATA',
+  START_POST_TREE_LOAD: 'START_POST_TREE_LOAD',
+  SET_INITIAL_POST_TREE_DATA: 'SET_INITIAL_POST_TREE_DATA',
   INCLUDE_NODES_IN_LEVELS: 'INCLUDE_NODES_IN_LEVELS',
   SET_SELECTED_NODE: 'SET_SELECTED_NODE',
   UPDATE_THIS_LEVEL_SELECTED_QUOTE: 'UPDATE_THIS_LEVEL_SELECTED_QUOTE',
@@ -189,8 +189,8 @@ export const ACTIONS = {
 } as const;
 
 export type Action =
-  | { type: typeof ACTIONS.START_STORY_TREE_LOAD; payload: { rootNodeId: string } }
-  | { type: typeof ACTIONS.SET_INITIAL_STORY_TREE_DATA; payload: { postTree: PostTree; error?: never } | { postTree?: never; error: string } }
+  | { type: typeof ACTIONS.START_POST_TREE_LOAD; payload: { rootNodeId: string } }
+  | { type: typeof ACTIONS.SET_INITIAL_POST_TREE_DATA; payload: { postTree: PostTree; error?: never } | { postTree?: never; error: string } }
   | { type: typeof ACTIONS.INCLUDE_NODES_IN_LEVELS; payload: PostTreeLevel[] }
   | { type: typeof ACTIONS.SET_SELECTED_NODE; payload: PostTreeNode }
   | { type: typeof ACTIONS.UPDATE_THIS_LEVEL_SELECTED_QUOTE; payload: { levelNumber: number; newQuote: Quote | null } }

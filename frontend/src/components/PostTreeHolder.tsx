@@ -1,12 +1,12 @@
 /**
  * Requirements:
  * - React, useCallback - For component rendering and memoization
- * - Display story tree with virtualized list via VirtualizedStoryList (which now handles progressive loading)
+ * - Display post tree with virtualized list via VirtualizedPostList (which now handles progressive loading)
  * - Handle root node initialization and data fetching (delegated to context and postTreeOperator)
  * - Properly size content accounting for header height
  * - Support sibling navigation
  * - Error handling for invalid root nodes
- * - **Simplified loading state management:** rely on VirtualizedStoryList for progressive loading (global loading indicator removed)
+ * - **Simplified loading state management:** rely on VirtualizedPostList for progressive loading (global loading indicator removed)
  * - Proper cleanup on unmount
  * - Navigation handling
  * - Title and subtitle display
@@ -23,7 +23,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import './PostTree.css';
 import Header from './Header';
 import { PostTreeProvider, usePostTree } from '../context/PostTreeContext';
-import VirtualizedStoryList from './VirtualizedStoryList';
+import VirtualizedPostList from './VirtualizedPostList';
 import { ReplyProvider, useReplyContext } from '../context/ReplyContext';
 import PostTreeOperator from '../operators/PostTreeOperator';
 import React from 'react';
@@ -31,7 +31,7 @@ import { useUser } from '../context/UserContext';
 import ReplyEditor from './ReplyEditor';
 
 // Memoized content component to prevent unnecessary re-renders
-const MemoizedVirtualizedStoryList = React.memo(VirtualizedStoryList);
+const MemoizedVirtualizedPostList = React.memo(VirtualizedPostList);
 
 // Main content component
 function PostTreeContent() {
@@ -49,8 +49,8 @@ function PostTreeContent() {
   return (
     <div className="post-tree-container">
       <Header 
-        title="Stories"
-        subtitle="View and respond to stories"
+        title="Posts"
+        subtitle="View and respond to posts"
         onLogoClick={() => navigate('/feed')}
       />
       <main className="post-tree-content" role="main">
@@ -67,8 +67,8 @@ function PostTreeContent() {
             </button>
           </div>
         ) : (
-          // Render the story list if there is no error
-          <MemoizedVirtualizedStoryList postRootId={memoizedUUID} />
+          // Render the post list if there is no error
+          <MemoizedVirtualizedPostList postRootId={memoizedUUID} />
         )}
       </main>
       {/* Reply editor remains conditional based on replyTarget */}
@@ -108,7 +108,7 @@ function PostTreeSetupAndContent() {
     PostTreeOperator.setReplyContextSetters({ resetReplyState });
   }, [postTreeState, postTreeDispatch, userState, resetReplyState]);
 
-  // Effect to initialize story tree and fetch data when rootUUID changes
+  // Effect to initialize post tree and fetch data when rootUUID changes
   useEffect(() => {
     let mounted = true;
 
@@ -119,12 +119,12 @@ function PostTreeSetupAndContent() {
         try {
           await PostTreeOperator.initializePostTree(rootUUID);
         } catch (error: any) {
-          console.error('Failed to initialize story tree:', error);
+          console.error('Failed to initialize post tree:', error);
           if (mounted) {
             // Determine if the error is likely a 'Not Found'
             const errorMessage = error?.response?.status === 404 
-              ? `Story with ID '${rootUUID}' not found.` 
-              : 'It seems like this story tree does not exist.';
+              ? `Post with ID '${rootUUID}' not found.` 
+              : 'It seems like this post tree does not exist.';
             // Dispatch error state to context instead of navigating
             postTreeDispatch({ type: 'SET_ERROR', payload: errorMessage });
           }
@@ -133,7 +133,7 @@ function PostTreeSetupAndContent() {
           // Handle case where UUID is missing in the URL path itself
           // Clear previous error first by setting payload to empty string
           postTreeDispatch({ type: 'SET_ERROR', payload: '' }); 
-          postTreeDispatch({ type: 'SET_ERROR', payload: 'No story ID provided.' });
+          postTreeDispatch({ type: 'SET_ERROR', payload: 'No post ID provided.' });
       }
     };
 

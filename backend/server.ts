@@ -1,11 +1,11 @@
 /* requirements
 - getUserById checks id with tolowercase
 - Accepts development token in non-production environments
-- Handles quote metadata in story creation and retrieval
+- Handles quote metadata in post creation and retrieval
 - Stores quote data with source post ID and selection range
 - Creates posts (postTrees) with new schema structure separating posts from replies
 - Handles reply creation with quote references and parent tracking
-- Creates formatted story trees with metadata and node structure
+- Creates formatted post trees with metadata and node structure
 - Manages feed items for root-level posts only
 - Supports retrieving individual replies by UUID
 - Fetches replies by post UUID and quote
@@ -31,7 +31,7 @@ import dotenv from 'dotenv';
 import { sendEmail } from './mailer.js';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import { seedDevStories } from './seed.js';
+import { seedDevPosts } from './seed.js';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -160,7 +160,7 @@ await db.connect().then(() => {
     if (process.env.NODE_ENV !== 'production') {
         logger.info('Development environment detected, seeding default stories...');
         // Cast db to the base interface for seeding
-        // seedDevStories(db);
+        seedDevPosts(db);
     } else {
         logger.info('Production environment detected, skipping dev seed');
     }

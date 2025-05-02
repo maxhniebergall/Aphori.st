@@ -1,6 +1,6 @@
 /*
  * Requirements:
- * - Provides a standalone definition of the Quote interface for the story tree application.
+ * - Provides a standalone definition of the Quote interface for the post tree application.
  * - Enforces full TypeScript support with strict typings.
  * - Offers utility functions related to Quote operations.
  * - Contains a helper method, compareQuotes, to compare two Quote objects for equality.

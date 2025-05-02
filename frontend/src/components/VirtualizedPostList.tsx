@@ -25,7 +25,7 @@ import postTreeOperator from '../operators/PostTreeOperator';
 import { MemoizedRow } from './Row';
 import { getLevelNumber, isLastLevel } from '../utils/levelDataHelpers';
 
-interface VirtualizedStoryListProps {
+interface VirtualizedPostListProps {
   postRootId: string;
 }
 
@@ -42,7 +42,7 @@ function useReplyContextForList() {
   ]);
 }
 
-const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ postRootId }) => {
+const VirtualizedPostList: React.FC<VirtualizedPostListProps> = React.memo(({ postRootId }) => {
   const { state } = usePostTree();
   const [error, setError] = useState<string | null>(null);
   const [levels, setLevels] = useState<Array<PostTreeLevel>>([]);
@@ -70,7 +70,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     const loadedLevelCount = contextLevels.length;
     const currentlyLoading = state.isLoadingMore;
 
-    // Determine if the last loaded level indicated the end of the story
+    // Determine if the last loaded level indicated the end of the post tree
     const hasMoreLevels = loadedLevelCount === 0 || !contextLevels[loadedLevelCount - 1].isLastLevel;
 
     // Check if we need more levels, are not loading, AND the last loaded level wasn't the final one
@@ -85,7 +85,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   useEffect(() => {
     // Check for error from state, ensuring it doesn't overwrite an existing local error inappropriately
     if (state?.error && !error) { 
-      // console.warn("VirtualizedStoryList: Error from state:", state.error);
+      // console.warn("VirtualizedPostList: Error from state:", state.error);
       setError(state.error);
     }
   // Depend on state.error and the local error state
@@ -132,7 +132,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
     return (
       <div className="loading" role="alert" aria-busy="true">
         <div className="loading-spinner"></div>
-        Loading story tree...
+        Loading post tree...
       </div>
     );
   }
@@ -156,7 +156,7 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
   }
 
   return (
-    <div style={{ height: '100%' }} role="list" aria-label="Story tree content">
+    <div style={{ height: '100%' }} role="list" aria-label="Post tree content">
       <Virtuoso
         style={{ height: '100%' }}
         data={levels}
@@ -178,6 +178,6 @@ const VirtualizedStoryList: React.FC<VirtualizedStoryListProps> = React.memo(({ 
 });
 
 // Add display name for better debugging
-VirtualizedStoryList.displayName = 'VirtualizedStoryList';
+VirtualizedPostList.displayName = 'VirtualizedPostList';
 
-export default VirtualizedStoryList; 
+export default VirtualizedPostList; 

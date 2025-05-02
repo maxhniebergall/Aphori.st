@@ -2,7 +2,7 @@
  * Requirements:
  * - Implements a singleton pattern to ensure a unified, stateful instance across the application.
  * - Manages internal state including caching and subscription management.
- * - Provides robust orchestration for story tree operations.
+ * - Provides robust orchestration for post tree operations.
  * - Ensures proper binding of class methods.
  * - Implements robust error handling.
  * - Supports transformation and validation of fetched node data.
@@ -15,13 +15,13 @@
  * - **Update:** loadMoreItems method now utilizes levelNumber and quote to fetch the correct sibling nodes.
  * - **Refactor:** fetchPostTree now returns a complete PostTree object rather than a PostTreeLevel[].
  * - **Refactor:** Removed direct usage of React hooks; introduced dependency injection to receive the store (state & dispatch).
- * - **Update:** During initial story tree loading, fetches actual reply counts and pagination data for each level
+ * - **Update:** During initial post tree loading, fetches actual reply counts and pagination data for each level
  *   by calling the /api/getReplies endpoint instead of using hardcoded placeholder pagination.
  * - **Refactor:** Modularized fetchPostTree by extracting helper functions addTitleLevel, addContentLevel, and updateLevelsPagination.
  * - **Enhancement:** Improved error handling & logging with custom error types and detailed context.
  * - **Enhancement:** Added stricter type definitions using generics in response handlers.
  * - **Enhancement:** State updates now follow immutable patterns.
- * - **Recovery:** Re-added initializePostTree to support initialization of the story tree.
+ * - **Recovery:** Re-added initializePostTree to support initialization of the post tree.
  *
  * - TODO:
  * - Implement caching with CacheService
@@ -98,7 +98,7 @@ class PostTreeOperator extends BaseOperator {
   }
 
   /**
-   * Retrieves the current story tree state from the injected store.
+   * Retrieves the current post tree state from the injected store.
    * @returns The current PostTreeState.
    * @throws {PostTreeError} If the store has not been initialized via setStore.
    *                          (Handled - Depends on Caller/UI: Initialization error).
@@ -138,12 +138,12 @@ class PostTreeOperator extends BaseOperator {
   }
 
   /**
-   * Fetches the root node of the story tree for a given UUID and initializes the story tree structure.
-   * The rest of the story tree nodes are fetched asynchronously as needed.
+   * Fetches the root node of the post tree for a given UUID and initializes the post tree structure.
+   * The rest of the post tree nodes are fetched asynchronously as needed.
    *
-   * @param uuid - The unique identifier for the root node of the story tree.
+   * @param uuid - The unique identifier for the root node of the post tree.
    * @returns A promise that resolves to the fully constructed PostTree object.
-   * @throws {PostTreeError} Throws an error if fetching or processing the story tree data fails,
+   * @throws {PostTreeError} Throws an error if fetching or processing the post tree data fails,
    *                          or if decompression fails.
    *                          (Handled - Propagation / Depends on Caller/UI).
    */
@@ -182,7 +182,7 @@ class PostTreeOperator extends BaseOperator {
   }
 
   /**
-   * Helper method to add the content for level 0 of the story tree (the post)
+   * Helper method to add the content for level 0 of the post tree (the post)
    *
    * @param postTree - The PostTree object being built.
    * @param post - The post data received from the API.
@@ -588,7 +588,7 @@ class PostTreeOperator extends BaseOperator {
 
   /**
    * Submits a new reply to the backend.
-   * On success, triggers a background refresh of the relevant story tree level.
+   * On success, triggers a background refresh of the relevant post tree level.
    * @param text The content of the reply.
    * @param parentId The ID of the node being replied to.
    * @param quote The specific quote within the parent node being replied to.
@@ -640,7 +640,7 @@ class PostTreeOperator extends BaseOperator {
         // Handle this case - maybe dispatch an error or warning?
       }
     } else {
-       console.warn(`[submitReply] Story tree or levels not found in state after reply submission. Cannot refresh level.`);
+       console.warn(`[submitReply] Post tree or levels not found in state after reply submission. Cannot refresh level.`);
     }
     // --- End Refetch Logic ---
 
@@ -991,25 +991,25 @@ class PostTreeOperator extends BaseOperator {
   }
 
   /**
-   * Centralized method to initialize the story tree.
+   * Centralized method to initialize the post tree.
    * 
    * Requirements:
-   * - Dispatch the start of the story tree load.
-   * - Fetch the complete story tree using fetchPostTree.
-   * - Update the store with the initial story tree data.
+   * - Dispatch the start of the post tree load.
+   * - Fetch the complete post tree using fetchPostTree.
+   * - Update the store with the initial post tree data.
    */
   public async initializePostTree(rootUUID: string): Promise<void> {
     try {
       if (!this.store || !this.store.dispatch) {
         throw new PostTreeError('Dispatch not initialized in PostTreeOperator.');
       }
-      // Dispatch an action to start loading the story tree.
-      this.store.dispatch({ type: ACTIONS.START_STORY_TREE_LOAD, payload: { rootNodeId: rootUUID } });
-      // Fetch the complete story tree.
+      // Dispatch an action to start loading the post tree.
+      this.store.dispatch({ type: ACTIONS.START_POST_TREE_LOAD, payload: { rootNodeId: rootUUID } });
+      // Fetch the complete post tree.
       await this.fetchPostTree(rootUUID);
     } catch (error) {
       if (this.store && this.store.dispatch) {
-        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: 'It seems like this story tree does not exist.' });
+        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: 'It seems like this post tree does not exist.' });
       }
     } finally {
       // Ensure loading state is always reset after initialization attempt
@@ -1047,7 +1047,7 @@ class PostTreeOperator extends BaseOperator {
     if (!state || !state.postTree) {
       // Handled - Depends on Caller/UI: Initialization error.
       // Calling component should ensure initialization or handle via Error Boundary.
-      throw new PostTreeError('Store, state, or story tree not initialized for setSelectedNode');
+      throw new PostTreeError('Store, state, or post tree not initialized for setSelectedNode');
     }
 
     const levelNumber = node.levelNumber;
@@ -1237,7 +1237,7 @@ class PostTreeOperator extends BaseOperator {
     if (!dispatch || !postTree) {
       // Handled - Depends on Caller/UI: Initialization error.
       // Calling component should ensure initialization or handle via Error Boundary.
-      throw new PostTreeError('Store or story tree not initialized for setSelectedQuoteForNodeInLevel');
+      throw new PostTreeError('Store or post tree not initialized for setSelectedQuoteForNodeInLevel');
     }
     if (!quote || !Quote.isValid(quote)) {
       // Handled - Depends on Caller: Input validation error.
@@ -1390,7 +1390,7 @@ class PostTreeOperator extends BaseOperator {
     console.log(`[Operator] Handling NAVIGATE_NEXT_SIBLING for Level: ${levelNumber}, expecting ${expectedCurrentNodeId}`);
     const state = this.getState();
     if (!state.postTree) {
-      console.warn("[handleNavigateNextSibling] Story tree not initialized.");
+      console.warn("[handleNavigateNextSibling] Post tree not initialized.");
       return;
     }
 
@@ -1449,7 +1449,7 @@ class PostTreeOperator extends BaseOperator {
     console.log(`[Operator] Handling NAVIGATE_PREV_SIBLING for Level: ${levelNumber}, expecting ${expectedCurrentNodeId}`);
     const state = this.getState();
     if (!state.postTree) {
-      console.warn("[handleNavigatePrevSibling] Story tree not initialized.");
+      console.warn("[handleNavigatePrevSibling] Post tree not initialized.");
       return;
     }
 

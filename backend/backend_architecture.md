@@ -6,11 +6,19 @@ This document provides an overview of the Aphorist backend architecture, detaili
   - [Authentication APIs](#authentication-apis)
   - [User Management APIs](#user-management-apis)
   - [Reply APIs](#reply-apis)
-  - [StoryTree APIs](#storytree-apis)
+  - [PostTree APIs](#posttree-apis)
   - [Feed APIs](#feed-apis)
 - [Backend-Private APIs](#backend-private-apis)
 - [Backend Files Overview](#backend-files-overview)
 - [Database Access Patterns for Replies](#database-access-patterns-for-replies)
+- [Backend Data Model](#backend-data-model)
+- [Redis Schema](#redis-schema)
+- [API Endpoints](#api-endpoints)
+  - [Post APIs](#post-apis)
+  - [Reply APIs](#reply-apis)
+  - [PostTree APIs](#posttree-apis)
+  - [Feed APIs](#feed-apis)
+- [Data Compression](#data-compression)
 
 ## Frontend APIs
 
@@ -157,7 +165,7 @@ interface SignupResponse {
 #### POST /api/createReply
 
 **Description:**  
-Creates a new reply to a story or another reply.
+Creates a new reply to a post or another reply.
 
 **Request Interface:**
 ```typescript
@@ -240,57 +248,55 @@ interface GetRepliesFeedResponse {
 }
 ```
 
-### StoryTree APIs
+### PostTree APIs
 
-#### GET /api/storyTree/:uuid
+#### GET /api/postTree/:uuid
 
 **Description:**  
-Fetches the story tree data associated with the given uuid from Redis. The story tree contains nested story nodes.
+Fetches the post tree data associated with the given uuid from Redis. The post tree contains nested post nodes.
 
 **URL Parameters:**
 uuid: string
 
 **Response Interface:**
 ```typescript
-interface StoryTreeNode {
-id: string;
-text: string;
-nodes: Array<{
-id: string;
-parentId: string | null;
-}>;
-parentId: string | null;
-metadata: {
-title: string;
-author: string;
-};
-totalChildren: number;
+interface PostTreeNode {
+    id: string;
+    parentId?: string | null;
+    childrenIds: string[];
+    createdAt: string; // ISO Date string
+    modifiedAt?: string; // ISO Date string
+    content: string;
+    authorId: string;
+    metadata: {
+        // Additional metadata for the post node
+    };
 }
-interface GetStoryTreeResponse extends StoryTreeNode {}
+
+interface GetPostTreeResponse extends PostTreeNode {}
 ```
 
-#### POST /api/createStoryTree
+#### POST /api/createPostTree
 
 **Description:**  
-Creates a new story tree with the provided content and metadata.
+Creates a new post tree with the provided content and metadata.
 
 **Request Interface:**
 ```typescript
-interface CreateStoryTreeRequest {
-  storyTree: {
-    content?: string;
-    text?: string;
-    title: string;
-    author: string;
-    nodes?: Array<any>;
+interface CreatePostTreeRequest {
+  postTree: {
+    content: string;
+    authorId: string;
+    // Potentially other fields needed for root post creation
   };
 }
 ```
 
 **Response Interface:**
 ```typescript
-interface CreateStoryTreeResponse {
-  id: string;
+interface CreatePostTreeResponse {
+  id: string; // UUID of the newly created post tree root
+  message: string;
 }
 ```
 
@@ -335,7 +341,7 @@ This is the main server file that sets up and configures the Express.js server. 
 - Server Configuration: Sets up the Express server, including JSON parsing and CORS settings.
 - Redis Integration: Connects to a Redis server for data storage and retrieval operations.
 - Authentication Management: Implements magic link authentication, token verification, and protected routes.
-- API Endpoints: Defines RESTful APIs for creating and retrieving statements, managing story trees, and fetching feed items.
+- API Endpoints: Defines RESTful APIs for creating and retrieving statements, managing post trees, and fetching feed items.
 - Logging: Utilizes a custom logger for tracking server activities and errors.
 - Rate Limiting: Applies rate limiting to sensitive routes to prevent abuse.
 
@@ -353,13 +359,13 @@ Handles email functionalities within the backend, primarily responsible for send
 ### Aphorist/backend/seed.js
 
 **Purpose:**  
-Used for seeding the Redis database with initial data. This script populates the database with sample authors, titles, and predefined story trees to facilitate development and testing.
+Used for seeding the Redis database with initial data. This script populates the database with sample authors, titles, and predefined post trees to facilitate development and testing.
 
 **Key Responsibilities:**
 - Redis Connection: Establishes and manages a connection to the Redis server.
-- Data Seeding: Clears existing feed items and adds new stories with unique UUIDs and structured story trees.
-- Recursive StoryTree Creation: Implements functions to create nested story nodes recursively, ensuring each node is correctly linked and stored in Redis.
-- Feed Population: Adds feed items corresponding to each seeded story to the Redis feed list.
+- Data Seeding: Clears existing feed items and adds new posts with unique UUIDs and structured post trees.
+- Recursive PostTree Creation: Implements functions to create nested post nodes recursively, ensuring each node is correctly linked and stored in Redis.
+- Feed Population: Adds feed items corresponding to each seeded post to the Redis feed list.
 - Logging: Tracks the progress and any issues encountered during the seeding process.
 - Random Data Generation: Utilizes random UUIDs and selects random authors and titles from predefined lists to ensure uniqueness and variability in seeded data.
 
@@ -390,3 +396,11 @@ Below is a list of the key database patterns used for handling replies:
 
 Conclusion
 The Aphorist backend is structured to provide robust and secure APIs for frontend interactions, leveraging Redis for efficient data storage and retrieval. With clear separation of concerns across its various files and comprehensive authentication mechanisms, the backend is well-equipped to support the application's functionalities. Future developments may introduce backend-private APIs and additional services, which will be documented accordingly.
+
+## Backend Data Model
+
+## Redis Schema
+
+## API Endpoints
+
+## Data Compression

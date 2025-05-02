@@ -2,7 +2,7 @@
 
 #### PostPagePage.js
 **Theme:** Simple Router Component
-- Acts as a wrapper rendering the main story tree holder.
+- Acts as a wrapper rendering the main post tree holder.
 - Handles route‑level concerns (e.g., reading URL params).
 - Imports and renders `PostPageHolder.tsx`.
 
@@ -15,10 +15,10 @@
 #### PostPageContent (inside PostPageHolder.tsx)
 **Theme:** Layout & Conditional Rendering
 - Renders `Header.js` for the top bar (logo, title, navigation, auth).
-- Renders `MemoizedVirtualizedStoryList` (the virtualized list component) passing the `postRootId`.
+- Renders `MemoizedVirtualizedPostList` (the virtualized list component) passing the `postRootId`.
 - Renders the `ReplyEditor` (defined in `PostPageHolder.tsx`) conditionally based on `ReplyContext` state.
 
-#### VirtualizedStoryList.tsx
+#### VirtualizedPostList.tsx
 **Theme:** Virtualized List & Infinite Loading
 - Implements infinite-loading virtualization with `react-virtuoso`.
 - Fetches subsequent levels progressively via `PostPageOperator.loadSingleLevel` using the `endReached` callback.
@@ -89,7 +89,7 @@ PostPagePage.js
     ├── PostPageProvider / ReplyProvider
     └── PostPageContent
         ├── Header.js
-        ├── MemoizedVirtualizedStoryList (VirtualizedStoryList.tsx)
+        ├── MemoizedVirtualizedPostList (VirtualizedPostList.tsx)
         │   └── MemoizedRow (Row.tsx)
         │       └── PostPageLevelComponent (PostPageLevel.tsx)
         │           ├── MemoizedNodeContent (NodeContent.tsx)
@@ -103,8 +103,8 @@ PostPagePage.js
 1. `PostPageProvider` and `ReplyProvider` wrap the content in `PostPageHolder.tsx`.
 2. `PostPageHolder` effect calls `PostPageOperator.initializePostPage` with the root UUID.
 3. `PostPageOperator` fetches the root post (`/api/getPost/:uuid`), fetches its quote counts, creates the initial level (Level 0), and dispatches `INCLUDE_NODES_IN_LEVELS` to `PostPageContext`.
-4. `VirtualizedStoryList` subscribes to `PostPageContext` state for levels. It renders initial rows via `MemoizedRow`.
-5. When the list scrolls to the end (`endReached`), `VirtualizedStoryList` calls `PostPageOperator.loadSingleLevel`.
+4. `VirtualizedPostList` subscribes to `PostPageContext` state for levels. It renders initial rows via `MemoizedRow`.
+5. When the list scrolls to the end (`endReached`), `VirtualizedPostList` calls `PostPageOperator.loadSingleLevel`.
 6. `PostPageOperator` determines the next level to fetch based on the *last* level in context state, fetches replies/nodes (`/api/getReplies/...`), fetches their quote counts, creates the new level(s), and dispatches `INCLUDE_NODES_IN_LEVELS`.
 7. Each `MemoizedRow` renders `PostPageLevelComponent` for that level's data.
 8. `PostPageLevelComponent` displays the selected node using `NodeContent` and `NodeFooter`. Sibling navigation within a level updates the selected node via `PostPageOperator.setSelectedNode`, which dispatches `SET_SELECTED_NODE`.

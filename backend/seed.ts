@@ -1,8 +1,8 @@
 /*
 Requirements:
 - Seed script must clear existing feed items before adding new ones
-- Each story must have a unique v7 (timestamp sortable) UUID
-- Stories must be stored in Redis with proper metadata
+- Each post must have a unique v7 (timestamp sortable) UUID
+- Posts must be stored in Redis with proper metadata
 - Must use backend server's database client for compression support
 - Must be exportable as a function for programmatic seeding
 - Must maintain idempotency when run multiple times
@@ -20,15 +20,15 @@ import { randomInt } from 'crypto';
 
 // const logger = newLogger("seed.ts"); // Removed incorrect instantiation
 
-interface StoryContent {
+interface PostContent {
     content: string;
 }
 
 let db: DatabaseClientInterface;
 // let client: RedisClientType; // Removed direct Redis client declaration
 
-// List of sample stories
-const sampleStories: StoryContent[] = [
+// List of sample posts
+const samplePosts: PostContent[] = [
     {
         content: "The waves crashed against the rocky shoreline with relentless fury, sending plumes of salty spray high into the air. The ancient cliffs, weathered by countless storms, stood as silent sentinels against nature's onslaught."
     },
@@ -41,43 +41,43 @@ const sampleStories: StoryContent[] = [
 ];
 
 /**
- * Seeds the database with initial development stories.
- * Clears existing feed items and story IDs before seeding.
+ * Seeds the database with initial development posts.
+ * Clears existing feed items and post IDs before seeding.
  * Uses the provided database client instance.
  * @param dbClient The database client instance to use.
- * @throws {Error} If clearing old data or creating initial stories fails.
+ * @throws {Error} If clearing old data or creating initial posts fails.
  *                 (Handled - By Design: Logs error and re-throws to stop seeding).
  */
-async function seedDevStories(dbClient: DatabaseClientInterface): Promise<void> {
+async function seedDevPosts(dbClient: DatabaseClientInterface): Promise<void> {
     try {
         db = dbClient; // Use the passed-in dbClient
         logger.info("Attempting to seed data");
 
-        // Clear existing feed items and story IDs using the db client
+        // Clear existing feed items and post IDs using the db client
         // Note: This might be redundant if the block above already cleared them,
-        // but can be kept for safety or if seedDevStories is called independently.
+        // but can be kept for safety or if seedDevPosts is called independently.
         try {
             await db.del('feedItems');
             await db.del('allPostTreeIds');
             await db.del('feedStats/itemCount'); // Also clear the counter
-            logger.info("Existing feed items and counter cleared within seedDevStories using db client");
+            logger.info("Existing feed items and counter cleared within seedDevPosts using db client");
         } catch (err) {
-            logger.error('Failed to delete existing keys within seedDevStories:', err);
+            logger.error('Failed to delete existing keys within seedDevPosts:', err);
         }
 
-        const storyIds: string[] = [];
-        const storyContents: string[] = [];
+        const postIds: string[] = [];
+        const postContents: string[] = [];
 
-        // Create each story
-        for (const story of sampleStories) {
+        // Create each post
+        for (const post of samplePosts) {
             const uuid = Uuid25.fromBytes(uuidv7obj().bytes).value;
-            storyIds.push(uuid);
-            storyContents.push(story.content);
+            postIds.push(uuid);
+            postContents.push(post.content);
             
-            // Create the story following Post schema structure
-            const formattedStory: Post = {
+            // Create the post following Post schema structure
+            const formattedPost: Post = {
                 id: uuid,
-                content: story.content,
+                content: post.content,
                 authorId: 'seed_user',
                 createdAt: new Date().toISOString(),
                 parentId: null,
@@ -85,38 +85,38 @@ async function seedDevStories(dbClient: DatabaseClientInterface): Promise<void> 
 
             // Store in Redis, ensuring consistency with create/get endpoints
             // Use field key 'postTree' and store stringified JSON
-            await db.hSet(uuid, 'postTree', JSON.stringify(formattedStory));
+            await db.hSet(uuid, 'postTree', JSON.stringify(formattedPost));
             await db.lPush('allPostTreeIds', uuid);
 
             // Add to feed items (only root-level posts go to feed)
             const feedItem = {
                 id: uuid,
-                text: formattedStory.content,
-                authorId: formattedStory.authorId,
-                createdAt: formattedStory.createdAt
+                text: formattedPost.content,
+                authorId: formattedPost.authorId,
+                createdAt: formattedPost.createdAt
             } as FeedItem;
             // Ensure feed items are stored as strings, consistent with server.ts
             // await db.lPush('feedItems', JSON.stringify(feedItem));
-            // logger.info(`Added feed item for story ${JSON.stringify(feedItem)}`);
+            // logger.info(`Added feed item for post ${JSON.stringify(feedItem)}`);
 
             // Use new methods to add feed item and update counter
             try {
                 const feedItemKey = await db.addFeedItem(feedItem);
                 await db.incrementFeedCounter(1);
-                logger.info('Seeded feed item for story %s with key %s and incremented counter.', uuid, feedItemKey);
+                logger.info('Seeded feed item for post %s with key %s and incremented counter.', uuid, feedItemKey);
             } catch (feedError) {
-                logger.error({ err: feedError, storyId: uuid }, 'Failed to seed feed item or update counter for story');
+                logger.error({ err: feedError, postId: uuid }, 'Failed to seed feed item or update counter for post');
                 // If seeding a feed item fails, we might want to stop or log prominently
             }
 
-            logger.info(`Created new story with UUID: ${uuid}`);
+            logger.info(`Created new post with UUID: ${uuid}`);
         }
-        await seedTestReplies(storyIds, storyContents);
-        logger.info("Successfully seeded dev stories.");
+        await seedTestReplies(postIds, postContents);
+        logger.info("Successfully seeded dev posts.");
     } catch (error) {
-        // Handled - By Design: Catches errors during initial story creation loop.
-        // Logs the error and re-throws to stop the entire seeding process if base stories fail.
-        logger.error('Error seeding dev stories:', error);
+        // Handled - By Design: Catches errors during initial post creation loop.
+        // Logs the error and re-throws to stop the entire seeding process if base posts fail.
+        logger.error('Error seeding dev posts:', error);
         throw error;
     }
 }
@@ -176,50 +176,50 @@ function calculateCharIndices(text: string, startWordIndex: number, endWordIndex
 }
 
 /**
- * Seeds test replies for the given story IDs.
+ * Seeds test replies for the given post IDs.
  * Creates multiple levels of nested replies with generated quotes.
- * @param storyIds Array of parent story IDs.
- * @param storyContents Array of corresponding story content strings.
+ * @param postIds Array of parent post IDs.
+ * @param postContents Array of corresponding post content strings.
  * @throws {Error} If storing replies or updating indices fails.
- *                 (Handled - By Design: Logs error and re-throws, caught by seedDevStories).
+ *                 (Handled - By Design: Logs error and re-throws, caught by seedDevPosts).
  */
-async function seedTestReplies(storyIds: string[], storyContents: string[]): Promise<void> {
+async function seedTestReplies(postIds: string[], postContents: string[]): Promise<void> {
     try {
         logger.info("Seeding test replies...");
-        for (const storyId of storyIds) {
-            const storyContent = storyContents[storyIds.indexOf(storyId)];
-            const storyWords = storyContent.split(/\s+/); // Split by whitespace
-            const storyWordCount = storyWords.length;
+        for (const postId of postIds) {
+            const postContent = postContents[postIds.indexOf(postId)];
+            const postWords = postContent.split(/\s+/); // Split by whitespace
+            const postWordCount = postWords.length;
 
-            // Create 15 replies to the original story
-            for (let storyIdReplyNumber = 0; storyIdReplyNumber < 15; storyIdReplyNumber++) {
+            // Create 15 replies to the original post
+            for (let postIdReplyNumber = 0; postIdReplyNumber < 15; postIdReplyNumber++) {
                 const rootReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
                 const timestamp = Date.now();
 
-                // --- Refactored Excerpt/Quote Generation for Story Content ---
+                // --- Refactored Excerpt/Quote Generation for Post Content ---
                 let quoteResult: { start: number; end: number; excerpt: string } | null = null;
-                if (storyWordCount > 0) {
-                    const maxExcerptLength = Math.min(storyWordCount, 15); // Limit excerpt length
+                if (postWordCount > 0) {
+                    const maxExcerptLength = Math.min(postWordCount, 15); // Limit excerpt length
                     const excerptLength = randomInt(1, maxExcerptLength + 1); // Ensure length is at least 1
-                    const startWordIndex = randomInt(0, storyWordCount - excerptLength + 1); // Ensure start index allows for excerpt length
+                    const startWordIndex = randomInt(0, postWordCount - excerptLength + 1); // Ensure start index allows for excerpt length
                     const endWordIndex = startWordIndex + excerptLength;
 
-                    quoteResult = calculateCharIndices(storyContent, startWordIndex, endWordIndex);
+                    quoteResult = calculateCharIndices(postContent, startWordIndex, endWordIndex);
                 }
 
                 if (!quoteResult || quoteResult.excerpt.length === 0) {
-                    logger.warn(`Could not generate valid excerpt for story ${storyId}, skipping reply ${storyIdReplyNumber}`);
+                    logger.warn(`Could not generate valid excerpt for post ${postId}, skipping reply ${postIdReplyNumber}`);
                     continue;
                 }
                 // --- End Refactored Excerpt/Quote Generation ---
 
 
-                const replyText = `This is a test reply (to a story tree) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}].`;
+                const replyText = `This is a test reply (to a post tree) to help with testing the reply functionality. postId: [${postId}], postIdReplyNumber: [${postIdReplyNumber}].`;
 
-                // Create a test quote targeting the calculated excerpt of the parent story
+                // Create a test quote targeting the calculated excerpt of the parent post
                 const quote: Quote = {
                     text: quoteResult.excerpt,
-                    sourceId: storyId,
+                    sourceId: postId,
                     selectionRange: {
                         start: quoteResult.start,
                         end: quoteResult.end
@@ -230,7 +230,7 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                 const reply: Reply = {
                     id: rootReplyId,
                     text: replyText,
-                    parentId: [storyId],
+                    parentId: [postId],
                     quote: quote,
                     authorId: 'seed_user',
                     createdAt: timestamp.toString() // Consider using toISOString() for consistency
@@ -247,7 +247,7 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                     const replyToStore: Reply = {
                         id: uniqueReplyId, // Assign unique ID
                         text: modifiedReplyText, // Use modified text
-                        parentId: [storyId],
+                        parentId: [postId],
                         quote: quote,
                         authorId: 'seed_user',
                         createdAt: timestamp.toString()
@@ -282,7 +282,7 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
                      // --- End Refactored Excerpt/Quote Generation ---
 
 
-                    const replyReplyText = `This is a test reply (to a reply) to help with testing the reply functionality. storyId: [${storyId}], storyIdReplyNumber: [${storyIdReplyNumber}], replyReplyNumber: [${replyReplyNumber}].`;
+                    const replyReplyText = `This is a test reply (to a reply) to help with testing the reply functionality. postId: [${postId}], postIdReplyNumber: [${postIdReplyNumber}], replyReplyNumber: [${replyReplyNumber}].`;
 
 
                     // Create a test quote targeting the calculated excerpt of the parent reply
@@ -320,10 +320,10 @@ async function seedTestReplies(storyIds: string[], storyContents: string[]): Pro
             }
         }
 
-        logger.info(`Successfully seeded test replies for ${storyIds.length} stories`);
+        logger.info(`Successfully seeded test replies for ${postIds.length} posts`);
     } catch (error) {
         // Handled - By Design: Catches errors during reply creation loops (including from storeReply).
-        // Logs the error and re-throws. The error is then caught by the main seedDevStories
+        // Logs the error and re-throws. The error is then caught by the main seedDevPosts
         // catch block, which logs again but *doesn't* re-throw, allowing the script to terminate
         // after logging the failure without necessarily crashing the parent process.
         logger.error('Error seeding test replies:', error);
@@ -372,4 +372,4 @@ async function storeReply(reply: Reply) {
     logger.info(`Stored reply ${replyId} and updated indices for parent ${parentId}`);
 }
 
-export { seedDevStories }; 
+export { seedDevPosts }; 
