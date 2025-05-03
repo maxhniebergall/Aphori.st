@@ -66,7 +66,7 @@ class PostTreeOperator extends BaseOperator {
 
   // Queue implementation
   private pendingLoadRequests: number[] = [];
-  private isLoadingLevel: boolean = false;
+  private isLoadingLevel = false;
 
   constructor() {
     super();
@@ -238,7 +238,7 @@ class PostTreeOperator extends BaseOperator {
     }
   }
 
-  private async fetchAndDispatchReplies(level: PostTreeLevel, sortingCriteria: string, limit: number = 5, cursor: string | undefined = undefined) {
+  private async fetchAndDispatchReplies(level: PostTreeLevel, sortingCriteria: string, limit = 5, cursor: string | undefined = undefined) {
     let cursorString = cursor;
     if (cursor === undefined) {
       const pagination = getPagination(level);
@@ -504,7 +504,7 @@ class PostTreeOperator extends BaseOperator {
 
         // Create the new MidLevel
         newLevel = createMidLevel(
-          state.postTree!.post.id,
+          state.postTree.post.id,
           [parentId],
           targetLevelIndex,
           quoteInParent, // The quote selected *in the parent* that led to this level
@@ -814,7 +814,7 @@ class PostTreeOperator extends BaseOperator {
           return; // Stop loading
       }
 
-      const parentLevelAsLevel : PostTreeLevel = parentLevel as PostTreeLevel;
+      const parentLevelAsLevel : PostTreeLevel = parentLevel;
       const rootNodeId = state.postTree.post.id; // Moved after state.postTree check
 
       { // continue validation (selected node in parent)
@@ -865,7 +865,7 @@ class PostTreeOperator extends BaseOperator {
         let selectedParentQuoteHasReplies = false;
         if (parentHasQuoteSelected) {
            selectedParentQuoteHasReplies = quoteCountsFromParent.quoteCounts.some(
-            ([quote, count]) => count > 0 && areQuotesEqual(quote, quoteInParentToFetchChildrenFor!) // Add non-null assertion
+            ([quote, count]) => count > 0 && areQuotesEqual(quote, quoteInParentToFetchChildrenFor) // Add non-null assertion
           );
         }
 
@@ -916,7 +916,7 @@ class PostTreeOperator extends BaseOperator {
           }
         }));
 
-        const siblingsForQuote : Array<PostTreeNode> = [];
+        const siblingsForQuote : PostTreeNode[] = [];
         firstReplies.forEach(reply => {
           siblingsForQuote.push({
             id: reply.id,
@@ -1162,7 +1162,7 @@ class PostTreeOperator extends BaseOperator {
                       const quoteCounts = await this.fetchQuoteCounts(reply.id);
                       quoteCountsMap.set(reply.quote, quoteCounts);
                     }));
-                    const siblingsForQuote: Array<PostTreeNode> = firstReplies.map(reply => ({
+                    const siblingsForQuote: PostTreeNode[] = firstReplies.map(reply => ({
                       id: reply.id, rootNodeId: rootNodeId, parentId: [parentIdForNextLevel], levelNumber: nextLevelNumber,
                       textContent: reply.text, repliedToQuote: quoteToDriveNextLevel,
                       quoteCounts: quoteCountsMap.get(reply.quote), authorId: reply.authorId, createdAt: reply.createdAt,
@@ -1299,7 +1299,7 @@ class PostTreeOperator extends BaseOperator {
           quoteCountsMap.set(reply.quote, quoteCounts);
         }));
 
-        const siblingsForQuote: Array<PostTreeNode> = firstReplies.map(reply => ({
+        const siblingsForQuote: PostTreeNode[] = firstReplies.map(reply => ({
           id: reply.id,
           rootNodeId: rootNodeId,
           parentId: [parentId],

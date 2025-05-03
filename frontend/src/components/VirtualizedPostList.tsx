@@ -45,7 +45,7 @@ function useReplyContextForList() {
 const VirtualizedPostList: React.FC<VirtualizedPostListProps> = React.memo(({ postRootId }) => {
   const { state } = usePostTree();
   const [error, setError] = useState<string | null>(null);
-  const [levels, setLevels] = useState<Array<PostTreeLevel>>([]);
+  const [levels, setLevels] = useState<PostTreeLevel[]>([]);
   
   const { replyTarget } = useReplyContextForList();
   const { isLoadingMore } = state;
