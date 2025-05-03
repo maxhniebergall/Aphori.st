@@ -18,6 +18,7 @@ import {
 import { getQuoteKey } from '../utils/quoteUtils.js';
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
+import { authenticateToken } from '../middleware/authMiddleware.js';
 
 // Use the imported type for the placeholder and the setDb function
 let db: DatabaseClientType;
@@ -39,7 +40,7 @@ const generateCondensedUuid = (): string => {
  * @desc    Creates a new reply
  * @access  Authenticated
  */
-router.post('/createReply', async (req: Request, res: Response<CreateReplyResponse>) => {
+router.post('/createReply', authenticateToken, async (req: Request, res: Response<CreateReplyResponse>) => {
     try {
         const text: string = req.body.text;
         const parentId: string[] = req.body.parentId;
