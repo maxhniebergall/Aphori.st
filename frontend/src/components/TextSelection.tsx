@@ -17,9 +17,8 @@ interface TextSelectionProps {
   node: PostTreeNode;
   children: React.ReactNode;
   selectAll?: boolean;
-  selectedQuote?: Quote;
   initialQuote?: Quote;
-  ['aria-label']?: string;
+  ariaLabel?: string;
 }
 
 /**
@@ -33,9 +32,8 @@ const TextSelection: React.FC<TextSelectionProps> = ({
   node,
   children,
   selectAll = false,
-  selectedQuote,
   initialQuote,
-  'aria-label': ariaLabel
+  ariaLabel,
 }) => {
   // Memoize the props for the hook
   const hookProps = useMemo(() => ({

@@ -10,7 +10,7 @@ import { useEffect } from 'react';
 
 interface UseDynamicRowHeightProps {
   rowRef: React.MutableRefObject<HTMLElement | null>;
-  setSize: (visualHeight: number) => void;
+  setSize: (_visualHeight: number) => void;
   shouldHide?: boolean;
 }
 

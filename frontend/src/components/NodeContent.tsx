@@ -14,7 +14,7 @@
  * - Proper markdown rendering
  */
 
-import React, { useMemo, useCallback, useRef, useEffect, useState } from 'react';
+import React, { useMemo, useCallback, useRef, useEffect } from 'react';
 import TextSelection from './TextSelection';
 import HighlightedText from './HighlightedText';
 import { QuoteCounts, PostTreeNode } from '../types/types';
@@ -65,8 +65,6 @@ const MemoizedHighlightedText = React.memo(HighlightedText,
     return prevProps.text === nextProps.text &&
            prevProps.selections === nextProps.selections && // Assuming immutable array reference comparison is okay here
            compareNullableQuotes(prevProps.selectedReplyQuote, nextProps.selectedReplyQuote) && // Use helper function
-           prevProps.nodeId === nextProps.nodeId && 
-           prevProps.levelNumber === nextProps.levelNumber && // Add levelNumber comparison
            prevProps.onSegmentClick === nextProps.onSegmentClick; // Reference comparison for callback
   }
 );
@@ -179,13 +177,11 @@ const NodeContent: React.FC<NodeContentProps> = ({
         id={node.id}
       >
         <MemoizedHighlightedText
-          nodeId={node.id}
           text={node.textContent || ''}
           selections={selections}
           quoteCounts={memoizedExistingSelectableQuotes}
           onSegmentClick={handleSegmentClick}
           selectedReplyQuote={currentLevelSelectedQuote ?? undefined}
-          levelNumber={node.levelNumber}
         />
       </div>
 

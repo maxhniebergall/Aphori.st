@@ -27,7 +27,7 @@
  * - Implement caching with CacheService
  */
 
-import { ACTIONS, PostTreeNode, PostTreeState, PostTreeLevel, Action, PostTree, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat, LastLevel } from '../types/types';
+import { ACTIONS, PostTreeNode, PostTreeState, PostTreeLevel, Action, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
 import axios, { AxiosError } from 'axios';
 import { BaseOperator } from './BaseOperator';
@@ -841,7 +841,6 @@ class PostTreeOperator extends BaseOperator {
           throw new PostTreeError(`Selected node not found for level ${levelNumber-1}`);
       }
       const parentId = selectedNodeOfParentLevel.id;
-      const parentText = selectedNodeOfParentLevel.textContent; // This might not be needed if we only use the quote
       { // continue validation (parent id/text)
         if (!parentId) { // Removed parentText check - only ID and quote are essential for fetching
           console.warn(`[executeLoadLevel] Missing parentId for level ${levelNumber - 1}. Cannot load level ${levelNumber}.`);
@@ -1502,5 +1501,3 @@ class PostTreeOperator extends BaseOperator {
 // Create and export a single instance
 const postTreeOperator = new PostTreeOperator();
 export default postTreeOperator;
-
-

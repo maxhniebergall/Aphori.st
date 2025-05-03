@@ -16,14 +16,14 @@
  * - Clear loading state after data is loaded
  */
 
-import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import { usePostTree } from '../context/PostTreeContext';
 import { useReplyContext } from '../context/ReplyContext';
-import { LastLevel, PostTreeLevel } from '../types/types';
+import { PostTreeLevel } from '../types/types';
 import postTreeOperator from '../operators/PostTreeOperator';
 import { MemoizedRow } from './Row';
-import { getLevelNumber, isLastLevel } from '../utils/levelDataHelpers';
+import { getLevelNumber } from '../utils/levelDataHelpers';
 
 interface VirtualizedPostListProps {
   postRootId: string;

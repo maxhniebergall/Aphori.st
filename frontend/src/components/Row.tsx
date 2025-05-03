@@ -6,26 +6,16 @@
  * - Virtualization support for react-window
  */
 
-import React, { useRef, useMemo, memo, useCallback, useEffect } from 'react';
+import React, { memo, useCallback } from 'react';
 import PostTreeLevelComponent from './PostTreeLevel';
-import { PostTreeLevel, PostTreeNode, ACTIONS } from '../types/types';
-import { Quote, areQuotesEqual } from '../types/quote';
-import { 
-  getSelectedQuoteInParent,
-  getSiblings, 
-  getSelectedNodeHelper, 
-  isMidLevel,
-  getLevelNumber,
-} from '../utils/levelDataHelpers';
-import postTreeOperator from '../operators/PostTreeOperator';
-import { usePostTree } from '../context/PostTreeContext';
-import { useReplyContext } from '../context/ReplyContext';
+import { PostTreeLevel } from '../types/types';
 
 // Row Component Props - update to remove react-window and sizing props
 interface RowProps {
   levelData: PostTreeLevel;
   shouldHide: boolean;
   index: number;
+  
 }
 
 /**
@@ -35,44 +25,41 @@ interface RowProps {
  */
 const Row: React.FC<RowProps> = memo(
   ({
-    levelData, 
+    levelData,
     shouldHide,
-    index
   }) => {
+
+  // Create content component directly within Row
+  const content = useCallback((levelData: PostTreeLevel) => {
+    // No need to check shouldHide here, handled above
+    return (
+      <div className="normal-row-content" style={{ margin: 0 }}>
+        <PostTreeLevelComponent
+          levelData={levelData}
+        />
+      </div>
+    );
+  }, []);
+
     // Check if hidden first
     if (shouldHide) {
       return <div style={{ height: '1px', overflow: 'hidden' }} aria-hidden="true" />;
     }
 
-    const { dispatch } = usePostTree();
-    const { isReplyActive } = useReplyContext();
-    const levelNumber = useMemo(() => getLevelNumber(levelData), [levelData]);
-
-    // Create content component directly within Row
-    const content = useMemo(() => {
-      // No need to check shouldHide here, handled above
-      return (
-        <div className="normal-row-content" style={{ margin: 0 }}>
-          <PostTreeLevelComponent
-            levelData={levelData}
-          />
-        </div>
-      );
-    }, [levelData]);
 
     // Render the container div for a visible row
     return (
       <div
         style={{
-            padding: '20px', // Apply padding only when visible
-            boxSizing: 'border-box',
+          padding: '20px', // Apply padding only when visible
+          boxSizing: 'border-box',
         }}
         className="row-container"
         role="listitem"
         aria-label="Post content row"
-        // aria-hidden is removed as we return placeholder when hidden
+      // aria-hidden is removed as we return placeholder when hidden
       >
-        {content}
+        {content(levelData)}
       </div>
     );
   }

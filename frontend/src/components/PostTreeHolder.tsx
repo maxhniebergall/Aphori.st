@@ -18,7 +18,7 @@
  * - Performance optimization and proper null checks/fallbacks
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import './PostTree.css';
 import Header from './Header';
@@ -26,7 +26,6 @@ import { PostTreeProvider, usePostTree } from '../context/PostTreeContext';
 import VirtualizedPostList from './VirtualizedPostList';
 import { ReplyProvider, useReplyContext } from '../context/ReplyContext';
 import PostTreeOperator from '../operators/PostTreeOperator';
-import React from 'react';
 import { useUser } from '../context/UserContext';
 import ReplyEditor from './ReplyEditor';
 

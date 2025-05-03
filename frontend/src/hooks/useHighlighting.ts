@@ -7,7 +7,7 @@
  * - Provide a way to handle clicks on highlighted segments
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Quote, areQuotesEqual } from '../types/quote';
 import { QuoteCounts } from '../types/types';
 

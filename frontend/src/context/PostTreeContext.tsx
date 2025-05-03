@@ -9,13 +9,10 @@ import {
   getRootNodeId, 
   getLevelNumber,
   getPagination,
-  getSiblings,
+  isMidLevel,
+  updateSiblingsForQuoteHelper,
   setSelectedNodeHelper,
   setSelectedQuoteInThisLevelHelper,
-  createLastLevel,
-  isMidLevel,
-  isLastLevel,
-  updateSiblingsForQuoteHelper,
 } from '../utils/levelDataHelpers';
 
 /*
@@ -481,7 +478,7 @@ function postTreeReducer(state: PostTreeState, action: Action): PostTreeState {
         console.log(`[Reducer] Received NAVIGATE_NEXT_SIBLING for level ${action.payload.levelNumber}`);
         // Pass the full payload including expectedCurrentNodeId
         postTreeOperator.handleNavigateNextSibling(action.payload.levelNumber, action.payload.expectedCurrentNodeId)
-          .catch(error => console.error("Error in handleNavigateNextSibling:", error)); // Log async errors
+          .catch((error: unknown) => console.error("Error in handleNavigateNextSibling:", error));
         return state; // Return current state, side effect handled by operator
       }
 
@@ -490,7 +487,7 @@ function postTreeReducer(state: PostTreeState, action: Action): PostTreeState {
          console.log(`[Reducer] Received NAVIGATE_PREV_SIBLING for level ${action.payload.levelNumber}`);
          // Pass the full payload including expectedCurrentNodeId
         postTreeOperator.handleNavigatePrevSibling(action.payload.levelNumber, action.payload.expectedCurrentNodeId)
-           .catch(error => console.error("Error in handleNavigatePrevSibling:", error)); // Log async errors
+           .catch((error: unknown) => console.error("Error in handleNavigatePrevSibling:", error));
         return state; // Return current state, side effect handled by operator
       }
     
