@@ -19,7 +19,7 @@
     "react-markdown": "8.0.7",
     "react-router-dom": "^6.26.2",
     "react-scripts": "^5.0.1",
-    "react-virtuoso": "^4.12.6",
+    "react-virtuoso": "4.7.11",
     "rehype-sanitize": "^6.0.0",
     "styled-components": "^6.1.14",
     "uuid25": "^0.1.5",

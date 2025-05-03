@@ -86,18 +86,24 @@ router.post('/createPostTree', authenticateToken, ((async (req: AuthenticatedReq
             authorId: req.user.id,
             createdAt: formattedPostTree.createdAt
         };
-        // await db.lPush('feedItems', JSON.stringify(feedItem));
-        // logger.info('Added feed item for post %s', uuid);
 
-        // Use new methods to add feed item and update counter
+        // Use methods to add feed item to the global list and update global counter
         try {
+            // Add to the global feed list (uses db.lPush -> FirebaseClient.lPush)
+            await db.lPush('feedItems', JSON.stringify(feedItem)); 
+            // Increment the global feed counter (use the dedicated method)
+            await db.incrementFeedCounter(1); // Correct method for the fixed global counter
+            logger.info('Added feed item for post %s to global feedItems list and incremented global counter.', uuid);
+            
+            // Also add to the user-specific feed sorted set and counter
             const feedItemKey = `feed:${req.user.id}`; // Key for the user's feed sorted set
             const score = Date.now(); // Use timestamp as score for chronological sorting
-            await db.zAdd(feedItemKey, score, uuid);
-            await db.hIncrBy('feedItemCounts', feedItemKey, 1); // Increment feed item counter
-            logger.info('Added feed item for post %s with key %s and incremented counter.', uuid, feedItemKey);
+            await db.zAdd(feedItemKey, score, uuid); // Uses db.zAdd -> FirebaseClient.zAdd (hashes key)
+            // Increment user-specific feed item counter (uses db.hIncrBy -> FirebaseClient.hIncrBy - hashes key & field)
+            await db.hIncrBy('feedItemCounts', feedItemKey, 1); 
+            logger.info('Added feed item for post %s to user-specific feed key %s and incremented its counter.', uuid, feedItemKey);
         } catch (feedError) {
-            logger.error({ err: feedError, postId: uuid }, 'Failed to add feed item or update counter');
+            logger.error({ err: feedError, postId: uuid }, 'Failed to add feed item to global list or user-specific set');
             // Decide if we should proceed without feed item or return error
             // For now, log error and continue
         }
