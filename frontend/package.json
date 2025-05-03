@@ -41,14 +41,16 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@types/react-window-infinite-loader": "^1.0.9",
+    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.24.1",
     "@typescript-eslint/parser": "^8.24.1",
-    "eslint": "^9.21.0",
+    "eslint": "^8.0.0",
     "eslint-config-react": "^1.1.7",
     "eslint-config-react-app": "^7.0.1",
     "eslint-plugin-jest": "^28.11.0",
     "eslint-plugin-react": "^7.37.4",
     "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^16.0.0",
     "typescript": "^5.4.2",
     "webpack-bundle-analyzer": "^4.10.1"
   },
@@ -63,12 +65,26 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix"
   },
   "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ],
     "rules": {
-      "no-use-before-define": [
-        "error",
+      "no-console": "off",
+      "no-unused-vars": [
+        "warn",
         {
-          "functions": false,
-          "classes": false
+          "argsIgnorePattern": "^_",
+          "varsIgnorePattern": "^_",
+          "ignoreRestSiblings": true
+        }
+      ],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          "argsIgnorePattern": "^_",
+          "varsIgnorePattern": "^_",
+          "ignoreRestSiblings": true
         }
       ]
     }

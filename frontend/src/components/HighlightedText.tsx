@@ -29,8 +29,6 @@ interface HighlightedTextProps {
   quoteCounts: QuoteCounts;
   onSegmentClick?: (quote: Quote) => void;
   selectedReplyQuote?: Quote | null;
-  nodeId: string;
-  levelNumber: number;
 }
 
 /**
@@ -46,11 +44,8 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
   quoteCounts,
   onSegmentClick,
   selectedReplyQuote,
-  nodeId,
-  levelNumber
 }) => {
   const [activeQuoteObj, setActiveQuoteObj] = useState<Quote | null>(null);
-  const [globalCycleQuote, setGlobalCycleQuote] = useState<Quote | null>(null); 
   const [selectedHistory, setSelectedHistory] = useState<Set<string>>(new Set());
 
   // Reset history if the base selections change
@@ -172,7 +167,6 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
 
     // --- Update State --- 
     onSegmentClick(nextGlobalQuote);
-    setGlobalCycleQuote(nextGlobalQuote);
 
     let nextHistory: Set<string>;
     if (resetCycle) {

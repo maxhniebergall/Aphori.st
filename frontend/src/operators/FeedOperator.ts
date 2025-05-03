@@ -1,8 +1,7 @@
 import axios from 'axios';
 import { BaseOperator } from './BaseOperator';
-import { FeedItem, FeedItemsResponse } from '../types/types';
+import { FeedItemsResponse } from '../types/types';
 import compression from '../utils/compression';
-import { Compressed } from '../types/compressed';
 
 /**
  * Requirements:

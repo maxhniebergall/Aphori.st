@@ -72,17 +72,17 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
   const replyButtonClicked = useCallback(() => {
     // Add logs or state updates for debugging
     
-  }, [isReplyTarget, isReplyActive]);
+  }, []);
 
   const previousSiblingClicked = useCallback(() => {
     // Add logs or state updates for debugging
     
-  }, [currentIndex, totalSiblings]);
+  }, []);
 
   const nextSiblingClicked = useCallback(() => {
     // Add logs or state updates for debugging
     
-  }, [currentIndex, totalSiblings]);
+  }, []);
 
   // Handler for upvote click
   const handleUpvoteClick = useCallback(() => {
@@ -98,7 +98,7 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
     setReplyError(null); // Clear any previous errors
 
     setIsReplyOpen(true);
-  }, [nodeData, setReplyTarget, setReplyContent, setIsReplyOpen]);
+  }, [nodeData, setReplyTarget, setReplyContent, setIsReplyOpen, setReplyQuote, setReplyError]);
 
   return (
     <div className="post-tree-node-footer">

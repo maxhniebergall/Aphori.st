@@ -8,10 +8,9 @@ Requirements:
 - Require authentication to create posts
 - Preview markdown while editing
 
-// TODO: we need to add requirements about the length of the post, both min and max length. 
 */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -54,14 +53,15 @@ const PostPage: React.FC = (): JSX.Element => {
         // If content is empty, remove it from storage
         localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
-
+    
+    // Restore length validation logic
     const length = newContent.length;
     let exceeded = false;
     let insufficient = false;
 
     if (length > MAX_POST_LENGTH) {
       exceeded = true;
-    } else if (length > 0 && length < MIN_POST_LENGTH) {
+    } else if (length > 0 && length < MIN_POST_LENGTH) { // Check length > 0 for insufficient
       insufficient = true;
     }
 
@@ -120,23 +120,25 @@ const PostPage: React.FC = (): JSX.Element => {
     // If trimming changed the content, update the state to reflect it in the editor
     if (trimmedContent !== content) {
       setContent(trimmedContent);
+      // Re-validate after trimming
+      handleContentChange(trimmedContent); 
     }
 
     // Check length before attempting submission using trimmed content
     if (trimmedContent.length > MAX_POST_LENGTH) {
-      setIsLengthExceeded(true); // Keep state updated for UI feedback
-      window.alert(`Post content cannot exceed ${MAX_POST_LENGTH} characters.`); // Keep alert
-      return;
+       setIsLengthExceeded(true); // Keep state updated for UI feedback
+       window.alert(`Post content cannot exceed ${MAX_POST_LENGTH} characters.`); // Keep alert
+       return;
     }
     if (trimmedContent.length < MIN_POST_LENGTH) {
-      setIsLengthInsufficient(true); // Keep state updated for UI feedback
-      window.alert(`Post content must be at least ${MIN_POST_LENGTH} characters without leading and trailing whitespace.`); // Keep alert
-      return;
+       setIsLengthInsufficient(true); // Keep state updated for UI feedback
+       window.alert(`Post content must be at least ${MIN_POST_LENGTH} characters without leading and trailing whitespace.`); // Keep alert
+       return;
     }
 
-    // Clear length errors if checks pass
-    setIsLengthExceeded(false);
-    setIsLengthInsufficient(false);
+     // Clear length errors if checks pass
+     setIsLengthExceeded(false);
+     setIsLengthInsufficient(false);
 
     setIsSubmitting(true);
     setError(''); // Clear previous errors before new attempt
@@ -163,6 +165,9 @@ const PostPage: React.FC = (): JSX.Element => {
       setIsSubmitting(false);
     }
   };
+
+  // Enable/disable submit button based on validation state and auth
+  const canSubmit = !isLengthExceeded && !isLengthInsufficient && content.length > 0 && state?.verified && !isSubmitting;
 
   return (
     <div className="post-page">
@@ -205,6 +210,7 @@ const PostPage: React.FC = (): JSX.Element => {
           <button 
             type="submit" 
             className="submit-button"
+            disabled={!canSubmit}
           >
             {isSubmitting ? 'Posting...' : 'Create Post'}
           </button>

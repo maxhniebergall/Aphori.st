@@ -8,14 +8,14 @@
  * - Communicate height changes to parent components for proper virtualization
  */
 
-import React, { useState, useCallback, useMemo, useRef, useContext, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { debounce } from 'lodash';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
-import { PostTreeLevel as LevelData, Pagination, PostTreeNode, QuoteCounts, ACTIONS } from '../types/types';
+import { PostTreeLevel as LevelData, Pagination, ACTIONS } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
 import postTreeOperator from '../operators/PostTreeOperator';
 import { usePostTree } from '../context/PostTreeContext';

@@ -45,9 +45,10 @@ export default function useAutoScroll({
         lastScrolledIndexRef.current = targetIndex;
       });
 
+      // Cleanup function to cancel animation frame
       return () => {
         cancelAnimationFrame(rafId);
       };
     }
-  }, [targetIndex, alignment, listRef, ...dependencies]);
+  }, [listRef, targetIndex, alignment, dependencies]);
 } 

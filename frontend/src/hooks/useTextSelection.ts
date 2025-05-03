@@ -12,7 +12,7 @@
 
 import { useRef, useCallback, useEffect, useState } from 'react';
 import { throttle } from 'lodash';
-import { getCurrentOffset, getWordBoundaries } from '../utils/selectionUtils';
+import { getWordBoundaries } from '../utils/selectionUtils';
 import { Quote } from '../types/quote';
 import { useReplyContext } from '../context/ReplyContext';
 
@@ -22,7 +22,7 @@ interface UseTextSelectionProps {
 }
 
 interface UseTextSelectionReturn {
-  containerRef: React.RefObject<HTMLDivElement> & ((node: HTMLDivElement | null) => void);
+  containerRef: React.RefObject<HTMLDivElement>;
   eventHandlers: {
     onMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
     onMouseUp: (event: React.MouseEvent<HTMLDivElement>) => void;
