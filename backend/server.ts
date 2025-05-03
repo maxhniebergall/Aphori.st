@@ -213,7 +213,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/feed', feedRoutes);
 // Apply authenticateToken middleware ONLY to routes that require it
 app.use('/api/posts', postRoutes); 
-app.use('/api/replies', authenticateToken, replyRoutes);
+app.use('/api/replies', replyRoutes);
 
 // --- Start Server ---
 app.listen(PORT, () => {
