@@ -184,21 +184,53 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         }
     }
 
+    /**
+     * Pushes a value onto a list, bypassing compression if the key is 'feedItems'.
+     * @param key The list key.
+     * @param value The value to push.
+     * @returns Result from the underlying database client.
+     */
     async lPush(key: string, value: any): Promise<number> {
-        const compressed = await this.compression.compress(value);
-        return this.db.lPush(key, compressed);
+        // Check if the key is the special case 'feedItems'
+        if (key === 'feedItems') {
+            // Pass the value directly without compression
+            logger.info(`CompressedDatabaseClient lPush: Bypassing compression for key '${key}'.`);
+            // Ensure the value passed is the original non-stringified object if needed by underlying client.
+            // In posts.ts, we pass stringified JSON. FirebaseClient parses it. RedisClient expects string.
+            // For now, pass the value as received (likely stringified JSON).
+            return this.db.lPush(key, value);
+        } else {
+            // Standard behavior: compress the value
+            logger.info(`CompressedDatabaseClient lPush: Compressing value for key '${key}'.`);
+            const compressed = await this.compression.compress(value);
+            return this.db.lPush(key, compressed);
+        }
     }
 
     async lRange(key: string, start: number, end: number, options: CompressionOptions = { returnCompressed: false }): Promise<any[]> {
-        const compressedItems = await this.db.lRange(key, start, end);
-        if (!compressedItems) return [];
+        // Check if the key is the special case 'feedItems'
+        const shouldDecompress = key !== 'feedItems'; // Only decompress if not feedItems
+
+        const items = await this.db.lRange(key, start, end);
+        if (!items || items.length === 0) return [];
         
-        if (options.returnCompressed) {
-            return compressedItems;
+        if (options.returnCompressed || !shouldDecompress) {
+            // Return raw items if requested or if it's the feedItems list
+            return items;
         }
         
+        // Decompress other lists
         const decompressedItems = await Promise.all(
-            compressedItems.map((item: string) => this.compression.decompress(item))
+            items.map(async (item: any) => { // item can be string or other type from Firebase
+                try {
+                    // Ensure item is a string before trying to decompress
+                    const stringItem = typeof item === 'string' ? item : JSON.stringify(item);
+                    return await this.compression.decompress(stringItem);
+                } catch (err) {
+                    logger.error(`Failed to decompress item in lRange for key ${key}:`, err, item);
+                    return item; // Return original item on decompression failure
+                }
+            })
         );
         return decompressedItems;
     }
@@ -453,12 +485,20 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         const decompressedItems = await Promise.all(
             result.items.map(async (item) => {
                 try {
-                    // If item is already an object (from Firebase), stringify before potential decompression
-                    // If it's a string (from Redis), use directly
-                    const dataToDecompress = typeof item === 'string' ? item : JSON.stringify(item);
-                    // Check if it actually looks compressed (e.g., is base64) before attempting decompression?
-                    // For simplicity, try decompressing; handle errors.
-                    return await this.compression.decompress(dataToDecompress);
+                    // Check if the item is already an object (likely from FirebaseClient)
+                    // If it's an object, it's probably already decompressed.
+                    // If it's a string, it might be compressed (from RedisClient) and needs decompression attempt.
+                    if (typeof item === 'object' && item !== null) {
+                        // Already an object, assume decompressed
+                        return item;
+                    } else if (typeof item === 'string') {
+                        // Attempt decompression for strings
+                        return await this.compression.decompress(item);
+                    } else {
+                        // Unexpected type, log warning and return original
+                        logger.warn({ item }, 'Unexpected item type in getFeedItemsPage, returning original.');
+                        return item;
+                    }
                 } catch (e) {
                     logger.warn({ err: e, item }, 'Failed to decompress feed item, returning original.');
                     return item; // Return original item if decompression fails

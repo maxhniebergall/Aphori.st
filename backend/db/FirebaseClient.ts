@@ -33,16 +33,13 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   /**
-   * Hashes a string using SHA-256 for use as a Firebase Realtime Database key/path segment.
-   * Hashing ensures the key is within the length limit (SHA-256 hex is 64 chars)
-   * and avoids forbidden characters (., #, $, [, ], /).
+   * Hashes a string using SHA-256 for use as a dynamic Firebase Realtime Database key/path segment.
+   * Ensures the segment avoids forbidden characters and length limits.
    * Firebase keys cannot be empty; this function hashes even empty strings.
    */
-  private sanitizeFirebaseKey(key: string): string {
-      // Create a SHA-256 hash of the input key
+  private hashFirebaseKey(key: string): string {
       const hash = crypto.createHash('sha256');
       hash.update(key);
-      // Return the hash as a hexadecimal string
       return hash.digest('hex');
   }
 
@@ -91,141 +88,155 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async get(key: string): Promise<any> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const snapshot = await this.db.ref(sanitizedKey).once('value');
+    // Dynamic key is hashed
+    const hashedKey = this.hashFirebaseKey(key);
+    const snapshot = await this.db.ref(hashedKey).once('value');
     return snapshot.val();
   }
 
   async set(key: string, value: any): Promise<string | null> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    await this.db.ref(sanitizedKey).set(value);
+    // Dynamic key is hashed
+    const hashedKey = this.hashFirebaseKey(key);
+    await this.db.ref(hashedKey).set(value);
     return 'OK';
   }
 
   async hGet(key: string, field: string): Promise<any> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const sanitizedField = this.sanitizeFirebaseKey(field);
-    const snapshot = await this.db.ref(`${sanitizedKey}/${sanitizedField}`).once('value');
+    // Dynamic key and field are hashed
+    const hashedKey = this.hashFirebaseKey(key);
+    const hashedField = this.hashFirebaseKey(field);
+    const snapshot = await this.db.ref(`${hashedKey}/${hashedField}`).once('value');
     return snapshot.val();
   }
 
   async hSet(key: string, field: string, value: any): Promise<number> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const sanitizedField = this.sanitizeFirebaseKey(field);
-    await this.db.ref(`${sanitizedKey}/${sanitizedField}`).set(value);
+    // Dynamic key and field are hashed
+    const hashedKey = this.hashFirebaseKey(key);
+    const hashedField = this.hashFirebaseKey(field);
+    await this.db.ref(`${hashedKey}/${hashedField}`).set(value);
     return 1;
   }
 
+  /**
+   * Adds an item to a Firebase path using push() to generate a unique, time-ordered key.
+   * Uses the direct key if it's 'feedItems', otherwise hashes the key.
+   * @param key The base path (e.g., 'feedItems').
+   * @param value The value to add.
+   * @returns The number 1.
+   */
   async lPush(key: string, value: any): Promise<number> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const ref = this.db.ref(sanitizedKey);
-    const snapshot = await ref.once('value');
-    const currentList = snapshot.val() || [];
-    currentList.unshift(value);
-    await ref.set(currentList);
-    return currentList.length;
+    // Use direct path for 'feedItems', hash otherwise
+    const path = (key === 'feedItems') ? key : this.hashFirebaseKey(key);
+    const ref = this.db.ref(path);
+    try {
+      let dataToPush = value;
+      if (typeof value === 'string') {
+        try { 
+          dataToPush = JSON.parse(value); 
+        } catch (e) { 
+          // Explicitly log the parsing error
+          console.error(`FirebaseClient lPush: Failed to parse JSON string for path ${path}. Pushing raw string. Error:`, e, 'Raw value:', value);
+          // dataToPush remains the raw string in case of error
+        }
+      }
+      // Log exactly what is being pushed
+      console.log(`FirebaseClient: Pushing to path [${path}]:`, dataToPush);
+      await ref.push(dataToPush);
+      return 1; 
+    } catch (error) {
+      console.error(`FirebaseClient lPush Error for path ${path}:`, error);
+      throw error;
+    }
   }
 
   // Deprecate lRange for feed items; use getFeedItemsPage instead.
   // async lRange(key: string, start: number, end: number): Promise<any[]> {
-  //   const sanitizedKey = this.sanitizeFirebaseKey(key);
-  //   const snapshot = await this.db.ref(sanitizedKey).once('value');
-  //   const list = snapshot.val() || [];
-  //   return list.slice(start, end + 1);
-  // }
 
   /**
-   * Fetches a page of feed items using key-based cursors.
-   * @param limit The maximum number of items to return.
-   * @param cursorKey The key of the item to start after (exclusive).
-   * @returns An object containing the list of items (newest first) and the key for the next older cursor.
+   * Fetches a page of feed items from the fixed 'feedItems' path.
+   * @param limit Max items.
+   * @param cursorKey Firebase key to end before.
+   * @returns Items and next cursor key.
    */
   async getFeedItemsPage(limit: number, cursorKey?: string): Promise<{ items: any[], nextCursorKey: string | null }> {
+    // Use the fixed, unhashed path for the global feed
     const feedItemsRef = this.db.ref('feedItems');
     let query = feedItemsRef.orderByKey();
 
-    // If cursorKey is provided, end querying before that key to get older items
-    if (cursorKey) {
+    if (typeof cursorKey === 'string' && cursorKey) {
       query = query.endBefore(cursorKey);
     }
-
-    // Query limit + 1 items from the end (newest) to determine if there's a next older page
     query = query.limitToLast(limit + 1);
 
     const snapshot = await query.once('value');
-    const itemsData = snapshot.val() || {};
-    
-    const fetchedItems: Array<{ key: string, data: any }> = [];
-    // Data from limitToLast comes in ascending key order, process it
-    snapshot.forEach((childSnapshot) => {
-        fetchedItems.push({ key: childSnapshot.key as string, data: childSnapshot.val() });
-    });
-
-    let nextCursorKey: string | null = null;
-    let itemsForPage: any[] = [];
-
-    if (fetchedItems.length > limit) {
-        // The first item (oldest in this batch) is the cursor for the next older page
-        nextCursorKey = fetchedItems[0].key;
-        // The items for the current page are the rest (excluding the oldest one)
-        itemsForPage = fetchedItems.slice(1).map(item => ({ ...item.data, _key: item.key }));
-    } else {
-        // Less than limit items fetched, no older page
-        nextCursorKey = null;
-        itemsForPage = fetchedItems.map(item => ({ ...item.data, _key: item.key }));
+    if (!snapshot.exists()) {
+      return { items: [], nextCursorKey: null };
     }
 
-    // Reverse the items for the current page to be newest first
-    itemsForPage.reverse();
+    const itemsData = snapshot.val() || {};
+    const sortedKeys = Object.keys(itemsData).sort().reverse();
 
+    let nextCursorKey: string | null = null;
+    let keysForPage: string[] = [];
+
+    if (sortedKeys.length > limit) {
+      nextCursorKey = sortedKeys[limit];
+      keysForPage = sortedKeys.slice(0, limit);
+    } else {
+      keysForPage = sortedKeys;
+    }
+
+    const itemsForPage = keysForPage.map(key => itemsData[key]);
     return { items: itemsForPage, nextCursorKey };
   }
 
   /**
-   * Retrieves the total number of feed items by reading the dedicated counter.
-   * @returns The total count of feed items.
+   * Retrieves the total item count from the fixed '/feedStats/itemCount' path.
+   * @param key Ignored (expected 'feedItems').
+   * @returns The count.
    */
   async lLen(key: string): Promise<number> {
-    // Ensure the key is the expected feed items key, though we ignore it for the counter path
+    // Always read the fixed counter path, regardless of the input key
+    const counterPath = 'feedStats/itemCount';
     if (key !== 'feedItems') {
-      console.warn(`lLen called with unexpected key: ${key}. Reading feedStats counter anyway.`);
+      console.warn(`FirebaseClient lLen called with unexpected key: [${key}]. Reading ${counterPath} anyway.`);
     }
-    // Read the counter value directly
-    const counterRef = this.db.ref('feedStats/itemCount');
-    const snapshot = await counterRef.once('value');
-    return snapshot.val() || 0;
-    // const sanitizedKey = this.sanitizeFirebaseKey(key);
-    // const snapshot = await this.db.ref(sanitizedKey).once('value');
-    // const list = snapshot.val() || [];
-    // return list.length;
+    const counterRef = this.db.ref(counterPath);
+    try {
+      const snapshot = await counterRef.once('value');
+      const count = snapshot.val();
+      return typeof count === 'number' ? count : 0;
+    } catch (error) {
+      console.error(`FirebaseClient lLen Error reading counter at ${counterPath}:`, error);
+      throw error;
+    }
   }
 
   async sAdd(key: string, value: any): Promise<number> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const ref = this.db.ref(sanitizedKey);
+    // Hash the main key
+    const hashedKey = this.hashFirebaseKey(key);
+    const ref = this.db.ref(hashedKey);
     const snapshot = await ref.once('value');
     const currentSet = snapshot.val() || {};
     
-    // Sanitize value only if it's a string, as it's used as an object key
-    const internalKey = typeof value === 'string' ? this.sanitizeFirebaseKey(value) : value;
+    // Hash the value to use as the internal key for the set member
+    const internalHashedValue = typeof value === 'string' ? this.hashFirebaseKey(value) : this.hashFirebaseKey(JSON.stringify(value)); // Hash non-strings too
 
-    // In Firebase, we'll implement sets as objects with sanitized values as keys
-    if (!currentSet[internalKey]) {
-      currentSet[internalKey] = true; // Store true, or maybe the original value? Let's store true for now.
+    if (!currentSet[internalHashedValue]) {
+      currentSet[internalHashedValue] = true; // Store boolean marker
       await ref.set(currentSet);
-      return 1; // Return 1 if we added a new value
+      return 1;
     }
-    return 0; // Return 0 if value was already in set
+    return 0;
   }
 
   async sMembers(key: string): Promise<string[]> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const snapshot = await this.db.ref(sanitizedKey).once('value');
+    // Hash the main key
+    const hashedKey = this.hashFirebaseKey(key);
+    const snapshot = await this.db.ref(hashedKey).once('value');
     const currentSet = snapshot.val() || {};
-    // Return the sanitized keys used internally
+    // Returns the hashed internal keys
     return Object.keys(currentSet);
-    // Note: If we need to return the *original* values, we'd have to store them,
-    // e.g., currentSet[sanitizedValue] = originalValue; and return Object.values(currentSet);
   }
 
   async isConnected(): Promise<boolean> {
@@ -243,161 +254,161 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async hGetAll(key: string): Promise<Record<string, any> | null> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const snapshot = await this.db.ref(sanitizedKey).once('value');
+    // Hash the dynamic key
+    const hashedKey = this.hashFirebaseKey(key);
+    const snapshot = await this.db.ref(hashedKey).once('value');
     return snapshot.val();
   }
 
   async zAdd(key: string, score: number, value: any): Promise<number> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const ref = this.db.ref(sanitizedKey);
-    const snapshot = await ref.once('value');
-    const currentData = snapshot.val() || {};
-    
-    // Store data with score as key for ordering. Score (number) is safe.
-    currentData[score] = {
-      score: score,
-      value: value // Store original value
-    };
-    
-    await ref.set(currentData);
+    // Hash the main key
+    const hashedKey = this.hashFirebaseKey(key);
+    // Use score directly as child key, store { score, value } object
+    const ref = this.db.ref(`${hashedKey}/${score}`); 
+    await ref.set({ score: score, value: value });
     return 1;
   }
 
   async zCard(key: string): Promise<number> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const snapshot = await this.db.ref(sanitizedKey)
-      .orderByChild('score')
-      .once('value');
-    return snapshot.numChildren() || 0;
+    // Hash the main key
+    const hashedKey = this.hashFirebaseKey(key);
+    const snapshot = await this.db.ref(hashedKey).once('value');
+    // Count children (each child key is a score)
+    return snapshot.numChildren();
   }
 
   async zRange(key: string, start: number, end: number): Promise<any[]> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const snapshot = await this.db.ref(sanitizedKey)
-      .orderByChild('score')
-      .once('value');
+    // Hash the main key
+    const hashedKey = this.hashFirebaseKey(key);
+    // Order by key (score) and limit to get the range
+    const query = this.db.ref(hashedKey).orderByKey().limitToFirst(end + 1); // Fetch enough to slice
+    const snapshot = await query.once('value');
     
     const results: any[] = [];
     snapshot.forEach((childSnapshot) => {
-      results.push(childSnapshot.val().value); // Return original value
+      // Key is the score, value is { score, value }
+      results.push(childSnapshot.val().value); // Extract original value
     });
     
-    return results.slice(start, end + 1);
+    // Apply the start index slice
+    return results.slice(start);
   }
 
   async del(key: string): Promise<number> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    await this.db.ref(sanitizedKey).remove();
-    return 1; // Return 1 to match Redis behavior
+    // Hash the dynamic key
+    const hashedKey = this.hashFirebaseKey(key);
+    await this.db.ref(hashedKey).remove();
+    return 1;
   }
 
+  /**
+   * Atomically increments a numeric value stored at a path constructed from key and field.
+   * Hashes key and field before constructing the path.
+   * @returns The new value after incrementing.
+   */
   async hIncrBy(key: string, field: string, increment: number): Promise<number> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const sanitizedField = this.sanitizeFirebaseKey(field);
-    const ref = this.db.ref(`${sanitizedKey}/${sanitizedField}`);
-    // Firebase Realtime DB transactions are better for atomic increments
+    // Always hash dynamic key and field
+    const hashedKey = this.hashFirebaseKey(key);
+    const hashedField = this.hashFirebaseKey(field);
+    const refPath = `${hashedKey}/${hashedField}`;
+    const ref = this.db.ref(refPath);
+    
     const transactionResult = await ref.transaction((currentValue) => {
-        return (currentValue || 0) + increment;
+        const currentNumber = typeof currentValue === 'number' ? currentValue : 0;
+        return currentNumber + increment;
+    }, (error, committed, snapshot) => {
+      // Optional callback for logging transaction outcome
+      if (error) console.error(`FirebaseClient hIncrBy Transaction Error for path ${refPath}:`, error);
+      else if (!committed) console.warn(`FirebaseClient hIncrBy Transaction not committed for path ${refPath}.`);
     });
 
     if (transactionResult.committed && transactionResult.snapshot.exists()) {
-        return transactionResult.snapshot.val();
+        const finalValue = transactionResult.snapshot.val();
+        return typeof finalValue === 'number' ? finalValue : 0;
     } else {
-        // Handle potential transaction failure or abortion
-        console.error(`Transaction for incrementing ${sanitizedKey}/${sanitizedField} failed or was aborted.`);
-        // Attempt to fetch the value again as a fallback, though it might not be atomic
-        const snapshot = await ref.once('value');
-        return snapshot.val() || 0; // Return 0 if it still doesn't exist after failed transaction
+        console.error(`Transaction for incrementing path ${refPath} failed or was aborted.`);
+        // Fallback read attempt
+        try {
+            const snapshot = await ref.once('value');
+            const fallbackValue = snapshot.val();
+            return typeof fallbackValue === 'number' ? fallbackValue : 0;
+        } catch (readError) {
+            console.error(`Failed to read value at ${refPath} after transaction failure:`, readError);
+            return 0;
+        }
     }
   }
 
   async zRevRangeByScore(key: string, max: number, min: number, options?: { limit?: number }): Promise<Array<{ score: number, value: any }>> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    let query = this.db.ref(sanitizedKey).orderByKey(); // Order by key (which is the score)
+    // Hash the main key
+    const hashedKey = this.hashFirebaseKey(key);
+    // Order by key (score) 
+    let query = this.db.ref(hashedKey).orderByKey(); 
 
-    // Firebase key ordering is lexicographical, so stringify scores for range queries
+    // Use string representation for range queries on numeric keys
     const minStr = String(min);
     const maxStr = String(max);
-
     query = query.startAt(minStr).endAt(maxStr);
 
-    // Apply limit using limitToLast for reverse order
+    // Apply limit if provided
     if (options?.limit) {
-      query = query.limitToLast(options.limit);
+       // Cannot directly limit with start/end AND get correct reverse order easily.
+       // Fetch all in range, then sort/limit in code.
+       // For large ranges, this is inefficient. Consider alternative structure if performance critical.
     }
 
     const snapshot = await query.once('value');
     const results: Array<{ score: number, value: any }> = [];
-    
-    // Snapshot is already limited and ordered (desc by key due to limitToLast implicitly reversing)
-    // Iterate directly
     snapshot.forEach((childSnapshot) => {
-      // The value stored under the score key is { score, value }
-      results.push(childSnapshot.val()); // This already pushes { score, value }
+      results.push(childSnapshot.val()); // Value is { score, value }
     });
 
-    // Results from limitToLast are in ascending order of keys (scores) within the limited set.
-    // We need descending order (reverse chronological).
-    results.reverse();
-
+    // Sort descending by score and apply limit
+    results.sort((a, b) => b.score - a.score);
+    if (options?.limit) {
+      return results.slice(0, options.limit);
+    }
     return results;
-    
-    // Old implementation:
-    // const snapshot = await this.db.ref(sanitizedKey)
-    //   .orderByChild('score')
-    //   .startAt(min)
-    //   .endAt(max)
-    //   .once('value');
-    // const results: any[] = [];
-    // snapshot.forEach((childSnapshot) => {
-    //   results.push(childSnapshot.val()); // Contains {score, value}
-    // });
-    // results.reverse();
-    // if (options?.limit) {
-    //   return results.slice(0, options.limit);
-    // }
-    // return results;
   }
 
   // Simulate Redis ZSCAN using Firebase queries
   async zscan(key: string, cursor: string, options?: { match?: string; count?: number }): Promise<{ cursor: string | null; items: RedisSortedSetItem<string>[] }> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const count = options?.count || 10; // Default count
-    // The 'cursor' here will represent the score to start *after*.
-    const startAfterScore = cursor && cursor !== '0' ? Number(cursor) : null;
+      // Hash the main key
+      const hashedKey = this.hashFirebaseKey(key);
+      const count = options?.count || 10;
+      // Cursor is the score (as string key) to start after
+      const startAfterKey = cursor && cursor !== '0' ? cursor : null;
 
-    let query = this.db.ref(sanitizedKey).orderByChild('score');
+      let query = this.db.ref(hashedKey).orderByKey(); // Order by score (key)
 
-    // If cursor exists, start after that score
-    if (startAfterScore !== null) {
-      query = query.startAfter(startAfterScore);
-    }
-
-    // Limit the results to count + 1 to check if there are more items
-    query = query.limitToFirst(count + 1);
-
-    const snapshot = await query.once('value');
-    const items: RedisSortedSetItem<string>[] = [];
-    snapshot.forEach((childSnapshot) => {
-      const data = childSnapshot.val();
-      // Ensure data has the expected structure { score: number, value: string }
-      if (data && typeof data.score === 'number' && typeof data.value === 'string') {
-          items.push({ score: data.score, value: data.value }); // Push original value
-      } else {
-          console.warn(`Invalid data structure in sorted set ${sanitizedKey}:`, data);
+      if (startAfterKey) {
+          query = query.startAfter(startAfterKey);
       }
-    });
 
-    let nextCursor: string | null = null;
-    if (items.length > count) {
-      const lastItem = items.pop(); // Remove the extra item
-      if (lastItem) {
-        nextCursor = lastItem.score.toString(); 
+      query = query.limitToFirst(count + 1);
+
+      const snapshot = await query.once('value');
+      const items: RedisSortedSetItem<string>[] = [];
+      snapshot.forEach((childSnapshot) => {
+          const data = childSnapshot.val();
+          // Value is { score, value }
+          if (data && typeof data.score === 'number' && typeof data.value !== 'undefined') {
+              // Convert value to string for RedisSortedSetItem compatibility if needed, or adjust type
+              items.push({ score: data.score, value: String(data.value) }); 
+          } else {
+              console.warn(`Invalid data structure in sorted set ${hashedKey}:`, data);
+          }
+      });
+
+      let nextCursor: string | null = null;
+      if (items.length > count) {
+          const lastItem = items.pop(); // Remove extra item
+          if (lastItem) {
+              nextCursor = String(lastItem.score); // Next cursor is the score of the last item fetched
+          }
       }
-    }
-    
-    return { cursor: nextCursor, items };
+      
+      return { cursor: nextCursor, items };
   }
 
   // Atomically sets or increments a quote count using a transaction
@@ -412,71 +423,56 @@ export class FirebaseClient extends DatabaseClientInterface {
    *                 (Handled: Propagated to callers like server.ts routes).
    */
   async hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number> {
-    const sanitizedKey = this.sanitizeFirebaseKey(key);
-    const sanitizedField = this.sanitizeFirebaseKey(field); // Sanitize field (quoteKey) too
-    const ref = this.db.ref(`${sanitizedKey}/${sanitizedField}`);
+    // Hash dynamic key and field
+    const hashedKey = this.hashFirebaseKey(key);
+    const hashedField = this.hashFirebaseKey(field);
+    const refPath = `${hashedKey}/${hashedField}`;
+    const ref = this.db.ref(refPath);
     
-    // Run transaction
     const transactionResult = await ref.transaction((currentData) => {
       if (currentData === null) {
-        // If no data exists, create new entry
         return { quote: quoteValue, count: 1 };
       } else {
-        // If data exists, increment count
-        // Ensure 'quote' field exists, otherwise initialize
-        if (!currentData.quote) {
-            currentData.quote = quoteValue;
-        }
+        if (!currentData.quote) currentData.quote = quoteValue;
         currentData.count = (currentData.count || 0) + 1;
-        return currentData; // Return the modified data
+        return currentData;
       }
     });
 
-    // Check if transaction was successful and return the new count
     if (transactionResult.committed && transactionResult.snapshot.exists()) {
-      const finalData = transactionResult.snapshot.val();
-      return finalData.count;
+      return transactionResult.snapshot.val().count;
     } else {
-      // Handle potential transaction failure or abortion
-      console.error(`Transaction for ${sanitizedKey}/${sanitizedField} failed or was aborted.`);
-      // Handled: Propagated to callers (server.ts routes, seed.ts) which catch and handle.
-      throw new Error(`Failed to update quote count for ${sanitizedKey}/${sanitizedField}`);
+      console.error(`Transaction for ${refPath} failed or was aborted.`);
+      throw new Error(`Failed to update quote count for ${refPath}`);
     }
   }
 
   /**
-   * Adds a feed item using Firebase push() to generate a unique, sortable key.
-   * @param item The FeedItem object to add.
-   * @returns The unique key generated by Firebase for the new item.
+   * Adds a feed item to the fixed 'feedItems' path using push().
+   * @param item The FeedItem object.
+   * @returns The unique key generated by Firebase.
    */
   async addFeedItem(item: any): Promise<string> {
-    // We won't sanitize the 'feedItems' key itself, assuming it's a fixed path.
+    // Use the fixed, unhashed path 'feedItems'
     const feedItemsRef = this.db.ref('feedItems');
     const newItemRef = await feedItemsRef.push(item);
-    if (!newItemRef.key) {
-      // Should theoretically never happen with push()
-      throw new Error('Failed to get push key for new feed item.');
-    }
+    if (!newItemRef.key) throw new Error('Failed to get push key for new feed item.');
     return newItemRef.key;
   }
 
   /**
-   * Atomically increments or decrements the feed item counter.
-   * @param amount The amount to increment by (can be negative for decrement).
+   * Atomically increments/decrements the counter at the fixed 'feedStats/itemCount' path.
+   * @param amount Amount to increment by.
    */
   async incrementFeedCounter(amount: number): Promise<void> {
-    // We won't sanitize the 'feedStats/itemCount' key itself.
+    // Use the fixed, unhashed path 'feedStats/itemCount'
     const counterRef = this.db.ref('feedStats/itemCount');
     const transactionResult = await counterRef.transaction((currentValue) => {
       return (currentValue || 0) + amount;
     });
-
     if (!transactionResult.committed) {
       console.error('Transaction for incrementing feed counter failed or was aborted.');
-      // Decide on error handling: throw, retry, or log?
-      // Throwing for now, as failure might indicate a larger issue.
       throw new Error('Failed to update feed item counter.');
     }
-    // No return value needed for void
   }
 } 

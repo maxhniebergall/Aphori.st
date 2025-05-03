@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from './Header';
 import { feedOperator } from '../operators/FeedOperator';
 import { FeedItem, Pagination, FeedResponse, FetchResult } from '../types/types';
+import { Virtuoso } from 'react-virtuoso';
 
 // Define regex patterns
 const PATTERNS = {
@@ -152,6 +153,34 @@ function Feed(): JSX.Element {
     [navigate]
   );
 
+  // Define the item rendering function for Virtuoso
+  const renderItem = useCallback((index: number, item: FeedItem) => {
+    return (
+      <motion.div
+        key={item.id}
+        layoutId={item.id}
+        onClick={() => {
+          if(!item?.id) {
+            console.warn("Encountered item with missing ID - navigation skipped");
+          } else {
+            navigateToPostTree(item.id);
+          }
+        }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="feed-item"
+      >
+        {item.title && <motion.h3>{item.title}</motion.h3>}
+        <motion.div className="feed-item-content">
+          <p className="feed-text">
+            {item.text ? truncateText(item.text) : 'Loading...'}
+          </p>
+        </motion.div>
+      </motion.div>
+    );
+  }, [navigateToPostTree]);
+
   return (
     <>
       <Header 
@@ -159,41 +188,24 @@ function Feed(): JSX.Element {
         subtitle=""
         onLogoClick={() => navigate('/feed')}
       />
-      <div className="feed">
+      <div className="feed" style={{ height: 'calc(100vh - 60px)' }}>
         {error && <div className="feed-error-message">{error}</div>}
-        {items.map((item) => (
-          <motion.div
-            key={item.id}
-            layoutId={item.id}
-            onClick={() => {
-              if(!item?.id) {
-                console.warn("Encountered item with missing ID - navigation skipped");
-              } else {
-                navigateToPostTree(item.id);
-              }
-            }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="feed-item"
-          >
-            {item.title && <motion.h3>{item.title}</motion.h3>}
-            <motion.div className="feed-item-content">
-              <p className="feed-text">
-                {item.text ? truncateText(item.text) : 'Loading...'}
-              </p>
-            </motion.div>
-          </motion.div>
-        ))}
         
-        {pagination.hasMore && (
-          <button 
-            className="load-more-button" 
-            onClick={loadMoreItems}
-          >
-            Load More
-          </button>
-        )}
+        <Virtuoso
+          style={{ height: '100%' }}
+          data={items}
+          endReached={loadMoreItems}
+          itemContent={renderItem}
+          components={{
+            Footer: () => {
+              return pagination.hasMore ? (
+                <div style={{ padding: '2rem', textAlign: 'center' }}>
+                  Loading more...
+                </div>
+              ) : null;
+            },
+          }}
+        />
       </div>
     </>
   );
