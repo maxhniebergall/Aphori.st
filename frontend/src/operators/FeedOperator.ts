@@ -16,7 +16,7 @@ import { Compressed } from '../types/compressed';
  */
 class FeedOperator extends BaseOperator {
     // Rate limiting properties (one call per 1000ms)
-    private lastFeedCallTime: number = 0;
+    private lastFeedCallTime = 0;
     private readonly rateLimitInterval: number = 1000; // in milliseconds
 
     // Simple sleep helper

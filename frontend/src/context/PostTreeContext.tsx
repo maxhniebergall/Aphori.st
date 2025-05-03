@@ -63,7 +63,7 @@ function findSiblingsForQuote(siblings: Siblings, quote: Quote | null): PostTree
   return entry ? entry[1] : [];
 }
 
-export function mergeLevels(existingLevels: Array<PostTreeLevel>, newLevelsPayload: Array<PostTreeLevel>): Array<PostTreeLevel> {
+export function mergeLevels(existingLevels: PostTreeLevel[], newLevelsPayload: PostTreeLevel[]): PostTreeLevel[] {
   const processedNewLevelIndices = new Set<number>();
   let overallChange = false; // Track if any level object reference changes
 
@@ -263,7 +263,7 @@ function postTreeReducer(state: PostTreeState, action: Action): PostTreeState {
           ...state,
           postTree: {
             ...state.postTree,
-            levels: newLevels as PostTreeLevel[] // Use newLevels directly
+            levels: newLevels // Use newLevels directly
           }
         };
         break;
@@ -291,7 +291,7 @@ function postTreeReducer(state: PostTreeState, action: Action): PostTreeState {
           ...state,
           postTree: {
             ...state.postTree,
-            levels: newLevels as PostTreeLevel[]
+            levels: newLevels
           }
         };
         break;
@@ -326,7 +326,7 @@ function postTreeReducer(state: PostTreeState, action: Action): PostTreeState {
         // Find if the level already exists
         const levelIndex = state.postTree.levels.findIndex(level => getLevelNumber(level) === lastLevelNumberInPayload);
 
-        let newLevels: Array<PostTreeLevel>;
+        let newLevels: PostTreeLevel[];
         if (levelIndex !== -1) {
            // If level already exists, replace it and truncate any subsequent levels
            console.log(`[Reducer SET_LAST_LEVEL] Replacing existing level ${lastLevelNumberInPayload} at index ${levelIndex} with LastLevel object.`);

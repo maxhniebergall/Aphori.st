@@ -130,7 +130,7 @@ export class BaseOperator {
           if (typeof response.data.compressedData === 'string') {
             return JSON.parse(response.data.compressedData) as Compressed<T>;
           } else {
-            return response.data.compressedData as Compressed<T>;
+            return response.data.compressedData;
           }
         } else {
           throw new Error(response.data.error || 'Unknown error, backend returned: ' + JSON.stringify(response.data));
@@ -167,14 +167,14 @@ export class BaseOperator {
           
           if (Array.isArray(data)) {
             // If the caller expects an array, infer the element type
-            type ElementType = T extends Array<infer U> ? U : unknown;
+            type ElementType = T extends (infer U)[] ? U : unknown;
             const decompressedItems = await Promise.all(
               (data as unknown[]).map((item: unknown) => this.decompressItem<ElementType>(item))
             );
             return decompressedItems as T;
           } else if (this.isHasItems(data)) {
             // If the response has an 'items' array property, infer its element type
-            type ElementType = T extends { items: Array<infer U> } ? U : unknown;
+            type ElementType = T extends { items: (infer U)[] } ? U : unknown;
             const decompressedItems = await Promise.all(
               data.items.map((item: unknown) => this.decompressItem<ElementType>(item))
             );

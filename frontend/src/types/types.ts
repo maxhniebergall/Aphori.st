@@ -17,11 +17,11 @@ import { Quote } from "./quote";
 
 export interface QuoteCounts {
   // the quoteCounts map is a map of quotes (of the node) to the number of replies to that quote
-  quoteCounts: Array<[Quote, number]>;
+  quoteCounts: [Quote, number][];
 }
 
 export interface ExistingSelectableQuotesApiFormat {
-  quoteCounts: Array<[Quote, number]>;
+  quoteCounts: [Quote, number][];
 }
 
 export interface Post { // this is the value returned from the backend, representing the root node of the post tree
@@ -85,7 +85,7 @@ export interface PostTreeNode { // this value only exists in the frontend. it co
 
 export interface Siblings {
   // Store siblings as an array of entries [Quote | null, PostTreeNode[]] for better serialization
-  levelsMap: Array<[Quote | null, PostTreeNode[]]>;
+  levelsMap: [Quote | null, PostTreeNode[]][];
 }
 
 export interface PostTreeLevel {
@@ -113,7 +113,7 @@ export interface LastLevel {
 
 export interface PostTree { // this is the post tree we assemble as the user navigates
   post: Post;
-  levels: Array<PostTreeLevel>; 
+  levels: PostTreeLevel[]; 
   error: string | null;
 }
 

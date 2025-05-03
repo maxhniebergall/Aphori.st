@@ -11,7 +11,7 @@ Requirements:
 // TODO: we need to add requirements about the length of the post, both min and max length. 
 */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -38,7 +38,7 @@ const PostPage: React.FC = (): JSX.Element => {
   const [error, setError] = useState<string>('');
   const navigate = useNavigate();
   const { state } = useUser();
-  const loggedOutMessage: string = 'Please sign in to create a post';
+  const loggedOutMessage = 'Please sign in to create a post';
   const [isLengthExceeded, setIsLengthExceeded] = useState<boolean>(false);
   const [isLengthInsufficient, setIsLengthInsufficient] = useState<boolean>(false);
 
