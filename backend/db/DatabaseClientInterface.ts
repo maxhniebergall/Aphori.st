@@ -9,27 +9,27 @@ Requirements:
 import { RedisSortedSetItem } from '../types/index.js';
 
 export abstract class DatabaseClientInterface {
-  async get(key: string): Promise<any> {
+  async get<T = unknown>(key: string): Promise<T | null> {
     throw new Error('Method not implemented');
   }
 
-  async set(key: string, value: any): Promise<string | null> {
+  async set<T = unknown>(key: string, value: T): Promise<string | null> {
     throw new Error('Method not implemented');
   }
 
-  async hGet(key: string, field: string): Promise<any> {
+  async hGet<T = unknown>(key: string, field: string): Promise<T | null> {
     throw new Error('Method not implemented');
   }
 
-  async hSet(key: string, field: string, value: any): Promise<number> {
+  async hSet<T = unknown>(key: string, field: string, value: T): Promise<number> {
     throw new Error('Method not implemented');
   }
 
-  async lPush(key: string, value: any): Promise<number> {
+  async lPush<T = unknown>(key: string, value: T): Promise<number> {
     throw new Error('Method not implemented');
   }
 
-  async lRange(key: string, start: number, end: number): Promise<any[]> {
+  async lRange<T = unknown>(key: string, start: number, end: number): Promise<T[]> {
     throw new Error('Method not implemented');
   }
 
