@@ -67,6 +67,7 @@
     "replyIndexes": {
        "byQuoteRecent": {
          "$quoteKey": {
+           ".indexOn": "score",
            "$replyId": {
              ".validate": "newData.hasChildren(['score']) && newData.child('score').isNumber()"
            }
@@ -75,6 +76,7 @@
        "byParentQuoteRecent": {
          "$parentId": {
            "$quoteKey": {
+             ".indexOn": "score",
              "$replyId": {
                ".validate": "newData.hasChildren(['score']) && newData.child('score').isNumber()"
              }
@@ -84,6 +86,7 @@
        "byParentQuoteTextRecent": {
          "$parentId": {
            "$quoteTextHashOrKey": {
+              ".indexOn": "score",
               "$replyId": {
                  ".validate": "newData.hasChildren(['score']) && newData.child('score').isNumber()"
               }
@@ -91,12 +94,14 @@
          }
        },
        "feedRecent": {
+         ".indexOn": "score",
          "$replyId": {
            ".validate": "newData.hasChildren(['score']) && newData.child('score').isNumber()"
          }
        }
     },
     "feedItems": {
+      ".indexOn": "createdAt",
       "$feedItemId": {
          ".validate": "newData.hasChildren(['id', 'text', 'authorId', 'createdAt']) && newData.child('id').isString() && newData.child('id').val() === $feedItemId && newData.child('text').isString() && newData.child('authorId').isString() && newData.child('createdAt').isString()"
       }
