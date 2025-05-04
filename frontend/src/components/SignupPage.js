@@ -91,7 +91,6 @@ const SignupPage = () => {
                 const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/auth/signup`, payload);
 
                 if (response.data.success) {
-                    // Dispatch action to update user state (id, email, token)
                     // Redirect to login page for magic link authentication 
                     navigate(`/verify?token=${verificationToken}`, { 
                         state: { 
