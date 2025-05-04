@@ -166,7 +166,6 @@ const PostPage: React.FC = (): JSX.Element => {
       } else {
         setError('Failed to create post');
       }
-    }
     } finally { 
       setIsSubmitting(false);
     }
