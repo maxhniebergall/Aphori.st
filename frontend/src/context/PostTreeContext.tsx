@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useReducer, useLayoutEffect, ReactNode } from 'react';
-import { PostTreeState, Action, PostTreeLevel, PostTree, PostTreeNode, Siblings, LastLevel } from '../types/types';
+import React, { createContext, useContext, useReducer, useLayoutEffect, ReactNode, useEffect } from 'react';
+import { PostTreeState, Action, PostTreeLevel, PostTree, PostTreeNode, Siblings, LastLevel, NavigationRequest } from '../types/types';
 import { ACTIONS } from '../types/types';
 import PostTreeErrorBoundary from './PostTreeErrorBoundary';
 import postTreeOperator from '../operators/PostTreeOperator';
@@ -40,6 +40,7 @@ const initialState: PostTreeState = {
   postTree: null,
   error: null,
   isLoadingMore: false,
+  navigationRequest: null,
 };
 
 // Helper function to find siblings for a quote in the array-based structure
@@ -472,23 +473,40 @@ function postTreeReducer(state: PostTreeState, action: Action): PostTreeState {
 
     case ACTIONS.NAVIGATE_NEXT_SIBLING:
       {
-        // Note: Reducers should be pure. Calling async operator methods here is an anti-pattern.
-        // This logic *should* ideally live in an effect in the Provider or be handled differently.
-        // For now, we'll call it directly, acknowledging the impurity.
-        console.log(`[Reducer] Received NAVIGATE_NEXT_SIBLING for level ${action.payload.levelNumber}`);
-        // Pass the full payload including expectedCurrentNodeId
-        postTreeOperator.handleNavigateNextSibling(action.payload.levelNumber, action.payload.expectedCurrentNodeId)
-          .catch((error: unknown) => console.error("Error in handleNavigateNextSibling:", error));
-        return state; // Return current state, side effect handled by operator
+        console.log(`[Reducer] Received NAVIGATE_NEXT_SIBLING for level ${action.payload.levelNumber}. Setting request.`);
+        nextState = {
+          ...state,
+          navigationRequest: {
+            type: 'next',
+            levelNumber: action.payload.levelNumber,
+            expectedCurrentNodeId: action.payload.expectedCurrentNodeId
+          }
+        };
+        break;
       }
 
     case ACTIONS.NAVIGATE_PREV_SIBLING:
-       {
-         console.log(`[Reducer] Received NAVIGATE_PREV_SIBLING for level ${action.payload.levelNumber}`);
-         // Pass the full payload including expectedCurrentNodeId
-        postTreeOperator.handleNavigatePrevSibling(action.payload.levelNumber, action.payload.expectedCurrentNodeId)
-           .catch((error: unknown) => console.error("Error in handleNavigatePrevSibling:", error));
-        return state; // Return current state, side effect handled by operator
+      {
+        console.log(`[Reducer] Received NAVIGATE_PREV_SIBLING for level ${action.payload.levelNumber}. Setting request.`);
+        nextState = {
+          ...state,
+          navigationRequest: {
+            type: 'prev',
+            levelNumber: action.payload.levelNumber,
+            expectedCurrentNodeId: action.payload.expectedCurrentNodeId
+          }
+        };
+        break;
+      }
+
+    case ACTIONS.CLEAR_NAVIGATION_REQUEST:
+      {
+         console.log(`[Reducer] Clearing navigation request.`);
+         nextState = {
+            ...state,
+            navigationRequest: null
+         };
+         break;
       }
     
     default:
@@ -513,6 +531,41 @@ export function PostTreeProvider({ children }: { children: ReactNode }) {
     postTreeOperator.setStore({ state, dispatch });
     postTreeOperator.setUserContext(userContext);
   }, [state, dispatch, userContext]);
+
+  // Effect to handle navigation side effects
+  useEffect(() => {
+    const handleNavigation = async (request: NavigationRequest) => {
+      console.log(`[Effect] Handling navigation request: ${request.type} for level ${request.levelNumber}`);
+      try {
+        if (request.type === 'next') {
+          await postTreeOperator.handleNavigateNextSibling(
+            request.levelNumber,
+            request.expectedCurrentNodeId
+          );
+        } else if (request.type === 'prev') {
+          await postTreeOperator.handleNavigatePrevSibling(
+            request.levelNumber,
+            request.expectedCurrentNodeId
+          );
+        }
+      } catch (error) {
+        console.error(`[Effect] Error during navigation (${request.type}) for level ${request.levelNumber}:`, error);
+        // Optionally dispatch a general error action here if needed
+        // dispatch({ type: ACTIONS.SET_ERROR, payload: `Navigation failed: ${error instanceof Error ? error.message : String(error)}` });
+      } finally {
+        // Always clear the request after attempting navigation
+        console.log(`[Effect] Clearing navigation request after handling: ${request.type} for level ${request.levelNumber}`);
+        dispatch({ type: ACTIONS.CLEAR_NAVIGATION_REQUEST });
+      }
+    };
+
+    if (state.navigationRequest) {
+      // Create a local copy of the request before the async operation
+      const currentRequest = { ...state.navigationRequest }; 
+      handleNavigation(currentRequest);
+    }
+    // Dependency array includes only the navigationRequest part of the state
+  }, [state.navigationRequest, dispatch]);
 
   return (
     <PostTreeErrorBoundary>
