@@ -121,6 +121,14 @@ export interface PostTreeState { // required to allow postTree to be null before
   postTree: PostTree | null;
   error: string | null;
   isLoadingMore: boolean;
+  navigationRequest?: NavigationRequest | null;
+}
+
+// Define the NavigationRequest type
+export interface NavigationRequest {
+  type: 'next' | 'prev';
+  levelNumber: number;
+  expectedCurrentNodeId: string | null;
 }
 
 // Cache Types
@@ -186,6 +194,7 @@ export const ACTIONS = {
   SET_LOADING_MORE: 'SET_LOADING_MORE',
   NAVIGATE_NEXT_SIBLING: 'NAVIGATE_NEXT_SIBLING',
   NAVIGATE_PREV_SIBLING: 'NAVIGATE_PREV_SIBLING',
+  CLEAR_NAVIGATION_REQUEST: 'CLEAR_NAVIGATION_REQUEST',
 } as const;
 
 export type Action =
@@ -202,4 +211,5 @@ export type Action =
   | { type: typeof ACTIONS.CLEAR_ERROR }
   | { type: typeof ACTIONS.SET_LOADING_MORE; payload: boolean }
   | { type: typeof ACTIONS.NAVIGATE_NEXT_SIBLING; payload: { levelNumber: number; expectedCurrentNodeId: string | null } }
-  | { type: typeof ACTIONS.NAVIGATE_PREV_SIBLING; payload: { levelNumber: number; expectedCurrentNodeId: string | null } };
+  | { type: typeof ACTIONS.NAVIGATE_PREV_SIBLING; payload: { levelNumber: number; expectedCurrentNodeId: string | null } }
+  | { type: typeof ACTIONS.CLEAR_NAVIGATION_REQUEST };
