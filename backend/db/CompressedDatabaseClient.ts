@@ -89,10 +89,10 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
                 compressedData : 
                 JSON.stringify(compressedData);
         
-            const result = options.returnCompressed ? 
-                stringData : 
-                this.compression.decompress(stringData);
-                
+            const result = options.returnCompressed
+                ? stringData
+                : await this.compression.decompress(stringData);
+
             return result;
         } catch (err) {
             logger.error('Error in hGet:', err);
