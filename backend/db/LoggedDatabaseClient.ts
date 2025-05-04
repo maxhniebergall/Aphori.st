@@ -1,22 +1,6 @@
 import { pino } from 'pino';
 import { DatabaseClient, RedisSortedSetItem, FeedItem, Quote, Compressed } from '../types/index.js';
-import { LogContext, ReadOptions, ScanOptions, RangeOptions } from './loggingTypes.js';
-
-
-// Options for zRange/zRevRange/zRangeByScore (adjust based on actual usage)
-interface RangeOptions {
-    BY?: 'SCORE' | 'LEX';
-    REV?: boolean;
-    LIMIT?: { offset: number; count: number };
-    WITHSCORES?: boolean;
-}
-
-// Options for zscan
-interface ScanOptions {
-    MATCH?: string;
-    COUNT?: number;
-    TYPE?: string; // For SCAN command, not directly for ZSCAN in ioredis typings
-}
+import { LogContext, ReadOptions } from './loggingTypes.js';
 
 export class LoggedDatabaseClient {
     private underlyingClient: DatabaseClient;
