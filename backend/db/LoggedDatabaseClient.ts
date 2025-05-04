@@ -98,7 +98,7 @@ export class LoggedDatabaseClient {
          const logPayload = this.createLogPayload('sAdd', key, args, context);
          this.logger.debug(logPayload, 'Executing DB command: sAdd');
         try {
-             return await this.underlyingClient.sAdd(key, member);
+             return await this.underlyingClient.sAdd(key, member, context);
         } catch (error: any) {
             this.logger.error({ ...logPayload, err: error }, 'DB command failed: sAdd');
             throw error;
