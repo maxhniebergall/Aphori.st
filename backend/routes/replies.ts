@@ -130,7 +130,6 @@ router.post('/createReply', authenticateToken, async (req: Request, res: Respons
         await db.hIncrementQuoteCount(`${actualParentId}:quoteCounts`, quoteKey, quote, logContext);
         await db.sAdd(`user:${user.id}:replies`, replyId, logContext);
         await db.zAdd('replies:feed:mostRecent', score, replyId, logContext);
-        await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, score, replyId, logContext);
 
         // Log success *after* database operations
         logger.info({ ...logContext, replyId, parentId: actualParentId }, 'Successfully created new reply');
