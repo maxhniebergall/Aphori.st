@@ -1,17 +1,7 @@
 import { pino } from 'pino';
 import { DatabaseClient, RedisSortedSetItem, FeedItem, Quote, Compressed } from '../types/index.js';
-import { LogContext, ReadOptions, /* ScanOptions, RangeOptions */ } from './loggingTypes.js'; // Import LogContext and ReadOptions
+import { LogContext, ReadOptions, /* ScanOptions, RangeOptions */ } from './loggingTypes'; // Import LogContext and ReadOptions
 
-// Interface for logging context passed to methods
-export interface LogContext {
-    requestId?: string;
-    operationId?: string;
-}
-
-// Options for read operations (can be extended)
-interface ReadOptions {
-    returnCompressed?: boolean;
-}
 
 // Options for zRange/zRevRange/zRangeByScore (adjust based on actual usage)
 interface RangeOptions {
