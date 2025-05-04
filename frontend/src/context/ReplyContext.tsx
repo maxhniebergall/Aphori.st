@@ -131,7 +131,7 @@ export function ReplyProvider({ children }: ReplyProviderProps) {
     }
     // Do NOT add setReplyQuoteState to dependencies, it would cause loops.
     // replyQuote is already part of currentPersistenceKey generation.
-  }, [currentPersistenceKey, replyQuote]); // Depend on key and the current quote state.
+  }, [currentPersistenceKey, replyQuote, replyContent]); // Depend on key, the current quote state, and replyContent.
 
   // clearReplyState - Clears only the in-memory state, not localStorage
   const clearReplyState = useCallback(() => {
