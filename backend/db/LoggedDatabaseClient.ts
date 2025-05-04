@@ -59,7 +59,7 @@ export class LoggedDatabaseClient {
         this.logger.debug(logPayload, 'Executing DB command: hSet');
         try {
             // Assuming underlyingClient.hSet returns Promise<number>
-            return await this.underlyingClient.hSet(key, field, value);
+            return await this.underlyingClient.hSet(key, field, value, context);
         } catch (error: any) {
             this.logger.error({ ...logPayload, err: error }, 'DB command failed: hSet');
             throw error;
