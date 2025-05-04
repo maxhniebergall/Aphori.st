@@ -1,4 +1,4 @@
-import { Router, RequestHandler, Response } from 'express';
+import { Router, Response, Request } from 'express';
 import logger from '../logger.js';
 import {
     DatabaseClient as DatabaseClientType,
@@ -45,81 +45,88 @@ function isValidPost(item: any): item is Post {
  * @desc    Creates a new top-level post (story)
  * @access  Authenticated
  */
-router.post('/createPostTree', authenticateToken, ((async (req: AuthenticatedRequest, res: Response) => {
-    const operationId = randomUUID();
-    const requestId = res.locals.requestId;
-    const logContext = { requestId, operationId };
+router.post<{}, { id: string }, { postTree: PostCreationRequest }>(
+    '/createPostTree',
+    authenticateToken,
+    async (req: Request<{}, { id: string }, { postTree: PostCreationRequest }>, res: Response) => {
+        const operationId = randomUUID();
+        const requestId = res.locals.requestId;
+        const logContext = { requestId, operationId };
 
-    try {
-        const { postTree } = req.body as { postTree: PostCreationRequest };
-        if (!postTree || !postTree.content) {
-            logger.warn(logContext, 'Missing postTree content in request');
-            res.status(400).json({ error: 'PostTree data with content is required' });
-            return;
-        }
+        const authenticatedReq = req as AuthenticatedRequest;
+        const user = authenticatedReq.user;
 
-        const trimmedContent = postTree.content.trim();
-        const MAX_POST_LENGTH = 5000;
-        const MIN_POST_LENGTH = 100;
+        try {
+            const { postTree } = req.body;
+            if (!postTree || !postTree.content) {
+                logger.warn(logContext, 'Missing postTree content in request');
+                res.status(400).json({ error: 'PostTree data with content is required' });
+                return;
+            }
 
-        if (trimmedContent.length > MAX_POST_LENGTH) {
-             logger.warn({ ...logContext, contentLength: trimmedContent.length }, 'Post content exceeds maximum length');
-            res.status(400).json({ error: `Post content exceeds the maximum length of ${MAX_POST_LENGTH} characters.` });
-            return;
-        }
-        if (trimmedContent.length < MIN_POST_LENGTH) {
-            logger.warn({ ...logContext, contentLength: trimmedContent.length }, 'Post content below minimum length');
-            res.status(400).json({ error: `Post content must be at least ${MIN_POST_LENGTH} characters long.` });
-            return;
-        }
+            const trimmedContent = postTree.content.trim();
+            const MAX_POST_LENGTH = 5000;
+            const MIN_POST_LENGTH = 100;
 
-        const uuid = generateCondensedUuid();
-        const formattedPostTree: Post = {
-            id: uuid,
-            content: trimmedContent,
-            parentId: null,
-            authorId: req.user.id,
-            createdAt: new Date().toISOString(),
-        };
+            if (trimmedContent.length > MAX_POST_LENGTH) {
+                 logger.warn({ ...logContext, contentLength: trimmedContent.length }, 'Post content exceeds maximum length');
+                res.status(400).json({ error: `Post content exceeds the maximum length of ${MAX_POST_LENGTH} characters.` });
+                return;
+            }
+            if (trimmedContent.length < MIN_POST_LENGTH) {
+                logger.warn({ ...logContext, contentLength: trimmedContent.length }, 'Post content below minimum length');
+                res.status(400).json({ error: `Post content must be at least ${MIN_POST_LENGTH} characters long.` });
+                return;
+            }
 
-        // Log action intent before DB calls
-        logger.info(
-            { 
-                ...logContext,
-                action: {
-                    type: 'CREATE_POST',
-                    params: {
-                        postId: uuid,
-                        authorId: req.user.id,
-                        contentLength: trimmedContent.length,
-                    }
+            const uuid = generateCondensedUuid();
+            const formattedPostTree: Post = {
+                id: uuid,
+                content: trimmedContent,
+                parentId: null,
+                authorId: user.id,
+                createdAt: new Date().toISOString(),
+            };
+
+            // Log action intent before DB calls
+            logger.info(
+                { 
+                    ...logContext,
+                    action: {
+                        type: 'CREATE_POST',
+                        params: {
+                            postId: uuid,
+                            authorId: user.id,
+                            contentLength: trimmedContent.length,
+                        }
+                    },
                 },
-            },
-            'Initiating CreatePost action'
-        );
+                'Initiating CreatePost action'
+            );
 
-        // Store in Redis with logging context
-        await db.hSet(uuid, 'postTree', JSON.stringify(formattedPostTree), logContext);
-        await db.lPush('allPostTreeIds', uuid, logContext);
-        await db.sAdd(`user:${req.user.id}:posts`, uuid, logContext);
+            // Store in Redis with logging context
+            await db.hSet(uuid, 'postTree', JSON.stringify(formattedPostTree), logContext);
+            await db.lPush('allPostTreeIds', uuid, logContext);
+            await db.sAdd(`user:${user.id}:posts`, uuid, logContext);
 
-        // Add to feed items with logging context
-        const feedItem: FeedItem = {
-            id: uuid,
-            text: trimmedContent, // Use trimmed content for feed item as well
-            authorId: req.user.id,
-            createdAt: formattedPostTree.createdAt
-        };
-        // Assuming lPush is the correct method based on server.ts logic
-        await db.lPush('feedItems', JSON.stringify(feedItem), logContext);
+            // Add to feed items with logging context
+            const feedItem: FeedItem = {
+                id: uuid,
+                text: trimmedContent, // Use trimmed content for feed item as well
+                authorId: user.id,
+                createdAt: formattedPostTree.createdAt
+            };
+            // Assuming lPush is the correct method based on server.ts logic
+            await db.lPush('feedItems', JSON.stringify(feedItem), logContext);
 
-        logger.info({ ...logContext, postId: uuid }, `Successfully created new PostTree`);
-        res.json({ id: uuid });
-    } catch (err) {
-        logger.error({ ...logContext, err }, 'Error creating PostTree');
-        res.status(500).json({ error: 'Server error' });
+            logger.info({ ...logContext, postId: uuid }, `Successfully created new PostTree`);
+            res.json({ id: uuid });
+        } catch (err) {
+            logger.error({ ...logContext, err }, 'Error creating PostTree');
+            res.status(500).json({ error: 'Server error' });
+        }
     }
-}) as unknown as RequestHandler));
+);
 
 /**
  * @route   GET /api/posts/:uuid
