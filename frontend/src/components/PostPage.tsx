@@ -23,7 +23,7 @@ import CharCount from './CharCount';
 
 const MAX_POST_LENGTH = 5000;
 const MIN_POST_LENGTH = 100;
-const LOCAL_STORAGE_KEY = ' ';
+const LOCAL_STORAGE_KEY = 'post_draft_content';
 const EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
 
 interface StoredContent {
