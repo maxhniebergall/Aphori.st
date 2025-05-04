@@ -77,9 +77,15 @@ export class DatabaseCompression {
 
         const buf = Buffer.from(parsed.d, 'base64');
         
-        if (parsed.c === false) {
+
+        // Treat undefined the same as false (back-compat)
+        if (parsed.c === false || parsed.c === undefined) {
+            if (parsed.c === undefined) {
+                console.warn('DEPRECATED: Encountered legacy data format without compression flag. Support for this format will be removed in a future version.');
+            }
             return JSON.parse(buf.toString());
         }
+
 
         const decompressed = await inflateAsync(buf);
         return JSON.parse(decompressed.toString());
