@@ -262,7 +262,8 @@ router.get<{
         logger.info({ parentId, quote: quoteObj, sortCriteria }, '[getReplies] Processing request');
         
         // Pagination parameters
-        const limit = parseInt(req.query.limit as string) || 10;
+        const MAX_LIMIT = 100; // Cap the limit to prevent excessive data requests
+        const limit = Math.min(parseInt(req.query.limit as string) || 10, MAX_LIMIT);
         const cursor = req.query.cursor as string | undefined; // Cursor is the score for zscan, can be undefined
 
         // Build the sorted set key for replies based on parent ID, full quote object key, and sorting criteria.
@@ -280,17 +281,17 @@ router.get<{
         const fetchLimit = limit + 1;
         
         // Correct call using zRevRangeByScore
-        // Max score: If cursor exists, use it as the upper bound (inclusive). Otherwise, use Infinity.
+        // Max score: If cursor exists, use it as the upper bound (inclusive). Otherwise, use a safe large number.
         // Min score: Always -Infinity to get all older items.
         // Limit: Fetch one extra item to check for 'hasMore'.
-        const maxScore = cursor ? Number(cursor) : '+inf'; // Use '+inf' for Redis command
+        const maxScore = cursor ? Number(cursor) : Number.MAX_SAFE_INTEGER; // Use safe integer instead of '+inf'
         const minScore = '-inf';                       // Use '-inf' for Redis command
-        // Ensure T matches the expected structure returned by zRevRangeByScore 
+        // Ensure T matches the expected structure returned by zRevRangeByScore
         // (which returns RedisSortedSetItem<T>, where T is the base type stored, potentially compressed)
         // Let's assume the base type T stored via zAdd was the compressed reply ID string.
         // Note: The RedisClient's zRevRangeByScore expects numeric scores, but internally converts to string for the command.
         // We pass numbers or +/-inf strings here, relying on the client's internal String() conversion.
-        const maxScoreNum = maxScore === '+inf' ? Infinity : Number(maxScore); // Keep as number for interface
+        const maxScoreNum = maxScore === Number.MAX_SAFE_INTEGER ? Infinity : Number(maxScore); // Convert MAX_SAFE_INTEGER back to Infinity if needed for client
         const minScoreNum = minScore === '-inf' ? -Infinity : Number(minScore); // Keep as number for interface
 
         // Expect Array<{ score: number, value: string (replyId) }>
