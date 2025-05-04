@@ -34,6 +34,9 @@ import rateLimit from 'express-rate-limit';
 import { seedDevPosts } from './seed.js';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+
+import path from 'path';
+
 import { dirname } from 'path';
 import { 
     DatabaseClient as DatabaseClientType,
@@ -78,7 +81,10 @@ const PORT = process.env.PORT || 5050;
 // Load build hash
 let BUILD_HASH = 'development';
 try {
-    const buildEnv = fs.readFileSync('.env.build', 'utf8');
+    const buildEnv = fs.readFileSync(
+      path.join(process.cwd(), '.env.build'),
+      'utf8'
+    );
     BUILD_HASH = buildEnv.split('=')[1].trim();
     logger.info(`Loaded build hash: ${BUILD_HASH}`);
 } catch (err) {
