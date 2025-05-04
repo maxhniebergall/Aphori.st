@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { randomUUID } from 'crypto'; // Import randomUUID
 import logger from '../logger.js';
 import {
     DatabaseClient as DatabaseClientType,
@@ -41,6 +42,11 @@ const generateCondensedUuid = (): string => {
  * @access  Authenticated
  */
 router.post('/createReply', authenticateToken, async (req: Request, res: Response<CreateReplyResponse>) => {
+    // Generate IDs for logging context
+    const operationId = randomUUID();
+    const requestId = res.locals.requestId; // Get from middleware
+    const logContext = { requestId, operationId }; 
+
     try {
         const text: string = req.body.text;
         const parentId: string[] = req.body.parentId;
@@ -48,6 +54,7 @@ router.post('/createReply', authenticateToken, async (req: Request, res: Respons
         const user: User = (req as AuthenticatedRequest).user;
 
         if (!text || !parentId || !quote || !quote.text || !quote.sourceId || !quote.selectionRange) {
+            logger.warn(logContext, 'Missing required fields for createReply');
             res.status(400).json({
                 success: false,
                 error: 'Missing required fields. Ensure text, parentId, and a full quote (with text, sourceId, and selectionRange) are provided.'
@@ -61,6 +68,7 @@ router.post('/createReply', authenticateToken, async (req: Request, res: Respons
         const IGNORE_MIN_REPLY_LENGTH = ["Yes!"];
 
         if (trimmedText.length > MAX_REPLY_LENGTH) {
+            logger.warn({...logContext, textLength: trimmedText.length }, 'Reply text exceeds maximum length');
             res.status(400).json({
                 success: false,
                 error: `Reply text exceeds the maximum length of ${MAX_REPLY_LENGTH} characters.`
@@ -68,6 +76,7 @@ router.post('/createReply', authenticateToken, async (req: Request, res: Respons
             return;
         }
         if (!IGNORE_MIN_REPLY_LENGTH.includes(trimmedText) && trimmedText.length < MIN_REPLY_LENGTH) {
+            logger.warn({...logContext, textLength: trimmedText.length }, 'Reply text below minimum length');
             res.status(400).json({
                 success: false,
                 error: `Reply text must be at least ${MIN_REPLY_LENGTH} characters long.`
@@ -84,21 +93,43 @@ router.post('/createReply', authenticateToken, async (req: Request, res: Respons
             createdAt: new Date().getTime().toString()
         };
 
-        await db.hSet(newReply.id, 'reply', newReply);
+        // Log the replayable action intent and parameters *before* database calls
+        logger.info(
+            { 
+                ...logContext,
+                action: {
+                    type: 'CREATE_REPLY',
+                    params: {
+                        replyId: newReply.id,
+                        parentId: newReply.parentId,
+                        authorId: newReply.authorId,
+                        quoteSourceId: newReply.quote.sourceId,
+                        // Avoid logging full text/quote content here for brevity unless needed
+                        // textLength: trimmedText.length,
+                        // quoteTextSnippet: newReply.quote.text.substring(0, 50) + '...',
+                    }
+                },
+            },
+            'Initiating CreateReply action'
+        );
+
+        // Pass logContext to all DB calls
+        await db.hSet(newReply.id, 'reply', newReply, logContext);
         const quoteKey = getQuoteKey(quote);
         const score = Date.now();
         const actualParentId = Array.isArray(newReply.parentId) ? newReply.parentId[0] : newReply.parentId;
         const replyId = newReply.id;
 
-        await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, score, replyId);
-        await db.zAdd(`replies:uuid:${actualParentId}:quote:${quoteKey}:mostRecent`, score, replyId);
-        await db.hIncrementQuoteCount(`${actualParentId}:quoteCounts`, quoteKey, quote);
-        await db.sAdd(`user:${user.id}:replies`, replyId);
-        await db.zAdd(`replies:${actualParentId}:${quote.text}:mostRecent`, score, replyId);
-        await db.zAdd('replies:feed:mostRecent', score, replyId);
-        await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId);
+        await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, score, replyId, logContext);
+        await db.zAdd(`replies:uuid:${actualParentId}:quote:${quoteKey}:mostRecent`, score, replyId, logContext);
+        await db.hIncrementQuoteCount(`${actualParentId}:quoteCounts`, quoteKey, quote, logContext);
+        await db.sAdd(`user:${user.id}:replies`, replyId, logContext);
+        await db.zAdd(`replies:${actualParentId}:${quote.text}:mostRecent`, score, replyId, logContext);
+        await db.zAdd('replies:feed:mostRecent', score, replyId, logContext);
+        await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId, logContext);
 
-        logger.info('Created new reply with ID: %s for parent: %s', replyId, actualParentId);
+        // Log success *after* database operations
+        logger.info({ ...logContext, replyId, parentId: actualParentId }, 'Successfully created new reply');
 
         const response: CreateReplyResponse = {
             success: true,
@@ -106,7 +137,8 @@ router.post('/createReply', authenticateToken, async (req: Request, res: Respons
         };
         res.send(response);
     } catch (err) {
-        logger.error({ err }, 'Error creating reply');
+        // Ensure error logs also include context
+        logger.error({ ...logContext, err }, 'Error creating reply');
         res.status(500).json({
             success: false,
             error: 'Server error'

@@ -12,6 +12,7 @@ import {
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
+import { randomUUID } from 'crypto';
 
 // Use the imported type for the placeholder and the setDb function
 let db: DatabaseClientType;
@@ -40,33 +41,39 @@ function isValidPost(item: any): item is Post {
 }
 
 /**
- * @route   POST /posts/createPostTree
- * @desc    Create a new root post (post tree)
+ * @route   POST /api/posts/createPostTree
+ * @desc    Creates a new top-level post (story)
  * @access  Authenticated
  */
 router.post('/createPostTree', authenticateToken, ((async (req: AuthenticatedRequest, res: Response) => {
+    const operationId = randomUUID();
+    const requestId = res.locals.requestId;
+    const logContext = { requestId, operationId };
+
     try {
         const { postTree } = req.body as { postTree: PostCreationRequest };
         if (!postTree || !postTree.content) {
+            logger.warn(logContext, 'Missing postTree content in request');
             res.status(400).json({ error: 'PostTree data with content is required' });
             return;
         }
 
         const trimmedContent = postTree.content.trim();
-
         const MAX_POST_LENGTH = 5000;
         const MIN_POST_LENGTH = 100;
+
         if (trimmedContent.length > MAX_POST_LENGTH) {
+             logger.warn({ ...logContext, contentLength: trimmedContent.length }, 'Post content exceeds maximum length');
             res.status(400).json({ error: `Post content exceeds the maximum length of ${MAX_POST_LENGTH} characters.` });
             return;
         }
         if (trimmedContent.length < MIN_POST_LENGTH) {
+            logger.warn({ ...logContext, contentLength: trimmedContent.length }, 'Post content below minimum length');
             res.status(400).json({ error: `Post content must be at least ${MIN_POST_LENGTH} characters long.` });
             return;
         }
 
         const uuid = generateCondensedUuid();
-
         const formattedPostTree: Post = {
             id: uuid,
             content: trimmedContent,
@@ -75,61 +82,65 @@ router.post('/createPostTree', authenticateToken, ((async (req: AuthenticatedReq
             createdAt: new Date().toISOString(),
         };
 
-        // Store in Redis
-        await db.hSet(uuid, 'postTree', JSON.stringify(formattedPostTree));
-        await db.lPush('allPostTreeIds', uuid);
-        await db.sAdd(`user:${req.user.id}:posts`, uuid);
+        // Log action intent before DB calls
+        logger.info(
+            { 
+                ...logContext,
+                action: {
+                    type: 'CREATE_POST',
+                    params: {
+                        postId: uuid,
+                        authorId: req.user.id,
+                        contentLength: trimmedContent.length,
+                    }
+                },
+            },
+            'Initiating CreatePost action'
+        );
 
+        // Store in Redis with logging context
+        await db.hSet(uuid, 'postTree', JSON.stringify(formattedPostTree), logContext);
+        await db.lPush('allPostTreeIds', uuid, logContext);
+        await db.sAdd(`user:${req.user.id}:posts`, uuid, logContext);
+
+        // Add to feed items with logging context
         const feedItem: FeedItem = {
             id: uuid,
-            text: trimmedContent,
+            text: trimmedContent, // Use trimmed content for feed item as well
             authorId: req.user.id,
             createdAt: formattedPostTree.createdAt
         };
+        // Assuming lPush is the correct method based on server.ts logic
+        await db.lPush('feedItems', JSON.stringify(feedItem), logContext);
 
-        // Use methods to add feed item to the global list and update global counter
-        try {
-            // Add to the global feed list (uses db.lPush -> FirebaseClient.lPush)
-            await db.lPush('feedItems', JSON.stringify(feedItem)); 
-            // Increment the global feed counter (use the dedicated method)
-            await db.incrementFeedCounter(1); // Correct method for the fixed global counter
-            logger.info('Added feed item for post %s to global feedItems list and incremented global counter.', uuid);
-            
-            // Also add to the user-specific feed sorted set and counter
-            const feedItemKey = `feed:${req.user.id}`; // Key for the user's feed sorted set
-            const score = Date.now(); // Use timestamp as score for chronological sorting
-            await db.zAdd(feedItemKey, score, uuid); // Uses db.zAdd -> FirebaseClient.zAdd (hashes key)
-            // Increment user-specific feed item counter (uses db.hIncrBy -> FirebaseClient.hIncrBy - hashes key & field)
-            await db.hIncrBy('feedItemCounts', feedItemKey, 1); 
-            logger.info('Added feed item for post %s to user-specific feed key %s and incremented its counter.', uuid, feedItemKey);
-        } catch (feedError) {
-            logger.error({ err: feedError, postId: uuid }, 'Failed to add feed item to global list or user-specific set');
-            // Decide if we should proceed without feed item or return error
-            // For now, log error and continue
-        }
-
-        logger.info('Created new PostTree with UUID: %s', uuid);
+        logger.info({ ...logContext, postId: uuid }, `Successfully created new PostTree`);
         res.json({ id: uuid });
     } catch (err) {
-        logger.error({ err }, 'Error creating PostTree');
+        logger.error({ ...logContext, err }, 'Error creating PostTree');
         res.status(500).json({ error: 'Server error' });
     }
 }) as unknown as RequestHandler));
 
 /**
- * @route   GET /posts/:uuid
- * @desc    Retrieves a post (top level postTree element)
+ * @route   GET /api/posts/:uuid
+ * @desc    Retrieves a post, a top level postTree element
  * @access  Public
  */
 router.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/:uuid', async (req, res) => {
     const { uuid } = req.params;
+    const requestId = res.locals.requestId;
+    const logContext = { requestId }; // Include requestId for read operations
+
     if (!uuid) {
+        logger.warn(logContext, 'Missing UUID in getPost request');
         res.status(400).json({ success: false, error: 'UUID is required' });
-        return;
+        return; 
     }
     try {
-        let maybePostString = await db.hGet(uuid, 'postTree', { returnCompressed: false });
+        let maybePostString = await db.hGet(uuid, 'postTree', { returnCompressed: false }, logContext);
+        
         if (!maybePostString || typeof maybePostString !== 'string') {
+            logger.warn({ ...logContext, uuid }, 'Post not found or invalid format');
             res.status(404).json({ success: false, error: 'Node not found or invalid format' });
             return;
         }
@@ -138,27 +149,28 @@ router.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/:uuid', 
         try {
             maybePost = JSON.parse(maybePostString);
         } catch (parseError) {
-            logger.error({ postString: maybePostString, err: parseError }, 'Failed to parse post JSON');
+            logger.error({ ...logContext, uuid, err: parseError, rawData: maybePostString }, 'Failed to parse post JSON');
             res.status(500).json({ success: false, error: 'Failed to parse post data' });
             return;
         }
 
-        if (!isValidPost(maybePost)) {
-            logger.error({ post: maybePost }, 'Invalid post structure returned from database');
-            res.status(500).json({ success: false, error: 'Invalid post data' });
+        // Basic validation - consider adding a proper type guard
+        if (!(typeof maybePost === 'object' && maybePost.id && maybePost.content)) {
+            logger.error({ ...logContext, uuid, postData: maybePost }, 'Invalid post structure retrieved');
+            res.status(500).json({ success: false, error: 'Invalid post data retrieved' });
             return;
         }
-
-        const post = await db.compress(maybePost) as Compressed<Post>;
-
-        const response: CompressedApiResponse<Compressed<Post>> = {
+        
+        const post = await db.compress(maybePost) as Compressed<Post>; // Assuming compress doesn't need context
+    
+        const apiResponse: CompressedApiResponse<Compressed<Post>> = {
             success: true,
             compressedData: post
         };
         res.setHeader('X-Data-Compressed', 'true');
-        res.send(response);
+        res.send(apiResponse);
     } catch (error) {
-        logger.error({ err: error }, 'Error in getPost endpoint');
+        logger.error({ ...logContext, uuid, err: error }, 'Error in getPost endpoint');
         res.status(500).json({ success: false, error: 'Server error' });
     }
 });

@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import { LogContext } from '../db/loggingTypes.js'; // Import LogContext
 
 // Database Types
 export interface DatabaseClientBase {
@@ -6,32 +7,32 @@ export interface DatabaseClientBase {
     disconnect?: () => Promise<void>;
     isConnected: () => Promise<boolean>;
     isReady: () => Promise<boolean>;
-    hGet: <T = any>(key: string, field: string, options?: { returnCompressed: boolean }) => Promise<T>;
-    hGetAll: <T = any>(key: string, options?: { returnCompressed: boolean }) => Promise<Record<string, T>>;
-    hSet: (key: string, field: string, value: any) => Promise<number>;
-    hIncrBy: (key: string, field: string, increment: number) => Promise<number>;
-    get: <T = any>(key: string) => Promise<T>;
-    set: (key: string, value: any) => Promise<string | null>;
-    lPush: (key: string, value: any) => Promise<number>;
-    lRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<T[]>;
-    lSet: (key: string, index: number, value: any) => Promise<void>;
-    sAdd: (key: string, value: string) => Promise<number>;
-    sMembers: (key: string) => Promise<string[]>;
-    zAdd: (key: string, score: number, value: string) => Promise<number>;
-    zRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }) => Promise<T[]>;
-    zCard: (key: string) => Promise<number>;
+    hGet: <T = any>(key: string, field: string, options?: { returnCompressed: boolean }, context?: LogContext) => Promise<T>;
+    hGetAll: <T = any>(key: string, options?: { returnCompressed: boolean }, context?: LogContext) => Promise<Record<string, T>>;
+    hSet: (key: string, field: string, value: any, context?: LogContext) => Promise<number>;
+    hIncrBy: (key: string, field: string, increment: number, context?: LogContext) => Promise<number>;
+    get: <T = any>(key: string, context?: LogContext) => Promise<T>;
+    set: (key: string, value: any, context?: LogContext) => Promise<string | null>;
+    lPush: (key: string, value: any, context?: LogContext) => Promise<number>;
+    lRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }, context?: LogContext) => Promise<T[]>;
+    lSet: (key: string, index: number, value: any, context?: LogContext) => Promise<void>;
+    sAdd: (key: string, value: string, context?: LogContext) => Promise<number>;
+    sMembers: (key: string, context?: LogContext) => Promise<string[]>;
+    zAdd: (key: string, score: number, value: string, context?: LogContext) => Promise<number>;
+    zRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }, context?: LogContext) => Promise<T[]>;
+    zCard: (key: string, context?: LogContext) => Promise<number>;
     encodeKey: (id: string, prefix: string) => string;
     compress: <T = any>(data: T) => Promise<Compressed<T>>;
     decompress: <T = any>(data: T) => Promise<T>;
-    zRevRangeByScore: <T = string>(key: string, max: number, min: number, options?: { limit?: number }) => Promise<RedisSortedSetItem<T>[]>;
-    zscan: (key: string, cursor: string, options?: { match?: string; count?: number }) => Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }>;
-    keys: (pattern: string) => Promise<string[]>;
-    lLen: (key: string) => Promise<number>;
-    del: (key: string) => Promise<number>;
-    hIncrementQuoteCount: (key: string, field: string, quoteValue: any) => Promise<number>;
-    addFeedItem: (item: any) => Promise<string>;
-    incrementFeedCounter: (amount: number) => Promise<void>;
-    getFeedItemsPage: (limit: number, cursorKey?: string) => Promise<{ items: any[], nextCursorKey: string | null }>;
+    zRevRangeByScore: <T = string>(key: string, max: number, min: number, options?: { limit?: number }, context?: LogContext) => Promise<RedisSortedSetItem<T>[]>;
+    zscan: (key: string, cursor: string, options?: { match?: string; count?: number }, context?: LogContext) => Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }>;
+    keys: (pattern: string, context?: LogContext) => Promise<string[]>;
+    lLen: (key: string, context?: LogContext) => Promise<number>;
+    del: (key: string, context?: LogContext) => Promise<number>;
+    hIncrementQuoteCount: (key: string, field: string, quoteValue: any, context?: LogContext) => Promise<number>;
+    addFeedItem: (item: any, context?: LogContext) => Promise<string>;
+    incrementFeedCounter: (amount: number, context?: LogContext) => Promise<void>;
+    getFeedItemsPage: (limit: number, cursorKey?: string, context?: LogContext) => Promise<{ items: any[], nextCursorKey: string | null }>;
 }
 
 // Export the base interface AND keep the extended one if needed for now,
