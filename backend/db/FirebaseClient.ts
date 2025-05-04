@@ -63,26 +63,39 @@ export class FirebaseClient extends DatabaseClientInterface {
         reject(error);
       });
 
-      // Optional: Add a timeout to prevent hanging indefinitely if the emulator/DB is down
-      const timeoutId = setTimeout(() => {
-          console.error('Firebase Realtime Database connection check timed out.');
-          connectedRef.off('value', listener);
-          reject(new Error('Connection check timed out'));
-      }, 15000); // 15 second timeout
+// …inside your connect() method…
 
-      // Clear timeout if connection succeeds or fails before timeout
-      const clearConnectionTimeout = () => clearTimeout(timeoutId);
-      connectedRef.on('value', (snap) => { if (snap.val() === true) clearConnectionTimeout(); });
-      // Also clear timeout on error
-      // The reject path already clears the listener, let's ensure timeout is cleared too.
-      // Modify the error handler slightly:
-      // }, (error) => { ... reject(error); clearConnectionTimeout(); }); // Can't modify inline easily, do this manually if needed.
-      // Simpler: Just wrap resolve/reject to clear timeout
-      const originalResolve = resolve;
-      const originalReject = reject;
-      resolve = () => { clearTimeout(timeoutId); originalResolve(); };
-      reject = (err) => { clearTimeout(timeoutId); originalReject(err); };
+  const connectedRef = this.db.ref('.info/connected');
 
+  // 15 second timeout to bail out if we never connect
+  const timeoutId = setTimeout(() => {
+    connectedRef.off('value', onValue);
+    reject(new Error('Connection check timed out'));
+  }, 15_000);
+
+  // single named listener for both success and later removal
+  function onValue(snap: any) {
+    if (snap.val() === true) {
+      clearTimeout(timeoutId);
+      connectedRef.off('value', onValue);
+      console.log('Firebase Realtime Database connection verified.');
+      resolve();
+    }
+  }
+
+  // wire up the listener + inline error handler
+  connectedRef.on(
+    'value',
+    onValue,
+    (error: any) => {
+      clearTimeout(timeoutId);
+      connectedRef.off('value', onValue);
+      console.error('Firebase Realtime Database connection check failed:', error);
+      reject(error);
+    }
+  );
+
+// …rest of connect()…
 
     });
   }
