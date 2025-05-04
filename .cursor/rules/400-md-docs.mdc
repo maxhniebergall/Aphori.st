@@ -7,7 +7,7 @@ alwaysApply: false
 
 ## Requirements
 
-- Follow the official [Markdown Guide](mdc:https:/www.markdownguide.org) for all basic and extended syntax
+- Follow the official [Markdown Guide](https://www.markdownguide.org) for all basic and extended syntax
 - Maintain clear document structure and readability
 - Include appropriate metadata when required
 - Use Mermaid diagrams for visual documentation where appropriate
