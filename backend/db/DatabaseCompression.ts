@@ -27,7 +27,7 @@ export class DatabaseCompression {
             // CompressedDatabaseClient to the application layer if triggered.
             throw new Error('Key must be a non-empty string');
         }
-        return `${prefix}:${key.replace(/[.#$[\]]/g, '_')}`;
+        return `${prefix}:${key.replace(/[.#$[\\]\\/]/g, '_')}`;
     }
 
     async compress<T = any>(data: T): Promise<string> {
