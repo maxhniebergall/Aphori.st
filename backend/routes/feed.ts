@@ -44,7 +44,6 @@ router.get('/', async (req, res): Promise<void> => {
         // Connection state log might still be misleading, but keep it for now
         logger.info('Current db connection state: %O', {
             connected: await db.isConnected(), // Await the promise
-            ready: await db.isReady()       // Await the promise
         });
 
         // Get total items using the updated lLen
