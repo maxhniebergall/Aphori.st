@@ -97,11 +97,13 @@ export class LoggedDatabaseClient {
 
     // Add lPush if used
     async lPush(key: string, element: string | string[], context?: LogContext): Promise<number> {
-        const args = Array.isArray(element) ? { elementCount: element.length } : { elementType: typeof element };
+        const args = Array.isArray(element)
+            ? { elementCount: element.length }
+            : { elementType: typeof element };
         const logPayload = this.createLogPayload('lPush', key, args, context);
         this.logger.debug(logPayload, 'Executing DB command: lPush');
         try {
-            return await this.underlyingClient.lPush(key, element);
+            return await this.underlyingClient.lPush(key, element, context);
         } catch (error: any) {
             this.logger.error({ ...logPayload, err: error }, 'DB command failed: lPush');
             throw error;
