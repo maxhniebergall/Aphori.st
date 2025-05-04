@@ -156,11 +156,17 @@ const PostPage: React.FC = (): JSX.Element => {
       localStorage.removeItem(LOCAL_STORAGE_KEY);
     } catch (err: unknown) {
       if (typeof err === 'object' && err !== null) {
-        const errorResponse = err as { response: { data: { message: string } } };
-        setError(errorResponse.response?.data?.message || 'Failed to create post');
+        // More safely access nested properties
+        const errorObj = err as any;
+        const errorMessage =
+          errorObj.response?.data?.message ||
+          errorObj.message ||
+          'Failed to create post';
+        setError(errorMessage);
       } else {
         setError('Failed to create post');
       }
+    }
     } finally { 
       setIsSubmitting(false);
     }
