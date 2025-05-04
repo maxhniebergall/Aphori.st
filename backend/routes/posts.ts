@@ -161,8 +161,8 @@ router.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/:uuid', 
             return;
         }
 
-        // Basic validation - consider adding a proper type guard
-        if (!(typeof maybePost === 'object' && maybePost.id && maybePost.content)) {
+        // Use the existing isValidPost type guard
+        if (!isValidPost(maybePost)) {
             logger.error({ ...logContext, uuid, postData: maybePost }, 'Invalid post structure retrieved');
             res.status(500).json({ success: false, error: 'Invalid post data retrieved' });
             return;
