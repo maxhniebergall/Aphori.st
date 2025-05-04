@@ -5,10 +5,7 @@ import PostTreeHolder from './PostTreeHolder';
 function PostTreePage() {
   const { state } = useUser();
 
-  useEffect(() => {
-    // Check if user is logged in
-    
-  }, [state?.user]);
+// (Removed the empty useEffect hook here)
 
   return (
     <div className="post-tree-page">
