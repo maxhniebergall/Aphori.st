@@ -49,7 +49,7 @@ router.post('/createReply', authenticateToken, async (req: Request, res: Respons
 
     try {
         const text: string = req.body.text;
-        const parentId: string[] = req.body.parentId;
+        const parentId: string | string[] = req.body.parentId;
         const quote: Quote = req.body.quote;
         const user: User = (req as AuthenticatedRequest).user;
 
@@ -60,6 +60,11 @@ router.post('/createReply', authenticateToken, async (req: Request, res: Respons
                 error: 'Missing required fields. Ensure text, parentId, and a full quote (with text, sourceId, and selectionRange) are provided.'
             });
             return;
+        }
+        if (Array.isArray(parentId) && parentId.length === 0) {
+             logger.warn(logContext, 'parentId array cannot be empty');
+             res.status(400).json({ success: false, error: 'parentId array cannot be empty' });
+             return;
         }
 
         const trimmedText = text.trim();
