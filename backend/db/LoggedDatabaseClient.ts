@@ -1,6 +1,6 @@
 import { pino } from 'pino';
 import { DatabaseClient, RedisSortedSetItem, FeedItem, Quote, Compressed } from '../types/index.js';
-import { LogContext, ReadOptions, /* ScanOptions, RangeOptions */ } from './loggingTypes'; // Import LogContext and ReadOptions
+import { LogContext, ReadOptions, ScanOptions, RangeOptions } from './loggingTypes.js';
 
 
 // Options for zRange/zRevRange/zRangeByScore (adjust based on actual usage)
@@ -49,7 +49,7 @@ export class LoggedDatabaseClient {
         this.logger.debug(logPayload, 'Executing DB command: hSet');
         try {
             // Assuming underlyingClient.hSet returns Promise<number>
-            return await this.underlyingClient.hSet(key, field, value);
+            return await this.underlyingClient.hSet(key, field, value, context);
         } catch (error: any) {
             this.logger.error({ ...logPayload, err: error }, 'DB command failed: hSet');
             throw error;
@@ -88,7 +88,7 @@ export class LoggedDatabaseClient {
          const logPayload = this.createLogPayload('sAdd', key, args, context);
          this.logger.debug(logPayload, 'Executing DB command: sAdd');
         try {
-             return await this.underlyingClient.sAdd(key, member);
+             return await this.underlyingClient.sAdd(key, member, context);
         } catch (error: any) {
             this.logger.error({ ...logPayload, err: error }, 'DB command failed: sAdd');
             throw error;
