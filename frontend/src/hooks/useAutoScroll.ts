@@ -50,5 +50,5 @@ export default function useAutoScroll({
         cancelAnimationFrame(rafId);
       };
     }
-  }, [listRef, targetIndex, alignment, dependencies]);
+  }, [listRef, targetIndex, alignment, ...(dependencies || [])]);
 } 
