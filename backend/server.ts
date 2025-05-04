@@ -211,7 +211,6 @@ app.get('/health', (req: Request, res: Response): void => {
 // --- Mount Routers ---
 app.use('/api/auth', authRoutes);
 app.use('/api/feed', feedRoutes);
-// Apply authenticateToken middleware ONLY to routes that require it
 app.use('/api/posts', postRoutes); 
 app.use('/api/replies', replyRoutes);
 
