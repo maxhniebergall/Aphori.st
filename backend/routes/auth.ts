@@ -1,5 +1,6 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import rateLimit from 'express-rate-limit';
 import logger from '../logger.js';
 import {
@@ -11,6 +12,7 @@ import {
     DatabaseClient as DatabaseClientType
 } from '../types/index.js';
 import { sendEmail } from '../mailer.js';
+import { LogContext } from '../db/loggingTypes.js';
 
 // Use the imported type for the placeholder and the setDb function
 let db: DatabaseClientType;
@@ -27,8 +29,8 @@ const EMAIL_TO_ID_PREFIX = 'email_to_id';
 
 // --- Helper Functions --- (Moved from server.ts)
 
-const getUserById = async (id: string): Promise<UserResult> => {
-    const userData = await db.hGet(db.encodeKey(id, USER_PREFIX), 'data');
+const getUserById = async (id: string, context?: LogContext): Promise<UserResult> => {
+    const userData = await db.hGet(db.encodeKey(id, USER_PREFIX), 'data', undefined, context);
     if (!userData) {
         return {
             success: false,
@@ -41,9 +43,9 @@ const getUserById = async (id: string): Promise<UserResult> => {
     };
 };
 
-const getUserByEmail = async (email: string): Promise<UserResult> => {
+const getUserByEmail = async (email: string, context?: LogContext): Promise<UserResult> => {
     // Get user ID from email mapping
-    const userId = await db.get(db.encodeKey(email.toLowerCase(), EMAIL_TO_ID_PREFIX));
+    const userId = await db.get(db.encodeKey(email.toLowerCase(), EMAIL_TO_ID_PREFIX), context);
     if (!userId) {
         return {
             success: false,
@@ -51,7 +53,7 @@ const getUserByEmail = async (email: string): Promise<UserResult> => {
         };
     }
 
-    const userResult = await getUserById(userId);
+    const userResult = await getUserById(userId, context);
     if (!userResult.success || !userResult.data) {
         return userResult;
     }
@@ -64,9 +66,9 @@ const getUserByEmail = async (email: string): Promise<UserResult> => {
     };
 };
 
-const createUser = async (id: string, email: string): Promise<UserResult> => {
+const createUser = async (id: string, email: string, context?: LogContext): Promise<UserResult> => {
     // Check if ID is taken
-    const existingUser = await getUserById(id);
+    const existingUser = await getUserById(id, context);
     if (existingUser.success) {
         return {
             success: false,
@@ -75,7 +77,7 @@ const createUser = async (id: string, email: string): Promise<UserResult> => {
     }
 
     // Check if email is already registered
-    const existingEmail = await db.get(db.encodeKey(email, EMAIL_TO_ID_PREFIX));
+    const existingEmail = await db.get(db.encodeKey(email, EMAIL_TO_ID_PREFIX), context);
     if (existingEmail) {
         return {
             success: false,
@@ -91,18 +93,18 @@ const createUser = async (id: string, email: string): Promise<UserResult> => {
 
     try {
         // Store user data
-        await db.hSet(db.encodeKey(id, USER_PREFIX), 'data', newUser);
+        await db.hSet(db.encodeKey(id, USER_PREFIX), 'data', newUser, context);
         // Add ID to set of user IDs
-        await db.sAdd(USER_IDS_SET, id);
+        await db.sAdd(USER_IDS_SET, id, context);
         // Create email to ID mapping
-        await db.set(db.encodeKey(email, EMAIL_TO_ID_PREFIX), id);
+        await db.set(db.encodeKey(email, EMAIL_TO_ID_PREFIX), id, context);
 
         return {
             success: true,
             data: newUser
         };
-    } catch (error) {
-        logger.error({ err: error }, 'Database error creating user');
+    } catch (error: any) {
+        logger.error({ ...context, err: error, userId: id, email }, 'Database error creating user');
         return {
             success: false,
             error: 'Server error creating user'
@@ -332,11 +334,14 @@ router.post('/verify-token', async (req, res) => {
  * @desc    Check if a user ID is available
  * @access  Public
  */
-router.get('/check-user-id/:id', async (req, res) => {
+router.get('/check-user-id/:id', async (req: Request<{ id: string }>, res: Response) => {
     const { id } = req.params;
+    const requestId = res.locals.requestId;
+    const logContext = { requestId };
 
     if (!id || id.length < 3) {
-        res.status(400).json({
+        logger.warn({ ...logContext, providedId: id }, 'User ID check failed validation (too short)');
+        res.status(400).json({ 
             success: false,
             error: 'ID must be at least 3 characters long',
             available: false
@@ -345,14 +350,15 @@ router.get('/check-user-id/:id', async (req, res) => {
     }
 
     try {
-        const userResult = await getUserById(id);
-        res.json({
+        const userResult = await getUserById(id, logContext);
+        logger.info({ ...logContext, userId: id, available: !userResult.success }, 'Checked user ID availability');
+        res.json({ 
             success: true,
             available: !userResult.success
         });
     } catch (error) {
-        logger.error({ err: error, userId: id }, 'Error checking user ID availability');
-        res.status(500).json({
+        logger.error({ ...logContext, userId: id, err: error }, 'Error checking user ID availability');
+        res.status(500).json({ 
             success: false,
             error: 'Server error checking ID availability',
             available: false
@@ -362,20 +368,28 @@ router.get('/check-user-id/:id', async (req, res) => {
 
 /**
  * @route   POST /auth/signup
- * @desc    Creates a new user
- * @access  Public (requires verification token for auto-login)
+ * @desc    Creates a new user account
+ * @access  Public (but requires verification token usually)
  */
-router.post('/signup', async (req, res) => {
+router.post('/signup', async (req: Request, res: Response) => {
     const { id, email, verificationToken } = req.body;
+    // Generate IDs for logging
+    const operationId = randomUUID();
+    const requestId = res.locals.requestId;
+    const logContext = { requestId, operationId };
+
+    logger.info({ ...logContext, userId: id, emailProvided: !!email, tokenProvided: !!verificationToken }, 'Received signup request');
 
     if (!id || !email) {
-        res.status(400).json({
+        logger.warn({ ...logContext, userId: id, emailProvided: !!email }, 'Signup failed: Missing ID or email');
+        res.status(400).json({ 
             success: false,
             error: 'ID and email are required'
         });
         return;
     }
 
+    // Verification Token Check
     if (verificationToken) {
         try {
             const decoded = jwt.verify(verificationToken, process.env.MAGIC_LINK_SECRET as string);
@@ -383,34 +397,60 @@ router.post('/signup', async (req, res) => {
                 throw new Error('Invalid token payload');
             }
             if (decoded.email !== email) {
+                logger.warn({ ...logContext, userId: id, emailInToken: decoded.email, emailInBody: email }, 'Signup failed: Email mismatch between token and request body');
                 res.status(400).json({
                     success: false,
                     error: 'Email does not match verification token'
                 });
                 return;
             }
-        } catch (error) {
+            logger.info({ ...logContext, userId: id, email }, 'Signup verification token validated successfully');
+        } catch (error: any) {
+            logger.error({ ...logContext, userId: id, email, err: error }, 'Signup failed: Invalid or expired verification token');
             res.status(400).json({
                 success: false,
                 error: 'Invalid or expired verification token'
             });
             return;
         }
+    } else {
+        // Optional: Decide if signup *requires* a verification token
+        // If so, return an error here. For now, allow signup without token.
+        logger.warn({ ...logContext, userId: id, email }, 'Signup proceeding without verification token');
     }
 
-    const result = await createUser(id, email);
+    // Log action intent before calling createUser
+    logger.info(
+        { 
+            ...logContext,
+            action: {
+                type: 'CREATE_USER',
+                params: { userId: id, email }
+            },
+        },
+        'Initiating CreateUser action'
+    );
+
+    // Pass context to createUser
+    const result = await createUser(id, email, logContext);
+
     if (!result.success || !result.data) {
-        res.status(400).json(result); // Return error from createUser
+        // Error already logged within createUser if it was a DB error
+        // Log context-specific error if needed (e.g., ID/email taken)
+        logger.warn({ ...logContext, userId: id, email, creationError: result.error }, `User creation failed: ${result.error}`);
+        res.status(400).json(result);
         return;
     }
 
+    // Generate auth token ONLY if a verification token was provided and valid
     let authToken = null;
     if (verificationToken) {
         authToken = generateAuthToken(result.data);
+        logger.info({ ...logContext, userId: id }, 'Generated auth token after successful signup with verification');
     }
 
-    logger.info('Created new user: %s', result.data.id);
-    res.json({
+    logger.info({ ...logContext, userId: id }, 'User created successfully');
+    res.json({ 
         success: true,
         message: 'User created successfully',
         data: authToken ? { token: authToken, user: result.data } : undefined
