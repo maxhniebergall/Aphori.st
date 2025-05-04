@@ -1,10 +1,104 @@
 {
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null",
+    ".read": false,
+    ".write": false,
     "path_to_your_data": {
       "$dataId": {
         ".indexOn": "score"
+      }
+    },
+    "users": {
+      "$userId": {
+        ".validate": "newData.hasChildren(['id', 'email', 'createdAt']) && newData.child('id').isString() && newData.child('id').val() === $userId && newData.child('email').isString() && newData.child('email').val().matches(/^[^\\\\s@]+@[^\\\\s@]+\\\\.[^\\\\s@]+$/) && newData.child('createdAt').isString()"
+      }
+    },
+    "userMetadata": {
+      "emailToId": {
+        "$escapedEmail": {
+          ".validate": "newData.isString()"
+        }
+      },
+      "userIds": {
+        "$userId": {
+          ".validate": "newData.isBoolean() && newData.val() === true"
+        }
+      }
+    },
+    "posts": {
+      "$postId": {
+        ".validate": "newData.hasChildren(['id', 'content', 'authorId', 'createdAt', 'parentId']) && newData.child('id').isString() && newData.child('id').val() === $postId && newData.child('content').isString() && newData.child('content').val().length >= 100 && newData.child('content').val().length <= 5000 && newData.child('authorId').isString() && newData.child('createdAt').isString() && newData.child('parentId').val() === null"
+      }
+    },
+    "postMetadata": {
+      "userPosts": {
+        "$userId": {
+          "$postId": {
+            ".validate": "newData.isBoolean() && newData.val() === true"
+          }
+        }
+      },
+      "allPostTreeIds": {
+         "$postId": {
+            ".validate": "newData.isBoolean() && newData.val() === true"
+          }
+      }
+    },
+    "replies": {
+      "$replyId": {
+        ".validate": "newData.hasChildren(['id', 'text', 'parentId', 'quote', 'authorId', 'createdAt']) && newData.child('id').isString() && newData.child('id').val() === $replyId && newData.child('text').isString() && (newData.child('text').val().length >= 50 || newData.child('text').val() === 'Yes!') && newData.child('text').val().length <= 1000 && newData.child('parentId').isArray() && newData.child('parentId/0').exists() && newData.child('parentId/0').isString() && newData.child('quote').isObject() && newData.child('quote').hasChildren(['text', 'sourceId', 'selectionRange']) && newData.child('quote/text').isString() && newData.child('quote/sourceId').isString() && newData.child('quote/selectionRange').isObject() && newData.child('authorId').isString() && newData.child('createdAt').isString()"
+      }
+    },
+    "replyMetadata": {
+      "userReplies": {
+        "$userId": {
+          "$replyId": {
+            ".validate": "newData.isBoolean() && newData.val() === true"
+          }
+        }
+      },
+      "quoteCounts": {
+        "$parentId": {
+          "$quoteKey": {
+             ".validate": "newData.isObject() && newData.hasChildren(['quote', 'count']) && newData.child('count').isNumber() && newData.child('count').val() >= 0 && newData.child('quote').isObject() && newData.child('quote').hasChildren(['text', 'sourceId', 'selectionRange']) && newData.child('quote/text').isString() && newData.child('quote/sourceId').isString() && newData.child('quote/selectionRange').isObject()"
+          }
+        }
+      }
+    },
+    "replyIndexes": {
+       "byQuoteRecent": {
+         "$quoteKey": {
+           "$replyId": {
+             ".validate": "newData.hasChildren(['score']) && newData.child('score').isNumber()"
+           }
+         }
+       },
+       "byParentQuoteRecent": {
+         "$parentId": {
+           "$quoteKey": {
+             "$replyId": {
+               ".validate": "newData.hasChildren(['score']) && newData.child('score').isNumber()"
+             }
+           }
+         }
+       },
+       "byParentQuoteTextRecent": {
+         "$parentId": {
+           "$quoteTextHashOrKey": {
+              "$replyId": {
+                 ".validate": "newData.hasChildren(['score']) && newData.child('score').isNumber()"
+              }
+           }
+         }
+       },
+       "feedRecent": {
+         "$replyId": {
+           ".validate": "newData.hasChildren(['score']) && newData.child('score').isNumber()"
+         }
+       }
+    },
+    "feedItems": {
+      "$feedItemId": {
+         ".validate": "newData.hasChildren(['id', 'text', 'authorId', 'createdAt']) && newData.child('id').isString() && newData.child('id').val() === $feedItemId && newData.child('text').isString() && newData.child('authorId').isString() && newData.child('createdAt').isString()"
       }
     }
   }
