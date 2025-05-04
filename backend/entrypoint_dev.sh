@@ -7,7 +7,9 @@
 
 # Load environment variables from .env
 if [ -f .env ]; then
-  export $(cat .env | sed 's/#.*//g' | xargs)
+  set -a
+  . .env
+  set +a
 fi
 
 # Start the TypeScript compiler in watch mode for development
