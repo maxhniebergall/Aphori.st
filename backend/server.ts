@@ -22,63 +22,39 @@
 - Provides API endpoint to retrieve quote reply counts for a given parent ID, returning CompressedApiResponse<ExistingSelectableQuotes>
 */
 
-import express, { Request, Response, NextFunction, RequestHandler } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { createDatabaseClient } from './db/index.js';
 import logger from './logger.js';
 import cors from 'cors';
-import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
-import { sendEmail } from './mailer.js';
-import crypto from 'crypto';
-import rateLimit from 'express-rate-limit';
 import { seedDevPosts } from './seed.js';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import path from 'path';
 import { dirname } from 'path';
 import { 
     DatabaseClient as DatabaseClientType,
-    DatabaseClientBase,
-    User, 
-    ExistingUser,
-    UserResult, 
-    Reply, 
-    FeedItem,
-    AuthenticatedRequest,
-    CompressedApiResponse,
-    CursorPaginatedResponse,
-    TokenPayload,
-    AuthTokenPayload,
-    Quote,
-    Replies,
-    ExistingSelectableQuotes,
-    CreateReplyResponse,
-    RedisSortedSetItem,
-    FeedItemsResponse,
-    RepliesFeedResponse,
-    SortingCriteria,
-    Post,
-    PostCreationRequest,
-    Compressed
 } from './types/index.js';
-import { getQuoteKey } from './utils/quoteUtils.js';
-import { createCursor, decodeCursor } from './utils/cursorUtils.js';
-import { uuidv7obj } from 'uuidv7';
-import { Uuid25 } from 'uuid25';
 import requestLogger from './middleware/requestLogger.js';
 import authRoutes, { setDb as setAuthDb } from './routes/auth.js';
 import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
-import { authenticateToken } from './middleware/authMiddleware.js';
 
 dotenv.config();
 
 const PORT = process.env.PORT || 5050;
 
+// Determine the directory of the current module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 // Load build hash
 let BUILD_HASH = 'development';
 try {
-    const buildEnv = fs.readFileSync('.env.build', 'utf8');
+    // Construct path relative to this file's directory
+    const envBuildPath = path.join(__dirname, '../../.env.build'); 
+    const buildEnv = fs.readFileSync(envBuildPath, 'utf8');
     BUILD_HASH = buildEnv.split('=')[1].trim();
     logger.info(`Loaded build hash: ${BUILD_HASH}`);
 } catch (err) {
@@ -132,9 +108,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('X-Build-Hash', BUILD_HASH);
   next();
 });
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 // Use the imported type for the db instance
 const db: DatabaseClientType = createDatabaseClient() as DatabaseClientType;
