@@ -68,7 +68,7 @@ export interface Quote {
 export interface Reply {
     id: string;
     text: string;
-    parentId: string[];
+    parentId: string | string[];
     quote: Quote;
     authorId: string;
     createdAt: string;
