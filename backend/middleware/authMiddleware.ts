@@ -35,7 +35,15 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
             res.status(403).json({ error: 'Invalid token.' });
             return;
         }
-        (req as AuthenticatedRequest).user = decoded as User;
-        next();
+        // Validate decoded token has the expected User structure
+        if (typeof decoded === 'object' && decoded !== null &&
+            typeof decoded.id === 'string' &&
+            typeof decoded.email === 'string') {
+            (req as AuthenticatedRequest).user = decoded as User;
+            next();
+        } else {
+            logger.warn({ invalidPayload: true }, 'Token payload does not match User type');
+            res.status(403).json({ error: 'Invalid token payload.' });
+        }
     });
 }; 
