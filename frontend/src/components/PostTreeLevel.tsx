@@ -8,7 +8,7 @@
  * - Communicate height changes to parent components for proper virtualization
  */
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useGesture } from '@use-gesture/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { debounce } from 'lodash';
@@ -378,7 +378,8 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
   });
 
   // Report height to parent virtualized list when container size changes - moved up
-  useMemo(() => {
+  // Report height to parent virtualized list when container size changes
+  useEffect(() => {
     if (containerRef.current && reportHeight) {
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
@@ -388,8 +389,7 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
       resizeObserver.observe(containerRef.current);
       return () => resizeObserver.disconnect();
     }
-  }, [reportHeight, containerRef.current]); // Added containerRef.current dependency
-
+  }, [reportHeight]);
 
   // Update pagination state based on levelData - moved up
   useMemo(() => {
