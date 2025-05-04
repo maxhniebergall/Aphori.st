@@ -15,17 +15,17 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   constructor(config: FirebaseConfig) {
     super();
-    
+
     let appOptions: any = {
       databaseURL: config.databaseURL
     };
 
     // Only add credentials if they are provided (i.e., not using emulator)
     if (config.credential) {
-        appOptions.credential = cert(config.credential);
+      appOptions.credential = cert(config.credential);
     } else {
-        // Log if we are connecting without explicit credentials (likely emulator)
-        console.log('Initializing Firebase Admin SDK without explicit credentials (connecting to emulator).');
+      // Log if we are connecting without explicit credentials (likely emulator)
+      console.log('Initializing Firebase Admin SDK without explicit credentials (connecting to emulator).');
     }
 
     const app = initializeApp(appOptions);
@@ -38,9 +38,37 @@ export class FirebaseClient extends DatabaseClientInterface {
    * Firebase keys cannot be empty; this function hashes even empty strings.
    */
   private hashFirebaseKey(key: string): string {
-      const hash = crypto.createHash('sha256');
-      hash.update(key);
-      return hash.digest('hex');
+    const hash = crypto.createHash('sha256');
+    hash.update(key);
+    return hash.digest('hex');
+  }
+
+  /**
+   * Escapes characters forbidden in Firebase keys (`.` `#` `$` `[` `]`).
+   * Uses a custom mapping for readability.
+   */
+  private _escapeFirebaseKey(key: string): string {
+    // Replace forbidden characters with custom sequences
+    return key
+      .replace(/\./g, ',,') // Replace dots with double commas
+      .replace(/#/g, '-sharp-')
+      .replace(/\$/g, '-dollar-')
+      .replace(/\[/g, '-obracket-')
+      .replace(/]/g, '-cbracket-');
+    // Add replacements for other potentially problematic chars if needed
+  }
+
+  /**
+   * Unescapes characters previously escaped by _escapeFirebaseKey.
+   */
+  private _unescapeFirebaseKey(escapedKey: string): string {
+    // Reverse the replacements
+    return escapedKey
+      .replace(/-cbracket-/g, ']')
+      .replace(/-obracket-/g, '[')
+      .replace(/-dollar-/g, '$')
+      .replace(/-sharp-/g, '#')
+      .replace(/,,/g, '.'); // Replace double commas back to dots
   }
 
   async connect(): Promise<void> {
@@ -48,7 +76,7 @@ export class FirebaseClient extends DatabaseClientInterface {
     // before declaring the client ready, especially for the emulator.
     return new Promise((resolve, reject) => {
       const connectedRef = this.db.ref('.info/connected');
-      
+
       const listener = connectedRef.on('value', (snap) => {
         if (snap.val() === true) {
           console.log('Firebase Realtime Database connection verified.');
@@ -63,39 +91,33 @@ export class FirebaseClient extends DatabaseClientInterface {
         reject(error);
       });
 
-// …inside your connect() method…
+      // 15 second timeout to bail out if we never connect
+      const timeoutId = setTimeout(() => {
+        connectedRef.off('value', onValue);
+        reject(new Error('Connection check timed out'));
+      }, 15_000);
 
-  const connectedRef = this.db.ref('.info/connected');
+      // single named listener for both success and later removal
+      function onValue(snap: any) {
+        if (snap.val() === true) {
+          clearTimeout(timeoutId);
+          connectedRef.off('value', onValue);
+          console.log('Firebase Realtime Database connection verified.');
+          resolve();
+        }
+      }
 
-  // 15 second timeout to bail out if we never connect
-  const timeoutId = setTimeout(() => {
-    connectedRef.off('value', onValue);
-    reject(new Error('Connection check timed out'));
-  }, 15_000);
-
-  // single named listener for both success and later removal
-  function onValue(snap: any) {
-    if (snap.val() === true) {
-      clearTimeout(timeoutId);
-      connectedRef.off('value', onValue);
-      console.log('Firebase Realtime Database connection verified.');
-      resolve();
-    }
-  }
-
-  // wire up the listener + inline error handler
-  connectedRef.on(
-    'value',
-    onValue,
-    (error: any) => {
-      clearTimeout(timeoutId);
-      connectedRef.off('value', onValue);
-      console.error('Firebase Realtime Database connection check failed:', error);
-      reject(error);
-    }
-  );
-
-// …rest of connect()…
+      // wire up the listener + inline error handler
+      connectedRef.on(
+        'value',
+        onValue,
+        (error: any) => {
+          clearTimeout(timeoutId);
+          connectedRef.off('value', onValue);
+          console.error('Firebase Realtime Database connection check failed:', error);
+          reject(error);
+        }
+      );
 
     });
   }
@@ -144,9 +166,9 @@ export class FirebaseClient extends DatabaseClientInterface {
     try {
       let dataToPush = value;
       if (typeof value === 'string') {
-        try { 
-          dataToPush = JSON.parse(value); 
-        } catch (e) { 
+        try {
+          dataToPush = JSON.parse(value);
+        } catch (e) {
           // Explicitly log the parsing error
           console.error(`FirebaseClient lPush: Failed to parse JSON string for path ${path}. Pushing raw string. Error:`, e, 'Raw value:', value);
           // dataToPush remains the raw string in case of error
@@ -155,7 +177,7 @@ export class FirebaseClient extends DatabaseClientInterface {
       // Log exactly what is being pushed
       console.log(`FirebaseClient: Pushing to path [${path}]:`, dataToPush);
       await ref.push(dataToPush);
-      return 1; 
+      return 1;
     } catch (error) {
       console.error(`FirebaseClient lPush Error for path ${path}:`, error);
       throw error;
@@ -229,18 +251,19 @@ export class FirebaseClient extends DatabaseClientInterface {
     // Hash the main key
     const hashedKey = this.hashFirebaseKey(key);
     const ref = this.db.ref(hashedKey);
-    const snapshot = await ref.once('value');
-    const currentSet = snapshot.val() || {};
-    
-    // Hash the value to use as the internal key for the set member
-    const internalHashedValue = typeof value === 'string' ? this.hashFirebaseKey(value) : this.hashFirebaseKey(JSON.stringify(value)); // Hash non-strings too
 
-    if (!currentSet[internalHashedValue]) {
-      currentSet[internalHashedValue] = true; // Store boolean marker
-      await ref.set(currentSet);
-      return 1;
+    // Escape the value to use as the child key for the set member
+    const escapedValue = this._escapeFirebaseKey(String(value)); // Ensure value is string
+
+    // Check if the escaped value already exists as a key
+    const snapshot = await ref.child(escapedValue).once('value');
+
+    if (!snapshot.exists()) {
+      // If it doesn't exist, add it with a value of true
+      await ref.child(escapedValue).set(true);
+      return 1; // Indicate an item was added
     }
-    return 0;
+    return 0; // Indicate the item already existed
   }
 
   async sMembers(key: string): Promise<string[]> {
@@ -248,8 +271,10 @@ export class FirebaseClient extends DatabaseClientInterface {
     const hashedKey = this.hashFirebaseKey(key);
     const snapshot = await this.db.ref(hashedKey).once('value');
     const currentSet = snapshot.val() || {};
-    // Returns the hashed internal keys
-    return Object.keys(currentSet);
+    // Get the escaped keys
+    const escapedKeys = Object.keys(currentSet);
+    // Unescape each key to return the original values
+    return escapedKeys.map(escapedKey => this._unescapeFirebaseKey(escapedKey));
   }
 
   async isConnected(): Promise<boolean> {
@@ -277,7 +302,7 @@ export class FirebaseClient extends DatabaseClientInterface {
     // Hash the main key
     const hashedKey = this.hashFirebaseKey(key);
     // Use score directly as child key, store { score, value } object
-    const ref = this.db.ref(`${hashedKey}/${score}`); 
+    const ref = this.db.ref(`${hashedKey}/${score}`);
     await ref.set({ score: score, value: value });
     return 1;
   }
@@ -296,13 +321,13 @@ export class FirebaseClient extends DatabaseClientInterface {
     // Order by key (score) and limit to get the range
     const query = this.db.ref(hashedKey).orderByKey().limitToFirst(end + 1); // Fetch enough to slice
     const snapshot = await query.once('value');
-    
+
     const results: any[] = [];
     snapshot.forEach((childSnapshot) => {
       // Key is the score, value is { score, value }
       results.push(childSnapshot.val().value); // Extract original value
     });
-    
+
     // Apply the start index slice
     return results.slice(start);
   }
@@ -325,10 +350,10 @@ export class FirebaseClient extends DatabaseClientInterface {
     const hashedField = this.hashFirebaseKey(field);
     const refPath = `${hashedKey}/${hashedField}`;
     const ref = this.db.ref(refPath);
-    
+
     const transactionResult = await ref.transaction((currentValue) => {
-        const currentNumber = typeof currentValue === 'number' ? currentValue : 0;
-        return currentNumber + increment;
+      const currentNumber = typeof currentValue === 'number' ? currentValue : 0;
+      return currentNumber + increment;
     }, (error, committed, snapshot) => {
       // Optional callback for logging transaction outcome
       if (error) console.error(`FirebaseClient hIncrBy Transaction Error for path ${refPath}:`, error);
@@ -336,19 +361,19 @@ export class FirebaseClient extends DatabaseClientInterface {
     });
 
     if (transactionResult.committed && transactionResult.snapshot.exists()) {
-        const finalValue = transactionResult.snapshot.val();
-        return typeof finalValue === 'number' ? finalValue : 0;
+      const finalValue = transactionResult.snapshot.val();
+      return typeof finalValue === 'number' ? finalValue : 0;
     } else {
-        console.error(`Transaction for incrementing path ${refPath} failed or was aborted.`);
-        // Fallback read attempt
-        try {
-            const snapshot = await ref.once('value');
-            const fallbackValue = snapshot.val();
-            return typeof fallbackValue === 'number' ? fallbackValue : 0;
-        } catch (readError) {
-            console.error(`Failed to read value at ${refPath} after transaction failure:`, readError);
-            return 0;
-        }
+      console.error(`Transaction for incrementing path ${refPath} failed or was aborted.`);
+      // Fallback read attempt
+      try {
+        const snapshot = await ref.once('value');
+        const fallbackValue = snapshot.val();
+        return typeof fallbackValue === 'number' ? fallbackValue : 0;
+      } catch (readError) {
+        console.error(`Failed to read value at ${refPath} after transaction failure:`, readError);
+        return 0;
+      }
     }
   }
 
@@ -356,7 +381,7 @@ export class FirebaseClient extends DatabaseClientInterface {
     // Hash the main key
     const hashedKey = this.hashFirebaseKey(key);
     // Order by key (score) 
-    let query = this.db.ref(hashedKey).orderByKey(); 
+    let query = this.db.ref(hashedKey).orderByKey();
 
     // Use string representation for range queries on numeric keys
     const minStr = String(min);
@@ -365,9 +390,9 @@ export class FirebaseClient extends DatabaseClientInterface {
 
     // Apply limit if provided
     if (options?.limit) {
-       // Cannot directly limit with start/end AND get correct reverse order easily.
-       // Fetch all in range, then sort/limit in code.
-       // For large ranges, this is inefficient. Consider alternative structure if performance critical.
+      // Cannot directly limit with start/end AND get correct reverse order easily.
+      // Fetch all in range, then sort/limit in code.
+      // For large ranges, this is inefficient. Consider alternative structure if performance critical.
     }
 
     const snapshot = await query.once('value');
@@ -386,42 +411,42 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // Simulate Redis ZSCAN using Firebase queries
   async zscan(key: string, cursor: string, options?: { match?: string; count?: number }): Promise<{ cursor: string | null; items: RedisSortedSetItem<string>[] }> {
-      // Hash the main key
-      const hashedKey = this.hashFirebaseKey(key);
-      const count = options?.count || 10;
-      // Cursor is the score (as string key) to start after
-      const startAfterKey = cursor && cursor !== '0' ? cursor : null;
+    // Hash the main key
+    const hashedKey = this.hashFirebaseKey(key);
+    const count = options?.count || 10;
+    // Cursor is the score (as string key) to start after
+    const startAfterKey = cursor && cursor !== '0' ? cursor : null;
 
-      let query = this.db.ref(hashedKey).orderByKey(); // Order by score (key)
+    let query = this.db.ref(hashedKey).orderByKey(); // Order by score (key)
 
-      if (startAfterKey) {
-          query = query.startAfter(startAfterKey);
+    if (startAfterKey) {
+      query = query.startAfter(startAfterKey);
+    }
+
+    query = query.limitToFirst(count + 1);
+
+    const snapshot = await query.once('value');
+    const items: RedisSortedSetItem<string>[] = [];
+    snapshot.forEach((childSnapshot) => {
+      const data = childSnapshot.val();
+      // Value is { score, value }
+      if (data && typeof data.score === 'number' && typeof data.value !== 'undefined') {
+        // Convert value to string for RedisSortedSetItem compatibility if needed, or adjust type
+        items.push({ score: data.score, value: String(data.value) });
+      } else {
+        console.warn(`Invalid data structure in sorted set ${hashedKey}:`, data);
       }
+    });
 
-      query = query.limitToFirst(count + 1);
-
-      const snapshot = await query.once('value');
-      const items: RedisSortedSetItem<string>[] = [];
-      snapshot.forEach((childSnapshot) => {
-          const data = childSnapshot.val();
-          // Value is { score, value }
-          if (data && typeof data.score === 'number' && typeof data.value !== 'undefined') {
-              // Convert value to string for RedisSortedSetItem compatibility if needed, or adjust type
-              items.push({ score: data.score, value: String(data.value) }); 
-          } else {
-              console.warn(`Invalid data structure in sorted set ${hashedKey}:`, data);
-          }
-      });
-
-      let nextCursor: string | null = null;
-      if (items.length > count) {
-          const lastItem = items.pop(); // Remove extra item
-          if (lastItem) {
-              nextCursor = String(lastItem.score); // Next cursor is the score of the last item fetched
-          }
+    let nextCursor: string | null = null;
+    if (items.length > count) {
+      const lastItem = items.pop(); // Remove extra item
+      if (lastItem) {
+        nextCursor = String(lastItem.score); // Next cursor is the score of the last item fetched
       }
-      
-      return { cursor: nextCursor, items };
+    }
+
+    return { cursor: nextCursor, items };
   }
 
   // Atomically sets or increments a quote count using a transaction
@@ -441,7 +466,7 @@ export class FirebaseClient extends DatabaseClientInterface {
     const hashedField = this.hashFirebaseKey(field);
     const refPath = `${hashedKey}/${hashedField}`;
     const ref = this.db.ref(refPath);
-    
+
     const transactionResult = await ref.transaction((currentData) => {
       if (currentData === null) {
         return { quote: quoteValue, count: 1 };
