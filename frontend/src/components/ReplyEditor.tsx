@@ -1,4 +1,5 @@
-import React, { useCallback, useMemo } from 'react';
+
+import React, { useCallback, useMemo, useState } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import '@uiw/react-md-editor/markdown-editor.css';
 import rehypeSanitize from 'rehype-sanitize';
@@ -17,9 +18,11 @@ const ReplyEditor = () => {
     clearPersistedReplyDraft
   } = useReplyContext();
 
+  const [submitting, setSubmitting] = useState(false);
+
   const MAX_REPLY_LENGTH = 1000;
   const MIN_REPLY_LENGTH = 50;
-  const IGNORE_MIN_REPLY_LENGTH = ["Yes!"]
+  const IGNORE_MIN_REPLY_LENGTH = ["Yes!"];
 
   // Memoize editor options
   const editorOptions = useMemo(() => ({
@@ -78,7 +81,9 @@ const ReplyEditor = () => {
         )}
       </div>
       <div className="reply-actions" role="group" aria-label="Reply actions">
-        <button 
+        <button
+          type="button"
+          disabled={submitting}
           onClick={async () => {
             // Trim content first
             const trimmedReplyContent = replyContent.trim();
@@ -111,6 +116,7 @@ const ReplyEditor = () => {
               return;
             }
 
+            setSubmitting(true);
             try {
               const result = await PostTreeOperator.submitReply(trimmedReplyContent, replyTarget.id, replyQuote);
               if (!result.error) {
@@ -125,6 +131,8 @@ const ReplyEditor = () => {
               console.error("Error during reply submission:", error);
               window.alert("An unexpected error occurred during submission.");
               // Don't clear state here either, allow retry
+            } finally {
+              setSubmitting(false);
             }
           }}
           className="submit-reply-button"
@@ -132,7 +140,8 @@ const ReplyEditor = () => {
         >
           Submit
         </button>
-        <button 
+        <button
+          type="button"
           onClick={handleReplyFinished}
           className="cancel-reply-button"
           aria-label="Cancel reply"
@@ -144,4 +153,4 @@ const ReplyEditor = () => {
   );
 };
 
-export default ReplyEditor; 
+export default ReplyEditor;
