@@ -95,11 +95,12 @@ export abstract class DatabaseClientInterface {
 
   abstract hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number>;
 
-  abstract addFeedItem(item: any): Promise<string>;
-
   abstract incrementFeedCounter(amount: number): Promise<void>;
 
   abstract getFeedItemsPage(limit: number, cursorKey?: string): Promise<{ items: any[], nextCursorKey: string | null }>;
+
+  // Add method for retrieving all items from a list-like structure
+  abstract getAllListItems(key: string): Promise<any[]>;
 
   keys(pattern: string): Promise<string[]> {
     throw new Error('Method not implemented');

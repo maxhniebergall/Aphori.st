@@ -83,7 +83,6 @@ router.post<{}, { id: string }, { postTree: PostCreationRequest }>(
             const formattedPostTree: Post = {
                 id: uuid,
                 content: trimmedContent,
-                parentId: null,
                 authorId: user.id,
                 createdAt: new Date().toISOString(),
             };

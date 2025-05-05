@@ -8,15 +8,13 @@ Requirements:
 - Must maintain idempotency when run multiple times
 */
 
-import { createClient, RedisClientType } from 'redis';
 import { uuidv7obj } from "uuidv7";
 import { Uuid25 } from "uuid25";
 import logger from './logger.js';
-import { createDatabaseClient } from './db/index.js';
-import { DatabaseClientInterface } from './db/DatabaseClientInterface.js';
 import { FeedItem, Post, Reply, Quote } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { randomInt } from 'crypto';
+import { DatabaseClient } from './types';
 
 // const logger = newLogger("seed.ts"); // Removed incorrect instantiation
 
@@ -24,8 +22,7 @@ interface PostContent {
     content: string;
 }
 
-let db: DatabaseClientInterface;
-// let client: RedisClientType; // Removed direct Redis client declaration
+let db: DatabaseClient; // Declare db as a DatabaseClient instance
 
 // List of sample posts
 const samplePosts: PostContent[] = [
@@ -48,7 +45,7 @@ const samplePosts: PostContent[] = [
  * @throws {Error} If clearing old data or creating initial posts fails.
  *                 (Handled - By Design: Logs error and re-throws to stop seeding).
  */
-async function seedDevPosts(dbClient: DatabaseClientInterface): Promise<void> {
+async function seedDevPosts(dbClient: DatabaseClient): Promise<void> {
     try {
         db = dbClient; // Use the passed-in dbClient
         logger.info("Attempting to seed data");
@@ -80,7 +77,6 @@ async function seedDevPosts(dbClient: DatabaseClientInterface): Promise<void> {
                 content: post.content,
                 authorId: 'seed_user',
                 createdAt: new Date().toISOString(),
-                parentId: null,
             };
 
             // Store in Redis, ensuring consistency with create/get endpoints
@@ -101,9 +97,9 @@ async function seedDevPosts(dbClient: DatabaseClientInterface): Promise<void> {
 
             // Use new methods to add feed item and update counter
             try {
-                const feedItemKey = await db.addFeedItem(feedItem);
+                //TODO FIXME
                 await db.incrementFeedCounter(1);
-                logger.info('Seeded feed item for post %s with key %s and incremented counter.', uuid, feedItemKey);
+                // logger.info('Seeded feed item for post %s with key %s and incremented counter.', uuid, feedItemKey);
             } catch (feedError) {
                 logger.error({ err: feedError, postId: uuid }, 'Failed to seed feed item or update counter for post');
                 // If seeding a feed item fails, we might want to stop or log prominently

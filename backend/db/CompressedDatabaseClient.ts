@@ -43,7 +43,7 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
 
     async get(key: string, options: CompressionOptions = { returnCompressed: false }): Promise<any> {
         const compressedData = await this.db.get(key);
-        if (!compressedData) return null;
+        if (!compressedData || typeof compressedData !== 'string') return null;
         return options.returnCompressed ? compressedData : this.compression.decompress(compressedData);
     }
 
@@ -185,19 +185,19 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
     }
 
     /**
-     * Pushes a value onto a list, bypassing compression if the key is 'feedItems'.
+     * Pushes a value onto a list, bypassing compression if the key is 'feedItems' or 'allPostTreeIds'.
      * @param key The list key.
      * @param value The value to push.
      * @returns Result from the underlying database client.
      */
     async lPush(key: string, value: any): Promise<number> {
-        // Check if the key is the special case 'feedItems'
-        if (key === 'feedItems') {
+        // Check if the key is a special case that should bypass compression
+        if (key === 'feedItems' || key === 'allPostTreeIds') {
             // Pass the value directly without compression
             logger.info(`CompressedDatabaseClient lPush: Bypassing compression for key '${key}'.`);
             // Ensure the value passed is the original non-stringified object if needed by underlying client.
             // In posts.ts, we pass stringified JSON. FirebaseClient parses it. RedisClient expects string.
-            // For now, pass the value as received (likely stringified JSON).
+            // For now, pass the value as received (likely stringified JSON or simple string).
             return this.db.lPush(key, value);
         } else {
             // Standard behavior: compress the value
@@ -442,19 +442,6 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
     }
 
     /**
-     * Delegates adding a feed item to the underlying client.
-     * Assumes the underlying client handles the specifics (e.g., Firebase push key generation).
-     * @param item The FeedItem object.
-     * @returns The unique key/ID from the underlying client.
-     */
-    async addFeedItem(item: any): Promise<string> {
-        // Feed item itself might be compressed by the underlying Firebase/Redis set/hSet methods if called directly
-        // However, the new addFeedItem in FirebaseClient handles the raw object.
-        // Let's assume the item should be passed as is.
-        return this.db.addFeedItem(item);
-    }
-
-    /**
      * Delegates incrementing the feed counter to the underlying client.
      * @param amount Amount to increment by.
      */
@@ -507,5 +494,11 @@ export class CompressedDatabaseClient extends DatabaseClientInterface {
         );
 
         return { items: decompressedItems, nextCursorKey: result.nextCursorKey };
+    }
+
+    // Pass through getAllListItems - No compression needed
+    async getAllListItems(key: string): Promise<any[]> {
+        // logger.debug("CompressedDatabaseClient: Passing through getAllListItems.", { key }); // Removed logging
+        return this.db.getAllListItems(key);
     }
 } 
