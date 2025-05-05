@@ -398,6 +398,184 @@ Conclusion
 The Aphorist backend is structured to provide robust and secure APIs for frontend interactions, leveraging Redis for efficient data storage and retrieval. With clear separation of concerns across its various files and comprehensive authentication mechanisms, the backend is well-equipped to support the application's functionalities. Future developments may introduce backend-private APIs and additional services, which will be documented accordingly.
 
 ## Backend Data Model
+The fundamental problem with your current backend implementation (FirebaseClient) is the hashing of keys/paths. Firebase Security Rules operate directly on the path of the data. If your code writes to hash('users:userId123')/hash('data') but your rules expect /users/userId123, the rules for /users/$userId will never be triggered for that write operation. This completely bypasses your security and validation logic.   
+
+Therefore, the primary recommendation is: Abandon the path/key hashing strategy used in FirebaseClient and adopt the clear, hierarchical paths defined in your database.rules.json.
+
+Here’s a recommended data model based on this principle, incorporating RTDB best practices:
+
+Core Principles:
+
+Flat Structure: Keep data relatively flat. Avoid deep nesting where possible.
+Denormalization: Duplicate data where necessary for efficient reads, especially for list views or displaying related info (e.g., author username alongside a post).
+Predictable Paths: Use clear, human-readable path segments.
+Use Native Keys: Use Firebase push IDs (.push().key) or UUIDs directly as keys under the appropriate nodes (e.g., /posts/<postId>).
+Index for Queries: Create specific index nodes to query relationships efficiently (e.g., posts by user, replies by post).
+Maps over Lists: Use JSON objects (maps) with unique keys instead of arrays/lists for collections where items might be added/removed frequently or where the collection size can grow large. RTDB handles maps much more efficiently.
+Recommended Data Model Structure:
+
+JSON
+
+{
+  // 1. User Data
+  "users": {
+    "$userId": {
+      "id": "$userId",                   // Matches key for convenience
+      "email": "user@example.com",
+      "username": "someUsername",        // Consider adding username if displayed often
+      "createdAt": { ".sv": "timestamp" } // Use Firebase Server Timestamp
+      // other profile data...
+    }
+  },
+
+  // 2. Post Data (Top-level posts)
+  "posts": {
+    "$postId": {
+      "id": "$postId",                   // Matches key for convenience
+      "authorId": "$userId",
+      "authorUsername": "someUsername",  // Denormalized for display
+      "content": "Text of the post...",
+      "createdAt": { ".sv": "timestamp" },
+      "replyCount": 15,                  // Denormalized counter (update via transaction)
+      "lastReplyAt": { ".sv": "timestamp" } // Denormalized timestamp (update via transaction)
+      // parentId is implicitly null for posts
+    }
+  },
+
+  // 3. Reply Data
+  "replies": {
+    "$replyId": {
+      "id": "$replyId",                   // Matches key for convenience
+      "authorId": "$userId",
+      "authorUsername": "someUsername",  // Denormalized for display
+      "text": "Text of the reply...",
+      "parentId": "$parentPostOrReplyId", // ID of the direct parent (post or reply)
+      "parentType": "post" | "reply",   // Explicitly state parent type
+      "rootPostId": "$postId",           // ID of the original post tree root (useful for fetching whole thread)
+      "quote": {                         // Optional quote info
+        "text": "Quoted text snippet",
+        "sourceId": "$quotedPostOrReplyId",
+        "selectionRange": { /* ... */ }
+      },
+      "createdAt": { ".sv": "timestamp" }
+    }
+  },
+
+  // 4. Feed Items (Using a Map, ordered by key or timestamp)
+  // Option A: Chronological Feed using Push IDs (naturally sortable)
+  "feedItems": {
+    "$feedItemId_pushKey": { // Firebase push keys sort chronologically
+      "postId": "$postId",             // Reference to the original post
+      "authorId": "$userId",
+      "authorUsername": "someUsername",
+      "textSnippet": "First N chars of post...", // Denormalized snippet
+      "createdAt": { ".sv": "timestamp" } // Can be used for secondary sorting/filtering
+    }
+  },
+  // Option B: Use timestamp-based keys if specific ordering is needed
+  // "feedItemsByTimestamp": {
+  //   "timestamp_postId": { /* data */ } // Requires careful key generation
+  // },
+
+  // 5. Metadata and Indexes (Aligns well with your rules structure)
+  "userMetadata": {
+    "emailToId": {
+      "$escapedEmail": "$userId" // Key MUST be escaped (replace '.' with ',' etc.)
+    },
+    "userIds": {
+      "$userId": true // Simple map to track existing user IDs
+    },
+    "userPosts": {
+      "$userId": {
+        "$postId": true // Map of posts created by this user
+      }
+    },
+    "userReplies": {
+      "$userId": {
+        "$replyId": true // Map of replies created by this user
+      }
+    }
+  },
+
+  "postMetadata": {
+    "allPostTreeIds": {
+       "$postId": true // Map of all root post IDs
+    },
+    "postReplies": { // Index replies directly under their root post
+      "$postId": {
+        "$replyId": true // Or store timestamp for sorting: createdAtTimestamp
+      }
+    }
+    // Could also add postRepliesCount here if needed separate from post data
+  },
+
+  "replyMetadata": {
+    "parentReplies": { // Index replies under their direct parent (post or reply)
+      "$parentPostOrReplyId": {
+        "$replyId": true // Or store timestamp for sorting: createdAtTimestamp
+      }
+    },
+    "quoteCounts": {
+      "$parentPostOrReplyId": {
+        // Use a safe key representation of the quote object
+        // Option 1: Hash the quote object (consistent hash needed)
+        "$hashedQuoteKey": {
+          "quote": { /* full quote object */ },
+          "count": 5
+        }
+        // Option 2: Use sourceId + start/end offset? Needs care.
+        // "$sourceId_$start_$end": { ... }
+      }
+    }
+    // Add other indexes as needed, matching rules paths
+  },
+
+  "replyIndexes": { // For specialized reply lookups
+     "byQuoteSource": {
+       "$quotedSourceId": {
+         "$replyId": true // or timestamp
+       }
+     },
+     "byParentAndQuoteSource": {
+       "$parentId":{
+         "$quotedSourceId": {
+           "$replyId": true // or timestamp
+         }
+       }
+     }
+     // Add other indexes corresponding to your zAdd needs
+     // For sorted sets (like 'mostRecent'), consider using ordered queries
+     // on nodes like `postMetadata/postReplies/$postId` ordered by timestamp,
+     // or potentially a dedicated flat index if global sorting is critical.
+  }
+}
+Key Construction and Dynamic Values:
+
+Primary Keys: Use UUIDs or Firebase Push IDs (.push().key) for $userId, $postId, $replyId, $feedItemId_pushKey. These become the direct key under the main data nodes (e.g., /posts/$postId).
+Index Keys: Use the relevant IDs (like $userId, $postId, $replyId) as keys within the index nodes. The value is often true (to indicate presence) or a timestamp/score for ordering.
+Dynamic/User-Input Keys: For keys based on dynamic values like email addresses (emailToId) or potentially parts of quotes (quoteCounts), you must sanitize/escape them. Firebase keys cannot contain ., $, #, [, ], or /.
+Escaping: Create a utility function (like your _escapeFirebaseKey) that reliably replaces forbidden characters with allowed alternatives (e.g., . becomes ,, $ becomes _ S _, etc.) and can be reliably reversed if needed. Apply this consistently anywhere user data forms a key.
+Hashing (for Keys, NOT Paths): For complex keys like the quote object in quoteCounts, using a stable hash (e.g., SHA-1 or MD5 hex digest) of the canonical representation of the quote object can create a safe and unique key ($hashedQuoteKey). Store the full quote object alongside the count as the value.
+  
+Values:
+Use standard JSON types.
+Use { ".sv": "timestamp" } for reliable, server-generated timestamps for createdAt, updatedAt, etc.
+Store denormalized counts (replyCount) and update them using Firebase Transactions to avoid race conditions.
+Store denormalized data like authorUsername directly where needed for reads. Remember to update this if the source data (e.g., username in /users/$userId) changes (this is the cost of denormalization).
+Implementation Changes Needed:
+
+Refactor FirebaseClient / CompressedDatabaseClient:
+Remove the path/key hashing logic.
+Use direct, clear paths corresponding to the model above (and your rules).
+Ensure methods like hSet, sAdd, lPush, zAdd are mapped correctly to RTDB operations on the new structure:
+hSet on /posts/$postId likely becomes .ref('/posts/' + postId).set(postObject) or .update(updates).
+sAdd to user:id:posts becomes .ref('/userMetadata/userPosts/' + userId + '/' + postId).set(true).
+lPush to feedItems becomes .ref('/feedItems').push(feedItemObject). Reading requires .orderByKey().limitToLast(N).
+zAdd needs careful mapping to storing data in an index node, possibly with a timestamp as the value or part of the key, then using .orderByValue() or .orderByChild().
+Keep compression if needed, but apply it to the value being written, not the path.
+Update Backend Logic (auth.ts, posts.ts, etc.): Modify all database read/write operations to use the new paths and structures. Update object shapes to include/remove fields as per the new model (e.g., add authorUsername, rootPostId). Use transactions for counter updates.
+Align database.rules.json: Ensure your rules perfectly match this new structure, including paths and data validation for denormalized fields.
+This approach gives you a data model that is idiomatic to Firebase RTDB, allows your security rules to function correctly, supports efficient querying through indexes, and uses best practices for key construction and data organization.
 
 ## Redis Schema
 
