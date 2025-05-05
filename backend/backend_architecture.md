@@ -363,11 +363,11 @@ Used for seeding the Redis database with initial data. This script populates the
 
 **Key Responsibilities:**
 - Redis Connection: Establishes and manages a connection to the Redis server.
-- Data Seeding: Clears existing feed items and adds new posts with unique UUIDs and structured post trees.
+- Data Seeding: Clears existing feed items and adds new posts with unique UUIDs (uuidv7obj as Uuid25) and structured post trees.
 - Recursive PostTree Creation: Implements functions to create nested post nodes recursively, ensuring each node is correctly linked and stored in Redis.
 - Feed Population: Adds feed items corresponding to each seeded post to the Redis feed list.
 - Logging: Tracks the progress and any issues encountered during the seeding process.
-- Random Data Generation: Utilizes random UUIDs and selects random authors and titles from predefined lists to ensure uniqueness and variability in seeded data.
+- Random Data Generation: Utilizes random UUIDs (uuidv7obj as Uuid25) and selects random authors and titles from predefined lists to ensure uniqueness and variability in seeded data.
 
 ## Database Access Patterns for Replies
 
@@ -409,7 +409,7 @@ Core Principles:
 Flat Structure: Keep data relatively flat. Avoid deep nesting where possible.
 Denormalization: Duplicate data where necessary for efficient reads, especially for list views or displaying related info (e.g., author username alongside a post).
 Predictable Paths: Use clear, human-readable path segments.
-Use Native Keys: Use Firebase push IDs (.push().key) or UUIDs directly as keys under the appropriate nodes (e.g., /posts/<postId>).
+Use Native Keys: Use UUIDs (uuidv7obj as Uuid25) directly as keys under the appropriate nodes (e.g., /posts/<postId>).
 Index for Queries: Create specific index nodes to query relationships efficiently (e.g., posts by user, replies by post).
 Maps over Lists: Use JSON objects (maps) with unique keys instead of arrays/lists for collections where items might be added/removed frequently or where the collection size can grow large. RTDB handles maps much more efficiently.
 Recommended Data Model Structure:
@@ -422,9 +422,9 @@ JSON
     "$userId": {
       "id": "$userId",                   // Matches key for convenience
       "email": "user@example.com",
-      "username": "someUsername",        // Consider adding username if displayed often
-      "createdAt": { ".sv": "timestamp" } // Use Firebase Server Timestamp
-      // other profile data...
+      "username": "someUsername",      
+      "createdAt": { timestamp } // Use Backend server timestamp
+      // other profile data (TBD)
     }
   },
 
@@ -433,12 +433,10 @@ JSON
     "$postId": {
       "id": "$postId",                   // Matches key for convenience
       "authorId": "$userId",
-      "authorUsername": "someUsername",  // Denormalized for display
+      "authorUsername": "someUsername",  
       "content": "Text of the post...",
-      "createdAt": { ".sv": "timestamp" },
-      "replyCount": 15,                  // Denormalized counter (update via transaction)
-      "lastReplyAt": { ".sv": "timestamp" } // Denormalized timestamp (update via transaction)
-      // parentId is implicitly null for posts
+      "createdAt": { "timestamp" }, // use backend server timestamp
+      "replyCount": 15,                  
     }
   },
 
@@ -447,7 +445,6 @@ JSON
     "$replyId": {
       "id": "$replyId",                   // Matches key for convenience
       "authorId": "$userId",
-      "authorUsername": "someUsername",  // Denormalized for display
       "text": "Text of the reply...",
       "parentId": "$parentPostOrReplyId", // ID of the direct parent (post or reply)
       "parentType": "post" | "reply",   // Explicitly state parent type
@@ -455,9 +452,12 @@ JSON
       "quote": {                         // Optional quote info
         "text": "Quoted text snippet",
         "sourceId": "$quotedPostOrReplyId",
-        "selectionRange": { /* ... */ }
+        "selectionRange": { 
+          "start": number,
+          "end": number
+        }
       },
-      "createdAt": { ".sv": "timestamp" }
+      "createdAt": { "timestamp" } // use backend server timestamp
     }
   },
 
@@ -469,13 +469,10 @@ JSON
       "authorId": "$userId",
       "authorUsername": "someUsername",
       "textSnippet": "First N chars of post...", // Denormalized snippet
-      "createdAt": { ".sv": "timestamp" } // Can be used for secondary sorting/filtering
+      "createdAt": { ".sv": "timestamp" } // Can be used for secondary sorting/filtering. Can use firebase timestamp here
+
     }
   },
-  // Option B: Use timestamp-based keys if specific ordering is needed
-  // "feedItemsByTimestamp": {
-  //   "timestamp_postId": { /* data */ } // Requires careful key generation
-  // },
 
   // 5. Metadata and Indexes (Aligns well with your rules structure)
   "userMetadata": {
@@ -523,9 +520,6 @@ JSON
           "quote": { /* full quote object */ },
           "count": 5
         }
-        // Option 2: Use sourceId + start/end offset? Needs care.
-        // "$sourceId_$start_$end": { ... }
-      }
     }
     // Add other indexes as needed, matching rules paths
   },
@@ -551,7 +545,7 @@ JSON
 }
 Key Construction and Dynamic Values:
 
-Primary Keys: Use UUIDs or Firebase Push IDs (.push().key) for $userId, $postId, $replyId, $feedItemId_pushKey. These become the direct key under the main data nodes (e.g., /posts/$postId).
+Primary Keys: Use UUIDs (uuidv7obj as Uuid25) or Firebase Push IDs (.push().key) for $userId, $postId, $replyId, $feedItemId_pushKey. These become the direct key under the main data nodes (e.g., /posts/$postId).
 Index Keys: Use the relevant IDs (like $userId, $postId, $replyId) as keys within the index nodes. The value is often true (to indicate presence) or a timestamp/score for ordering.
 Dynamic/User-Input Keys: For keys based on dynamic values like email addresses (emailToId) or potentially parts of quotes (quoteCounts), you must sanitize/escape them. Firebase keys cannot contain ., $, #, [, ], or /.
 Escaping: Create a utility function (like your _escapeFirebaseKey) that reliably replaces forbidden characters with allowed alternatives (e.g., . becomes ,, $ becomes _ S _, etc.) and can be reliably reversed if needed. Apply this consistently anywhere user data forms a key.
@@ -559,7 +553,7 @@ Hashing (for Keys, NOT Paths): For complex keys like the quote object in quoteCo
   
 Values:
 Use standard JSON types.
-Use { ".sv": "timestamp" } for reliable, server-generated timestamps for createdAt, updatedAt, etc.
+Use { ".sv": "timestamp" } for reliable, server-generated timestamps for indexes only. Use backend timestamps for important write operaitons.
 Store denormalized counts (replyCount) and update them using Firebase Transactions to avoid race conditions.
 Store denormalized data like authorUsername directly where needed for reads. Remember to update this if the source data (e.g., username in /users/$userId) changes (this is the cost of denormalization).
 Implementation Changes Needed:
