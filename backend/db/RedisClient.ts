@@ -64,6 +64,11 @@ export class RedisClient extends DatabaseClientInterface {
     return this.client.lLen(key);
   }
 
+  async getAllListItems(key: string): Promise<any[]> {
+    // Retrieve all items from the list (index 0 to -1)
+    return this.client.lRange(key, 0, -1);
+  }
+
   async lSet(key: string, index: number, value: any): Promise<void> {
     logger.info(`Redis lSet called with key: ${key}, index: ${index}`);
     try {
@@ -316,23 +321,6 @@ export class RedisClient extends DatabaseClientInterface {
       }
       throw err;
     }
-  }
-
-  /**
-   * Simulates adding a feed item. In Redis, this might map to LPUSH or RPUSH.
-   * For consistency with Firebase push keys, this implementation is basic
-   * and doesn't generate a Redis-specific ID, relying on LPUSH semantics.
-   * @param item The item to add (assumed stringifiable).
-   * @returns A placeholder string, as LPUSH returns length, not a key.
-   */
-  async addFeedItem(item: any): Promise<string> {
-    // Using LPUSH on 'feedItems' key. Serialize item if it's not a string.
-    const value = typeof item === 'string' ? item : JSON.stringify(item);
-    await this.client.lPush('feedItems', value);
-    // LPUSH returns the new length of the list, not a unique key.
-    // Returning a placeholder or potentially the value itself might be options.
-    // For now, return a simple placeholder.
-    return "redis_lpush_success"; // Placeholder, actual key not generated
   }
 
   /**

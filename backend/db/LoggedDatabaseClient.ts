@@ -1,12 +1,13 @@
 import { pino } from 'pino';
-import { DatabaseClient, RedisSortedSetItem, FeedItem, Quote, Compressed } from '../types/index.js';
+import { DatabaseClient, RedisSortedSetItem, FeedItem, Quote, Compressed } from '../types/index.js'; // Revert to using DatabaseClient type
+// import { DatabaseClientInterface } from './DatabaseClientInterface.js'; // Remove direct interface import
 import { LogContext, ReadOptions } from './loggingTypes.js';
 
-export class LoggedDatabaseClient {
-    private underlyingClient: DatabaseClient;
+export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
+    private underlyingClient: DatabaseClient; // Revert type
     private logger: pino.Logger;
 
-    constructor(client: DatabaseClient, loggerInstance: pino.Logger) {
+    constructor(client: DatabaseClient, loggerInstance: pino.Logger) { // Revert type
         this.underlyingClient = client;
         // Create a child logger specific to this component for better filtering
         this.logger = loggerInstance.child({ component: 'LoggedDatabaseClient' });
@@ -205,6 +206,19 @@ export class LoggedDatabaseClient {
         }
     }
 
+    // Pass through getAllListItems
+    async getAllListItems(key: string, context?: LogContext): Promise<any[]> {
+        const logPayload = this.createLogPayload('getAllListItems', key, null, context);
+        this.logger.debug(logPayload, 'Executing DB command: getAllListItems');
+        try {
+            // Assume underlyingClient has the method (as it should implement the interface)
+            return await (this.underlyingClient as any).getAllListItems(key);
+        } catch (error: any) {
+            this.logger.error({ ...logPayload, err: error }, 'DB command failed: getAllListItems');
+            throw error;
+        }
+    }
+
     // --- Passthrough methods --- 
     // Make isConnected/isReady async to match interface/promise return
     async connect(): Promise<void> { 
@@ -256,7 +270,6 @@ export class LoggedDatabaseClient {
          return (this.underlyingClient as any).zscan(key, cursor, options); 
      }
      async keys(pattern: string): Promise<string[]> { return this.underlyingClient.keys(pattern); }
-     async addFeedItem(item: FeedItem): Promise<string> { return this.underlyingClient.addFeedItem(item); }
      async incrementFeedCounter(amount: number): Promise<void> { return this.underlyingClient.incrementFeedCounter(amount); }
      async getFeedItemsPage(limit: number, cursorKey?: string): Promise<{ items: any[], nextCursorKey: string | null }> { return this.underlyingClient.getFeedItemsPage(limit, cursorKey); }
 

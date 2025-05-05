@@ -30,9 +30,9 @@ export interface DatabaseClientBase {
     lLen: (key: string, context?: LogContext) => Promise<number>;
     del: (key: string, context?: LogContext) => Promise<number>;
     hIncrementQuoteCount: (key: string, field: string, quoteValue: any, context?: LogContext) => Promise<number>;
-    addFeedItem: (item: any, context?: LogContext) => Promise<string>;
     incrementFeedCounter: (amount: number, context?: LogContext) => Promise<void>;
     getFeedItemsPage: (limit: number, cursorKey?: string, context?: LogContext) => Promise<{ items: any[], nextCursorKey: string | null }>;
+    getAllListItems: (key: string, context?: LogContext) => Promise<any[]>;
 }
 
 // Export the base interface AND keep the extended one if needed for now,
@@ -151,7 +151,6 @@ export interface AuthTokenPayload extends User {
 export interface Post {
     id: string;
     content: string;
-    parentId: string | null;
     authorId: string;
     createdAt: string;
 }

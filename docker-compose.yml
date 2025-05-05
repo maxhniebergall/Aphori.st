@@ -20,6 +20,8 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - '5050:5050'
+    volumes:
+      - ./backend/aphorist-default-rtdb-export.json:/app/data/aphorist-default-rtdb-export.json:ro
     networks:
       - main
     environment:
@@ -32,6 +34,9 @@ services:
       - EMAIL_USERNAME=test
       - EMAIL_PASSWORD=test
       - EMAIL_FROM=noreply@localhost
+      - IMPORT_RTDB=true
+      - RTDB_EXPORT_PATH=/app/data/aphorist-default-rtdb-export.json
+      - RUN_MIGRATION=true
     depends_on:
       - redis
       - mailhog
