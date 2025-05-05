@@ -1,5 +1,17 @@
 ---
-description:
-globs:
+description: 
+globs: 
 alwaysApply: false
 ---
+# Firebase Realtime Database Data Structures
+
+When designing your Firebase Realtime Database structure, adhere to the following core principles for optimal performance and scalability.
+
+## Core Principles
+
+1.  **Flat Structure:** Keep data relatively flat. Avoid deep nesting where possible. Deeply nested data can become difficult to query and manage efficiently.
+2.  **Denormalization:** Duplicate data where necessary for efficient reads. This is crucial for scenarios like list views or displaying related information together (e.g., storing the author's username alongside each post they create). While this increases storage, it significantly optimizes read operations.
+3.  **Predictable Paths:** Use clear, human-readable path segments. This makes your database easier to understand, navigate, and debug. For example, use `/users/<userId>` and `/posts/<postId>`.
+4.  **Use Native Keys:** Use Firebase push IDs (`.push().key`) or UUIDs directly as keys under the appropriate nodes (e.g., `/posts/<postId>`, `/users/<userId>/posts/<postId>`). These automatically generated keys are optimized for concurrent writes and provide chronological ordering.
+5.  **Index for Queries:** Create specific index nodes to facilitate efficient querying of relationships. For instance, to fetch all posts by a specific user, maintain an index like `/user-posts/<userId>/<postId>: true`. Similarly, for replies to a post: `/post-replies/<postId>/<replyId>: true`.
+6.  **Maps over Lists:** Use JSON objects (maps) with unique keys instead of arrays/lists for collections. RTDB handles maps much more efficiently, especially for collections where items might be added/removed frequently or where the collection size can grow large. Arrays are problematic due to potential re-indexing on modification and difficulties with concurrent writes.
