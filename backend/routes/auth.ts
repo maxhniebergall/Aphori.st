@@ -22,63 +22,85 @@ export const setDb = (databaseClient: DatabaseClientType) => {
 
 const router = Router();
 
-// Constants for user-related keys
-const USER_PREFIX = 'user';
-const USER_IDS_SET = 'user_ids';
-const EMAIL_TO_ID_PREFIX = 'email_to_id';
+// Constants for user-related keys - REMOVED, using direct paths now
+// const USER_PREFIX = 'user';
+// const USER_IDS_SET = 'user_ids';
+// const EMAIL_TO_ID_PREFIX = 'email_to_id';
 
-// --- Helper Functions --- (Moved from server.ts)
+// --- Helper Functions ---
+
+// Helper to escape email for Firebase keys (using percent encoding)
+// Duplicates FirebaseClient.sanitizeKey logic for now
+function escapeEmailForKey(email: string): string {
+    let encoded = encodeURIComponent(email);
+    encoded = encoded.replace(/\./g, '%2E');
+    encoded = encoded.replace(/\$/g, '%24');
+    encoded = encoded.replace(/#/g, '%23');
+    encoded = encoded.replace(/\[/g, '%5B');
+    encoded = encoded.replace(/\]/g, '%5D');
+    encoded = encoded.replace(/\//g, '%2F');
+    return encoded;
+}
 
 const getUserById = async (id: string, context?: LogContext): Promise<UserResult> => {
-    const userData = await db.hGet(db.encodeKey(id, USER_PREFIX), 'data', undefined, context);
+    // Read directly from the /users/$userId path
+    const userPath = `users/${id}`;
+    // logger.debug({ ...context, path: userPath }, 'Attempting to get user by ID'); // Optional debug log
+    const userData = await db.get<ExistingUser>(userPath, context);
     if (!userData) {
+        // logger.debug({ ...context, path: userPath }, 'User not found by ID'); // Optional debug log
         return {
             success: false,
             error: 'User not found'
         };
     }
+    // logger.debug({ ...context, path: userPath, userId: userData.id }, 'User found by ID'); // Optional debug log
     return {
         success: true,
-        data: userData // Already decompressed by the client
+        data: userData // Should be the ExistingUser object
     };
 };
 
 const getUserByEmail = async (email: string, context?: LogContext): Promise<UserResult> => {
-    // Get user ID from email mapping
-    const userId = await db.get(db.encodeKey(email.toLowerCase(), EMAIL_TO_ID_PREFIX), context);
+    const lowerEmail = email.toLowerCase();
+    const escapedEmail = escapeEmailForKey(lowerEmail);
+    // Get user ID from email mapping in userMetadata
+    const emailMapPath = `userMetadata/emailToId/${escapedEmail}`;
+    // logger.debug({ ...context, path: emailMapPath }, 'Attempting to get user ID by email'); // Optional debug log
+    const userId = await db.get<string>(emailMapPath, context);
     if (!userId) {
+        // logger.debug({ ...context, path: emailMapPath, email: lowerEmail }, 'User ID not found for email'); // Optional debug log
         return {
             success: false,
             error: 'User not found'
         };
     }
-
-    const userResult = await getUserById(userId, context);
-    if (!userResult.success || !userResult.data) {
-        return userResult;
-    }
-
-    return {
-        success: true,
-        data: {
-            ...userResult.data,
-        }
-    };
+    // logger.debug({ ...context, path: emailMapPath, email: lowerEmail, userId }, 'Found user ID for email, getting user data'); // Optional debug log
+    return getUserById(userId, context); // Reuse getUserById
 };
 
 const createUser = async (id: string, email: string, context?: LogContext): Promise<UserResult> => {
-    // Check if ID is taken
-    const existingUser = await getUserById(id, context);
-    if (existingUser.success) {
+    const lowerEmail = email.toLowerCase();
+    const escapedEmail = escapeEmailForKey(lowerEmail);
+    const userPath = `users/${id}`;
+    const emailMapPath = `userMetadata/emailToId/${escapedEmail}`;
+    const userIdSetKey = 'userIds:all'; // Key for sAdd, maps to userMetadata/userIds/$id
+
+    // Use transactions or multi-path updates for atomicity if possible,
+    // but for now, perform checks and writes sequentially.
+
+    // Check if ID is taken (read from new path)
+    const existingUserCheck = await db.get(userPath, context);
+    if (existingUserCheck) {
         return {
             success: false,
             error: 'User ID already exists'
         };
     }
 
-    // Check if email is already registered
-    const existingEmail = await db.get(db.encodeKey(email, EMAIL_TO_ID_PREFIX), context);
-    if (existingEmail) {
+    // Check if email is already registered (read from new path)
+    const existingEmailCheck = await db.get(emailMapPath, context);
+    if (existingEmailCheck) {
         return {
             success: false,
             error: 'Email already registered'
@@ -87,24 +109,25 @@ const createUser = async (id: string, email: string, context?: LogContext): Prom
 
     const newUser: ExistingUser = {
         id,
-        email,
+        email: lowerEmail, // Store lowercase email
         createdAt: new Date().toISOString()
     };
 
     try {
-        // Store user data
-        await db.hSet(db.encodeKey(id, USER_PREFIX), 'data', newUser, context);
-        // Add ID to set of user IDs
-        await db.sAdd(USER_IDS_SET, id, context);
-        // Create email to ID mapping
-        await db.set(db.encodeKey(email, EMAIL_TO_ID_PREFIX), id, context);
+        // Store user data at /users/$id
+        await db.set(userPath, newUser, context);
+        // Add ID to set of user IDs at /userMetadata/userIds/$id
+        await db.sAdd(userIdSetKey, id, context);
+        // Create email to ID mapping at /userMetadata/emailToId/$escapedEmail
+        await db.set(emailMapPath, id, context);
 
         return {
             success: true,
             data: newUser
         };
     } catch (error: any) {
-        logger.error({ ...context, err: error, userId: id, email }, 'Database error creating user');
+        logger.error({ ...context, err: error, userId: id, email: lowerEmail }, 'Database error creating user');
+        // Consider trying to clean up partial writes if possible, though complex.
         return {
             success: false,
             error: 'Server error creating user'

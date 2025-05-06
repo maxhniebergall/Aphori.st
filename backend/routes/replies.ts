@@ -5,7 +5,6 @@ import {
     DatabaseClient as DatabaseClientType,
     AuthenticatedRequest,
     User,
-    Reply,
     Quote,
     CreateReplyResponse,
     CompressedApiResponse,
@@ -14,12 +13,14 @@ import {
     RedisSortedSetItem,
     ExistingSelectableQuotes,
     Compressed,
-    CursorPaginatedResponse
+    CursorPaginatedResponse,
+    Post
 } from '../types/index.js';
 import { getQuoteKey } from '../utils/quoteUtils.js';
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
+import crypto from 'crypto'; // Import crypto for hashing
 
 // Use the imported type for the placeholder and the setDb function
 let db: DatabaseClientType;
@@ -36,36 +37,66 @@ const generateCondensedUuid = (): string => {
     return uuid25Instance.value;
 };
 
+// Helper to create a stable hash for quote keys
+// Based on backend_architecture.md recommendation
+function generateHashedQuoteKey(quote: Quote): string {
+    // Create a canonical string representation (ensure consistent order)
+    const canonicalString = JSON.stringify({
+        text: quote.text,
+        sourceId: quote.sourceId,
+        selectionRange: {
+            start: quote.selectionRange.start,
+            end: quote.selectionRange.end
+        }
+    });
+    return crypto.createHash('sha1').update(canonicalString).digest('hex');
+}
+
+// Helper to sanitize keys for Firebase paths (percent encoding)
+function sanitizeKey(key: string): string {
+    let encoded = encodeURIComponent(key);
+    encoded = encoded.replace(/\./g, '%2E');
+    encoded = encoded.replace(/\$/g, '%24');
+    encoded = encoded.replace(/#/g, '%23');
+    encoded = encoded.replace(/\[/g, '%5B');
+    encoded = encoded.replace(/\]/g, '%5D');
+    encoded = encoded.replace(/\//g, '%2F');
+    return encoded;
+}
+
+// Define ReplyData structure inline (based on backend_architecture.md)
+interface ReplyData {
+  id: string;
+  authorId: string;
+  text: string;
+  parentId: string; // ID of the direct parent (post or reply)
+  parentType: "post" | "reply"; // Type of the direct parent
+  rootPostId: string; // ID of the original post tree root
+  quote: Quote;
+  createdAt: string; // ISO 8601 Timestamp String (consider changing to number for sorting)
+}
+
 /**
  * @route   POST /replies/createReply
  * @desc    Creates a new reply
  * @access  Authenticated
  */
-router.post('/createReply', authenticateToken, async (req: Request, res: Response<CreateReplyResponse>) => {
+router.post<{}, CreateReplyResponse, { text: string; parentId: string; quote: Quote }>('/createReply', authenticateToken, async (req, res) => {
     // Generate IDs for logging context
     const operationId = randomUUID();
     const requestId = res.locals.requestId; // Get from middleware
-    const logContext = { requestId, operationId }; 
+    const logContext = { requestId, operationId };
 
     try {
-        const text: string = req.body.text;
-        const parentId: string | string[] = req.body.parentId;
-        const quote: Quote = req.body.quote;
+        const { text, parentId, quote } = req.body;
         const user: User = (req as AuthenticatedRequest).user;
 
         if (!text || !parentId || !quote || !quote.text || !quote.sourceId || !quote.selectionRange) {
             logger.warn(logContext, 'Missing required fields for createReply');
-            res.status(400).json({
-                success: false,
-                error: 'Missing required fields. Ensure text, parentId, and a full quote (with text, sourceId, and selectionRange) are provided.'
-            });
+            res.status(400).json({ success: false, error: 'Missing required fields.' });
             return;
         }
-        if (Array.isArray(parentId) && parentId.length === 0) {
-             logger.warn(logContext, 'parentId array cannot be empty');
-             res.status(400).json({ success: false, error: 'parentId array cannot be empty' });
-             return;
-        }
+        // Removed parentId array check as model expects string
 
         const trimmedText = text.trim();
         const MAX_REPLY_LENGTH = 1000;
@@ -74,119 +105,159 @@ router.post('/createReply', authenticateToken, async (req: Request, res: Respons
 
         if (trimmedText.length > MAX_REPLY_LENGTH) {
             logger.warn({...logContext, textLength: trimmedText.length }, 'Reply text exceeds maximum length');
-            res.status(400).json({
-                success: false,
-                error: `Reply text exceeds the maximum length of ${MAX_REPLY_LENGTH} characters.`
-            });
+            res.status(400).json({ success: false, error: `Reply text exceeds max length.` });
             return;
         }
         if (!IGNORE_MIN_REPLY_LENGTH.includes(trimmedText) && trimmedText.length < MIN_REPLY_LENGTH) {
             logger.warn({...logContext, textLength: trimmedText.length }, 'Reply text below minimum length');
-            res.status(400).json({
-                success: false,
-                error: `Reply text must be at least ${MIN_REPLY_LENGTH} characters long.`
-            });
+            res.status(400).json({ success: false, error: `Reply text below min length.` });
             return;
         }
 
-        const newReply: Reply = {
+        // --- Determine parentType and rootPostId --- 
+        let parentType: "post" | "reply" | null = null;
+        let rootPostId: string | null = null;
+        const parentPost = await db.get<Post>(`posts/${parentId}`, logContext); // Added logContext
+        if (parentPost && parentPost.id === parentId) { // Add stricter check
+            parentType = 'post';
+            rootPostId = parentId;
+        } else {
+            const parentReply = await db.get<ReplyData>(`replies/${parentId}`, logContext); // Added logContext
+            if (parentReply && parentReply.id === parentId) { // Add stricter check
+                parentType = 'reply';
+                rootPostId = parentReply.rootPostId;
+            } else {
+                logger.error({ ...logContext, parentId }, 'Parent post or reply not found for createReply');
+                res.status(404).json({ success: false, error: 'Parent not found' });
+                return;
+            }
+        }
+        // --- End Parent/Root Lookup --- 
+
+        const newReply: ReplyData = {
             id: generateCondensedUuid(),
             text: trimmedText,
-            parentId,
+            parentId: parentId,
+            parentType: parentType!, // Use non-null assertion after validation
+            rootPostId: rootPostId!, // Use non-null assertion after validation
             quote,
             authorId: user.id,
-            createdAt: new Date().getTime().toString()
+            createdAt: new Date().toISOString()
         };
+
+        const score = new Date(newReply.createdAt).getTime();
+        const replyId = newReply.id;
+        const actualParentId = newReply.parentId;
+        const actualRootPostId = newReply.rootPostId;
+        const hashedQuoteKey = generateHashedQuoteKey(quote);
 
         // Log the replayable action intent and parameters *before* database calls
         logger.info(
-            { 
+            {
                 ...logContext,
                 action: {
                     type: 'CREATE_REPLY',
                     params: {
                         replyId: newReply.id,
                         parentId: newReply.parentId,
+                        parentType: newReply.parentType,
+                        rootPostId: newReply.rootPostId,
                         authorId: newReply.authorId,
                         quoteSourceId: newReply.quote.sourceId,
-                        // Avoid logging full text/quote content here for brevity unless needed
-                        // textLength: trimmedText.length,
-                        // quoteTextSnippet: newReply.quote.text.substring(0, 50) + '...',
+                        hashedQuoteKey: hashedQuoteKey,
                     }
                 },
             },
             'Initiating CreateReply action'
         );
 
-        // Pass logContext to all DB calls
-        await db.hSet(newReply.id, 'reply', newReply, logContext);
-        const quoteKey = getQuoteKey(quote);
-        const score = Date.now();
-        const actualParentId = Array.isArray(newReply.parentId) ? newReply.parentId[0] : newReply.parentId;
-        const replyId = newReply.id;
+        // --- Database Writes (Not Atomic) --- 
+        // TODO: Implement atomic writes using multi-path updates or transactions if possible.
+        // The following writes are performed sequentially.
 
-        await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, score, replyId, logContext);
-        await db.zAdd(`replies:uuid:${actualParentId}:quote:${quoteKey}:mostRecent`, score, replyId, logContext);
-        await db.hIncrementQuoteCount(`${actualParentId}:quoteCounts`, quoteKey, quote, logContext);
-        await db.sAdd(`user:${user.id}:replies`, replyId, logContext);
-        await db.zAdd('replies:feed:mostRecent', score, replyId, logContext);
+        // 1. Write reply data to /replies/$replyId
+        await db.set(`replies/${replyId}`, newReply, logContext);
+        logger.debug({ ...logContext, replyId }, "Set reply data.");
 
-        // Log success *after* database operations
+        // 2. Add to indexes (using Redis-style keys mapped by FirebaseClient)
+        const feedZSetKey = 'replies:feed:mostRecent';
+        await db.zAdd(feedZSetKey, score, replyId, logContext);
+        logger.debug({ ...logContext, key: feedZSetKey, replyId }, "Added reply to feed index.");
+
+        // Ensure key matches FirebaseClient.mapZSetKeyToIndexBasePath expected format
+        const parentQuoteZSetKey = `replies:uuid:${actualParentId}:quote:${hashedQuoteKey}:mostRecent`;
+        await db.zAdd(parentQuoteZSetKey, score, replyId, logContext);
+        logger.debug({ ...logContext, key: parentQuoteZSetKey, replyId }, "Added reply to parent/quote index.");
+
+        // 3. Update quote count (atomic transaction via FirebaseClient)
+        await db.hIncrementQuoteCount(actualParentId, hashedQuoteKey, quote, logContext);
+        logger.debug({ ...logContext, parentId: actualParentId, quoteKey: hashedQuoteKey }, "Incremented quote count.");
+
+        // 4. Add to user replies set (mapped key, uses set(true))
+        const userRepliesSaddKey = `userReplies:${user.id}`;
+        await db.sAdd(userRepliesSaddKey, replyId, logContext);
+        logger.debug({ ...logContext, key: userRepliesSaddKey, replyId }, "Added reply to user replies set.");
+
+        // 5. Add to parent replies index (direct path, uses set(true))
+        const parentRepliesPath = `replyMetadata/parentReplies/${actualParentId}/${replyId}`;
+        await db.set(parentRepliesPath, true, logContext); // Or timestamp
+        logger.debug({ ...logContext, path: parentRepliesPath }, "Added reply to parent replies index.");
+
+        // 6. Add to post replies index (direct path, uses set(true))
+        const postRepliesPath = `postMetadata/postReplies/${actualRootPostId}/${replyId}`;
+        await db.set(postRepliesPath, true, logContext); // Or timestamp
+        logger.debug({ ...logContext, path: postRepliesPath }, "Added reply to root post replies index.");
+
+        // 7. Increment root post reply count (atomic transaction via FirebaseClient)
+        // Key format `posts:rootPostId` is handled by FirebaseClient.hIncrBy
+        const postCounterKey = `posts:${actualRootPostId}`;
+        await db.hIncrBy(postCounterKey, 'replyCount', 1, logContext);
+        logger.debug({ ...logContext, key: postCounterKey }, "Incremented root post reply count.");
+        // --- End Database Writes --- 
+
         logger.info({ ...logContext, replyId, parentId: actualParentId }, 'Successfully created new reply');
 
         const response: CreateReplyResponse = {
             success: true,
             data: { id: replyId }
         };
-        res.send(response);
+        res.status(201).send(response);
     } catch (err) {
-        // Ensure error logs also include context
         logger.error({ ...logContext, err }, 'Error creating reply');
-        res.status(500).json({
-            success: false,
-            error: 'Server error'
-        });
+        res.status(500).json({ success: false, error: 'Server error creating reply' });
     }
 });
 
-// Temporary route for debugging type error
-router.get('/test-debug', (req, res) => {
-    res.status(200).send('Debug OK');
-});
+// Removed temporary debug route
 
-// New API endpoint: Retrieves quote reply counts for a given parent ID.
-// Returns an CompressedApiResponse containing ExistingSelectableQuotes, where the quoteCounts property is an array of map entries.
-router.get<{ parentId: string }, CompressedApiResponse<Compressed<ExistingSelectableQuotes>>>('/quoteCounts/:parentId', async (req: Request, res: Response) => {
+// Retrieves quote reply counts for a given parent ID.
+// Returns { success: boolean, data?: { quote: Quote, count: number }[], error?: string }
+// Removed compression
+router.get<{ parentId: string }, { success: boolean, data?: { quote: Quote, count: number }[], error?: string }>('/quoteCounts/:parentId', async (req: Request, res: Response) => {
     const { parentId } = req.params;
     if (!parentId) {
         res.status(400).json({ success: false, error: 'Parent ID is required' });
         return;
     }
     try {
-        // Retrieve the quote reply counts from Firebase using the key pattern: "<parentId>:quoteCounts"
-        const rawQuoteData = await db.hGetAll(`${parentId}:quoteCounts`);
+        // Retrieve the quote reply counts from Firebase direct path
+        const quoteCountsPath = `replyMetadata/quoteCounts/${parentId}`;
+        const rawQuoteData = await db.hGetAll(quoteCountsPath); // hGetAll reads direct path now
 
         if (!rawQuoteData) {
           // Handle case where no counts exist for this parent
-          const compressedResponse = await db.compress({ quoteCounts: [] });
-          const apiResponse: CompressedApiResponse<Compressed<ExistingSelectableQuotes>> = {
-              success: true,
-              compressedData: compressedResponse
-          };
-          res.setHeader('X-Data-Compressed', 'true');
-          res.send(apiResponse);
+          res.json({ success: true, data: [] });
           return;
         }
 
-        // Process the raw results into a Map<Quote, number>
-        const quoteCountsMap = new Map<Quote, number>();
+        // Process the raw results
+        const quoteCountsArray: { quote: Quote, count: number }[] = [];
         for (const [_key, valueObj] of Object.entries(rawQuoteData)) {
             // The valueObj should be { quote: QuoteObject, count: number }
             if (valueObj && typeof valueObj === 'object' && valueObj.quote && typeof valueObj.count === 'number') {
-                // Ensure the quote structure is valid before adding
-                // You might want more robust validation based on the Quote type definition
+                // Basic validation of quote structure
                 if (valueObj.quote.text && valueObj.quote.sourceId && valueObj.quote.selectionRange) {
-                    quoteCountsMap.set(valueObj.quote as Quote, valueObj.count);
+                    quoteCountsArray.push({ quote: valueObj.quote as Quote, count: valueObj.count });
                 } else {
                     logger.warn({ parentId, quote: valueObj.quote }, 'Invalid quote structure found in quoteCounts');
                 }
@@ -194,19 +265,10 @@ router.get<{ parentId: string }, CompressedApiResponse<Compressed<ExistingSelect
                 logger.warn({ parentId, data: valueObj }, 'Invalid data structure found in quoteCounts');
             }
         }
-        
-        // Convert the Map into an array of entries.
-        // This is equivalent to: JSON.stringify(Array.from(quoteCountsMap.entries()))
-        // since res.json will automatically serialize the object.
-        const quoteCountsArray = Array.from(quoteCountsMap.entries());
-        const compressedResponse = await db.compress({ quoteCounts: quoteCountsArray });
 
-        const CompressedApiResponse: CompressedApiResponse<Compressed<ExistingSelectableQuotes>> = {
-            success: true,
-            compressedData: compressedResponse
-        };
-        res.setHeader('X-Data-Compressed', 'true');
-        res.send(CompressedApiResponse);
+        // Send plain JSON response
+        res.json({ success: true, data: quoteCountsArray });
+
     } catch (error) {
         logger.error({ parentId, err: error }, 'Error retrieving quote counts');
         res.status(500).json({ success: false, error: 'Internal server error' });
@@ -214,21 +276,17 @@ router.get<{ parentId: string }, CompressedApiResponse<Compressed<ExistingSelect
 });
 
 /**
- * @route   GET /getReplies/:parentId/:quote/:sortCriteria
+ * @route   GET /replies/getReplies/:parentId/:quote/:sortCriteria
  * @desc    Retrieves replies associated with a specific quote on a parent node.
- * @access  Authenticated (implicitly, as the router is mounted with auth)
+ * @access  Public (Adjust if auth needed)
  * @param   {string} parentId - The ID of the parent node (previously uuid).
  * @param   {string} quote - URL-encoded JSON string of the Quote object.
  * @param   {SortingCriteria} sortCriteria - Sorting order (e.g., 'mostRecent').
  * @query   {number} [limit=10] - Max number of replies per page.
- * @query   {string} [cursor] - Pagination cursor (score for zscan).
- * @returns {CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>>} Compressed response with replies and pagination.
+ * @query   {string} [cursor] - Pagination cursor (timestamp_replyId key for zscan).
+ * @returns {CursorPaginatedResponse<ReplyData>} Response with replies and pagination.
  */
-router.get<{
-    parentId: string;
-    quote: string;
-    sortCriteria: SortingCriteria
-}, CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>>>('/getReplies/:parentId/:quote/:sortCriteria', async (req, res) => {
+router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, CursorPaginatedResponse<ReplyData> | { success: boolean; error: string }>('/getReplies/:parentId/:quote/:sortCriteria', async (req, res) => {
     try {
         const { parentId, quote, sortCriteria } = req.params;
         let quoteObj: Quote;
@@ -243,134 +301,85 @@ router.get<{
                 throw new Error('Invalid quote format');
             }
         } catch (error) {
-            const errorResponse: CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>> = {
-                success: false,
-                error: 'Invalid quote object provided in URL parameter'
-            };
-            res.status(400).json(errorResponse);
+            res.status(400).json({ success: false, error: 'Invalid quote object provided' });
             return;
         }
 
         // Validate that the quote object includes the required fields.
         if (!quoteObj.text || !quoteObj.sourceId || !quoteObj.selectionRange) {
-            const errorResponse: CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>> = {
-                success: false,
-                error: 'Quote object must include text, sourceId, and selectionRange fields'
-            };
-            res.status(400).json(errorResponse);
+            res.status(400).json({ success: false, error: 'Quote object incomplete' });
             return;
         }
 
-        // Generate a unique key for the quote using its properties.
-        const quoteKey = getQuoteKey(quoteObj);
-        logger.info({ parentId, quote: quoteObj, sortCriteria }, '[getReplies] Processing request');
-        
+        // Generate the hashed quote key for index lookup
+        const hashedQuoteKey = generateHashedQuoteKey(quoteObj);
+        logger.info({ parentId, hashedQuoteKey, sortCriteria }, '[getReplies] Processing request');
+
         // Pagination parameters
-        const MAX_LIMIT = 100; // Cap the limit to prevent excessive data requests
+        const MAX_LIMIT = 100;
         const limit = Math.min(parseInt(req.query.limit as string) || 10, MAX_LIMIT);
-        const cursor = req.query.cursor as string | undefined; // Cursor is the score for zscan, can be undefined
+        const cursor = req.query.cursor as string | undefined; // Cursor is the timestamp_replyId key
 
-        // Build the sorted set key for replies based on parent ID, full quote object key, and sorting criteria.
-        // Note: This key matches the one used in createReply
-        const sortedSetKey = `replies:uuid:${parentId}:quote:${quoteKey}:${sortCriteria}`;
-        logger.info('[getReplies] Constructed Redis key: %s', sortedSetKey);
+        // Build the sorted set key for replies based on parent ID, HASHED quote key, and sorting criteria.
+        // This key needs to be mapped correctly by FirebaseClient.zscan
+        // Example mapping: -> indexes/repliesByParentQuoteTimestamp/$sanitizedParentId/$sanitizedHashedQuoteKey
+        const zSetKey = `replies:uuid:${parentId}:quote:${hashedQuoteKey}:${sortCriteria}`;
+        logger.info('[getReplies] Using ZSet key: %s', zSetKey);
 
-        // Get total count for pagination info
-        const totalCount = await db.zCard(sortedSetKey) || 0;
+        // Get total count (using zCard with mapped key)
+        const totalCount = await db.zCard(zSetKey) || 0;
 
-        // Fetch reply IDs from the sorted set using zRangeByScore with limit
-        // We need scores to determine the next cursor.
-        // zscan cursor isn't reliable for pagination here as we need the score.
-        // Fetch one extra item to determine if there's more.
-        const fetchLimit = limit + 1;
-        
-        // Correct call using zRevRangeByScore
-        // Max score: If cursor exists, use it as the upper bound (inclusive). Otherwise, use a safe large number.
-        // Min score: Always -Infinity to get all older items.
-        // Limit: Fetch one extra item to check for 'hasMore'.
-        const maxScore = cursor ? Number(cursor) : Number.MAX_SAFE_INTEGER; // Use safe integer instead of '+inf'
-        const minScore = '-inf';                       // Use '-inf' for Redis command
-        // Ensure T matches the expected structure returned by zRevRangeByScore
-        // (which returns RedisSortedSetItem<T>, where T is the base type stored, potentially compressed)
-        // Let's assume the base type T stored via zAdd was the compressed reply ID string.
-        // Note: The RedisClient's zRevRangeByScore expects numeric scores, but internally converts to string for the command.
-        // We pass numbers or +/-inf strings here, relying on the client's internal String() conversion.
-        const maxScoreNum = maxScore === Number.MAX_SAFE_INTEGER ? Infinity : Number(maxScore); // Convert MAX_SAFE_INTEGER back to Infinity if needed for client
-        const minScoreNum = minScore === '-inf' ? -Infinity : Number(minScore); // Keep as number for interface
+        // Fetch reply IDs using zscan for cursor stability
+        // FirebaseClient.zscan should handle mapping zSetKey to the index path
+        // and using orderByKey().limitToFirst().startAfter(cursor)
+        const { items: replyItems, cursor: nextCursorRaw } = await db.zscan(zSetKey, cursor || '0', { count: limit });
+        // zscan returns { score: number, value: string (replyId) }[]
 
-        // Expect Array<{ score: number, value: string (replyId) }>
-        const rawReplyItemsWithScores = await db.zRevRangeByScore<string>(sortedSetKey, maxScoreNum, minScoreNum, { limit: fetchLimit });
+        logger.info('[getReplies] Fetched %d reply items via zscan. Next cursor: %s', replyItems.length, nextCursorRaw);
 
-        // Fix the log message
-        logger.info('[getReplies] Fetched %d raw reply items from sorted set.', rawReplyItemsWithScores.length);
-
-        // Determine if there are more items beyond the requested limit
-        const hasMore = rawReplyItemsWithScores.length > limit;
-        const itemsToProcess = hasMore ? rawReplyItemsWithScores.slice(0, limit) : rawReplyItemsWithScores;
-        
-        // Extract the score of the last processed item for the next cursor
-        const nextCursor = hasMore ? itemsToProcess[itemsToProcess.length - 1]?.score.toString() : undefined;
-
-        // Fetch the actual reply data for each ID
-        const replies = await Promise.all(
-            // Map over itemsToProcess which is Array<{ score: number, value: string }>
-            itemsToProcess.map(async (item) => { 
-                let replyId = item.value; // Access reply ID from item.value
-                try {
-                    const replyData = await db.hGet(replyId, 'reply'); 
-                    // logger.info({ replyId: replyId, dataPresent: !!replyData }, '[getReplies] Raw reply data fetched');
-                    // Log the actual data received after hGet and decompression
-                    logger.info({ replyId: replyId, fetchedData: replyData }, '[getReplies] Decompressed reply data received');
-
-                    if (typeof replyData === 'object' && replyData !== null) {
-                        // Validate structure (add more checks as needed)
-                         if ('id' in replyData && 'text' in replyData && 'authorId' in replyData) {
-                            return replyData as Reply;
-                         } else {
-                            logger.warn({ replyId: replyId, data: replyData }, '[getReplies] Invalid reply structure found');
-                            return null;
-                         }
-                    } else {
-                         logger.warn({ replyId: replyId, dataType: typeof replyData }, '[getReplies] Unexpected data type or null after hGet');
-                         return null;
-                    }
-                } catch (err) {
-                    logger.error({ replyId: replyId, err }, `Error during hGet or processing for reply`);
+        // Fetch the actual reply data for each ID using direct path
+        const repliesPromises = replyItems.map(async (item) => {
+            const replyId = item.value; // Reply ID is in the 'value' field
+            try {
+                const replyData = await db.get<ReplyData>(`replies/${replyId}`);
+                if (replyData) {
+                    // TODO: Add validation check (isValidNewReply) if needed
+                    return replyData;
+                } else {
+                    logger.warn({ replyId }, '[getReplies] Reply data not found for ID from index');
                     return null;
                 }
-            })
-        );
+            } catch (err) {
+                logger.error({ replyId, err }, `[getReplies] Error during get for reply`);
+                return null;
+            }
+        });
 
-        // Filter out any null values from failed fetches
-        const validReplies = replies.filter((reply: Reply | null): reply is Reply => reply !== null);
+        const repliesData = await Promise.all(repliesPromises);
+        const validReplies = repliesData.filter((reply): reply is ReplyData => reply !== null);
+
         logger.info('[getReplies] Processed %d valid replies.', validReplies.length);
 
-        // Prepare the response object with cursor pagination info
-        const responseData = {
+        // Determine hasMore based on if zscan returned a cursor indicating more data
+        const hasMore = nextCursorRaw !== '0';
+        const nextCursor = hasMore ? nextCursorRaw : undefined;
+
+        // Prepare the response object (no compression)
+        const responseData: CursorPaginatedResponse<ReplyData> = {
             success: true,
             data: validReplies,
             pagination: {
-                nextCursor: nextCursor, // Use the score of the last item as the next cursor
+                nextCursor: nextCursor,
                 hasMore: hasMore,
                 totalCount: totalCount
             }
-        } as CursorPaginatedResponse<Reply>; // Make sure this type matches
-
-        // Compress and send the response
-        const compressedResponse = await db.compress(responseData) as Compressed<CursorPaginatedResponse<Reply>>;
-        res.setHeader('X-Data-Compressed', 'true');
-        const apiResponse: CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>> = {
-            success: true,
-            compressedData: compressedResponse
         };
-        res.send(apiResponse);
+
+        res.json(responseData);
+
     } catch (err) {
         logger.error('Error fetching replies by quote: %O', err);
-        const errorResponse: CompressedApiResponse<Compressed<CursorPaginatedResponse<Reply>>> = {
-            success: false,
-            error: 'Server error fetching replies'
-        };
-        res.status(500).json(errorResponse);
+        res.status(500).json({ success: false, error: 'Server error fetching replies' });
     }
 });
 

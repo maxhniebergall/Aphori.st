@@ -75,8 +75,21 @@ export interface Reply {
     createdAt: string;
 }
 
+// Define ReplyData structure based on backend_architecture.md
+export interface ReplyData {
+    id: string;
+    authorId: string;
+    // authorUsername?: string; // Optional field
+    text: string;
+    parentId: string; // Direct parent ID
+    parentType: "post" | "reply"; // Type of direct parent
+    rootPostId: string; // ID of the root post
+    quote: Quote; // Re-use existing Quote interface
+    createdAt: string; // ISO 8601 Timestamp String
+}
+
 export interface Replies {
-    replies: Reply[];
+    replies: Reply[]; // Keep this for now, maybe refactor later if needed
 }
 
 export enum SortingCriteria {

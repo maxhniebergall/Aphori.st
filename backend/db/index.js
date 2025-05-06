@@ -1,7 +1,5 @@
 import { RedisClient } from './RedisClient.js';
 import { FirebaseClient } from './FirebaseClient.js';
-import { CompressedDatabaseClient } from './CompressedDatabaseClient.js';
-import { DatabaseCompression } from './DatabaseCompression.js';
 import { LoggedDatabaseClient } from './LoggedDatabaseClient.js';
 import logger from '../logger.js';
 // No need to import the interface type in JS
@@ -26,9 +24,6 @@ export function createDatabaseClient() {
     }
 
     logger.info('Creating new database client instance...');
-
-    // Create compression layer with default settings
-    const compression = new DatabaseCompression();
 
     // Create the base client based on DB_TYPE
     let baseClient;
@@ -74,11 +69,8 @@ export function createDatabaseClient() {
         baseClient = new RedisClient(redisConfig);
     }
     
-    // Wrap the base client with compression
-    const compressedClient = new CompressedDatabaseClient(baseClient, compression);
-
     // Wrap the compressed client with logging
-    const loggedClient = new LoggedDatabaseClient(compressedClient, logger);
+    const loggedClient = new LoggedDatabaseClient(baseClient, logger);
 
     // Store the fully wrapped instance
     instance = loggedClient;
