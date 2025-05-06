@@ -1,19 +1,23 @@
-# Aphorist Backend Architecture Document
+# Aphorist Backend Architecture Document (Revised)
+
+**Last Updated:** May 5, 2025
+
 This document provides an overview of the Aphorist backend architecture, detailing the frontend APIs exposed by the backend server, including their request and response structures using TypeScript interfaces. Additionally, it outlines the backend data model for Firebase Realtime Database and provides descriptions of each backend file within the project.
 
 ## Table of Contents
-- [Frontend APIs](#frontend-apis)
-  - [Authentication APIs](#authentication-apis)
-  - [User Management APIs](#user-management-apis)
-  - [Reply APIs](#reply-apis)
-  - [PostTree APIs](#posttree-apis)
-  - [Feed APIs](#feed-apis)
-- [Backend Data Model (Firebase RTDB)](#backend-data-model-firebase-rtdb)
-- [Database Access Patterns (Firebase RTDB)](#database-access-patterns-firebase-rtdb)
-  - [Replies Access Patterns](#replies-access-patterns)
-- [Implementation Status & Next Steps](#implementation-status--next-steps)
-- [Backend Files Overview](#backend-files-overview)
-- [Data Compression](#data-compression)
+
+  * [Frontend APIs](https://www.google.com/search?q=%23frontend-apis)
+      * [Authentication APIs](https://www.google.com/search?q=%23authentication-apis)
+      * [User Management APIs](https://www.google.com/search?q=%23user-management-apis)
+      * [Reply APIs](https://www.google.com/search?q=%23reply-apis)
+      * [Post APIs](https://www.google.com/search?q=%23post-apis)
+      * [Feed APIs](https://www.google.com/search?q=%23feed-apis)
+  * [Backend Data Model (Firebase RTDB)](https://www.google.com/search?q=%23backend-data-model-firebase-rtdb)
+  * [Database Access Patterns (Firebase RTDB)](https://www.google.com/search?q=%23database-access-patterns-firebase-rtdb)
+      * [Replies Access Patterns](https://www.google.com/search?q=%23replies-access-patterns)
+  * [Implementation Status & Next Steps](https://www.google.com/search?q=%23implementation-status--next-steps)
+  * [Backend Files Overview](https://www.google.com/search?q=%23backend-files-overview)
+  * [Data Compression](https://www.google.com/search?q=%23data-compression)
 
 ## Frontend APIs
 
@@ -21,10 +25,11 @@ This document provides an overview of the Aphorist backend architecture, detaili
 
 #### POST /api/auth/send-magic-link
 
-**Description:**  
+**Description:**
 Sends a magic link to the user's email for authentication purposes. This link allows the user to sign in or sign up without a password.
 
 **Request Interface:**
+
 ```typescript
 interface SendMagicLinkRequest {
   email: string;
@@ -33,6 +38,7 @@ interface SendMagicLinkRequest {
 ```
 
 **Response Interface:**
+
 ```typescript
 interface SendMagicLinkResponse {
   success: boolean;
@@ -43,10 +49,11 @@ interface SendMagicLinkResponse {
 
 #### POST /api/auth/verify-magic-link
 
-**Description:**  
+**Description:**
 Verifies the magic link token received by the user and authenticates them, issuing an authentication token upon successful verification.
 
 **Request Interface:**
+
 ```typescript
 interface VerifyMagicLinkRequest {
 token: string;
@@ -54,6 +61,7 @@ token: string;
 ```
 
 **Response Interface:**
+
 ```typescript
 interface VerifyMagicLinkResponse {
 success: boolean;
@@ -69,10 +77,11 @@ data: {
 
 #### POST /api/auth/verify-token
 
-**Description:**  
+**Description:**
 Verifies the provided authentication token to ensure its validity and extracts the user information.
 
 **Request Interface:**
+
 ```typescript
 interface VerifyTokenRequest {
 token: string;
@@ -80,6 +89,7 @@ token: string;
 ```
 
 **Response Interface:**
+
 ```typescript
 interface VerifyTokenResponse {
 success: boolean;
@@ -92,17 +102,19 @@ data: {
 
 #### GET /api/profile
 
-**Description:**  
+**Description:**
 Retrieves the authenticated user's profile information. This is a protected route that requires a valid authentication token.
 
 **Request Headers:**
-Authorization: Bearer <token>
+Authorization: Bearer \<token\>
 
 **Response Interface:**
+
 ```typescript
 interface ProfileResponse {
 id: string;
 email: string;
+// username?: string; // Add when implemented
 }
 ```
 
@@ -110,13 +122,14 @@ email: string;
 
 #### GET /api/check-user-id/:id
 
-**Description:**  
+**Description:**
 Checks if a user ID is available for registration.
 
 **URL Parameters:**
 id: string
 
 **Response Interface:**
+
 ```typescript
 interface CheckUserIdResponse {
   success: boolean;
@@ -127,19 +140,21 @@ interface CheckUserIdResponse {
 
 #### POST /api/signup
 
-**Description:**  
+**Description:**
 Creates a new user account with the provided ID and email.
 
 **Request Interface:**
+
 ```typescript
 interface SignupRequest {
   id: string;
   email: string;
-  verificationToken?: string;
+  verificationToken?: string; // If email verification precedes signup completion
 }
 ```
 
 **Response Interface:**
+
 ```typescript
 interface SignupResponse {
   success: boolean;
@@ -159,139 +174,169 @@ interface SignupResponse {
 
 #### POST /api/createReply
 
-**Description:**  
-Creates a new reply to a post or another reply.
+**Description:**
+Creates a new reply to a post or another reply. Requires authentication.
 
 **Request Interface:**
+
 ```typescript
 interface CreateReplyRequest {
-  parentId: string | string[];
+  parentId: string; // ID of the direct parent post or reply being replied to
   text: string;
-  quote: {  // Required field for tracking what is being replied to
+  quote: {  // Required field for tracking what specific text is being replied to
     text: string;
-    sourcePostId: string;
+    sourceId: string; // ID of the post/reply where the quote originated
     selectionRange: {
       start: number;
       end: number;
     };
   };
-  metadata: {
-    authorId: string;  // Required for tracking reply author
-  };
+  // authorId is derived from the authentication token on the backend
 }
 ```
 
 **Response Interface:**
+
 ```typescript
 interface CreateReplyResponse {
   success: boolean;
   data?: {
-    id: string;
+    id: string; // ID of the newly created reply
   };
   error?: string;
 }
 ```
 
-**Authentication:**  
-Requires valid authentication token in Authorization header.
+**Authentication:**
+Requires valid authentication token in Authorization header. Backend uses token to determine `authorId`.
 
 **Error Responses:**
-- 400: Missing required fields (text, parentId, quote, or metadata.authorId)
-- 401: Invalid or missing authentication token
-- 500: Server error
+
+  * 400: Missing required fields (`parentId`, `text`, `quote`) or invalid data format.
+  * 401: Invalid or missing authentication token.
+  * 404: Parent post or reply not found.
+  * 500: Server error.
 
 #### GET /api/getReplies/:uuid/:quote/:sortingCriteria
 
-**Description:**  
+**Description:**
 Retrieves replies for a specific post and quote with sorting options.
 
 **URL Parameters:**
-uuid: the uuid of the parent post or reply
-quote: the quote to be used for sorting
-sortingCriteria: the criteria to sort the replies by (most recent, oldest, most liked, least liked)
+
+  * uuid: The uuid of the parent post or reply.
+  * quote: The quote identifier (e.g., sanitized text or quote key hash) used for filtering/indexing.
+  * sortingCriteria: The criteria to sort the replies by (e.g., `mostRecent`, `oldest`).
 
 **Query Parameters:**
-cursor?: string
+
+  * cursor?: string (For pagination, likely a timestamp or `timestamp_replyId`)
 
 **Response Interface:**
+
 ```typescript
 interface GetRepliesResponse {
-  replies: string[];
+  // Typically returns an array of Reply IDs or full Reply objects
+  replies: string[] | ReplyData[];
   pagination: {
     nextCursor?: string;
-    previousCursor?: string;
+    // previousCursor?: string; // Optional, depending on pagination strategy
   };
+}
+
+// Define ReplyData structure if returning full objects
+interface ReplyData {
+  id: string;
+  authorId: string;
+  // authorUsername?: string;
+  text: string;
+  parentId: string;
+  parentType: "post" | "reply";
+  rootPostId: string;
+  quote: { /* ... */ };
+  createdAt: string; // ISO 8601 Timestamp String
 }
 ```
 
 #### GET /api/getRepliesFeed
 
-**Description:**  
+**Description:**
 Retrieves a global feed of replies sorted by recency.
 
 **Query Parameters:**
-cursor?: string
+
+  * cursor?: string (For pagination)
 
 **Response Interface:**
+
 ```typescript
 interface GetRepliesFeedResponse {
-  replies: string[];
+  replies: string[] | ReplyData[]; // Array of Reply IDs or full Reply objects
   pagination: {
     nextCursor?: string;
-    previousCursor?: string;
   };
 }
 ```
 
-### PostTree APIs
+### Post APIs
 
-#### GET /api/postTree/:uuid
+*(Formerly PostTree APIs)*
 
-**Description:**  
-Fetches the post tree data associated with the given uuid from Redis. The post tree contains nested post nodes.
+#### GET /api/post/:uuid
+
+**Description:**
+Fetches the data for a **single post** associated with the given uuid. Does *not* fetch replies.
 
 **URL Parameters:**
-uuid: string
+
+  * uuid: string (ID of the post)
 
 **Response Interface:**
+
 ```typescript
-interface PostTreeNode {
+// Define PostData structure
+interface PostData {
     id: string;
-    parentId?: string | null;
-    childrenIds: string[];
-    createdAt: string; // ISO Date string
-    modifiedAt?: string; // ISO Date string
-    content: string;
     authorId: string;
-    metadata: {
-        // Additional metadata for the post node
-    };
+    // authorUsername?: string;
+    content: string;
+    createdAt: string; // ISO 8601 Timestamp String
+    replyCount: number;
+    // other post metadata
 }
 
-interface GetPostTreeResponse extends PostTreeNode {}
+interface GetPostResponse {
+  success: boolean;
+  post?: PostData;
+  error?: string;
+}
 ```
 
-#### POST /api/createPostTree
+#### POST /api/createPost
 
-**Description:**  
-Creates a new post tree with the provided content and metadata.
+**Description:**
+Creates a new root post. Requires authentication.
 
 **Request Interface:**
+
 ```typescript
-interface CreatePostTreeRequest {
-  postTree: {
-    content: string;
-    authorId: string;
-    // Potentially other fields needed for root post creation
-  };
+interface CreatePostRequest {
+  content: string;
+  // authorId is derived from the authentication token on the backend
+  // other potential fields for root post creation
 }
 ```
 
 **Response Interface:**
+
 ```typescript
-interface CreatePostTreeResponse {
-  id: string; // UUID of the newly created post tree root
-  message: string;
+interface CreatePostResponse {
+  success: boolean;
+  data?: {
+    id: string; // UUID of the newly created post
+  };
+  message?: string;
+  error?: string;
 }
 ```
 
@@ -299,39 +344,50 @@ interface CreatePostTreeResponse {
 
 #### GET /api/feed
 
-**Description:**  
-Retrieves a paginated list of feed items. Each feed item represents a story added to the feed.
+**Description:**
+Retrieves a paginated list of feed items (representing root posts).
 
 **Query Parameters:**
-cursor?: string
+
+  * cursor?: string (For pagination, likely a Push ID or timestamp)
 
 **Response Interface:**
+
 ```typescript
 interface FeedItem {
-id: string;
-text: string;
-title: string;
-author: string;
+  id: string; // ID of the post
+  authorId: string;
+  // authorUsername?: string;
+  textSnippet: string; // e.g., First N characters of post content
+  createdAt: string; // ISO 8601 Timestamp String
+  // Potentially other fields like title, replyCount
 }
+
 interface GetFeedResponse {
-cursor?: string;
-items: FeedItem[];
+  success: boolean;
+  items?: FeedItem[];
+  pagination?: {
+    nextCursor?: string;
+  };
+  error?: string;
 }
+
 ```
 
 ## Backend Data Model (Firebase RTDB)
+
 The backend utilizes Firebase Realtime Database (RTDB). The following data model is designed to leverage RTDB's strengths while enabling efficient querying and security rule enforcement.
 
-Core Principles:
+**Core Principles:**
 
-*   **Flat Structure:** Keep data relatively flat. Avoid deep nesting where possible.
-*   **Denormalization:** Duplicate data where necessary for efficient reads, especially for list views or displaying related info (e.g., author username alongside a post).
-*   **Predictable Paths:** Use clear, human-readable path segments based on collections and IDs (e.g., `/users/$userId`, `/posts/$postId`). Direct paths are crucial for security rules.
-*   **Use Native Keys:** Use UUIDs (e.g., uuidv7 condensed to 25 digits) directly as keys under the appropriate nodes (e.g., `/posts/<postId>`). Firebase Push IDs are used for list-like structures where chronological ordering is inherent (e.g., `/feedItems`).
-*   **Index for Queries:** Create specific index nodes to query relationships efficiently (e.g., posts by user, replies by timestamp).
-*   **Maps over Lists:** Use JSON objects (maps) with unique keys instead of arrays/lists for collections where items might be added/removed frequently or where the collection size can grow large. RTDB handles maps much more efficiently.
+  * **Flat Structure:** Keep data relatively flat. Avoid deep nesting where possible.
+  * **Denormalization:** Duplicate data where necessary for efficient reads, especially for list views or displaying related info (e.g., author username alongside a post).
+  * **Predictable Paths:** Use clear, human-readable path segments based on collections and IDs (e.g., `/users/$userId`, `/posts/$postId`). Direct paths are crucial for security rules.
+  * **Use Native Keys:** Use UUIDs (e.g., uuidv7 condensed to 25 digits) directly as keys under the appropriate nodes (e.g., `/posts/<postId>`). Firebase Push IDs are used for list-like structures where chronological ordering is inherent (e.g., `/feedItems`).
+  * **Index for Queries:** Create specific index nodes to query relationships efficiently (e.g., posts by user, replies by timestamp).
+  * **Maps over Lists:** Use JSON objects (maps) with unique keys instead of arrays/lists for collections where items might be added/removed frequently or where the collection size can grow large. RTDB handles maps much more efficiently.
 
-Recommended Data Model Structure:
+**Data Model Structure:**
 
 ```json
 {
@@ -354,7 +410,7 @@ Recommended Data Model Structure:
       // "authorUsername": "someUsername", // Denormalized if needed
       "content": "Text of the post...",
       "createdAt": "ISO8601_Timestamp_String", // Backend server timestamp string
-      "replyCount": 0 // Atomically updated counter (managed via hIncrBy)
+      "replyCount": 0 // Atomically updated counter (managed via Firebase Transaction)
       // other post metadata
     }
   },
@@ -365,8 +421,8 @@ Recommended Data Model Structure:
       "id": "$replyId",                   // Matches key for convenience
       "authorId": "$userId",
       "text": "Text of the reply...",
-      "parentId": ["$parentPostOrReplyId", ...], // Array of parent IDs (direct parent first)
-      // "parentType": "post" | "reply",   // May not be needed if parentId structure is clear
+      "parentId": "$directParentId",       // <<< CHANGED: ID of the direct parent (post or reply)
+      "parentType": "post" | "reply",   // <<< ADDED: Type of the direct parent
       "rootPostId": "$postId",           // ID of the original post tree root (useful for fetching whole thread)
       "quote": {                         // Mandatory quote info
         "text": "Quoted text snippet",
@@ -381,19 +437,18 @@ Recommended Data Model Structure:
   },
 
   // 4. Feed Items (Chronological using Push IDs)
-  "feedItems": { // Path uses RTDB push()
+  "feedItems": { // Path uses RTDB push() for chronological ordering
     "$feedItemId_pushKey": { // Firebase push keys sort chronologically
-      "id": "$postId", // Reference to the original post (matches the push key base without timestamp part)
+      "id": "$postId", // Reference to the original post
       "authorId": "$userId",
       // "authorUsername": "someUsername", // Denormalized if needed
       "textSnippet": "First N chars of post...", // Denormalized snippet
       "createdAt": "ISO8601_Timestamp_String" // Backend server timestamp string (matches post createdAt)
-      // ".priority": { ".sv": "timestamp" } // Optional: Can use server value timestamp for ordering/priority if push key order isn't sufficient
     }
   },
   // Counter for feed items (optional, if needed beyond client-side counts)
   "feedStats": {
-      "itemCount": 123 // Atomically updated counter
+      "itemCount": 123 // Atomically updated counter via Transaction
   },
 
   // 5. Metadata and Indexes (Aligns well with your rules structure)
@@ -429,18 +484,18 @@ Recommended Data Model Structure:
   },
 
   "replyMetadata": {
-    "parentReplies": { // Index replies under their direct parent (first element of parentId array)
-      "$parentPostOrReplyId": {
+    "parentReplies": { // <<< UPDATED: Index replies under their DIRECT parent
+      "$directParentId": { // Key is the ID from /replies/$replyId/parentId
         "$replyId": true // Or store timestamp for sorting replies to a specific parent
       }
     },
     "quoteCounts": { // Tracks how many times a specific quote within a parent has been replied to
       "$parentPostOrReplyId": {
         // Use a safe key representation of the quote object
-        // Option 1: Use a stable hash (e.g., SHA-1 hex digest) of the canonical quote object string
+        // Option: Use a stable hash (e.g., SHA-1 hex digest) of the canonical quote object string
         "$hashedQuoteKey": { // Key is hash of quote object
           "quote": { /* full quote object */ }, // Store original quote for reference
-          "count": 5 // Atomically updated counter
+          "count": 5 // Atomically updated counter via Transaction
         }
       }
     }
@@ -452,7 +507,7 @@ Recommended Data Model Structure:
   // Keys are typically <timestamp>_<uniqueId> to ensure order and uniqueness.
   "indexes": {
       "repliesFeedByTimestamp": { // Global feed sorted by time
-          "$timestamp_$replyId": "$replyId" // Value is the reply ID (or minimal needed data)
+          "$timestamp_$replyId": "$replyId" // Value is the reply ID
       },
       "repliesByParentQuoteTimestamp": { // Replies to specific parent/quote, sorted by time
           "$sanitizedParentId": {
@@ -461,138 +516,111 @@ Recommended Data Model Structure:
               }
           }
       },
-      "repliesByQuoteTimestamp": { // Replies to specific quote (regardless of parent), sorted by time
-          "$sanitizedQuoteIdentifier": { // Could be quoteKey or quoteText
-              "$timestamp_$replyId": "$replyId" // Value is reply ID
-          }
-      },
-      "repliesByParentTextTimestamp": { // Replies to specific parent/quoteText, sorted by time
-           "$sanitizedParentId": {
-              "$sanitizedQuoteText": {
-                  "$timestamp_$replyId": "$replyId" // Value is reply ID
-              }
-          }
-      }
-      // Add other indexes corresponding to zAdd needs
+      // ... other sorted indexes as needed ...
+      // Example:
+      // "repliesByRootPostTimestamp": { // All replies for a thread sorted by time
+      //     "$rootPostId": {
+      //         "$timestamp_$replyId": "$replyId"
+      //     }
+      // }
   }
 }
 ```
 
-Key Construction and Dynamic Values:
+**Key Construction and Dynamic Values:**
 
-*   **Primary Keys:** Use condensed UUIDs (`$userId`, `$postId`, `$replyId`). Use Firebase Push IDs (`$feedItemId_pushKey`) for `feedItems`. These become the direct key under the main data nodes (e.g., `/posts/$postId`).
-*   **Index Keys:**
-    *   For Sets (`userIds`, `userPosts`, `userReplies`, etc.): Use the relevant ID (`$userId`, `$postId`, `$replyId`) as the key; the value is typically `true`.
-    *   For Timestamp Indexes (`indexes/*`): Use a composite key like `$timestamp_$id` for unique, chronological sorting. The value is often just the ID or minimal required data.
-*   **Dynamic/User-Input Keys:** For keys based on dynamic values like email addresses (`emailToId`) or parts of quotes (`replyMetadata/quoteCounts/$parentId/$hashedQuoteKey`, `indexes/.../$sanitizedQuoteKey`), they **must** be sanitized/escaped/hashed.
-    *   **Sanitizing/Escaping:** Use a reliable method (like the percent-encoding in `FirebaseClient.sanitizeKey`) to replace forbidden Firebase key characters (`.`, `$`, `#`, `[`, `]`, `/`). Apply consistently.
-    *   **Hashing (for Keys):** For complex keys like the quote object in `quoteCounts`, using a stable hash (e.g., SHA-1 hex digest) of the canonical representation of the quote object is recommended (`$hashedQuoteKey`). Store the full quote object alongside the count as the value for context.
-*   **Values:**
-    *   Use standard JSON types. Avoid storing `undefined`.
-    *   Use ISO 8601 timestamp strings generated by the backend server for primary `createdAt` fields.
-    *   Firebase Server Timestamps (`{ ".sv": "timestamp" }`) should generally be avoided for primary data records but *can* be useful for simple indexes or priorities where server-side generation is acceptable.
-    *   Store denormalized counts (`replyCount`) and update them using Firebase Transactions via `hIncrBy`.
-    *   Store denormalized data like `authorUsername` directly where needed for reads. Remember this requires updating if the source changes.
+  * **Primary Keys:** Use condensed UUIDs (`$userId`, `$postId`, `$replyId`). Use Firebase Push IDs (`$feedItemId_pushKey`) for `feedItems`. These become the direct key under the main data nodes (e.g., `/posts/$postId`).
+  * **Index Keys:**
+      * For Sets (`userIds`, `userPosts`, `userReplies`, etc.): Use the relevant ID (`$userId`, `$postId`, `$replyId`) as the key; the value is typically `true`.
+      * For Timestamp Indexes (`indexes/*`): Use a composite key like `$timestamp_$id` for unique, chronological sorting. The value is often just the ID or minimal required data. `$timestamp` should be a fixed-length numerical representation (e.g., milliseconds since epoch).
+  * **Dynamic/User-Input Keys:** For keys based on dynamic values like email addresses (`emailToId`) or parts of quotes (`replyMetadata/quoteCounts/$parentId/$hashedQuoteKey`, `indexes/.../$sanitizedQuoteKey`), they **must** be sanitized/escaped/hashed.
+      * **Sanitizing/Escaping:** Use a reliable method (like percent-encoding) to replace forbidden Firebase key characters (`.`, `$`, `#`, `[`, `]`, `/`). Apply consistently.
+      * **Hashing (for Keys):** For complex keys like the quote object in `quoteCounts`, using a stable hash (e.g., SHA-1 hex digest) of the canonical representation of the quote object is recommended (`$hashedQuoteKey`). Store the full quote object alongside the count as the value for context.
+  * **Values:**
+      * Use standard JSON types. Avoid storing `undefined`.
+      * Use ISO 8601 timestamp strings generated consistently by the backend server (preferably in UTC) for primary `createdAt` fields. This approach was chosen to simplify potential data migration or restoration tasks compared to using Firebase Server Timestamps.
+      * Store denormalized counts (`replyCount`, `quoteCounts/.../count`) and update them **atomically** using **Firebase Transactions** to prevent race conditions.
+      * Store denormalized data like `authorUsername` directly where needed for reads. Remember this requires updating if the source changes (e.g., user profile update).
 
 ## Database Access Patterns (Firebase RTDB)
 
+This section outlines how key data entities, particularly replies requiring sorted queries, are accessed using the defined data model and index structures. The `indexes/*` paths emulate sorted set functionality previously associated with Redis Z-sets.
+
 ### Replies Access Patterns
 
-This section outlines how replies are accessed or indexed, primarily using the new `indexes/*` structure for sorted queries previously handled by Redis Z-sets.
-
 1.  **Global Replies Feed (Sorted by Time):** `indexes/repliesFeedByTimestamp`
-    *   **Structure:** Contains keys like `$timestamp_$replyId` with the `replyId` as the value.
-    *   **Purpose:** Enables fetching the most recent replies globally using Firebase range queries (`orderByKey`, `limitToLast`). Populated by `zAdd('replies:feed:mostRecent', ...)` calls.
-    *   **Access:** Via `zRange`, `zRevRangeByScore`, `zscan` methods on the `replies:feed:mostRecent` logical key, which maps to this path.
+
+      * **Access:** Use Firebase range queries (`orderByKey`, `limitToLast(N)`, `endAt(cursor)`) on this path to fetch pages of the most recent replies globally. The keys (`$timestamp_$replyId`) ensure chronological order.
+      * **Maps to:** `zRange`, `zRevRangeByScore`, `zscan` calls on the logical key `replies:feed:mostRecent` in `FirebaseClient`.
 
 2.  **Replies by Parent and Quote (Sorted by Time):** `indexes/repliesByParentQuoteTimestamp/$sanitizedParentId/$sanitizedQuoteKey`
-    *   **Structure:** Nested path containing keys like `$timestamp_$replyId` with `replyId` as value.
-    *   **Purpose:** Efficiently retrieves replies for a specific parent and quote, sorted chronologically. Populated by `zAdd('replies:uuid:<parentId>:quote:<quoteKey>:mostRecent', ...)` calls.
-    *   **Access:** Via `zRange`, `zRevRangeByScore`, `zscan` methods on the corresponding logical key.
 
-3.  **Replies by Quote Identifier (Sorted by Time):** `indexes/repliesByQuoteTimestamp/$sanitizedQuoteIdentifier`
-    *   **Structure:** Contains keys like `$timestamp_$replyId` with `replyId` as value. `quoteIdentifier` can be derived from `quoteKey` or `quoteText`.
-    *   **Purpose:** Retrieves replies matching a specific quote (identified by key or text) across different parents, sorted chronologically. Populated by `zAdd('replies:quote:<quoteKeyOrText>:mostRecent', ...)` calls.
-    *   **Access:** Via `zRange`, `zRevRangeByScore`, `zscan` methods on the corresponding logical key.
+      * **Access:** Use range queries on the nested path to get replies for a specific parent/quote combination, sorted by time.
+      * **Maps to:** `zRange`, `zRevRangeByScore`, `zscan` calls on logical keys like `replies:uuid:<parentId>:quote:<quoteKey>:mostRecent`.
 
-4.  **Replies by Parent and Quote Text (Sorted by Time):** `indexes/repliesByParentTextTimestamp/$sanitizedParentId/$sanitizedQuoteText`
-    *   **Structure:** Nested path containing keys like `$timestamp_$replyId` with `replyId` as value.
-    *   **Purpose:** Alternative lookup for replies to a specific parent based on the raw quote text, sorted chronologically. Populated by `zAdd('replies:<parentId>:<quoteText>:mostRecent', ...)` calls.
-    *   **Access:** Via `zRange`, `zRevRangeByScore`, `zscan` methods on the corresponding logical key.
+3.  **(Other Indexed Lookups):** Similar access patterns apply to other paths defined under `/indexes`, allowing sorted fetching based on quote identifiers, parent/quote text, etc.
 
-5.  **Quote Reply Counts:** `replyMetadata/quoteCounts/$parentPostOrReplyId/$hashedQuoteKey`
-    *   **Structure:** Stores `{ quote: Quote, count: number }`.
-    *   **Purpose:** Atomically tracks reply counts for specific quotes within a parent. Updated via `hIncrementQuoteCount`.
-    *   **Access:** Direct read via `hGetAll` on `replyMetadata/quoteCounts/$parentId` or potentially a specific `hGet` if the hash key is known.
+4.  **Quote Reply Counts:** `replyMetadata/quoteCounts/$parentPostOrReplyId/$hashedQuoteKey`
 
-6.  **Direct Reply Lookup:** `/replies/$replyId`
-    *   **Purpose:** Retrieves the full data for a single reply by its ID.
-    *   **Access:** Via `get('/replies/' + replyId)` or potentially `hGet('replies:' + replyId, 'reply')` depending on how routes call it.
+      * **Access:** Direct read via `get()` on the specific path to get the count object `{ quote, count }`. Can also read all quote counts for a parent via `get()` on `/replyMetadata/quoteCounts/$parentPostOrReplyId`.
+      * **Update:** Use **Firebase Transaction** to atomically increment the `count` field.
+      * **Maps to:** `hGetAll('replyMetadata:quoteCounts:' + parentId)`, `hIncrementQuoteCount`.
 
-7.  **User's Replies:** `userMetadata/userReplies/$userId`
-    *   **Structure:** Map where keys are `$replyId` and value is `true`.
-    *   **Purpose:** Lists replies created by a specific user. Updated via `sAdd('userReplies:userId', replyId)`.
-    *   **Access:** Via `sMembers('userReplies:userId')`.
+5.  **Direct Reply Lookup:** `/replies/$replyId`
+
+      * **Access:** Direct read via `get('/replies/' + replyId)`.
+
+6.  **User's Replies:** `userMetadata/userReplies/$userId`
+
+      * **Access:** Direct read via `get('/userMetadata/userReplies/' + userId)` to retrieve the map of reply IDs.
+      * **Maps to:** `sMembers('userReplies:' + userId)`.
+
+7.  **Replies for a Post Thread:** `postMetadata/postReplies/$postId`
+
+      * **Access:** Direct read via `get('/postMetadata/postReplies/' + postId)` to get all reply IDs for a thread. Combine with reads from `/replies/$replyId` as needed. Alternatively, query `/replies` using `orderByChild('rootPostId').equalTo('$postId')` (requires defining `.indexOn` rule for `rootPostId` on `/replies`). A dedicated index like `indexes/repliesByRootPostTimestamp` might be more efficient for sorted retrieval.
 
 ## Implementation Status & Next Steps
 
-The migration to the Firebase RTDB data model is partially complete. `FirebaseClient.ts` has been refactored to remove path hashing and implement direct path access for most operations, including mapping sorted set operations to timestamp-based indexes.
+The backend architecture has been significantly refactored to align with Firebase RTDB best practices and remove previous complexities like path hashing and database-level compression.
 
 **Completed Steps:**
-*   Removed path hashing (`hashFirebaseKey`, `_escapeFirebaseKey`) from `FirebaseClient`.
-*   Refactored `FirebaseClient` methods (`set`, `sAdd`, `sMembers`, `hSet`, `hIncrBy`, `hIncrementQuoteCount`, `zAdd`, `zCard`, `zRange`, `zRevRangeByScore`, `zscan`, etc.) to use direct paths or appropriate helper functions (`parseKey`, `mapZSetKeyToIndexBasePath`).
-*   Implemented `mapZSetKeyToIndexBasePath` based on `zAdd` calls found in `seed.ts`.
+
+  * Refactored `FirebaseClient` to use direct RTDB paths.
+  * Mapped Redis-like commands (`hSet`, `sAdd`, `zAdd`, etc.) to appropriate RTDB operations (updates, transactions, index nodes).
+  * Defined clear index structures (`/indexes/*`) for emulating sorted sets.
+  * Refined API definitions and data structures based on feedback (e.g., Reply `parentId`, Post API).
+  * **Decision:** Removed database-level value compression (`CompressedDatabaseClient` is no longer needed).
 
 **Remaining Tasks:**
 
-1.  **Fix `FirebaseClient.hGet`:** Update `hGet` to use `parseKey` similar to `hSet` instead of simple path concatenation.
-2.  **Verify Key Formats in Routes:** Audit all calls to `FirebaseClient` methods (via `db` instance) in `routes/*.ts` and `server.ts`. Ensure the keys passed match the formats expected by `parseKey` (`collection:id`), `sAdd`/`sMembers` (`collection:id`), and `mapZSetKeyToIndexBasePath` (Redis-style keys). Update calls as needed.
-3.  **Update Route Data Handling:** Review routes to ensure they correctly handle the data structures returned by the refactored `FirebaseClient` methods (especially `zRange`, `zRevRangeByScore`, `zscan`).
-4.  **Review `CompressedDatabaseClient.ts`:** Verify that the wrapper correctly handles the (potentially changed) data structures returned by the refactored `FirebaseClient` methods it wraps, especially for decompression logic on sorted set results.
-5.  **Update `migrate.ts`:** Refactor the migration script (`rebuildPostIndexes`, `validateMigration`) to work with the *new* data model paths and structures. Remove usage of internal `FirebaseClient` methods/properties.
-6.  **Update `backend_architecture.md` (This document):** Ensure it fully reflects the final data model, indexes, and access patterns. **(This step is currently being done)**.
-7.  **Align `database.rules.json`:** Modify security rules to *exactly* match the new data model paths and structures, including the new `indexes/*` paths. Update validation rules for index nodes (e.g., `/indexes/.../$timestamp_$replyId`) to match the data actually stored there (likely just the replyId string).
-8.  **Test Thoroughly:** Perform comprehensive testing of all API endpoints and data operations after all changes are complete.
+1.  **Verify `FirebaseClient` Implementation:** Double-check that all methods correctly implement the intended RTDB operations (especially ensuring Transactions are used for counters). Verify `hGet` implementation.
+2.  **Verify Key Formats in Routes:** Audit all calls to `FirebaseClient` methods (via `db` instance) in `routes/*.ts` and `server.ts`. Ensure the keys passed match the formats expected by the client (e.g., `collection:id`, Redis-style Z-set keys for mapping, sanitized keys where needed). Update calls as needed.
+3.  **Update Route Data Handling:** Review routes to ensure they correctly handle the data structures returned by the refactored `FirebaseClient` methods (especially for sorted set emulations). Adjust API response formats if needed.
+4.  **Update `migrate.ts`:** Refactor the migration script to work with the *new* data model paths and structures. Remove dependencies on deprecated components like `CompressedDatabaseClient`.
+5.  **Align `database.rules.json`:** **Critically important.** Modify security rules to *exactly* match this data model's paths and structures. Add validation for all nodes, including the `indexes/*` paths (e.g., ensuring `$timestamp_$replyId` keys store string `replyId` values). Define `.indexOn` rules for fields used in queries (e.g., `rootPostId` on `/replies` if using `orderByChild`).
+6.  **Test Thoroughly:** Perform comprehensive end-to-end testing of all API endpoints and data operations after all changes are complete.
 
 ## Backend Files Overview
 
-### Aphorist/backend/server.ts
-// REVISED: Now initializes FirebaseClient, handles migration/import logic, and injects DB client into routes.
+*(Update file descriptions based on final implementation)*
 
-### Aphorist/backend/mailer.ts
-
-### Aphorist/backend/seed.ts
-// REVISED: Uses the DatabaseClientInterface, populates Firebase with sample data following the new model. Relies on specific key formats for zAdd calls.
-
-### Aphorist/backend/migrate.ts
-// REVISED: Contains logic to migrate data from an older format (presumably from an RTDB import) to the new Firebase data model. Reads old keys, transforms data, writes to new paths, rebuilds indexes, and validates. Needs significant updates to align with the refactored FirebaseClient and new data structures/indexes.
-
-### Aphorist/backend/db/FirebaseClient.ts
-// REVISED Purpose:
-// Implements the DatabaseClientInterface using the Firebase Admin SDK for the Realtime Database.
-// This class has been refactored to remove path hashing and use direct paths corresponding to the defined Backend Data Model.
-// It maps Redis-like commands (hSet, sAdd, zAdd, etc.) to appropriate Firebase RTDB operations and structures (updates, transactions, index nodes).
-// Contains helper methods for parsing composite keys (e.g., "collection:id") and mapping sorted set keys to index paths.
-// Still requires further refinement, especially for hGet, Z-set value storage, and validation of key formats used by callers.
-
-### Aphorist/backend/db/CompressedDatabaseClient.ts
-// REVISED Purpose:
-// Wraps an underlying DatabaseClientInterface (typically FirebaseClient or RedisClient) to provide automatic compression/decompression of values using zlib.
-// It intercepts methods like hSet, hGet, zAdd, zRange, etc., compresses outgoing values, and decompresses incoming values based on metadata.
-// Needs review to ensure compatibility with the refactored FirebaseClient, particularly regarding data structures returned by Z-set methods.
-
-### Aphorist/backend/db/LoggedDatabaseClient.ts
-// REVISED Purpose:
-// Wraps an underlying DatabaseClientInterface to add detailed logging for database operations, including context like request IDs. Passes calls through to the underlying client.
-
-### Aphorist/backend/db/DatabaseClientInterface.ts
-// REVISED Purpose:
-// Defines the abstract interface for database operations, ensuring consistency between different implementations (Firebase, Redis). Includes methods for common key-value, hash, set, list, and sorted set operations.
-
-### Aphorist/backend/db/DatabaseCompression.ts
-// REVISED Purpose:
-// Provides utility methods for compressing and decompressing data using zlib and Base64 encoding. Used by CompressedDatabaseClient.
-
-// ... potentially add other relevant files ...
+  * **Aphorist/backend/server.ts:** Initializes Firebase Admin SDK, `FirebaseClient`, handles startup logic (migration?), sets up Express app, injects DB client into route handlers.
+  * **Aphorist/backend/routes/\*.ts:** Define API endpoints, handle requests/responses, interact with the database via the injected `DatabaseClientInterface` (`db`). Needs careful review of key formats passed to `db`.
+  * **Aphorist/backend/db/FirebaseClient.ts:** Implements `DatabaseClientInterface` using Firebase Admin SDK. Contains logic for direct path operations, mapping abstract commands (like `zAdd`) to RTDB index writes, and handling key parsing/sanitization. **Crucially uses Transactions for atomic increments.**
+  * **Aphorist/backend/db/DatabaseClientInterface.ts:** Defines the abstract interface for database operations.
+  * **Aphorist/backend/db/LoggedDatabaseClient.ts:** (Optional) Wraps `FirebaseClient` to add logging.
+  * **Aphorist/backend/db/CompressedDatabaseClient.ts:** **Deprecated/Removed.** No longer needed as database compression is removed.
+  * **Aphorist/backend/db/DatabaseCompression.ts:** **Deprecated/Removed.** No longer needed.
+  * **Aphorist/backend/mailer.ts:** Handles sending emails (e.g., magic links).
+  * **Aphorist/backend/seed.ts:** Populates Firebase with sample data following the new model.
+  * **Aphorist/backend/migrate.ts:** Contains logic to migrate data to the new model. Needs updating.
 
 ## Data Compression
+
+**Strategy:** Database-level compression is **not** used in this architecture.
+
+**Rationale:** To simplify the backend implementation, improve data readability directly within the Firebase console (aiding debugging and inspection), and reduce backend CPU overhead, the `CompressedDatabaseClient` has been removed.
+
+**Bandwidth Optimization:** Standard HTTP-level compression (e.g., gzip negotiated via `Accept-Encoding` / `Content-Encoding` headers) should be enabled at the web server or load balancer level. This effectively compresses data transferred between the backend server and frontend clients, optimizing user-facing bandwidth consumption without adding complexity to database interactions.
+
+-----

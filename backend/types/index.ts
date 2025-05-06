@@ -68,7 +68,8 @@ export interface Quote {
 export interface Reply {
     id: string;
     text: string;
-    parentId: string | string[];
+    parentId: string[];
+    rootPostId: string;
     quote: Quote;
     authorId: string;
     createdAt: string;
@@ -86,7 +87,7 @@ export enum SortingCriteria {
 // Feed Types
 export interface FeedItem {
     id: string;
-    text: string;
+    textSnippet: string;
     authorId: string;
     createdAt: string;
 }
@@ -153,6 +154,7 @@ export interface Post {
     content: string;
     authorId: string;
     createdAt: string;
+    replyCount?: number;
 }
 
 export interface PostCreationRequest {
