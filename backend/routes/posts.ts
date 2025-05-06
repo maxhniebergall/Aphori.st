@@ -29,24 +29,27 @@ const generateCondensedUuid = (): string => {
   return uuid25Instance.value;
 };
 
-// Define a type guard function for Post
+// Define a type guard function for Post based on NEW schema
 function isValidPost(item: any): item is Post {
     return (
+        item &&
         typeof item === 'object' &&
         typeof item.id === 'string' &&
         typeof item.content === 'string' &&
         typeof item.authorId === 'string' &&
-        typeof item.createdAt === 'string'
+        typeof item.createdAt === 'string' &&
+        typeof item.replyCount === 'number' && item.replyCount >= 0
+        // parentId no longer exists on Post
     );
 }
 
 /**
- * @route   POST /api/posts/createPostTree
+ * @route   POST /api/posts/createPost
  * @desc    Creates a new top-level post (story)
  * @access  Authenticated
  */
-router.post<{}, { id: string }, { postTree: PostCreationRequest }>(
-    '/createPostTree',
+router.post<{}, { id: string }, { postTree: PostCreationRequest }>( // TODO: Update route path and request body type if needed
+    '/createPost', // Changed route name for clarity
     authenticateToken,
     async (req: Request<{}, { id: string }, { postTree: PostCreationRequest }>, res: Response) => {
         const operationId = randomUUID();
@@ -57,14 +60,15 @@ router.post<{}, { id: string }, { postTree: PostCreationRequest }>(
         const user = authenticatedReq.user;
 
         try {
-            const { postTree } = req.body;
-            if (!postTree || !postTree.content) {
-                logger.warn(logContext, 'Missing postTree content in request');
-                res.status(400).json({ error: 'PostTree data with content is required' });
+            // TODO: Adjust req.body access if request structure changes from { postTree: { content: ... } }
+            const postContent = req.body.postTree?.content;
+            if (!postContent) {
+                logger.warn(logContext, 'Missing post content in request');
+                res.status(400).json({ error: 'Post content is required' });
                 return;
             }
 
-            const trimmedContent = postTree.content.trim();
+            const trimmedContent = postContent.trim();
             const MAX_POST_LENGTH = 5000;
             const MIN_POST_LENGTH = 100;
 
@@ -80,16 +84,17 @@ router.post<{}, { id: string }, { postTree: PostCreationRequest }>(
             }
 
             const uuid = generateCondensedUuid();
-            const formattedPostTree: Post = {
+            const newPost: Post = {
                 id: uuid,
                 content: trimmedContent,
                 authorId: user.id,
                 createdAt: new Date().toISOString(),
+                replyCount: 0 // Added replyCount
             };
 
             // Log action intent before DB calls
             logger.info(
-                { 
+                {
                     ...logContext,
                     action: {
                         type: 'CREATE_POST',
@@ -103,36 +108,38 @@ router.post<{}, { id: string }, { postTree: PostCreationRequest }>(
                 'Initiating CreatePost action'
             );
 
-            // Store in Redis with logging context
-            await db.hSet(uuid, 'postTree', JSON.stringify(formattedPostTree), logContext);
-            await db.lPush('allPostTreeIds', uuid, logContext);
-            await db.sAdd(`user:${user.id}:posts`, uuid, logContext);
+            // Store post at /posts/$postId
+            await db.set(`posts/${uuid}`, newPost, logContext);
 
-            // Add to feed items with logging context
+            // Add post ID to relevant sets/indexes
+            await db.sAdd('allPostTreeIds:all', uuid, logContext); // Add to global post set
+            await db.sAdd(`userPosts:${user.id}`, uuid, logContext); // Add to user's post set
+
+            // Add to feed items
             const feedItem: FeedItem = {
                 id: uuid,
-                text: trimmedContent, // Use trimmed content for feed item as well
                 authorId: user.id,
-                createdAt: formattedPostTree.createdAt
+                textSnippet: trimmedContent.substring(0, 100), // Use textSnippet
+                createdAt: newPost.createdAt
             };
-            // Assuming lPush is the correct method based on server.ts logic
-            await db.lPush('feedItems', JSON.stringify(feedItem), logContext);
+            await db.lPush('feedItems', feedItem, logContext); // Pass object, not string
+            await db.incrementFeedCounter(1, logContext); // Increment feed counter
 
-            logger.info({ ...logContext, postId: uuid }, `Successfully created new PostTree`);
-            res.json({ id: uuid });
+            logger.info({ ...logContext, postId: uuid }, `Successfully created new Post`);
+            res.status(201).json({ id: uuid }); // Use 201 Created status
         } catch (err) {
-            logger.error({ ...logContext, err }, 'Error creating PostTree');
-            res.status(500).json({ error: 'Server error' });
+            logger.error({ ...logContext, err }, 'Error creating Post');
+            res.status(500).json({ error: 'Server error creating post' });
         }
     }
 );
 
 /**
  * @route   GET /api/posts/:uuid
- * @desc    Retrieves a post, a top level postTree element
+ * @desc    Retrieves a single post
  * @access  Public
  */
-router.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/:uuid', async (req, res) => {
+router.get<{ uuid: string }, Post | { success: boolean; error: string } >('/:uuid', async (req, res) => {
     const { uuid } = req.params;
     const requestId = res.locals.requestId;
     const logContext = { requestId }; // Include requestId for read operations
@@ -140,41 +147,29 @@ router.get<{ uuid: string }, CompressedApiResponse<Compressed<Post>>>('/:uuid', 
     if (!uuid) {
         logger.warn(logContext, 'Missing UUID in getPost request');
         res.status(400).json({ success: false, error: 'UUID is required' });
-        return; 
+        return;
     }
     try {
-        let maybePostString = await db.hGet(uuid, 'postTree', { returnCompressed: false }, logContext);
-        
-        if (!maybePostString || typeof maybePostString !== 'string') {
-            logger.warn({ ...logContext, uuid }, 'Post not found or invalid format');
-            res.status(404).json({ success: false, error: 'Node not found or invalid format' });
+        // Get post directly from /posts/$uuid
+        const postData = await db.get<Post>(`posts/${uuid}`, logContext);
+
+        if (!postData) {
+            logger.warn({ ...logContext, uuid }, 'Post not found');
+            res.status(404).json({ success: false, error: 'Post not found' });
             return;
         }
 
-        let maybePost: any;
-        try {
-            maybePost = JSON.parse(maybePostString);
-        } catch (parseError) {
-            logger.error({ ...logContext, uuid, err: parseError, rawData: maybePostString }, 'Failed to parse post JSON');
-            res.status(500).json({ success: false, error: 'Failed to parse post data' });
-            return;
-        }
-
-        // Use the existing isValidPost type guard
-        if (!isValidPost(maybePost)) {
-            logger.error({ ...logContext, uuid, postData: maybePost }, 'Invalid post structure retrieved');
+        // Optional: Validate structure just in case? Depends on trust in DB rules.
+        if (!isValidPost(postData)) {
+            logger.error({ ...logContext, uuid, postData }, 'Invalid post structure retrieved from DB');
+            // Don't expose potentially sensitive invalid data
             res.status(500).json({ success: false, error: 'Invalid post data retrieved' });
             return;
         }
-        
-        const post = await db.compress(maybePost) as Compressed<Post>; // Assuming compress doesn't need context
-    
-        const apiResponse: CompressedApiResponse<Compressed<Post>> = {
-            success: true,
-            compressedData: post
-        };
-        res.setHeader('X-Data-Compressed', 'true');
-        res.send(apiResponse);
+
+        // Send the post object directly, no compression
+        res.json(postData);
+
     } catch (error) {
         logger.error({ ...logContext, uuid, err: error }, 'Error in getPost endpoint');
         res.status(500).json({ success: false, error: 'Server error' });

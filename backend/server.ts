@@ -10,7 +10,6 @@
 - Supports retrieving individual replies by UUID
 - Fetches replies by post UUID and quote
 - Supports sorting replies by different criteria
-- Returns compressed reply data from Redis
 - Provides API endpoints for getting replies by UUID, quote, and sorting criteria
 - Supports reply feed retrieval sorted by recency
 - Uses zAdd to maintain sorted sets for replies
