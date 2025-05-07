@@ -40,10 +40,6 @@ router.get<'/', FeedItemsResponse | { success: boolean; error: string }>('/', as
     logger.info("Handling request for feed with cursorKey %s and limit %d", cursorKey || 'start', limit);
 
     try {
-        // Connection state log might still be misleading, but keep it for now
-        // logger.info('Current db connection state: %O', { // Removed optional log
-        //     connected: await db.isConnected(),
-        // });
 
         // Get total items using the updated lLen (reads feedStats/itemCount)
         const totalItems = await db.lLen('feedItems');

@@ -1,12 +1,10 @@
 import axios from 'axios';
-import { BaseOperator } from './BaseOperator';
 
-class UserOperator extends BaseOperator {
-  constructor() {
-    super();
-    this.tokenCache = new Map(); // Cache for token verification results
-    this.tokenCacheExpiry = new Map(); // Cache for token expiration times
-    axios.defaults.headers.post['Content-Type'] = 'application/json';
+class UserOperator {
+  constructor(baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050') {
+    this.baseURL = baseURL;
+    this.tokenCache = new Map();
+    this.tokenCacheExpiry = new Map();
   }
 
   clearTokenCache(token) {
@@ -16,32 +14,31 @@ class UserOperator extends BaseOperator {
 
   async verifyToken(token) {
     try {
-      const data = await this.retryApiCall(
-        () => axios.post(`${this.baseURL}/api/auth/verify-token`, { token })
-      );
-      return data;
+      const response = await axios.post(`${this.baseURL}/api/auth/verify-token`, { token }, {
+        headers: { 'Content-Type': 'application/json' },
+        validateStatus: status => status === 200
+      });
+      return response.data;
     } catch (error) {
       return { 
         success: false, 
-        error: error.response?.data?.error || 'Token verification failed' 
+        error: error.response?.data?.error || error.message || 'Token verification failed' 
       };
     }
   }
 
   async verifyMagicLink(token) {
     try {
-      const data = await this.retryApiCall(
-        () => axios.post(`${this.baseURL}/api/auth/verify-magic-link`, { token })
-      );
-      return data;
-    } catch (error) {
+      const response = await axios.post(`${this.baseURL}/api/auth/verify-magic-link`, { token }, {
+        headers: { 'Content-Type': 'application/json' },
+        validateStatus: status => status >= 200 && status < 300
+      });
+      return response.data;
+    } catch (error) { 
       if (error.response?.data?.error === 'User not found') {
         return {
           success: false,
           ...error.response.data,
-          error: error.response.data.error,
-          email: error.response.data.email,
-          status: error.response.status
         };
       }
       return { 
@@ -54,14 +51,15 @@ class UserOperator extends BaseOperator {
 
   async sendMagicLink(email, isSignup = false) {
     try {
-      await this.retryApiCall(
-        () => axios.post(`${this.baseURL}/api/auth/send-magic-link`, { email, isSignupInRequest:isSignup })
-      );
-      return { success: true };
+      const response = await axios.post(`${this.baseURL}/api/auth/send-magic-link`, { email, isSignupInRequest:isSignup }, {
+        headers: { 'Content-Type': 'application/json' },
+        validateStatus: status => status === 200
+      });
+      return response.data;
     } catch (error) {
       return { 
         success: false, 
-        error: error.response?.data?.error || 'Failed to send magic link' 
+        error: error.response?.data?.error || error.message || 'Failed to send magic link' 
       };
     }
   }
@@ -77,18 +75,18 @@ class UserOperator extends BaseOperator {
 
   async getProfile(token) {
     try {
-      const data = await this.retryApiCall(
-        () => axios.get(`${this.baseURL}/profile`, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        })
-      );
-      return { success: true, data };
+      const response = await axios.get(`${this.baseURL}/profile`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        validateStatus: status => status === 200
+      });
+      return { success: true, data: response.data };
     } catch (error) {
       return { 
         success: false, 
-        error: error.response?.data?.error || 'Failed to fetch profile' 
+        error: error.response?.data?.error || error.message || 'Failed to fetch profile' 
       };
     }
   }

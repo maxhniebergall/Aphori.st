@@ -27,7 +27,6 @@ export interface ExistingSelectableQuotesApiFormat {
 export interface Post { // this is the value returned from the backend, representing the root node of the post tree
   id: string; // probably a UUID, appears in the URL; same as the rootNodeId
   content: string;
-  quote?: Quote;
   authorId: string;
   createdAt: string;
 }
@@ -46,10 +45,9 @@ export interface Pagination {
 
 export interface FeedItem {
   id: string;
-  text: string;
+  textSnippet: string;
   authorId: string;
   createdAt: string;
-  title?: string; // Added title property
 }
 
 export interface FeedItemsResponse{
@@ -74,7 +72,7 @@ export interface FetchResult {
 export interface PostTreeNode { // this value only exists in the frontend. it combines the post and the levels of the post tree
   id: string;
   rootNodeId: string;
-  parentId: string[];
+  parentId?: string;
   levelNumber: number;
   textContent: string;
   repliedToQuote: Quote | null;
@@ -174,7 +172,9 @@ export interface DecompressedCursorPaginatedResponse<T> extends ApiResponse<T[]>
 export interface Reply {
   id: string;
   text: string;
-  parentId: string[];
+  parentId: string;
+  parentType: "post" | "reply";
+  rootPostId: string;
   quote: Quote;
   authorId: string;
   createdAt: string;
