@@ -520,6 +520,16 @@ export async function migrate(dbClient: DatabaseClient): Promise<void> {
         }
         logger.info("Obtained FirebaseClient instance for migration-specific operations.");
 
+        // --- Attempt to set initial database version ---
+        try {
+            await dbClient.set('databaseVersion', { current: "1->2", migrationComplete: false });
+            logger.info("Initial databaseVersion set to: { current: '1->2', migrationComplete: false }");
+        } catch (dbVersionError: any) {
+            logger.error({ err: dbVersionError }, "Failed to set initial databaseVersion. This could make tracking migration status difficult.");
+            // Optional: throw new Error("Failed to set initial database version, aborting migration.");
+        }
+        // --- End Attempt to set initial database version ---
+
         await dbClient.connect().catch(err => {
             logger.error("Migration: Initial DB connection failed.", err);
             throw err; 
@@ -558,10 +568,23 @@ export async function migrate(dbClient: DatabaseClient): Promise<void> {
             logger.info('Migration V2 completed and validated successfully!');
         }
 
-    } catch (err) {
+        // If we reach here, all preceding steps in the try block were successful (or involved no data to migrate)
+        // --- Set final database version on overall successful completion ---
+        try {
+            await dbClient.set('databaseVersion', { current: "2", migrationComplete: true });
+            logger.info("DatabaseVersion updated on successful script completion to: { current: '2', migrationComplete: true }");
+        } catch (dbVersionError: any) {
+            logger.error({ err: dbVersionError }, "CRITICAL: Migration script completed successfully, but FAILED to set final databaseVersion status. Manual check required.");
+            // Depending on policy, could throw an error to make it explicit.
+        }
+        // --- End Set final database version on overall successful completion ---
+
+    } catch (err: any) {
         logger.error('Migration script V2 encountered a fatal error:', err);
-        throw err; 
+        // On any error caught by this block, databaseVersion should remain
+        // { current: "1->2", migrationComplete: false } due to the initial set.
+        throw err;
     } finally {
-        logger.info("Migration function V2 finished.");
+        logger.info("Migration function V2 finished executing."); // Adjusted log for clarity
     }
 }
