@@ -55,7 +55,7 @@ export function getLevelNumber(level: PostTreeLevel): number | undefined {
 /**
  * Get the parentId from a PostTreeLevel
  */
-export function getParentId(level: PostTreeLevel): string[] | undefined {
+export function getParentId(level: PostTreeLevel): string | undefined {
   if (isMidLevel(level) && level.midLevel) {
     return level.midLevel.parentId;
   }
@@ -163,7 +163,7 @@ export function getPagination(level: PostTreeLevel): Pagination | undefined {
  */
 export function createMidLevel(
   rootNodeId: string,
-  parentId: string[],
+  parentId: string,
   levelNumber: number,
   selectedQuoteInParent: Quote | null,
   selectedQuoteInThisLevel: Quote | null,

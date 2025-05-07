@@ -56,9 +56,3 @@ interface DecodedCursor {
   timestamp: number;
   type: 'post' | 'reply';
 }
-
-export function createCursor(id: string, timestamp: number, type: 'post' | 'reply'): string {
-  const cursorData: DecodedCursor = { id, timestamp, type };
-  const jsonString = JSON.stringify(cursorData);
-  return encodeCursor({ id, timestamp, type });
-}
