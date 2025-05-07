@@ -3,6 +3,8 @@ import { Post, FeedItem, DatabaseClient } from './types/index.js';
 import { DatabaseCompression } from './db/DatabaseCompression.js'; // Needed ONLY for old data decompression    
 import { FirebaseClient } from './db/FirebaseClient.js'; // Needed for direct path access/sanitization logic if dbClient doesn't expose it
 import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js'; // <--- ADD THIS IMPORT
+import { uuidv7obj } from 'uuidv7'; 
+import { Uuid25 } from 'uuid25';
 
 const DLQ_FILE = 'migration_dlq.json';
 
@@ -15,10 +17,18 @@ const oldCompression = new DatabaseCompression();
 // Removed direct FirebaseClient instantiation logic - Get it from the passed-in client if needed for specific methods
 
 
+// Helper function to generate compressed 25-digit UUID v7
+const generateCondensedUuid = (): string => {
+    const uuidObj = uuidv7obj();
+    const uuid25Instance = Uuid25.fromBytes(uuidObj.bytes);
+    return uuid25Instance.value;
+};
+
 // Define interfaces for old data formats expected from RTDB import
 interface OldPostMetadata {
     title?: string;
     authorId?: string; // Changed from author to authorId based on logs
+    author?: string; 
     createdAt?: string;
 }
 
@@ -261,10 +271,28 @@ async function migrateAllData(dbClient: DatabaseClient, postIds: string[], fireb
                 content = `# ${oldPostData.metadata.title}\n\n${content}`; // Markdown title
             }
 
+            const newId = generateCondensedUuid(); // Generate new UUID for the post
+            logger.info(`Generated new ID ${newId} for old post ID ${postId}`);
+
+            // Determine authorId by checking metadata.authorId then metadata.author
+            const originalAuthorId = oldPostData.metadata?.authorId;
+            const originalAuthor = oldPostData.metadata?.author; // No need for 'as any' if interface is updated
+            
+            let determinedAuthor = '';
+            if (originalAuthorId && originalAuthorId.trim() !== '') {
+                determinedAuthor = originalAuthorId;
+            } else if (originalAuthor && originalAuthor.trim() !== '') {
+                determinedAuthor = originalAuthor;
+            }
+            if (determinedAuthor === '') {
+                logger.error(`No valid authorId or author found for post ${postId}. Skipping.`);
+                failPostCount++;
+                continue;
+            }
             const newPost: Post = {
-                id: postId, // Use the postId variable from the loop
+                id: newId, // Use the NEW generated ID
                 content: content, // Default content to empty string if falsy
-                authorId: oldPostData.metadata?.authorId || '', // Use metadata.authorId and fallback
+                authorId: determinedAuthor, // Ensure a non-empty string if both are missing/empty
                 createdAt: oldPostData.metadata?.createdAt || new Date().toISOString(), // Default if missing
                 replyCount: 0 // Initialize reply count to 0
             };
@@ -278,9 +306,9 @@ async function migrateAllData(dbClient: DatabaseClient, postIds: string[], fireb
 
             // --- Step 4: Write New Post to the CORRECT new path ---
             // Path: /posts/$postId
-            const newPostPath = `posts/${postId}`;
+            const newPostPath = `posts/${newPost.id}`; // Use newPost.id (the new ID)
             await dbClient.set(newPostPath, newPost); // Use set on the direct path
-            logger.info(`Successfully wrote migrated post ${postId} to new path ${newPostPath}`);
+            logger.info(`Successfully wrote migrated post ${newPost.id} (old ID ${postId}) to new path ${newPostPath}`);
             migratedPosts.push(newPost);
             successPostCount++;
 
@@ -307,11 +335,11 @@ async function migrateAllData(dbClient: DatabaseClient, postIds: string[], fireb
             // e) Increment Feed Counter /feedStats/itemCount
             await dbClient.incrementFeedCounter(1);
 
-            logger.debug(`Updated metadata and feed for post ${postId}.`);
+            logger.debug(`Updated metadata and feed for post ${newPost.id}.`);
 
             // --- Step 6: Delete the OLD root key ---
             // The old data was at the root path `postId`
-            await firebaseClientInstance.removePath(postId); // Use direct path removal
+            await firebaseClientInstance.removePath(postId); // Use direct path removal - postId here is the OLD ID
             logger.info(`Deleted old post data at root key ${postId}.`);
 
 
@@ -331,7 +359,7 @@ async function migrateAllData(dbClient: DatabaseClient, postIds: string[], fireb
 
 
 // --- Validation Function ---
-async function validateMigration(dbClient: DatabaseClient, firebaseClientInstance: FirebaseClient, migratedPosts: Post[]): Promise<ValidationError[]> {
+async function validateMigration(dbClient: DatabaseClient, firebaseClientInstance: FirebaseClient, migratedPosts: Post[], originalPostIds: string[]): Promise<ValidationError[]> {
     logger.info('Starting migration V2 validation...');
     const errors: ValidationError[] = [];
     const processedPostIds = new Set<string>(); // Track validated IDs
@@ -350,7 +378,7 @@ async function validateMigration(dbClient: DatabaseClient, firebaseClientInstanc
         if (processedPostIds.has(postId)) continue;
         processedPostIds.add(postId);
 
-        const postPath = `posts/${postId}`; // New path
+        const postPath = `posts/${postId}`; // New path, using NEW ID
         try {
             const postData = await firebaseClientInstance.readPath(postPath); // Read from direct path
 
@@ -467,15 +495,16 @@ async function validateMigration(dbClient: DatabaseClient, firebaseClientInstanc
 
     // 4. Validate Absence of Old Root Post Data
     logger.info("Validating absence of old root post data...");
-    for (const post of migratedPosts) {
-        const oldPostPath = post.id; // Old data was at the root key
+    // Iterate over originalPostIds (old IDs) to ensure their data is deleted.
+    for (const oldPostId of originalPostIds) {
+        const oldPostPath = oldPostId; // Old data was at the root key (which was the oldPostId)
         try {
             const oldData = await firebaseClientInstance.readPath(oldPostPath);
             if (oldData !== null) { // Should be null after deletion
-                errors.push({ id: post.id, type: 'post', error: 'Old post data still exists at root key.', key: oldPostPath, data: oldData });
+                errors.push({ id: oldPostId, type: 'post', error: 'Old post data still exists at root key.', key: oldPostPath, data: oldData });
             }
         } catch (err: any) {
-            errors.push({ id: post.id, type: 'post', error: `Error checking for old post data at ${oldPostPath}: ${err.message}`, key: oldPostPath });
+            errors.push({ id: oldPostId, type: 'post', error: `Error checking for old post data at ${oldPostPath}: ${err.message}`, key: oldPostPath });
         }
     }
 
@@ -559,11 +588,16 @@ export async function migrate(dbClient: DatabaseClient): Promise<void> {
         logger.info('-----------------------------------');
 
         logger.info('Starting Final Validation (V2)...');
-        const validationErrors = await validateMigration(dbClient, firebaseClientInstance, migratedPosts);
+        const validationErrors = await validateMigration(dbClient, firebaseClientInstance, migratedPosts, postIdsToMigrate);
 
         if (validationErrors.length > 0) {
             logger.error(`Migration V2 finished with ${validationErrors.length} validation errors. Check ${DLQ_FILE}.`);
-            throw new Error(`Migration V2 completed with ${validationErrors.length} validation errors.`);
+            // Constructing the error object to match the existing style
+            const errorSummary = validationErrors.map(e => `ID: ${e.id}, Type: ${e.type}, Key: ${e.key}, Error: ${e.error}`).join('; ');
+            const validationError = new Error(`Migration V2 completed with ${validationErrors.length} validation errors: ${errorSummary}`);
+            // Optionally, attach the full errors array to the error object if needed elsewhere
+            // (validationError as any).details = validationErrors; 
+            throw validationError;
         } else {
             logger.info('Migration V2 completed and validated successfully!');
         }

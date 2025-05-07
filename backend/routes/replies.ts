@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { randomUUID } from 'crypto'; // Import randomUUID
 import logger from '../logger.js';
 import {
     DatabaseClient as DatabaseClientType,
