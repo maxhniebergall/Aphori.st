@@ -13,6 +13,10 @@ export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
         this.logger = loggerInstance.child({ component: 'LoggedDatabaseClient' });
     }
 
+    public getUnderlyingClient(): DatabaseClient { 
+        return this.underlyingClient;
+    }
+
     // Internal helper to create log payload
     private createLogPayload(operation: string, key: string | null, args: Record<string, any> | null, context?: LogContext) {
         return {

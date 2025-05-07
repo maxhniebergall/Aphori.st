@@ -26,6 +26,7 @@ import { createDatabaseClient } from './db/index.js';
 import logger from './logger.js';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import compression from 'compression';
 import { seedDevPosts } from './seed.js';
 import * as fsSync from 'fs'; // Keep sync fs for existsSync
 import { fileURLToPath } from 'url';
@@ -40,7 +41,6 @@ import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
 import { migrate } from './migrate.js';
-import { importRtdbData } from './import_rtdb.js'; 
 
 dotenv.config();
 
@@ -67,6 +67,9 @@ app.use(express.json());
 
 // Add the request logging middleware early
 app.use(requestLogger);
+
+// Add compression middleware
+app.use(compression());
 
 // Trust proxy - required for rate limiting behind Cloud Run
 app.set('trust proxy', 1);
@@ -115,27 +118,6 @@ const db: DatabaseClientType = createDatabaseClient() as DatabaseClientType;
 
 let isDbReady = false;
 
-/**
- * Imports data from a Firebase Realtime Database export JSON file into the DB.
- * Triggered by IMPORT_RTDB=true environment variable.
- * @param dbClient The connected database client instance.
- * @throws {Error} If file reading, JSON parsing, or database operations fail.
- */
-async function runRtdbImportIfEnabled(dbClient: DatabaseClientType): Promise<void> {
-    if (process.env.IMPORT_RTDB !== 'true') {
-        logger.info("Skipping RTDB data import (IMPORT_RTDB is not 'true').");
-        return;
-    }
-
-    const jsonFilePath = process.env.RTDB_EXPORT_PATH;
-    if (!jsonFilePath) {
-        throw new Error("RTDB_EXPORT_PATH environment variable is not set, but IMPORT_RTDB is true.");
-    }
-
-    // Call the import function from import_rtdb.ts
-    await importRtdbData(jsonFilePath, dbClient); // Pass the file path and db client
-}
-
 // Database readiness check
 app.use((req: Request, res: Response, next: NextFunction): void => {
     if (!isDbReady) {
@@ -154,15 +136,9 @@ await db.connect().then(async () => { // Make the callback async
 
     // --- Run Import or Seed --- 
     try {
-        await runRtdbImportIfEnabled(db); // Attempt import first
-
         // --- Run Migration --- (Only if import was run or if specifically enabled)
         if (process.env.RUN_MIGRATION === 'true') {
-             if (process.env.IMPORT_RTDB === 'true') {
-                 logger.info('IMPORT_RTDB was true, proceeding with migration...');
-             } else {
-                 logger.info('RUN_MIGRATION was true (even without import), proceeding with migration...');
-             }
+            logger.info('RUN_MIGRATION was true (even without import), proceeding with migration...');
              try {
                  await migrate(db); // Run the migration logic
                  logger.info('Data migration completed successfully.');
@@ -176,17 +152,15 @@ await db.connect().then(async () => { // Make the callback async
         // --- End Migration ---
 
     } catch (importError) {
-        logger.fatal({ err: importError }, "FATAL: RTDB data import failed. Server shutting down.");
+        logger.fatal({ err: importError }, "FATAL: migration failed. Server shutting down.");
         process.exit(1); // Stop server if import fails
     }
 
     // Only seed if import didn't run (assuming import replaces seed)
-    if (process.env.IMPORT_RTDB !== 'true' && process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== 'production') {
         logger.info('Development environment detected and import not enabled, seeding default stories...');
         // Cast db to the base interface for seeding
-        seedDevPosts(db);
-    } else if (process.env.IMPORT_RTDB === 'true') {
-        logger.info('RTDB import was enabled, skipping development seed.');
+        // seedDevPosts(db);
     } else {
         logger.info('Production environment detected or import ran, skipping dev seed');
     }
@@ -202,11 +176,6 @@ await db.connect().then(async () => { // Make the callback async
     logger.error({ err }, 'Database connection failed');
     process.exit(1);
 });
-
-// Constants for user-related keys
-const USER_PREFIX = 'user';
-const USER_IDS_SET = 'user_ids';
-const EMAIL_TO_ID_PREFIX = 'email_to_id';
 
 // --- Environment Variable Checks ---
 const requiredEnvVars: string[] = [];

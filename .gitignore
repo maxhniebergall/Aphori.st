@@ -26,3 +26,5 @@ frontend/test-results
 
 # Private individual user cursor rules
 .cursor/rules/_*.mdc
+backend/database-debug.log
+backend/firebase-debug.log
