@@ -134,27 +134,45 @@ await db.connect().then(async () => { // Make the callback async
     logger.info('Database client connected');
     isDbReady = true;
 
-    // --- Run Import or Seed --- 
-    try {
-        // --- Run Migration --- (Only if import was run or if specifically enabled)
-        if (process.env.RUN_MIGRATION === 'true') {
-            logger.info('RUN_MIGRATION was true (even without import), proceeding with migration...');
-             try {
-                 await migrate(db); // Run the migration logic
-                 logger.info('Data migration completed successfully.');
-             } catch (migrationError) {
-                 logger.fatal({ err: migrationError }, "FATAL: Data migration failed. Server shutting down.");
-                 process.exit(1); // Stop server if migration fails
-             }
-         } else {
-             logger.info("Skipping data migration (RUN_MIGRATION is not 'true').");
-         }
-        // --- End Migration ---
+    let attemptMigrationBasedOnRunFlag = true; // Default to true, will be set to false if dbVersion exists
 
-    } catch (importError) {
-        logger.fatal({ err: importError }, "FATAL: migration failed. Server shutting down.");
-        process.exit(1); // Stop server if import fails
+    try {
+        const databaseVersion = await db.get('databaseVersion'); // Assumes db.get returns the object or null
+        if (databaseVersion !== null && databaseVersion !== undefined) {
+            logger.warn(`Database version key 'databaseVersion' found. Value: ${JSON.stringify(databaseVersion)}. Migration based on RUN_MIGRATION flag will be skipped.`);
+            attemptMigrationBasedOnRunFlag = false;
+        } else {
+            logger.info("No 'databaseVersion' key found in the database. Migration will proceed based on RUN_MIGRATION flag if set.");
+            // attemptMigrationBasedOnRunFlag remains true
+        }
+    } catch (dbVersionCheckError) {
+        logger.error({ err: dbVersionCheckError }, "Error checking for 'databaseVersion' key. Migration will proceed based on RUN_MIGRATION flag as a fallback.");
+        // attemptMigrationBasedOnRunFlag remains true to allow RUN_MIGRATION to decide.
     }
+
+    // --- Run Import or Seed ---
+    if (attemptMigrationBasedOnRunFlag) {
+        try {
+            // --- Run Migration --- (Only if import was run or if specifically enabled)
+            if (process.env.RUN_MIGRATION === 'true') {
+                logger.info('RUN_MIGRATION was true (even without import), proceeding with migration...');
+                 try {
+                     await migrate(db); // Run the migration logic
+                     logger.info('Data migration completed successfully.');
+                 } catch (migrationError) {
+                     logger.fatal({ err: migrationError }, "FATAL: Data migration failed. Server shutting down.");
+                     process.exit(1); // Stop server if migration fails
+                 }
+             } else {
+                 logger.info("Skipping data migration (RUN_MIGRATION is not 'true').");
+             }
+            // --- End Migration ---
+
+        } catch (importError) { // This catch is for errors in the migration block setup or if RUN_MIGRATION check fails
+            logger.fatal({ err: importError }, "FATAL: migration failed during setup or unexpected issue. Server shutting down.");
+            process.exit(1); // Stop server if import fails
+        }
+    } // End of if (attemptMigrationBasedOnRunFlag)
 
     // Only seed if import didn't run (assuming import replaces seed)
     if (process.env.NODE_ENV !== 'production') {
