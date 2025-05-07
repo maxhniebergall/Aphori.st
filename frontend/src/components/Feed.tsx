@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useCallback, useEffect, useState } from 'react';
 import './Feed.css';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
@@ -150,9 +149,8 @@ function Feed(): JSX.Element {
   // Define the item rendering function for Virtuoso
   const renderItem = useCallback((index: number, item: FeedItem) => {
     return (
-      <motion.div
+      <div
         key={item.id}
-        layoutId={item.id}
         onClick={() => {
           if(!item?.id) {
             console.warn("Encountered item with missing ID - navigation skipped");
@@ -160,17 +158,14 @@ function Feed(): JSX.Element {
             navigateToPostTree(item.id);
           }
         }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
         className="feed-item"
       >
-        <motion.div className="feed-item-content">
+        <div className="feed-item-content">
           <p className="feed-text">
             {item.textSnippet ? truncateText(item.textSnippet) : 'Loading...'}
           </p>
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     );
   }, [navigateToPostTree]);
 
