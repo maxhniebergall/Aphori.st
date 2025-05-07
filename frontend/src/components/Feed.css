@@ -9,8 +9,7 @@
 .feed-item {
   background: white;
   border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
+  padding: 16px 16px 32px; /* Top, Horizontal, Bottom (16px original + 16px from old margin) */
   cursor: pointer;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: box-shadow 0.3s ease;
