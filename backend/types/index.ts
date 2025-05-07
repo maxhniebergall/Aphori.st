@@ -68,7 +68,7 @@ export interface Quote {
 export interface Reply {
     id: string;
     text: string;
-    parentId: string[];
+    parentId: string;
     rootPostId: string;
     quote: Quote;
     authorId: string;
@@ -203,4 +203,10 @@ export interface CursorPaginatedResponse<T> extends CompressedApiResponse<T[]> {
 export interface RedisSortedSetItem<T> {
     score: number;
     value: T;
+}
+
+export interface CreateReplyRequest {
+    text: string;
+    parentId: string;
+    quote: Quote;
 }

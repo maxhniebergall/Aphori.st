@@ -27,7 +27,7 @@
  * - Implement caching with CacheService
  */
 
-import { ACTIONS, PostTreeNode, PostTreeState, PostTreeLevel, Action, CursorPaginatedResponse, Reply, QuoteCounts, /* CompressedApiResponse, */ CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat } from '../types/types';
+import { ACTIONS, PostTreeNode, PostTreeState, PostTreeLevel, Action, CursorPaginatedResponse, Reply, QuoteCounts, /* CompressedApiResponse, */ CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat, CreateReplyRequest } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
 import axios, { AxiosError, AxiosResponse } from 'axios';
 import PostTreeError from '../errors/PostTreeError';
@@ -197,7 +197,7 @@ class PostTreeOperator {
 
       const contentLevel = createMidLevel(
         post.id,
-        [],
+        "",
         0,
         null, // selectedQuoteInParent is null for level 0
         initialSelectedQuote, // selectedQuoteInThisLevel is the initial selection within level 0
@@ -238,13 +238,13 @@ class PostTreeOperator {
     const rootNodeId = getRootNodeId(level);
 
     // Check selectedQuoteParent specifically
-    if (!parentId || parentId.length === 0 || levelNumber === undefined || !selectedQuoteParent || !rootNodeId) {
+    if (!parentId || levelNumber === undefined || !selectedQuoteParent || !rootNodeId) {
       console.warn('[fetchAndDispatchReplies] Missing critical data:', { parentId, levelNumber, selectedQuoteParent, rootNodeId });
       return;
     }
 
     // Use static method for encoding
-    const url = `${this.baseURL}/api/replies/getReplies/${parentId[0]}/${Quote.toEncodedString(selectedQuoteParent)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
+    const url = `${this.baseURL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(selectedQuoteParent)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
 
     try {
       // Direct axios call
@@ -329,23 +329,34 @@ class PostTreeOperator {
   private async fetchQuoteCounts(id: string): Promise<QuoteCounts> {
     const url = `${this.baseURL}/api/replies/quoteCounts/${id}`;
     try {
-        // Direct axios call
         const response: AxiosResponse<ExistingSelectableQuotesApiFormat> = await axios.get(url, {
             validateStatus: status => status === 200
         });
-        const quoteData = response.data; // Already decompressed
-        if (!quoteData || !quoteData.quoteCounts) {
-            // Return empty counts if API returns nothing or invalid structure, to prevent crashes
-            console.warn(`fetchQuoteCounts for ${id} received invalid data or no quoteCounts. Returning empty. Data:`, quoteData);
-            return { quoteCounts: [] }; 
+        const apiResult = response.data as any; // Cast to any to bypass strict type checking for now
+
+        // Check if the response structure matches what we expect from logs/backend
+        if (!apiResult || typeof apiResult.success !== 'boolean' || !Array.isArray(apiResult.data)) {
+            console.warn(`fetchQuoteCounts for ${id} received API response with unexpected structure. API Response:`, apiResult);
+            return { quoteCounts: [] }; // Return valid QuoteCounts structure
         }
-        return { quoteCounts: quoteData.quoteCounts };
+
+        if (!apiResult.success) {
+            console.warn(`fetchQuoteCounts for ${id} API call was not successful. API Response:`, apiResult);
+            return { quoteCounts: [] };
+        }
+
+        // Transform apiResult.data (Array of objects) to Array of [Quote, number] tuples
+        const transformedQuoteCounts: Array<[Quote, number]> = apiResult.data.map((item: { quote: Quote; count: number }) => {
+          return [item.quote, item.count];
+        });
+        
+        return { quoteCounts: transformedQuoteCounts };
+
     } catch (error) {
         const axiosErr = error as AxiosError;
         const statusCode = axiosErr.response?.status;
         console.error(`Error fetching quote counts for ${id}, status: ${statusCode}, error:`, error);
-        // Return empty counts on error to allow UI to render
-        return { quoteCounts: [] };
+        return { quoteCounts: [] }; // Return valid QuoteCounts structure
     }
   }
 
@@ -444,7 +455,7 @@ class PostTreeOperator {
       if (repliesResponse && repliesResponse.data.length > 0) {
         // Transform replies into PostTreeNodes
         const nodes: PostTreeNode[] = await Promise.all(repliesResponse.data.map(async (reply): Promise<PostTreeNode> => {
-          const quoteCounts = await this.fetchQuoteCounts(reply.id); // Fetch quote counts for each reply
+          const quoteCounts = await this.fetchQuoteCounts(reply.id);
           return {
             id: reply.id,
             rootNodeId: state.postTree!.post.id, // Use rootNodeId from the existing story tree
@@ -471,7 +482,7 @@ class PostTreeOperator {
         // Create the new MidLevel
         newLevel = createMidLevel(
           state.postTree.post.id,
-          [parentId],
+          parentId,
           targetLevelIndex,
           quoteInParent, // The quote selected *in the parent* that led to this level
           selectedQuoteInThisLevel, // The quote pre-selected *within* this new level
@@ -571,17 +582,15 @@ class PostTreeOperator {
     }
     try {
       // Get the user ID, which will throw if user is not authenticated
-      const authorId = this.getUserId();
+      this.getUserId();
 
       // Direct axios call
-      const response: AxiosResponse<CreateReplyResponse> = await axios.post(`${this.baseURL}/api/replies/createReply`, {
+      const createReplyRequest: CreateReplyRequest = {
         text,
-        parentId: [parentId], // Keep as array if API expects it
+        parentId,
         quote,
-        metadata: { // Assuming metadata is still part of the API contract
-          authorId,
-        }
-      }, {
+      };
+      const response: AxiosResponse<CreateReplyResponse> = await axios.post(`${this.baseURL}/api/replies/createReply`, createReplyRequest, {
         validateStatus: status => status === 201 || status === 200 // Adjust as per API success codes
       });
 
@@ -863,7 +872,7 @@ class PostTreeOperator {
 
         const level: PostTreeLevel = createMidLevel(
           rootNodeId,
-          [parentId],
+          parentId,
           levelNumber,
           quoteInParentToFetchChildrenFor,
           initialSelectedQuoteInNewLevel,
@@ -1104,7 +1113,7 @@ class PostTreeOperator {
             const initialSelectedQuoteInNewLevel = selectedNodeForNewLevel.quoteCounts ? this.mostQuoted(selectedNodeForNewLevel.quoteCounts) : null;
 
             nextLevelData = createMidLevel(
-              rootNodeId, [parentIdForNextLevel], nextLevelNumber,
+              rootNodeId, parentIdForNextLevel, nextLevelNumber,
               quoteToDriveNextLevel, // selectedQuoteInParent for N+1
               initialSelectedQuoteInNewLevel, // selectedQuoteInThisLevel for N+1's first node
               selectedNodeForNewLevel,
@@ -1251,7 +1260,7 @@ class PostTreeOperator {
         // Create the new level N+1 data
         nextLevelData = createMidLevel(
           rootNodeId,
-          [parentId],
+          parentId,
           nextLevelNumber,
           quote, // The quote selected in the parent (level N) that led to this level
           initialSelectedQuoteInNewLevel, // The default selection *within* the first node of this new level N+1

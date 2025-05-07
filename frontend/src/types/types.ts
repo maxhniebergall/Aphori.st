@@ -94,7 +94,7 @@ export interface PostTreeLevel {
 
 export interface MidLevel {
   rootNodeId: string;
-  parentId: string[];
+  parentId: string;
   levelNumber: number;
   selectedQuoteInParent: Quote | null;
   selectedQuoteInThisLevel: Quote | null;
@@ -150,6 +150,12 @@ export interface ApiResponse<T = unknown> {
   data?: T;
 }
 
+// CreateReplyRequest is the request body for the createReply endpoint
+export interface CreateReplyRequest {
+  text: string;
+  parentId: string;
+  quote: Quote;
+}
 // Specific response type for createReply endpoint
 export interface CreateReplyResponse {
   success: boolean;

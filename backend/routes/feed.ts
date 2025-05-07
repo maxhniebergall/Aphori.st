@@ -5,7 +5,6 @@ import {
     FeedItem,
     FeedItemsResponse,
 } from '../types/index.js';
-import { decodeCursor, createCursor } from '../utils/cursorUtils.js';
 
 // Use the imported type for the placeholder and the setDb function
 let db: DatabaseClientType;

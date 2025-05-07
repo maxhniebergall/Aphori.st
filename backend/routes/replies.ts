@@ -5,17 +5,10 @@ import {
     AuthenticatedRequest,
     User,
     Quote,
-    CreateReplyResponse,
-    CompressedApiResponse,
-    RepliesFeedResponse,
-    SortingCriteria,
-    RedisSortedSetItem,
-    ExistingSelectableQuotes,
-    Compressed,
-    CursorPaginatedResponse,
-    Post
+    CreateReplyResponse, SortingCriteria, CursorPaginatedResponse,
+    Post,
+    CreateReplyRequest
 } from '../types/index.js';
-import { getQuoteKey } from '../utils/quoteUtils.js';
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
@@ -80,14 +73,14 @@ interface ReplyData {
  * @desc    Creates a new reply
  * @access  Authenticated
  */
-router.post<{}, CreateReplyResponse, { text: string; parentId: string; quote: Quote }>('/createReply', authenticateToken, async (req, res) => {
+router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authenticateToken, async (req, res) => {
     // Generate IDs for logging context
-    const operationId = randomUUID();
+    const operationId = generateCondensedUuid();
     const requestId = res.locals.requestId; // Get from middleware
     const logContext = { requestId, operationId };
 
     try {
-        const { text, parentId, quote } = req.body;
+        const { text, parentId, quote } = req.body as CreateReplyRequest;
         const user: User = (req as AuthenticatedRequest).user;
 
         if (!text || !parentId || !quote || !quote.text || !quote.sourceId || !quote.selectionRange) {
@@ -340,16 +333,18 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
         const repliesPromises = replyItems.map(async (item) => {
             const replyId = item.value; // Reply ID is in the 'value' field
             try {
-                const replyData = await db.get<ReplyData>(`replies/${replyId}`);
+                // Remove surrounding quotes from replyId if they exist
+                const sanitizedReplyId = replyId.replace(/^"|"$/g, '');
+                const replyData = await db.get<ReplyData>(`replies/${sanitizedReplyId}`);
                 if (replyData) {
                     // TODO: Add validation check (isValidNewReply) if needed
                     return replyData;
                 } else {
-                    logger.warn({ replyId }, '[getReplies] Reply data not found for ID from index');
+                    logger.warn({ replyId: sanitizedReplyId }, '[getReplies] Reply data not found for ID from index');
                     return null;
                 }
             } catch (err) {
-                logger.error({ replyId, err }, `[getReplies] Error during get for reply`);
+                logger.error({ replyId: item.value, err }, `[getReplies] Error during get for reply`); // Log original item.value in case of error
                 return null;
             }
         });
