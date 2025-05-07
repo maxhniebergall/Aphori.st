@@ -58,14 +58,12 @@ const compareNullableQuotes = (q1: Quote | null | undefined, q2: Quote | null | 
 
 // Memoize the TextSelection component to prevent unnecessary re-renders
 const MemoizedTextSelection = React.memo(TextSelection);
-// Memoize the HighlightedText component to prevent unnecessary re-renders
-const MemoizedHighlightedText = React.memo(HighlightedText,
+
+// Update HighlightedText memoization, or remove if default shallow comparison is sufficient
+const MemoizedHighlightedText = React.memo(HighlightedText, 
   (prevProps, nextProps) => {
-    // Compare all relevant props for HighlightedText
-    return prevProps.text === nextProps.text &&
-           prevProps.selections === nextProps.selections && // Assuming immutable array reference comparison is okay here
-           compareNullableQuotes(prevProps.selectedReplyQuote, nextProps.selectedReplyQuote) && // Use helper function
-           prevProps.onSegmentClick === nextProps.onSegmentClick; // Reference comparison for callback
+    // Only compare the text prop as other props are removed
+    return prevProps.text === nextProps.text;
   }
 );
 
@@ -108,41 +106,38 @@ const NodeContent: React.FC<NodeContentProps> = ({
   const quoteContainerRef = useRef<HTMLDivElement>(null); // Ref for the quote container
 
   // Memoize the callback passed down from PostTreeLevelComponent
+  // This callback is no longer passed to HighlightedText, 
+  // but might be used elsewhere or can be removed if not.
+  // For now, let's assume it might be used by something else or was intended for future use.
   const memoizedOnExistingQuoteSelectionComplete = useCallback((selectedQuote: Quote) => {
-    // This log confirms what NodeContent passes up to PostTreeLevelComponent
-    
     onExistingQuoteSelectionComplete(selectedQuote);
   }, [onExistingQuoteSelectionComplete]);
 
-  // Memoize the existingSelectableQuotes. 
-  // Rely ONLY on the prop passed down, assuming it's correctly memoized upstream.
+  // The following hook and related variables are no longer used by HighlightedText.
+  // Comment them out for now. If they are not used by any other part of NodeContent,
+  // they can be removed entirely later.
+  /*
   const memoizedExistingSelectableQuotes = useMemo(() => {
     return existingSelectableQuotes ?? { quoteCounts: [] };
-  // Only depend on the prop. Remove node.quoteCounts and node.id dependencies.
   }, [existingSelectableQuotes]);
 
-  // Use the highlighting hook ONLY for managing highlights in the main content
   const {
     selections,
     handleSegmentClick,
-    selectedQuote // Destructure selectedQuote from the hook's return
+    selectedQuote 
   } = useHighlighting({
     text: node.textContent || '',
     selectedQuote: currentLevelSelectedQuote ?? undefined,
     existingSelectableQuotes: memoizedExistingSelectableQuotes,
-    // Wrap the callback passed *to* the hook to log the quote received from HighlightedText/useHighlighting
     onSegmentClick: useCallback((quoteFromHighlighting: Quote) => {
-      // This log shows what quote useHighlighting's handleSegmentClick received
-      
-      // Pass it up to the next level callback
       memoizedOnExistingQuoteSelectionComplete(quoteFromHighlighting);
-    }, [memoizedOnExistingQuoteSelectionComplete]) // Add dependency
+    }, [memoizedOnExistingQuoteSelectionComplete])
   });
 
-  // Log the selections array passed to HighlightedText whenever it changes
   useEffect(() => {
     
   }, [selections]);
+  */
 
   // Effect to scroll the quote container into view when it becomes the reply target
   useEffect(() => {
@@ -178,10 +173,11 @@ const NodeContent: React.FC<NodeContentProps> = ({
       >
         <MemoizedHighlightedText
           text={node.textContent || ''}
-          selections={selections}
-          quoteCounts={memoizedExistingSelectableQuotes}
-          onSegmentClick={handleSegmentClick}
-          selectedReplyQuote={currentLevelSelectedQuote ?? undefined}
+          // Props related to highlighting are removed:
+          // selections={selections} 
+          // quoteCounts={memoizedExistingSelectableQuotes}
+          // onSegmentClick={handleSegmentClick}
+          // selectedReplyQuote={currentLevelSelectedQuote ?? undefined}
         />
       </div>
 
