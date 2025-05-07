@@ -10,7 +10,6 @@ import {
   getLevelNumber,
   getPagination,
   isMidLevel,
-  updateSiblingsForQuoteHelper,
   setSelectedNodeHelper,
   setSelectedQuoteInThisLevelHelper,
 } from '../utils/levelDataHelpers';
@@ -44,6 +43,7 @@ const initialState: PostTreeState = {
 };
 
 // Helper function to find siblings for a quote in the array-based structure
+/* // This function is obsolete with the new Siblings structure
 function findSiblingsForQuote(siblings: Siblings, quote: Quote | null): PostTreeNode[] {
   const entry = siblings.levelsMap.find(([key]) => {
     if (key === null && quote === null) {
@@ -60,6 +60,7 @@ function findSiblingsForQuote(siblings: Siblings, quote: Quote | null): PostTree
   
   return entry ? entry[1] : [];
 }
+*/
 
 export function mergeLevels(existingLevels: PostTreeLevel[], newLevelsPayload: PostTreeLevel[]): PostTreeLevel[] {
   const processedNewLevelIndices = new Set<number>();
@@ -95,56 +96,38 @@ export function mergeLevels(existingLevels: PostTreeLevel[], newLevelsPayload: P
 
     let currentLevel = existingLevel;
     let currentMidLevel = existingLevel.midLevel;
-    let currentSiblings = currentMidLevel.siblings;
-    let siblingsChanged = false; // Track if siblings reference changes
+    let currentSiblingsNodes = currentMidLevel.siblings.nodes; // Changed from .siblings to .siblings.nodes
+    let siblingsNodesChanged = false; // Track if siblings.nodes reference changes
 
     // Get the latest pagination info from the payload, regardless of whether it changed
     const latestPagination = newLevelData.midLevel.pagination ?? currentMidLevel.pagination;
 
     // Merge Nodes/Siblings
-    const newSiblingsPayload = newLevelData.midLevel.siblings;
-    if (newSiblingsPayload?.levelsMap) {
-      for (const [quote, newNodesForQuote] of newSiblingsPayload.levelsMap) {
-        const existingNodesForQuote = findSiblingsForQuote(currentSiblings, quote);
-        const existingIds = new Set(existingNodesForQuote.map(node => node.id));
-        const uniqueNewNodes = newNodesForQuote.filter(node => !existingIds.has(node.id));
+    const newSiblingsNodesPayload = newLevelData.midLevel.siblings.nodes; // Changed
+    if (newSiblingsNodesPayload) {
+      // With the new model, the payload for siblings.nodes is expected to be the complete, sorted list for this level.
+      // So, we replace if different. We could add more complex merging (append/prepend) if pagination logic changes.
+      const existingIds = new Set(currentSiblingsNodes.map(node => node.id));
+      const uniqueNewNodes = newSiblingsNodesPayload.filter(node => !existingIds.has(node.id));
 
-        if (uniqueNewNodes.length === 0) {
-          continue;
-        }
-
-        let finalNodesForQuote;
-        const newLevelPagination = getPagination(newLevelData); // Use pagination from *new* data for prepend/append logic
-        if (newLevelPagination?.prevCursor) {
-          finalNodesForQuote = [...uniqueNewNodes, ...existingNodesForQuote];
-        } else {
-          finalNodesForQuote = [...existingNodesForQuote, ...uniqueNewNodes];
-        }
-
-        const updatedSiblingsResult = updateSiblingsForQuoteHelper(
-          currentSiblings,
-          quote,
-          finalNodesForQuote
-        );
-
-        if (updatedSiblingsResult !== currentSiblings) {
-          currentSiblings = updatedSiblingsResult; // Update siblings reference
-          siblingsChanged = true; // Mark that siblings object *did* change
-        }
+      // For now, assume newSiblingsNodesPayload is the definitive new list if it differs, 
+      // or append if it represents a paginated addition.
+      // Let's simplify to replacement if it's different, assuming operator provides full sorted list for now.
+      if (JSON.stringify(currentSiblingsNodes) !== JSON.stringify(newSiblingsNodesPayload)) {
+        currentSiblingsNodes = newSiblingsNodesPayload; // Replace with the new list
+        siblingsNodesChanged = true;
       }
     }
 
-    // If siblings changed, update midLevel and level references
-    if (siblingsChanged) {
-        // Create new midLevel object containing the new siblings reference and the latest pagination
+    // If siblings.nodes changed, update midLevel and level references
+    if (siblingsNodesChanged) {
         currentMidLevel = { 
-            ...currentMidLevel, // Spread existing midLevel to preserve other properties
-            siblings: currentSiblings, 
-            pagination: latestPagination // Include the most recent pagination info
+            ...currentMidLevel, 
+            siblings: { nodes: currentSiblingsNodes }, // Assign new Siblings object
+            pagination: latestPagination 
         };
-        // Create new level object wrapping the new midLevel
         currentLevel = { ...existingLevel, midLevel: currentMidLevel };
-        overallChange = true; // Mark that an object reference *did* change
+        overallChange = true; 
         return currentLevel; 
     } else {
         // Siblings did not change, BUT we might still need to update the pagination *within* the existing midLevel reference
@@ -392,25 +375,19 @@ function postTreeReducer(state: PostTreeState, action: Action): PostTreeState {
         let levelToInsert = newLevelPayload;
 
         if (isMidLevel(levelToInsert) && levelToInsert.midLevel) {
-            const parentQuote = levelToInsert.midLevel.selectedQuoteInParent;
-            const siblingsMap = levelToInsert.midLevel.siblings.levelsMap;
+            // const parentQuote = levelToInsert.midLevel.selectedQuoteInParent; // No longer used to find sibling list
+            const newSiblingNodes = levelToInsert.midLevel.siblings.nodes;
             let firstSibling: PostTreeNode | undefined = undefined;
 
-            const entry = siblingsMap.find(([key]) => areQuotesEqual(key, parentQuote));
-            if (entry && entry[1].length > 0) {
-                firstSibling = entry[1][0];
-            } else if (siblingsMap.length > 0 && siblingsMap[0][1].length > 0) {
-                 console.warn(`REPLACE_LEVEL_DATA: Could not find sibling list for parentQuote. Falling back to first list.`);
-                 firstSibling = siblingsMap[0][1][0];
+            if (newSiblingNodes && newSiblingNodes.length > 0) {
+                firstSibling = newSiblingNodes[0];
             }
 
             if (firstSibling && levelToInsert.midLevel.selectedNode?.id !== firstSibling.id) {
                 console.warn(`REPLACE_LEVEL_DATA: Payload selectedNode ID (${levelToInsert.midLevel.selectedNode?.id}) mismatch with first sibling ID (${firstSibling.id}). Correcting.`);
-                // Use the imported helper for immutable update
                 levelToInsert = setSelectedNodeHelper(levelToInsert, firstSibling);
             } else if (!firstSibling && levelToInsert.midLevel.selectedNode) {
                  console.warn(`REPLACE_LEVEL_DATA: Payload has selectedNode but no siblings found. Proceeding with original payload selectedNode.`);
-                 // Don't modify levelToInsert here, keep the selectedNode from the payload as is.
             }
         }
 

@@ -209,53 +209,53 @@ export function createLastLevel(
 
 // Helper function to update siblings for a quote in the array-based structure
 // Now returns original siblings reference if nodes for the quote are unchanged.
-export function updateSiblingsForQuoteHelper(siblings: Siblings, quote: Quote | null, nodes: PostTreeNode[]): Siblings {
-  const index = siblings.levelsMap.findIndex(([key]) => {
-    if (key === null && quote === null) {
-      return true;
-    }
-    if (!key || !quote) {
-      return false;
-    }
-    // Using stricter quote comparison
-    return key.sourceId === quote.sourceId &&
-           key.text === quote.text &&
-           key.selectionRange.start === quote.selectionRange.start &&
-           key.selectionRange.end === quote.selectionRange.end;
-  });
-
-  const existingNodes = index >= 0 ? siblings.levelsMap[index][1] : [];
-
-  // Compare current nodes with new nodes based on ID sequence
-  const existingNodeIds = existingNodes.map(n => n.id);
-  const newNodeIds = nodes.map(n => n.id);
-
-  let areNodeListsIdentical = existingNodeIds.length === newNodeIds.length;
-  if (areNodeListsIdentical) {
-    for (let i = 0; i < existingNodeIds.length; i++) {
-      if (existingNodeIds[i] !== newNodeIds[i]) {
-        areNodeListsIdentical = false;
-        break;
-      }
-    }
-  }
-
-  // If the list of nodes for this quote is identical, return the original siblings object
-  if (areNodeListsIdentical && index >= 0) { // Ensure it's not a new quote addition
-    return siblings;
-  }
-
-  // Otherwise, create a new levelsMap and return a new Siblings object
-  const newLevelsMap = [...siblings.levelsMap];
-
-  if (index >= 0) {
-    // Replace the existing entry
-    newLevelsMap[index] = [quote, nodes];
-  } else {
-    // Add a new entry
-    newLevelsMap.push([quote, nodes]);
-  }
-
-  return { levelsMap: newLevelsMap };
-}
+// export function updateSiblingsForQuoteHelper(siblings: Siblings, quote: Quote | null, nodes: PostTreeNode[]): Siblings {
+//   const index = siblings.levelsMap.findIndex(([key]) => {
+//     if (key === null && quote === null) {
+//       return true;
+//     }
+//     if (!key || !quote) {
+//       return false;
+//     }
+//     // Using stricter quote comparison
+//     return key.sourceId === quote.sourceId &&
+//            key.text === quote.text &&
+//            key.selectionRange.start === quote.selectionRange.start &&
+//            key.selectionRange.end === quote.selectionRange.end;
+//   });
+//
+//   const existingNodes = index >= 0 ? siblings.levelsMap[index][1] : [];
+//
+//   // Compare current nodes with new nodes based on ID sequence
+//   const existingNodeIds = existingNodes.map(n => n.id);
+//   const newNodeIds = nodes.map(n => n.id);
+//
+//   let areNodeListsIdentical = existingNodeIds.length === newNodeIds.length;
+//   if (areNodeListsIdentical) {
+//     for (let i = 0; i < existingNodeIds.length; i++) {
+//       if (existingNodeIds[i] !== newNodeIds[i]) {
+//         areNodeListsIdentical = false;
+//         break;
+//       }
+//     }
+//   }
+//
+//   // If the list of nodes for this quote is identical, return the original siblings object
+//   if (areNodeListsIdentical && index >= 0) { // Ensure it's not a new quote addition
+//     return siblings;
+//   }
+//
+//   // Otherwise, create a new levelsMap and return a new Siblings object
+//   const newLevelsMap = [...siblings.levelsMap];
+//
+//   if (index >= 0) {
+//     // Replace the existing entry
+//     newLevelsMap[index] = [quote, nodes];
+//   } else {
+//     // Add a new entry
+//     newLevelsMap.push([quote, nodes]);
+//   }
+//
+//   return { levelsMap: newLevelsMap };
+// }
  

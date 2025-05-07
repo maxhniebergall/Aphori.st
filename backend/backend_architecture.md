@@ -579,6 +579,16 @@ This section outlines how key data entities, particularly replies requiring sort
 
       * **Access:** Direct read via `get('/postMetadata/postReplies/' + postId)` to get all reply IDs for a thread. Combine with reads from `/replies/$replyId` as needed. Alternatively, query `/replies` using `orderByChild('rootPostId').equalTo('$postId')` (requires defining `.indexOn` rule for `rootPostId` on `/replies`). A dedicated index like `indexes/repliesByRootPostTimestamp` might be more efficient for sorted retrieval.
 
+8.  **Client-Side Orchestration for Engagement-Sorted Replies (New Frontend Strategy):**
+    *   **Context:** The frontend (`PostTreeOperator`) is implementing a new strategy to display replies sorted by engagement (total count of replies to their own quotes) and then by recency, without filtering by a specific quote selected in the parent.
+    *   **Current Access Pattern (Client-Side):**
+        1.  Fetch all direct reply IDs for a parent node: Direct read from `replyMetadata/parentReplies/$directParentId` to get a map like `{ replyId1: true, ... }`.
+        2.  Fetch individual reply data: For each `replyId` obtained, direct read from `/replies/$replyId`.
+        3.  Fetch quote counts for each reply: For each `replyId`, access its quote counts (how many times quotes *within this reply* have been replied to). This is done via the existing API `GET /api/replies/quoteCounts/:replyId` (which reads from `replyMetadata/quoteCounts/$replyId`).
+        4.  Client-Side Processing: The frontend then calculates a total engagement score for each reply by summing its fetched quote counts and performs the sorting (engagement desc, then createdAt desc).
+    *   **Backend Implication (Minimal Initial Change):** This approach composes existing backend read capabilities. No immediate new backend APIs or data model *modifications* are required for the frontend to implement this initial version.
+    *   **Future Optimization:** For improved performance, reduced client-side complexity, and more robust pagination, a dedicated backend API endpoint could be developed in the future. Such an endpoint might accept a `parentId` and pagination parameters, and return a pre-sorted (by engagement/recency) list of replies. This would involve server-side aggregation of data similar to the client-side steps described above.
+
 ## Implementation Status & Next Steps
 
 The backend architecture has been significantly refactored to align with Firebase RTDB best practices and remove previous complexities like path hashing and database-level compression.

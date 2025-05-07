@@ -192,7 +192,7 @@ class PostTreeOperator {
     if (this.store && this.store.dispatch) {
       // Always create and dispatch a level 0
       const siblings: Siblings = {
-        levelsMap: [[null, [contentNode]]] // Keep null key for the map itself
+        nodes: [contentNode] // Keep null key for the map itself
       };
 
       const contentLevel = createMidLevel(
@@ -278,7 +278,7 @@ class PostTreeOperator {
         const newLevelData = createMidLevel(
           rootNodeId, parentId, levelNumber + 1, selectedQuoteParent, 
           initialSelectedQuoteInNewLevel, replyNodes[0], 
-          { levelsMap: [[selectedQuoteParent, replyNodes]] }, 
+          { nodes: replyNodes }, 
           paginatedData.pagination
         );
         if (this.store && this.store.dispatch) {
@@ -476,7 +476,7 @@ class PostTreeOperator {
 
         // Construct siblings map for the new level
         const siblingsMap: Siblings = {
-          levelsMap: [[quoteInParent, nodes]] // Use the parent's quote as the key
+          nodes: nodes // Use the parent's quote as the key
         };
 
         // Create the new MidLevel
@@ -877,7 +877,7 @@ class PostTreeOperator {
           quoteInParentToFetchChildrenFor,
           initialSelectedQuoteInNewLevel,
           selectedNodeForNewLevel,
-          { levelsMap: [[quoteInParentToFetchChildrenFor, siblingsForQuote]] },
+          { nodes: siblingsForQuote },
           pagination
         );
 
@@ -1117,7 +1117,7 @@ class PostTreeOperator {
               quoteToDriveNextLevel, // selectedQuoteInParent for N+1
               initialSelectedQuoteInNewLevel, // selectedQuoteInThisLevel for N+1's first node
               selectedNodeForNewLevel,
-              { levelsMap: [[quoteToDriveNextLevel, siblingsForQuote]] },
+              { nodes: siblingsForQuote },
               pagination
             );
 
@@ -1265,7 +1265,7 @@ class PostTreeOperator {
           quote, // The quote selected in the parent (level N) that led to this level
           initialSelectedQuoteInNewLevel, // The default selection *within* the first node of this new level N+1
           selectedNodeForNewLevel, // Select the first reply node by default
-          { levelsMap: [[quote, siblingsForQuote]] }, // Siblings keyed by the parent quote
+          { nodes: siblingsForQuote }, // Siblings keyed by the parent quote
           pagination
         );
 
@@ -1351,7 +1351,7 @@ class PostTreeOperator {
       return; // Do nothing if the state doesn't match expectation
     }
 
-    const siblingsMap = getSiblings(targetLevel)?.levelsMap;
+    const siblingsMap = getSiblings(targetLevel);
     const parentQuote = getSelectedQuoteInParent(targetLevel);
     if (!siblingsMap) {
       console.warn("[handleNavigateNextSibling] Siblings map not found for level:", targetLevel);
@@ -1359,8 +1359,8 @@ class PostTreeOperator {
     }
 
     // Find the correct list of siblings based on the parent's selected quote
-    const siblingsEntry = siblingsMap.find(([quoteKey]) => areQuotesEqual(quoteKey, parentQuote));
-    const siblingsList = siblingsEntry ? siblingsEntry[1] : [];
+    // const siblingsEntry = siblingsMap.find(([quoteKey]) => areQuotesEqual(quoteKey, parentQuote));
+    const siblingsList = siblingsMap.nodes;
 
     if (!actualCurrentNode || siblingsList.length === 0) {
       console.warn("[handleNavigateNextSibling] Current node or siblings list is invalid.");
@@ -1410,7 +1410,7 @@ class PostTreeOperator {
       return; // Do nothing if the state doesn't match expectation
     }
 
-    const siblingsMap = getSiblings(targetLevel)?.levelsMap;
+    const siblingsMap = getSiblings(targetLevel);
     const parentQuote = getSelectedQuoteInParent(targetLevel);
     if (!siblingsMap) {
       console.warn("[handleNavigatePrevSibling] Siblings map not found for level:", targetLevel);
@@ -1418,8 +1418,8 @@ class PostTreeOperator {
     }
 
     // Find the correct list of siblings based on the parent's selected quote
-    const siblingsEntry = siblingsMap.find(([quoteKey]) => areQuotesEqual(quoteKey, parentQuote));
-    const siblingsList = siblingsEntry ? siblingsEntry[1] : [];
+    // const siblingsEntry = siblingsMap.find(([quoteKey]) => areQuotesEqual(quoteKey, parentQuote));
+    const siblingsList = siblingsMap.nodes;
 
     if (!actualCurrentNode || siblingsList.length === 0) {
       console.warn("[handleNavigatePrevSibling] Current node or siblings list is invalid.");

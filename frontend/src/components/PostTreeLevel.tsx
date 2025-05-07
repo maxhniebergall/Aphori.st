@@ -15,7 +15,7 @@ import { debounce } from 'lodash';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
-import { PostTreeLevel as LevelData, Pagination, ACTIONS } from '../types/types';
+import { PostTreeLevel as LevelData, Pagination, ACTIONS, PostTreeNode, Siblings } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
 import postTreeOperator from '../operators/PostTreeOperator';
 import { usePostTree } from '../context/PostTreeContext';
@@ -140,36 +140,15 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []); // Dependency array kept empty as intended
 
-  // Get siblings from levelData using the correct key (parent's selected quote) - RESTORED LOGIC
-  const siblings = useMemo(() => {
+  // Get siblings from levelData - Refactored to use the new structure
+  const siblings: Siblings = useMemo(() => {
     if (!isMidLevel(levelData)) { 
-      return [];
+      return { nodes: [] };
     }
-    const siblingsData = getSiblings(levelData);
-    const relevantQuoteKey = getSelectedQuoteInParent(levelData); // Use helper
-
-    if (!siblingsData || siblingsData.levelsMap.length === 0) {
-      console.warn("No siblings data or map found in PostTreeLevel:", levelData);
-      return [];
-    }
-
-    // Find the siblings list in the map that matches the relevant quote
-    const siblingsEntry = siblingsData.levelsMap.find(([quoteKey]) => {
-      // Handle null/undefined cases explicitly before calling areQuotesEqual
-      if ((relevantQuoteKey === null || relevantQuoteKey === undefined) && (quoteKey === null || quoteKey === undefined)) {
-        return true; // Both are null/undefined, they match
-      }
-      if ((relevantQuoteKey === null || relevantQuoteKey === undefined) || (quoteKey === null || quoteKey === undefined)) {
-        return false; // One is null/undefined, the other isn't, they don't match
-      }
-      // Both are non-null/undefined Quotes, now we can safely compare them
-      return areQuotesEqual(quoteKey, relevantQuoteKey);
-    });
-
-    // Extract the list if found, otherwise return empty
-    return siblingsEntry ? siblingsEntry[1] : [];
-
-  }, [levelData]); // Dependency is levelData
+    // getSiblings now directly returns PostTreeNode[] | undefined
+    return getSiblings(levelData) || { nodes: [] }; 
+    // Removed the old logic that tried to filter based on selectedQuoteInParent and levelsMap
+  }, [levelData]);
 
   // Get the current node to render - moved up
   const nodeToRender = useMemo(() => {
@@ -177,8 +156,8 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     if (selectedNode) {
       return selectedNode;
     }
-    if (siblings.length > 0) {
-      return siblings[0];
+    if (siblings.nodes.length > 0) {
+      return siblings.nodes[0];
     }
     return undefined;
   }, [levelData, siblings]); // Dependencies restored
@@ -309,45 +288,43 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
   const navigateToNextSibling = useCallback(async () => {
     if (replyTarget?.id === nodeToRender?.id) { return; }
     if (!nodeToRender) { return; }
-    const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id);
-    if (currentIndex < siblings.length - 1) {
+    const currentIndex = siblings.nodes.findIndex((sibling: PostTreeNode) => sibling.id === getSelectedNodeHelper(levelData)?.id);
+    if (currentIndex < siblings.nodes.length - 1) {
       debouncedNavigateNext(); // Call debounced action
     } else if (pagination.hasMore) {
-      setIsLoading(true);
-      try {
-        const parentIdArr = getParentId(levelData);
-        const levelNum = getLevelNumber(levelData);
-        const selQuoteParent = getSelectedQuoteInParent(levelData); 
-        
-        if (!parentIdArr || parentIdArr.length === 0 || levelNum === undefined || !selQuoteParent) {
-            console.warn("Missing data needed to load more items.", { parentIdArr, levelNum, selQuoteParent });
-            setIsLoading(false);
-            return;
-        }
-        await postTreeOperator.loadMoreItems(
-          parentIdArr[0], levelNum, selQuoteParent, siblings.length, siblings.length + 3
-        );
-        // Dispatch the action *after* loading more items completes
-        // NOTE: The debounced function already captures the correct expected node ID
-        // from when the *initial* gesture/call happened, which is what we want.
-        debouncedNavigateNext(); 
-      } catch (error) {
-        console.error("Failed to load more items:", error);
-      } finally {
-        setIsLoading(false);
-      }
+      // ** Temporarily removed loadMoreItems call **
+      // The logic for pagination needs rethinking with the new client-side sorting.
+      // setIsLoading(true);
+      // try {
+      //   const parentIdArr = getParentId(levelData);
+      //   const levelNum = getLevelNumber(levelData);
+      //   // We don't use selQuoteParent for fetching anymore
+      //   if (!parentIdArr || parentIdArr.length === 0 || levelNum === undefined) {
+      //       console.warn("Missing data needed to load more items.", { parentIdArr, levelNum });
+      //       setIsLoading(false);
+      //       return;
+      //   }
+      //   // Call to loadMoreItems needs redesign
+      //   // await postTreeOperator.loadMoreItems(...);
+      //   debouncedNavigateNext(); 
+      // } catch (error) {
+      //   console.error("Failed to load more items:", error);
+      // } finally {
+      //   setIsLoading(false);
+      // }
+      console.log("Load more logic needs implementation for new sorting.");
     } else {
       console.log("No next sibling action taken (already at end or no more pages).");
     }
   }, [
     siblings, pagination, levelData, debouncedNavigateNext, nodeToRender, 
-    replyTarget, setIsLoading
+    replyTarget, // Removed setIsLoading as loadMoreItems is commented out
   ]);
 
   const navigateToPreviousSibling = useCallback(async () => {
     if (replyTarget?.id === nodeToRender?.id) { return; }
     if (!nodeToRender) { return; }
-    const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id);
+    const currentIndex = siblings.nodes.findIndex((sibling: PostTreeNode) => sibling.id === getSelectedNodeHelper(levelData)?.id);
     if (currentIndex > 0) {
       debouncedNavigatePrev(); // Call debounced action
     } else {
@@ -482,8 +459,8 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
             )}
             <MemoizedNodeFooter
               nodeData={nodeToRender}
-              currentIndex={nodeToRender ? siblings.findIndex(sibling => sibling.id === nodeToRender.id) : -1} 
-              totalSiblings={siblings.length}
+              currentIndex={nodeToRender ? siblings.nodes.findIndex((sibling: PostTreeNode) => sibling.id === nodeToRender.id) : -1} 
+              totalSiblings={siblings.nodes.length}
               onReplyClick={handleReplyButtonClick}
               isReplyTarget={isReplyTarget}
               onNextSibling={navigateToNextSibling}
