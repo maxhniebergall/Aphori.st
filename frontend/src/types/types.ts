@@ -83,7 +83,8 @@ export interface PostTreeNode { // this value only exists in the frontend. it co
 
 export interface Siblings {
   // Store siblings as an array of entries [Quote | null, PostTreeNode[]] for better serialization
-  levelsMap: [Quote | null, PostTreeNode[]][];
+  // levelsMap: [Quote | null, PostTreeNode[]][];
+  nodes: PostTreeNode[]; // New: A single, sorted list of sibling nodes for the level
 }
 
 export interface PostTreeLevel {
