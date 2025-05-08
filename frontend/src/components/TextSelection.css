@@ -1,0 +1,98 @@
+/*
+ * Requirements:
+ * - Native text selection styling
+ * - Selection highlight styling
+ * - GPU-accelerated animations
+ * - Visual feedback on interaction
+ * - Quote highlight styling
+ */
+
+.selection-container {
+  position: relative;
+  padding: 8px;
+  border-radius: 4px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* When selecting, add a subtle indication of selection mode */
+.selection-container.is-selecting {
+  background-color: rgba(0, 120, 215, 0.05);
+}
+
+/* Style for temporary highlight spans added during selection */
+.selection-container .temporary-highlight {
+  background-color: rgba(255, 255, 0, 0.4);
+  transition: background-color 0.1s ease;
+}
+
+/* Style for native text selection */
+.selection-container::selection,
+.selection-container *::selection {
+  background-color: rgba(0, 120, 215, 0.2);
+  color: inherit;
+}
+
+.selection-container::-moz-selection,
+.selection-container *::-moz-selection {
+  background-color: rgba(0, 120, 215, 0.2);
+  color: inherit;
+}
+
+/* Quote highlight styles */
+.selection-container span[data-quote-range] {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.selection-container span[data-quote-range]:hover {
+  filter: brightness(1.1);
+}
+
+.quote-text {
+  font-style: italic;
+  color: #495057;
+}
+
+/* Remove the selection indicator since we're using browser's native selection */
+/* Instead, add styles for the temporary highlights during active selection */
+.temporary-highlight {
+  background-color: rgba(255, 255, 0, 0.4) !important;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.selection-handle {
+  position: absolute;
+  width: 16px; /* Slightly larger for easier touch */
+  height: 16px;
+  background-color: #00000000; /* Bootstrap primary blue */
+  border-radius: 50%;
+  border: 2px solid #007AFF;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  cursor: grab; 
+  z-index: 10;
+  /* Center the handle visually over the coordinate */
+  transform: translate(-50%, -50%);
+  touch-action: none; /* Important for touch dragging */
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  display: none; /* Initially hidden */
+}
+
+.selection-handle:active {
+  cursor: grabbing;
+  background-color: #0056b3; /* Darker blue when active */
+}
+
+/* Optional: Different styles for start/end if desired */
+/* .selection-handle.start {} */
+/* .selection-handle.end {} */ 

@@ -1,0 +1,130 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      "$userId": {
+        ".read": false,
+        ".write": false,
+        ".validate": "newData.hasChildren(['id', 'email', 'createdAt']) && newData.child('id').isString() && newData.child('id').val() === $userId && newData.child('email').isString() && newData.child('email').val().matches(/^[^\\\\s@]+@[^\\\\s@]+\\\\.[^\\\\s@]+$/) && newData.child('createdAt').isString()"
+      }
+    },
+    "userMetadata": {
+      "emailToId": {
+        ".read": false,
+        ".write": false,
+        "$escapedEmail": {
+          ".validate": "newData.isString() && root.child('users').child(newData.val()).exists()"
+        }
+      },
+      "userIds": {
+        ".read": false,
+        ".write": false,
+        "$userId": {
+          ".validate": "newData.isBoolean() && newData.val() === true && root.child('users').child($userId).exists()"
+        }
+      },
+      "userPosts": {
+        "$userId": {
+          ".read": false,
+          ".write": false,
+          "$postId": {
+            ".validate": "newData.isBoolean() && newData.val() === true && root.child('posts').child($postId).exists() && root.child('users').child($userId).exists()"
+          }
+        }
+      },
+      "userReplies": {
+        "$userId": {
+          ".read": false,
+          ".write": false,
+          "$replyId": {
+            ".validate": "newData.isBoolean() && newData.val() === true && root.child('replies').child($replyId).exists() && root.child('users').child($userId).exists()"
+          }
+        }
+      }
+    },
+    "posts": {
+      "$postId": {
+        ".read": true,
+        ".write": false,
+        ".validate": "newData.hasChildren(['id', 'authorId', 'content', 'createdAt', 'replyCount']) && newData.child('id').isString() && newData.child('id').val() === $postId && newData.child('authorId').isString() && root.child('users').child(newData.child('authorId').val()).exists() && newData.child('content').isString() && newData.child('content').val().length > 0 && newData.child('createdAt').isString() && newData.child('replyCount').isNumber() && newData.child('replyCount').val() >= 0"
+      }
+    },
+    "postMetadata": {
+      ".read": false,
+      ".write": false,
+      "allPostTreeIds": {
+         "$postId": {
+            ".validate": "newData.isBoolean() && newData.val() === true && root.child('posts').child($postId).exists()"
+          }
+      },
+      "postReplies": {
+        "$postId": {
+          "$replyId": {
+            ".validate": "(newData.isBoolean() && newData.val() === true) || newData.isNumber() && root.child('replies').child($replyId).exists() && root.child('posts').child($postId).exists()"
+          }
+        }
+      }
+    },
+    "replies": {
+      ".indexOn": ["rootPostId"],
+      "$replyId": {
+        ".read": true,
+        ".write": false,
+        ".validate": "newData.hasChildren(['id', 'authorId', 'text', 'parentId', 'parentType', 'rootPostId', 'quote', 'createdAt']) && newData.child('id').isString() && newData.child('id').val() === $replyId && newData.child('authorId').isString() && root.child('users').child(newData.child('authorId').val()).exists() && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('parentId').isString() && newData.child('parentType').isString() && (newData.child('parentType').val() === 'post' || newData.child('parentType').val() === 'reply') && newData.child('rootPostId').isString() && root.child('posts').child(newData.child('rootPostId').val()).exists() && newData.child('quote').isObject() && newData.child('quote').hasChildren(['text', 'sourceId', 'selectionRange']) && newData.child('quote/text').isString() && newData.child('quote/sourceId').isString() && newData.child('quote/selectionRange').isObject() && newData.child('quote/selectionRange').hasChildren(['start', 'end']) && newData.child('quote/selectionRange/start').isNumber() && newData.child('quote/selectionRange/end').isNumber() && newData.child('createdAt').isString()"
+      }
+    },
+    "replyMetadata": {
+      ".read": true,
+      ".write": false,
+      "parentReplies": {
+        "$directParentId": {
+          "$replyId": {
+            ".validate": "(newData.isBoolean() && newData.val() === true) || newData.isNumber() && root.child('replies').child($replyId).exists()"
+          }
+        }
+      },
+      "quoteCounts": {
+        ".write": false,
+        "$parentPostOrReplyId": {
+          "$hashedQuoteKey": {
+             ".validate": "newData.isObject() && newData.hasChildren(['quote', 'count']) && newData.child('count').isNumber() && newData.child('count').val() >= 0 && newData.child('quote').isObject() && newData.child('quote').hasChildren(['text', 'sourceId', 'selectionRange']) && newData.child('quote/text').isString() && newData.child('quote/sourceId').isString() && newData.child('quote/selectionRange').isObject() && newData.child('quote/selectionRange').hasChildren(['start', 'end']) && newData.child('quote/selectionRange/start').isNumber() && newData.child('quote/selectionRange/end').isNumber()"
+          }
+        }
+      }
+    },
+    "feedItems": {
+      ".indexOn": "createdAt",
+      ".read": true,
+      ".write": false,
+      "$feedItemId_pushKey": {
+         ".validate": "newData.hasChildren(['id', 'authorId', 'textSnippet', 'createdAt']) && newData.child('id').isString() && root.child('posts').child(newData.child('id').val()).exists() && newData.child('authorId').isString() && root.child('users').child(newData.child('authorId').val()).exists() && newData.child('textSnippet').isString() && newData.child('createdAt').isString()"
+      }
+    },
+    "feedStats": {
+      ".read": true,
+      ".write": false,
+      "itemCount": {
+        ".validate": "newData.isNumber() && newData.val() >= 0"
+      }
+    },
+    "indexes": {
+      ".read": false,
+      ".write": false,
+      "repliesFeedByTimestamp": {
+          "$timestamp_$replyId": {
+             ".validate": "newData.isString() && root.child('replies').child(newData.val()).exists()"
+          }
+      },
+      "repliesByParentQuoteTimestamp": {
+          "$sanitizedParentId": {
+              "$sanitizedQuoteKey": {
+                  "$timestamp_$replyId": {
+                     ".validate": "newData.isString() && root.child('replies').child(newData.val()).exists()"
+                  }
+              }
+          }
+      }
+    }
+  }
+}

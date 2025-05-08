@@ -10,10 +10,10 @@ function ProfilePage() {
     useEffect(() => {
         const fetchProfile = async () => {
             try {
-                const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/profile`, {
+                const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/auth/profile`, {
                     headers: {
-                        'Authorization': `Bearer ${state.user.token}`,
-                    },
+                        Authorization: `Bearer ${state.user.token}`
+                    }
                 });
                 setProfile(response.data);
             } catch (err) {

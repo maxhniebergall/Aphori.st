@@ -2,14 +2,23 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Install TypeScript globally in the container
+RUN yarn global add typescript
+
 # Copy package files
 COPY package.json yarn.lock ./
 
-# Install dependencies with production flag
-RUN yarn install --production
+# Install all dependencies (including devDependencies for build)
+RUN yarn install
 
 # Copy application code
 COPY . .
+
+# Build TypeScript
+RUN yarn build
+
+# Remove devDependencies
+RUN yarn install --production
 
 # Generate build hash from git commit or timestamp
 RUN echo "BUILD_HASH=$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d_%H%M%S)" > .env.build
@@ -24,4 +33,5 @@ HEALTHCHECK --interval=30s --timeout=3s \
 
 EXPOSE ${PORT}
 
-CMD ["node", "server.js"] 
+# Run the compiled JavaScript
+CMD ["node", "dist/server.js"] 

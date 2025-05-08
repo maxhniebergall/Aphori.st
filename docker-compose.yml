@@ -20,23 +20,26 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - '5050:5050'
+    volumes:
+      - ./backend/aphorist-default-rtdb-export.json:/app/data/aphorist-default-rtdb-export.json:ro
     networks:
       - main
     environment:
-      - DB_TYPE=redis
-      - REDIS_SERVER_IP=redis
+      - DB_TYPE=firebase
+      - FIREBASE_DATABASE_EMULATOR_HOST=host.docker.internal:9000
+      - GCLOUD_PROJECT=aphorist
       - CORS_ORIGIN=http://192.168.2.55:3000,http://localhost:3000
       - EMAIL_HOST=mailhog
       - EMAIL_PORT=1025
       - EMAIL_USERNAME=test
       - EMAIL_PASSWORD=test
       - EMAIL_FROM=noreply@localhost
+      - RTDB_EXPORT_PATH=/app/data/aphorist-default-rtdb-export.json
+      - RUN_MIGRATION=true
     depends_on:
       - redis
       - mailhog
-    env_file:
-      - backend/.env
-      
+
   frontend:
     build:
       context: ./frontend
