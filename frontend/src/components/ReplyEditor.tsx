@@ -116,6 +116,7 @@ const ReplyEditor = () => {
               if (!result.error) {
                 clearReplyState(); // Clear in-memory state
                 clearPersistedReplyDraft(); // Remove from localStorage
+                window.location.reload(); // Refresh the page
               } else {
                  // Handle specific submission errors if needed, but don't clear state
                  // User might want to fix the content and retry
