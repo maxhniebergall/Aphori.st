@@ -71,7 +71,6 @@ class PostTreeOperator {
     // Bind methods
     this.loadMoreItems = this.loadMoreItems.bind(this);
     this.fetchPostTree = this.fetchPostTree.bind(this);
-    this.validateNode = this.validateNode.bind(this);
   }
 
   // Method to inject the store (state and dispatch) from a React functional component
@@ -124,15 +123,6 @@ class PostTreeOperator {
     return this.userContext.state.user.id;
   }
 
-  validateNode(level: any): level is PostTreeLevel {
-    return level &&
-      typeof level === 'object' &&
-      typeof level.rootNodeId === 'string' &&
-      typeof level.levelNumber === 'number' &&
-      level.siblings &&
-      typeof level.siblings === 'object' &&
-      level.siblings.levelsMap instanceof Map;
-  }
 
   /**
    * Fetches the root node of the post tree for a given UUID and initializes the post tree structure.
