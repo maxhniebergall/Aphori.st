@@ -9,8 +9,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useRef } from 'react';
-import { useGesture } from '@use-gesture/react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { debounce } from 'lodash';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
@@ -20,12 +19,10 @@ import { areQuotesEqual, Quote } from '../types/quote';
 import postTreeOperator from '../operators/PostTreeOperator';
 import { usePostTree } from '../context/PostTreeContext';
 import { 
-  getSelectedQuoteInParent,
   getSelectedQuoteInThisLevel,
   getSiblings, 
   getSelectedNodeHelper, 
   getLevelNumber,
-  getParentId,
   getPagination,
   isMidLevel,
 } from '../utils/levelDataHelpers';
@@ -114,6 +111,7 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
   } = useReplyContextSelective();
   const initialPagination = getPagination(levelData); // Moved calculation before useState
   const [pagination, setPagination] = useState<Pagination>(initialPagination || { hasMore: false, totalCount: 0, nextCursor: undefined }); // Ensure initial value is always valid Pagination
+  const [animationDirection, setAnimationDirection] = useState<1 | -1>(1); // 1 for next, -1 for prev. Initial direction.
 
   // Calculate dimensions based on viewport - moved up
   const dimensions = useMemo(() => {
@@ -290,6 +288,7 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     if (!nodeToRender) { return; }
     const currentIndex = siblings.nodes.findIndex((sibling: PostTreeNode) => sibling.id === getSelectedNodeHelper(levelData)?.id);
     if (currentIndex < siblings.nodes.length - 1) {
+      setAnimationDirection(1);
       debouncedNavigateNext(); // Call debounced action
     } else if (pagination.hasMore) {
       // ** Temporarily removed loadMoreItems call **
@@ -326,6 +325,7 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     if (!nodeToRender) { return; }
     const currentIndex = siblings.nodes.findIndex((sibling: PostTreeNode) => sibling.id === getSelectedNodeHelper(levelData)?.id);
     if (currentIndex > 0) {
+      setAnimationDirection(-1);
       debouncedNavigatePrev(); // Call debounced action
     } else {
         console.log("No previous sibling action taken.");
@@ -334,25 +334,21 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     siblings, debouncedNavigatePrev, levelData, nodeToRender, replyTarget 
   ]);
 
-   // Setup gesture handling for swipe navigation - moved up
-  const bind = useGesture({
-    onDrag: ({ down, movement: [mx], cancel, velocity: [vx], event }) => {
-      if (event && (event.target instanceof HTMLElement) && event.target.closest('.selection-container')) { return; }
-      if (!down) {
-        try {
-          if (mx < -100 || (vx < -0.5 && mx < -50)) {
-            navigateToNextSibling();
-            cancel?.();
-          } else if (mx > 100 || (vx > 0.5 && mx > 50)) {
-            navigateToPreviousSibling();
-            cancel?.();
-          }
-        } catch (error) { console.error("Gesture navigation error:", error); }
-      }
+  // Gesture handling with Framer Motion's drag
+  const handleDragEnd = (
+    event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    const { offset, velocity } = info;
+    const swipeThreshold = 100; // Minimum distance for a swipe
+    const velocityThreshold = 0.3; // Minimum velocity for a swipe
+
+    if (offset.x < -swipeThreshold || (velocity.x < -velocityThreshold && offset.x < -50)) {
+      navigateToNextSibling();
+    } else if (offset.x > swipeThreshold || (velocity.x > velocityThreshold && offset.x > 50)) {
+      navigateToPreviousSibling();
     }
-  }, {
-    drag: { axis: 'x', enabled: Boolean(nodeToRender?.rootNodeId), threshold: 5 }
-  });
+  };
 
   // Report height to parent virtualized list when container size changes - moved up
   useMemo(() => {
@@ -427,45 +423,65 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
       ref={containerRef}
       className="post-tree-level-container"
     >
-      <AnimatePresence mode="wait">
-        <div {...bind()} style={{ touchAction: 'none' }}>
-          <motion.div
-            className={`post-tree-node ${isReplyTarget ? 'reply-target' : ''}`}
-            key={nodeToRender?.rootNodeId + levelData.midLevel?.levelNumber}
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            role="article"
-          >
-            {nodeToRender && (
-              <MemoizedNodeContent
-                node={nodeToRender}
-                onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
-                isReplyTargetNode={isReplyTarget}
-                existingSelectableQuotes={memoizedQuoteCounts}
-                currentLevelSelectedQuote={currentLevelSelectedQuote ?? undefined}
-                initialQuoteForReply={isReplyTarget ? replyQuote : null}
-              />
-            )}
-            <MemoizedNodeFooter
-              nodeData={nodeToRender}
-              currentIndex={nodeToRender ? siblings.nodes.findIndex((sibling: PostTreeNode) => sibling.id === nodeToRender.id) : -1} 
-              totalSiblings={siblings.nodes.length}
-              onReplyClick={handleReplyButtonClick}
-              isReplyTarget={isReplyTarget}
-              onNextSibling={navigateToNextSibling}
-              onPreviousSibling={navigateToPreviousSibling}
-              isReplyActive={isReplyActive}
-              replyError={replyError}
+      <AnimatePresence custom={animationDirection} initial={false} mode="wait">
+        <motion.div
+          style={{ touchAction: 'pan-y' }}
+          className={`post-tree-node ${isReplyTarget ? 'reply-target' : ''}`}
+          key={nodeToRender?.rootNodeId + (levelData.midLevel?.levelNumber ?? '') + (nodeToRender?.id ?? '')}
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.5}
+          onDragEnd={handleDragEnd}
+          initial={{
+            opacity: 0,
+            x: animationDirection * 300,
+          }}
+          animate={{
+            opacity: 1,
+            x: 0,
+            transition: {
+              delay: 0.1,
+              type: "spring",
+              stiffness: 260,
+              damping: 25,
+            },
+          }}
+          exit={{
+            opacity: 0,
+            x: animationDirection * -300,
+            transition: {
+              duration: 0.2,
+            },
+          }}
+          role="article"
+        >
+          {nodeToRender && (
+            <MemoizedNodeContent
+              node={nodeToRender}
+              onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
+              isReplyTargetNode={isReplyTarget}
+              existingSelectableQuotes={memoizedQuoteCounts}
+              currentLevelSelectedQuote={currentLevelSelectedQuote ?? undefined}
+              initialQuoteForReply={isReplyTarget ? replyQuote : null}
             />
-            {replyError && (
-              <div className="reply-error" role="alert" aria-live="polite">
-                {replyError}
-              </div>
-            )}
-          </motion.div>
-        </div>
+          )}
+          <MemoizedNodeFooter
+            nodeData={nodeToRender}
+            currentIndex={nodeToRender ? siblings.nodes.findIndex((sibling: PostTreeNode) => sibling.id === nodeToRender.id) : -1} 
+            totalSiblings={siblings.nodes.length}
+            onReplyClick={handleReplyButtonClick}
+            isReplyTarget={isReplyTarget}
+            onNextSibling={navigateToNextSibling}
+            onPreviousSibling={navigateToPreviousSibling}
+            isReplyActive={isReplyActive}
+            replyError={replyError}
+          />
+          {replyError && (
+            <div className="reply-error" role="alert" aria-live="polite">
+              {replyError}
+            </div>
+          )}
+        </motion.div>
       </AnimatePresence>
     </div>
   );
