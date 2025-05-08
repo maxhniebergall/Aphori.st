@@ -75,6 +75,12 @@ function Feed(): JSX.Element {
   });
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (items.length < 15 && pagination.hasMore) {
+      loadMoreItems();
+    }
+  }, [items, pagination.hasMore]);
+
   /**
    * Fetches feed items from the backend API.
    * @param {string} [cursor] - Optional cursor for pagination.
@@ -184,7 +190,7 @@ function Feed(): JSX.Element {
           data={items}
           endReached={loadMoreItems}
           itemContent={renderItem}
-          increaseViewportBy={300}
+          increaseViewportBy={window.innerHeight * 0.5}
           components={{
             Footer: () => {
               return pagination.hasMore ? (
