@@ -1,23 +1,25 @@
 # Build stage
-FROM node:18-alpine as build
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
-# Set production environment
-ENV NODE_ENV=production
-ENV GENERATE_SOURCEMAP=false
+# ENV GENERATE_SOURCEMAP=false # You can keep this if you want
+# It's better if react-scripts (during yarn build) handles NODE_ENV for the build output.
+# Remove: ENV NODE_ENV=production
 
 # Accept API URL as build argument
 ARG REACT_APP_API_URL
-ENV REACT_APP_API_URL=$REACT_APP_API_URL
+ENV REACT_APP_API_URL=${REACT_APP_API_URL}
 
 # Generate build hash from git commit or timestamp
+# Note: git might not be available here unless .git folder is copied or git is installed.
+# Consider passing GITHUB_SHA as a build-arg from your CI.
 RUN echo "window.BUILD_HASH='$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d_%H%M%S)'" > build_hash.js
 
 # Copy package files
 COPY package.json yarn.lock ./
 
-# Install ALL dependencies
+# Install ALL dependencies (including devDependencies)
 RUN yarn install --frozen-lockfile
 
 # Copy source code
@@ -27,9 +29,11 @@ COPY . .
 RUN cp build_hash.js public/
 
 # Build the application
+# react-scripts build will typically set NODE_ENV=production internally for the build process itself,
+# ensuring an optimized production build.
 RUN yarn build
 
-# Production stage
+# Production stage (this stage is fine)
 FROM nginx:alpine
 
 # Copy nginx configuration template
@@ -45,4 +49,4 @@ RUN chmod +x /docker-entrypoint.sh
 # Default port (will be overridden by Cloud Run)
 ENV PORT=8080
 
-CMD ["/docker-entrypoint.sh"] 
+CMD ["/docker-entrypoint.sh"]
