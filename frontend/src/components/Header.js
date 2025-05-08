@@ -8,12 +8,17 @@ function Header({ title, subtitle, onLogoClick }) {
   const { state, logout, sendMagicLink } = useUser();
   const [isModalOpen, setModalOpen] = useState(false);
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
-
-  console.log('Header state:', state);  // Debug log
+  const [message, setMessage] = useState('');
 
   const handleSignIn = async (email) => {
-    console.log('Attempting to sign in with email:', email);
-    return await sendMagicLink(email);
+    // Attempt to sign in
+    try {
+      await sendMagicLink(email); // Call the method from context
+      setMessage('Magic link sent! Check your email.');
+    } catch (error) {
+      console.error('Error sending magic link:', error);
+      setMessage('Failed to send magic link. Please try again later.');
+    }
   };
 
   const toggleMenu = () => {
@@ -72,12 +77,6 @@ function Header({ title, subtitle, onLogoClick }) {
               </div>
         )}
 
-        {(title || subtitle) && (
-          <div className="page-header" style={isModalOpen ? {borderTop: '1px solid #e0e0e0'} : {}}>
-            {title && <h1>{title}</h1>}
-            {subtitle && <h2>{subtitle}</h2>}
-          </div>
-        )}
     </div>
   );
 }

@@ -19,9 +19,7 @@ const DEV_USER = {
 };
 
 // Reducer to handle state changes based on actions
-function userReducer(state, action) {
-    console.log('UserContext reducer:', { type: action.type, payload: action.payload, currentState: state });
-    
+function userReducer(state, action) {    
     switch(action.type) {
         case 'AUTH_REQUEST':
             return { ...state, loading: true, error: null };
@@ -90,11 +88,9 @@ export function UserProvider({ children }) {
     // Action to handle verifying magic link and authenticating user
     const verifyMagicLink = async (token) => {
         const result = await userOperator.verifyMagicLink(token);
-        console.log('verifyMagicLink result:', result);  // Debug log
         
         if (result.success) {
             const userData = result.data.user;
-            console.log('Setting user data:', userData);  // Debug log
             
             dispatch({ type: 'AUTH_SUCCESS', payload: userData });
             localStorage.setItem('token', result.data.token);
@@ -155,7 +151,6 @@ export function UserProvider({ children }) {
                     .then(result => {
                         if (result.success) {
                             const parsedUserData = JSON.parse(userData);
-                            console.log('Restoring user data:', parsedUserData);  // Debug log
                             dispatch({ type: 'AUTH_SUCCESS', payload: parsedUserData });
                         } else {
                             dispatch({ type: 'LOGOUT' });

@@ -1,0 +1,22 @@
+.highlighted-text {
+  display: inline;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  line-height: 1.5; /* Increase line spacing */
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.highlighted-segment {
+  cursor: pointer;
+}
+
+/* Remove the hover pseudo-class as it's handled by JS state */
+/*
+.highlighted-segment:hover {
+  background-color: rgba(50, 205, 50, 0.8) !important;
+} 
+*/ 

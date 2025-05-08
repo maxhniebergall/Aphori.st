@@ -1,15 +1,18 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-import newLogger from './logger.js';
+import logger from './logger.js';
 
 dotenv.config();
 
-const logger = newLogger("mailer.js");
-
 // Validate required environment variables
 const requiredEnvVars = ['EMAIL_HOST', 'EMAIL_PORT', 'EMAIL_USERNAME', 'EMAIL_PASSWORD'];
+/*
+ * @throws {Error} If a required environment variable for the mailer is not set.
+ *                 (Handled - By Design: Crashes app on start).
+ */
 for (const envVar of requiredEnvVars) {
     if (!process.env[envVar]) {
+        // Handled - By Design: Crashes app on start if essential mailer config is missing.
         throw new Error(`Missing required environment variable: ${envVar}`);
     }
 }
@@ -34,6 +37,12 @@ const transporter = nodemailer.createTransport({
 });
 
 // Verify the transporter configuration with better error handling
+/**
+ * Verifies the Nodemailer transporter configuration.
+ * Logs success or error details.
+ * @throws {Error} If the transporter verification fails.
+ *                 (Handled - By Design: Crashes app on start).
+ */
 const verifyTransporter = async () => {
     try {
         await transporter.verify();
@@ -44,6 +53,7 @@ const verifyTransporter = async () => {
             host: process.env.EMAIL_HOST,
             port: process.env.EMAIL_PORT
         });
+        // Handled - By Design: Crashes app on start if transporter verification fails.
         throw error;
     }
 };
@@ -57,6 +67,8 @@ verifyTransporter();
  * @param {string} html - HTML content of the email.
  * @param {number} retries - Number of retry attempts.
  * @returns {Promise<void>}
+ * @throws {Error} If sending the email fails after all retry attempts.
+ *                 (Handled: Propagated to the caller like server.ts routes).
  */
 const sendEmail = async (to, subject, html, retries = 3) => {
     const mailOptions = {
@@ -75,6 +87,8 @@ const sendEmail = async (to, subject, html, retries = 3) => {
             logger.error(`Attempt ${attempt} to send email to ${to} failed:`, error);
             
             if (attempt === retries) {
+                // Handled: Propagated to the caller (e.g., /api/auth/send-magic-link in server.ts)
+                // which catches it and returns a 500 error to the client.
                 throw new Error(`Failed to send email after ${retries} attempts: ${error.message}`);
             }
             

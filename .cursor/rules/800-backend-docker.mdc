@@ -1,0 +1,36 @@
+---
+description: REBUILD backend Docker container WHEN any backend file changes TO ensure changes take effect
+globs: backend/**/*
+tags: [docker, backend, deployment]
+priority: 1
+version: 1.1.0
+---
+
+# Backend Docker Rebuild Rule
+
+## Context
+- Backend changes are not hot-reloaded
+- Changes to backend files require Docker container rebuild
+- Applies to all backend file changes including TypeScript, configuration, and environment files
+- Service is named 'backend' in docker-compose.yml (not 'aphorist-backend')
+
+## Requirements
+- MUST rebuild backend Docker container after ANY backend file changes
+- Use command: `docker compose build backend && docker compose up -d backend`
+- Ensure all backend changes are saved before rebuilding
+- Wait for container to fully start before testing changes
+
+## Examples
+<example>
+When modifying backend/migrate.ts:
+1. Save file changes
+2. Run: `docker compose build backend && docker compose up -d backend`
+3. Test migration script
+</example>
+
+<example type="invalid">
+When modifying backend/migrate.ts:
+❌ Using incorrect service name: `docker compose build aphorist-backend`
+❌ Directly run migration script without rebuilding
+❌ Assume hot-reloading will pick up changes
+</example> 
