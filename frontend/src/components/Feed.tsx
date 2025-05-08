@@ -184,6 +184,7 @@ function Feed(): JSX.Element {
           data={items}
           endReached={loadMoreItems}
           itemContent={renderItem}
+          increaseViewportBy={300}
           components={{
             Footer: () => {
               return pagination.hasMore ? (
