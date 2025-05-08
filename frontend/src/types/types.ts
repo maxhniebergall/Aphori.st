@@ -167,8 +167,9 @@ export interface CreateReplyResponse {
 }
 
 export interface CursorPaginatedResponse<T> {
+  success: boolean;
   pagination: Pagination;
-  data: T[]; 
+  data: T[];
 }
 
 export interface DecompressedCursorPaginatedResponse<T> extends ApiResponse<T[]> {
