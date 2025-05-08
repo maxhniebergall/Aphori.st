@@ -319,7 +319,7 @@ export class FirebaseClient extends DatabaseClientInterface {
     return snapshot.val();
   }
 
-  async zAdd(key: string, score: number, value: any): Promise<number> {
+  async zAdd(key: string, score: number, value: string | { id: string }): Promise<number> {
     // Use score directly as child key, store { score, value } object // OLD
     // Use direct key/path // OLD
     // const ref = this.db.ref(`${key}/${score}`); // OLD
@@ -334,7 +334,6 @@ export class FirebaseClient extends DatabaseClientInterface {
     // We'll use a combined key <score>_<value_id> to ensure uniqueness if scores can collide.
     // This assumes 'value' has an 'id' property or is the ID itself.
 
-    // This implementation is a placeholder and NEEDS VERIFICATION based on call sites.
     const itemId = typeof value === 'object' && value.id ? value.id : String(value);
     const timestampScore = score; // Assuming score is the timestamp
     const uniqueKey = `${timestampScore}_${itemId}`; // Combine score and ID for unique path

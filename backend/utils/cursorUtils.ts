@@ -46,7 +46,7 @@ export function decodeCursor(encodedCursor: string): Cursor {
         }
         throw new Error('Decoded cursor is missing required fields');
     } catch (error) {
-        throw new Error('Invalid cursor format');
+        throw new Error('Invalid cursor format', { cause: error });
     }
 }
 
