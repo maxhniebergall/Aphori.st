@@ -161,7 +161,11 @@ await db.connect().then(async () => { // Make the callback async
         const databaseVersion = await db.get('databaseVersion'); // Attempt to get the database version
         if (databaseVersion === null || databaseVersion === undefined) {
             // If databaseVersion key does not exist, schedule migration
-            logger.info("No 'databaseVersion' key found in the database. Migration will be scheduled.");
+            logger.info("No 'databaseVersion' key found in the database. Migration will be skipped.");
+            runMigration = false;
+        } else if (databaseVersion.migrationComplete && databaseVersion.current === "2") {
+            // If databaseVersion key exists and migrationComplete is true, perform the next migration
+            logger.info(`Database version key 'databaseVersion' found. Value: ${JSON.stringify(databaseVersion)}. Performing next migration.`);
             runMigration = true;
         } else {
             // If databaseVersion key exists, log its presence and skip migration

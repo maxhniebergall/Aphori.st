@@ -1,624 +1,181 @@
 import logger from './logger.js';
-import { Post, FeedItem, DatabaseClient } from './types/index.js';
-import { DatabaseCompression } from './db/DatabaseCompression.js'; // Needed ONLY for old data decompression    
-import { FirebaseClient } from './db/FirebaseClient.js'; // Needed for direct path access/sanitization logic if dbClient doesn't expose it
-import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js'; // <--- ADD THIS IMPORT
-import { uuidv7obj } from 'uuidv7'; 
-import { Uuid25 } from 'uuid25';
+import { DatabaseClient } from './types/index.js';
+import { FirebaseClient } from './db/FirebaseClient.js';
+import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 
-const DLQ_FILE = 'migration_dlq.json';
+// pako would be needed if oldDataContainer.c could be true and meant pako compression
+// import pako from 'pako';
 
-// Instantiate old compression logic - Keep this, it's specific to migration
-const oldCompression = new DatabaseCompression();
-
-// Removed Database client creation - it will be passed in
-// const db: DatabaseClient = createDatabaseClient();
-
-// Removed direct FirebaseClient instantiation logic - Get it from the passed-in client if needed for specific methods
-
-
-// Helper function to generate compressed 25-digit UUID v7
-const generateCondensedUuid = (): string => {
-    const uuidObj = uuidv7obj();
-    const uuid25Instance = Uuid25.fromBytes(uuidObj.bytes);
-    return uuid25Instance.value;
-};
-
-// Define interfaces for old data formats expected from RTDB import
-interface OldPostMetadata {
-    title?: string;
-    authorId?: string; // Changed from author to authorId based on logs
-    author?: string; 
-    createdAt?: string;
+interface OldUserEmailValue {
+    v: number;
+    c: boolean; // compression flag
+    d: string;  // base64 encoded JSON string of the user ID
 }
 
-// Structure expected within the decompressed 'storyTree' string
-interface OldPostTree {
-    // id: string; // ID seems to be the key, not in the value
-    text: string; // Changed from storyText to text based on logs
-    parentStoryId: string | null; // Renamed from 'parentId' - ASSUMPTION: This was likely the ROOT post ID for all nodes in the tree
-    metadata: OldPostMetadata;
-    // Potentially replies or other nested data - ASSUMPTION: Replies were NOT stored here based on the old model description lack
-}
-
-// Define ReplyData structure inline if not available in types/index.js
-// Based on backend_architecture.md
-interface ReplyData {
-  id: string;
-  authorId: string;
-  // authorUsername?: string;
-  text: string;
-  parentId: string;
-  parentType: "post" | "reply";
-  rootPostId: string;
-  quote: {
-      text: string;
-      sourceId: string;
-      selectionRange: {
-          start: number;
-          end: number;
-      };
-  };
-  createdAt: string; // ISO 8601 Timestamp String
-}
-
-interface ValidationError {
+interface NewUser {
     id: string;
-    type: 'post' | 'reply' | 'feed' | 'index' | 'unknown';
-    error: string;
-    data?: any; // Store the problematic data if possible
-    key?: string; // Store the key where the error occurred
+    email: string;
+    createdAt: string;
 }
 
-// --- New Validation Helpers ---
+async function migrateUsersData(dbClient: DatabaseClient, firebaseClientInstance: FirebaseClient): Promise<void> {
+    logger.info('Starting User Data Migration Process...');
+    let migratedUserCount = 0;
+    let failedUserCount = 0;
 
-// Check if an object conforms to the new Post structure
-function isValidNewPost(obj: any): obj is Post {
-    if (!obj) {
-        logger.warn('isValidNewPost: Validation failed - object is null or undefined.');
-        return false;
+    const rootData = await firebaseClientInstance.readPath('/');
+    if (!rootData || typeof rootData !== 'object') {
+        logger.warn('No data found at database root or data is not an object. Cannot migrate users.');
+        return;
     }
-    if (!(typeof obj.id === 'string' && obj.id.length > 0)) {
-        logger.warn(`isValidNewPost: Validation failed - id is not a non-empty string. Received: ${obj.id}`);
-        return false;
+
+    const oldEmailKeys = Object.keys(rootData).filter(key => key.startsWith('email_to_id:'));
+
+    if (oldEmailKeys.length === 0) {
+        logger.info('No old user email_to_id keys found (e.g., starting with "email_to_id:"). User migration skipped.');
+        return;
     }
-    if (!(typeof obj.content === 'string' && obj.content.length > 0)) {
-        logger.warn(`isValidNewPost: Validation failed - content is not a non-empty string. Received: ${obj.content}`);
-        return false;
-    }
-    // parentId removed from Post type, only exists in ReplyData
-    if (!(typeof obj.authorId === 'string' && obj.authorId.length > 0)) {
-        logger.warn(`isValidNewPost: Validation failed - authorId is not a non-empty string. Received: ${obj.authorId}`);
-        return false;
-    }
-    if (!(typeof obj.createdAt === 'string' && obj.createdAt.length > 0)) { // Add ISO check later if needed
-        logger.warn(`isValidNewPost: Validation failed - createdAt is not a non-empty string. Received: ${obj.createdAt}`);
-        return false;
-    }
-    if (!(typeof obj.replyCount === 'number' && obj.replyCount >= 0)) { // Added replyCount check
-        logger.warn(`isValidNewPost: Validation failed - replyCount is not a non-negative number. Received: ${obj.replyCount}`);
-        return false;
-    }
-    return true;
-}
 
-// Check if an object conforms to the new ReplyData structure
-// NOTE: This is a basic check. More thorough validation (e.g., parent existence) is hard in rules/migration.
-function isValidNewReply(obj: any): obj is ReplyData {
-    return (
-        obj &&
-        typeof obj.id === 'string' && obj.id.length > 0 &&
-        typeof obj.authorId === 'string' && obj.authorId.length > 0 &&
-        typeof obj.text === 'string' && obj.text.length > 0 &&
-        typeof obj.parentId === 'string' && obj.parentId.length > 0 &&
-        typeof obj.parentType === 'string' && (obj.parentType === 'post' || obj.parentType === 'reply') &&
-        typeof obj.rootPostId === 'string' && obj.rootPostId.length > 0 &&
-        obj.quote && typeof obj.quote === 'object' &&
-        typeof obj.quote.text === 'string' &&
-        typeof obj.quote.sourceId === 'string' &&
-        obj.quote.selectionRange && typeof obj.quote.selectionRange === 'object' &&
-        typeof obj.quote.selectionRange.start === 'number' &&
-        typeof obj.quote.selectionRange.end === 'number' &&
-        typeof obj.createdAt === 'string' && obj.createdAt.length > 0 // Add ISO check later if needed
-    );
-}
+    logger.info(`Found ${oldEmailKeys.length} old user email_to_id keys to migrate.`);
 
-// Check if an object conforms to the new FeedItem structure
-function isValidNewFeedItem(obj: any): obj is FeedItem {
-    // Based on the new model: { id, authorId, textSnippet, createdAt }
-    return (
-        obj &&
-        typeof obj.id === 'string' && obj.id.length > 0 && // Refers to Post ID
-        typeof obj.authorId === 'string' && obj.authorId.length > 0 &&
-        typeof obj.textSnippet === 'string' && // Snippet, not full text
-        typeof obj.createdAt === 'string' && obj.createdAt.length > 0 // Add ISO check later if needed
-        // Optional authorUsername check if added
-    );
-}
-
-// --- Data Fetching Helpers ---
-
-// Get post IDs from the *OLD* list created by import_rtdb.ts
-// This list *might* have been stored differently than the new 'allPostTreeIds' set.
-// ASSUMPTION: The import script stored post IDs under a simple list key 'imported_post_ids' using lPush.
-async function getImportedPostIds(dbClient: DatabaseClient, firebaseClientInstance: FirebaseClient): Promise<string[]> {
-    // const oldListKey = 'imported_post_ids'; // REMOVE THIS - No longer looking for this predefined list
-    logger.info(`Attempting to discover post IDs directly from the database root (for manual import scenario)...`);
-    try {
-        const rootData = await firebaseClientInstance.readPath('/'); 
-
-        if (!rootData || typeof rootData !== 'object') {
-            logger.warn(`No data found at the database root, or it's not an object. Cannot discover post IDs.`);
-            return [];
-        }
-
-        const discoveredPostIds = Object.keys(rootData).filter(key => {
-            const knownNonPostPrefixes = ['user:', 'email_to_id:'];
-            const knownExactNonPostKeys = ['users', 'user_ids', 'feedItems', 'allStoryTreeIds', 'imported_post_ids', 'postMetadata', 'replyMetadata', 'userMetadata', 'indexes', 'feedStats'];
-
-            if (knownExactNonPostKeys.includes(key) || knownNonPostPrefixes.some(prefix => key.startsWith(prefix))) {
-                logger.debug(`Key '${key}' at root is a known non-post key/prefix. Filtering out.`);
-                return false;
-            }
-            
-            if (rootData[key] && typeof rootData[key] === 'object' && rootData[key].hasOwnProperty('storyTree')) {
-                logger.debug(`Key '${key}' at root appears to be a post (has storyTree). Including.`);
-                return true;
-            }
-            logger.debug(`Key '${key}' at root does not appear to be a post (missing storyTree or not an object type). Filtering out.`);
-            return false;
-        });
-
-        if (discoveredPostIds.length === 0) {
-            logger.warn(`No potential post IDs discovered at the database root that contain a 'storyTree' and are not known non-post keys.`);
-            return [];
-        }
-        
-        logger.info(`Discovered ${discoveredPostIds.length} potential post IDs from database root.`);
-        return discoveredPostIds;
-
-    } catch (error) {
-        logger.error(`Error discovering post IDs from database root:`, error);
-        return [];
-    }
-}
-
-// --- Migration Steps ---
-
-// REMOVED: migratePostsOnly function - incorporated into migrateAllData
-// REMOVED: rebuildPostIndexes function - incorporated into migrateAllData
-// REMOVED: rebuildFeed function - incorporated into migrateAllData
-
-async function clearOldDataBeforeMigration(dbClient: DatabaseClient, firebaseClientInstance: FirebaseClient): Promise<void> {
-    logger.info("Clearing potentially conflicting OLD data and indexes (best effort)...");
-    const pathsToClear = [
-        'replies',
-        'replyMetadata',
-        'indexes/repliesFeedByTimestamp',
-        'indexes/repliesByParentQuoteTimestamp',
-        'indexes/repliesByRootPostTimestamp',
-        'feedItems',
-        'feedStats'
-    ];
-    let clearedCount = 0;
-    for (const path of pathsToClear) {
+    for (const oldEmailKey of oldEmailKeys) {
         try {
-            logger.info(`Attempting to clear potential old data at path: ${path}`);
-            await firebaseClientInstance.removePath(path);
-            logger.info(`Successfully cleared path: ${path}`);
-            clearedCount++;
-        } catch (error) {
-            logger.warn({ err: error, path }, `Failed to clear old data path: ${path}. This might be okay if it didn't exist.`);
-        }
-    }
-    logger.info(`Finished clearing potentially conflicting old paths. Cleared ${clearedCount} top-level nodes/indexes.`);
-}
+            const rawJsonString = rootData[oldEmailKey];
+            if (typeof rawJsonString !== 'string') {
+                logger.warn(`Value for key ${oldEmailKey} is not a string. Skipping. Value: ${JSON.stringify(rawJsonString)}`);
+                failedUserCount++;
+                continue;
+            }
 
-// Migration V2: Reads old data, transforms, writes to *new* locations based on backend_architecture.md
-async function migrateAllData(dbClient: DatabaseClient, postIds: string[], firebaseClientInstance: FirebaseClient): Promise<{ migratedPosts: Post[], migratedReplies: ReplyData[] }> {
-    logger.info(`Starting V2 migration for ${postIds.length} potential posts.`);
-    const migratedPosts: Post[] = [];
-    const migratedReplies: ReplyData[] = []; // Replies were not migrated before
-    let successPostCount = 0;
-    let failPostCount = 0;
-    // Add counters for replies if we find any (unlikely from old model?)
+            const oldDataContainer: OldUserEmailValue = JSON.parse(rawJsonString);
 
-    // The only use is `oldCompression.decompress`, which is standalone.
-    // We use the main `dbClient` for all writes to the new structure.
+            let actualUserId: string;
+            // The 'd' field is a Base64 encoded JSON string (e.g., "Admin", "arock")
+            const base64DecodedJsonStringUserId = Buffer.from(oldDataContainer.d, 'base64').toString('utf8');
 
-    for (const postId of postIds) {
-        try {
-            logger.debug(`Processing potential post ID: ${postId}`);
+            if (oldDataContainer.c === true) {
+                // If c:true truly meant pako compression, this would be:
+                // const compressedPayload = Buffer.from(oldDataContainer.d, 'base64');
+                // const jsonStringUserId = pako.inflate(compressedPayload, { to: 'string' });
+                // actualUserId = JSON.parse(jsonStringUserId);
+                logger.warn(`Compression flag 'c' is true for ${oldEmailKey}. Pako decompression for 'c:true' is not implemented in this script. Proceeding as if 'd' is base64 of JSON string UserID.`);
+                actualUserId = JSON.parse(base64DecodedJsonStringUserId);
+            } else {
+                // c:false means 'd' is base64 of JSON string UserID
+                actualUserId = JSON.parse(base64DecodedJsonStringUserId);
+            }
 
-            // --- Step 1: Read OLD Data ---
-            // ASSUMPTION: Old data for a post `postId` was stored with fields like 'storyTree'
-            // We need to fetch the OLD data using a method that allows decompression.
-            // We can't use dbClient.hGet directly as it won't know to decompress.
-            // We must read the *raw* value and decompress manually.
+            if (!actualUserId || typeof actualUserId !== 'string' || actualUserId.trim() === '') {
+                logger.error(`Could not extract a valid user ID for key ${oldEmailKey}. Decoded ID: '${actualUserId}'. Skipping.`);
+                failedUserCount++;
+                continue;
+            }
 
-            // Use firebaseClientInstance.readPath to get the raw data at the old key
-            const oldPostRootData = await firebaseClientInstance.readPath(postId);
-            if (!oldPostRootData || typeof oldPostRootData !== 'object' || !oldPostRootData.storyTree) {
-                 logger.warn(`No valid old data or storyTree field found for imported post ID ${postId} at root key. Skipping.`);
-                 failPostCount++;
+            // Extract and clean email from the old key structure
+            // Old key: "email_to_id:some_email_with_underscores"
+            const emailPartInKey = oldEmailKey.substring('email_to_id:'.length);
+            const actualEmail = emailPartInKey.replace(/_/g, '.'); // Replace underscore with dot
+
+            const newUser: NewUser = {
+                id: actualUserId, // This is the old string ID (e.g., "Admin", "Max")
+                email: actualEmail.toLowerCase(), // Store email consistently in lowercase
+                createdAt: new Date().toISOString(), // No old timestamp available in this data
+            };
+
+            if (!newUser.id || !newUser.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser.email)) {
+                 logger.error(`Invalid user object created for old key ${oldEmailKey}. Data: ${JSON.stringify(newUser)}. Skipping.`);
+                 failedUserCount++;
                  continue;
             }
-            const compressedStoryTree = oldPostRootData.storyTree; // Get the compressed value
 
-            if (!compressedStoryTree || typeof compressedStoryTree !== 'string') {
-                logger.warn(`No valid storyTree string found in old data for post ID ${postId}. Skipping.`);
-                failPostCount++;
-                continue;
-            }
+            // --- Write to new paths based on backend_architecture.md ---
 
-            // --- Step 2: Decompress using old logic ---
-            let oldPostData: OldPostTree;
-            try {
-                const decompressedJson = await oldCompression.decompress<string>(compressedStoryTree);
-                oldPostData = JSON.parse(decompressedJson);
-                logger.debug(`Decompressed and parsed storyTree for ${postId}`);
-            } catch (err) {
-                logger.error(`Failed to decompress or parse storyTree for ${postId}:`, err);
-                failPostCount++;
-                continue;
-            }
+            // 1. User data: /users/{userId}
+            const newUserPath = `users/${newUser.id}`;
+            await dbClient.set(newUserPath, newUser);
 
-            logger.debug(`OldPostData: ${JSON.stringify(oldPostData)}`);
+            // 2. Email to ID mapping: /userMetadata/emailToId/{escapedActualEmail}
+            // firebaseClientInstance.sanitizeKey uses percent-encoding for Firebase keys
+            const escapedEmail = firebaseClientInstance.sanitizeKey(newUser.email);
+            const newEmailMapPath = `userMetadata/emailToId/${escapedEmail}`;
+            await dbClient.set(newEmailMapPath, newUser.id);
 
-            // --- Step 3: Transform OldPostTree -> New Post format ---
-            let content = oldPostData.text; // Use oldPostData.text based on logs
-            if (oldPostData.metadata?.title) {
-                content = `# ${oldPostData.metadata.title}\n\n${content}`; // Markdown title
-            }
+            // 3. User ID set: /userMetadata/userIds/{userId} = true
+            const newUserIdSetPath = `userMetadata/userIds/${newUser.id}`;
+            await dbClient.set(newUserIdSetPath, true);
 
-            const newId = generateCondensedUuid(); // Generate new UUID for the post
-            logger.info(`Generated new ID ${newId} for old post ID ${postId}`);
+            // 4. Delete old entry from root
+            await firebaseClientInstance.removePath(oldEmailKey);
 
-            // Determine authorId by checking metadata.authorId then metadata.author
-            const originalAuthorId = oldPostData.metadata?.authorId;
-            const originalAuthor = oldPostData.metadata?.author; // No need for 'as any' if interface is updated
-            
-            let determinedAuthor = '';
-            if (originalAuthorId && originalAuthorId.trim() !== '') {
-                determinedAuthor = originalAuthorId;
-            } else if (originalAuthor && originalAuthor.trim() !== '') {
-                determinedAuthor = originalAuthor;
-            }
-            if (determinedAuthor === '') {
-                logger.error(`No valid authorId or author found for post ${postId}. Skipping.`);
-                failPostCount++;
-                continue;
-            }
-            const newPost: Post = {
-                id: newId, // Use the NEW generated ID
-                content: content, // Default content to empty string if falsy
-                authorId: determinedAuthor, // Ensure a non-empty string if both are missing/empty
-                createdAt: oldPostData.metadata?.createdAt || new Date().toISOString(), // Default if missing
-                replyCount: 0 // Initialize reply count to 0
-            };
+            logger.info(`Successfully migrated user ID '${newUser.id}' (Email: ${newUser.email}) from old key '${oldEmailKey}'.`);
+            migratedUserCount++;
 
-            // Validate the transformed post data
-            if (!isValidNewPost(newPost)) {
-                logger.error(`Transformed post ${JSON.stringify(newPost)} is invalid according to new schema. Skipping write.`, { invalidData: newPost }); // Log the invalid data object
-                failPostCount++;
-                continue;
-            }
-
-            // --- Step 4: Write New Post to the CORRECT new path ---
-            // Path: /posts/$postId
-            const newPostPath = `posts/${newPost.id}`; // Use newPost.id (the new ID)
-            await dbClient.set(newPostPath, newPost); // Use set on the direct path
-            logger.info(`Successfully wrote migrated post ${newPost.id} (old ID ${postId}) to new path ${newPostPath}`);
-            migratedPosts.push(newPost);
-            successPostCount++;
-
-            // --- Step 5: Write New Post Metadata / Indexes ---
-            // a) Add to /userMetadata/userIds/$authorId = true (Idempotent)
-            await dbClient.sAdd(`userIds:${newPost.authorId}`, newPost.authorId); // sAdd handles path mapping now
-
-            // b) Add to /userMetadata/userPosts/$authorId/$postId = true
-            await dbClient.sAdd(`userPosts:${newPost.authorId}`, newPost.id); // sAdd handles path mapping
-
-            // c) Add to /postMetadata/allPostTreeIds/$postId = true
-            await dbClient.sAdd(`allPostTreeIds:all`, newPost.id); // Use dummy parentId 'all'
-
-            // d) Add Feed Item to /feedItems (using push key)
-            const feedItem: FeedItem = {
-                id: newPost.id,
-                authorId: newPost.authorId,
-                textSnippet: (newPost.content || '').substring(0, 100), // Create snippet
-                createdAt: newPost.createdAt,
-                // No authorUsername unless denormalized
-            };
-            await dbClient.lPush('feedItems', feedItem); // lPush uses push() on 'feedItems' path
-
-            // e) Increment Feed Counter /feedStats/itemCount
-            await dbClient.incrementFeedCounter(1);
-
-            logger.debug(`Updated metadata and feed for post ${newPost.id}.`);
-
-            // --- Step 6: Delete the OLD root key ---
-            // The old data was at the root path `postId`
-            await firebaseClientInstance.removePath(postId); // Use direct path removal - postId here is the OLD ID
-            logger.info(`Deleted old post data at root key ${postId}.`);
-
-
-        } catch (error) {
-            logger.error(`Failed to migrate post ${postId}:`, error);
-            failPostCount++;
+        } catch (error: any) {
+            logger.error(`Failed to migrate user data for old key ${oldEmailKey}: ${error.message}`, { err: error, keyDetails: oldEmailKey });
+            failedUserCount++;
         }
     }
-    logger.info(`Post migration finished. Success: ${successPostCount}, Failed: ${failPostCount}`);
-
-    // Since the old model likely didn't store replies separately, we assume migratedReplies is empty.
-    // If replies *were* somehow in the old 'storyTree', complex extraction logic would be needed here.
-    logger.warn("Migration V2 assumes replies were not stored in the old 'storyTree' format and does not migrate any replies.");
-
-    return { migratedPosts, migratedReplies };
+    logger.info(`User data migration process finished. Successfully migrated: ${migratedUserCount}, Failed: ${failedUserCount}`);
+    if (failedUserCount > 0) {
+        throw new Error(`User migration completed with ${failedUserCount} failures.`);
+    }
 }
 
-
-// --- Validation Function ---
-async function validateMigration(dbClient: DatabaseClient, firebaseClientInstance: FirebaseClient, migratedPosts: Post[], originalPostIds: string[]): Promise<ValidationError[]> {
-    logger.info('Starting migration V2 validation...');
-    const errors: ValidationError[] = [];
-    const processedPostIds = new Set<string>(); // Track validated IDs
-
-    // Ensure firebaseClientInstance is valid before use
-    if (!firebaseClientInstance) {
-        logger.error("Cannot validate migration, FirebaseClient instance not provided.");
-        errors.push({ id: 'validation_setup', type: 'unknown', error: 'FirebaseClient instance missing.' });
-        return errors;
-    }
-
-    // 1. Validate Migrated Posts stored at new locations
-    logger.info(`Validating ${migratedPosts.length} migrated posts...`);
-    for (const expectedPost of migratedPosts) {
-        const postId = expectedPost.id;
-        if (processedPostIds.has(postId)) continue;
-        processedPostIds.add(postId);
-
-        const postPath = `posts/${postId}`; // New path, using NEW ID
-        try {
-            const postData = await firebaseClientInstance.readPath(postPath); // Read from direct path
-
-            if (!postData) {
-                errors.push({ id: postId, type: 'post', error: 'Migrated post data not found at new path.', key: postPath });
-            } else if (!isValidNewPost(postData)) {
-                errors.push({ id: postId, type: 'post', error: 'Invalid Post structure at new path.', data: postData, key: postPath });
-            } else {
-                // Optional: Compare fields if needed (e.g., content, authorId)
-                // if (postData.content !== expectedPost.content) { ... }
-            }
-        } catch (err: any) {
-            errors.push({ id: postId, type: 'post', error: `Error reading/validating migrated post: ${err.message}`, key: postPath });
-        }
-    }
-
-    // 2. Validate Post Metadata / Indexes
-    logger.info("Validating Post Metadata/Indexes...");
-    // a) /userMetadata/userIds
-    // b) /userMetadata/userPosts
-    // c) /postMetadata/allPostTreeIds
-    // These are sets (maps with true values). Check presence for each migrated post.
-    for (const post of migratedPosts) {
-        // Check userIds
-        const userIdPath = `userMetadata/userIds/${post.authorId}`;
-        try {
-            const exists = await firebaseClientInstance.readPath(userIdPath);
-            if (exists !== true) {
-                errors.push({ id: post.authorId, type: 'index', error: `User ID not found in userIds set`, key: userIdPath });
-            }
-        } catch (err: any) { errors.push({ id: post.authorId, type: 'index', error: `Error checking ${userIdPath}: ${err.message}`, key: userIdPath }); }
-
-        // Check userPosts
-        const userPostPath = `userMetadata/userPosts/${post.authorId}/${post.id}`;
-         try {
-            const exists = await firebaseClientInstance.readPath(userPostPath);
-            if (exists !== true) {
-                errors.push({ id: post.id, type: 'index', error: `Post ID not found in userPosts set for author ${post.authorId}`, key: userPostPath });
-            }
-        } catch (err: any) { errors.push({ id: post.id, type: 'index', error: `Error checking ${userPostPath}: ${err.message}`, key: userPostPath }); }
-
-        // Check allPostTreeIds
-        const allPostsPath = `postMetadata/allPostTreeIds/${post.id}`;
-         try {
-            const exists = await firebaseClientInstance.readPath(allPostsPath);
-            if (exists !== true) {
-                errors.push({ id: post.id, type: 'index', error: `Post ID not found in allPostTreeIds set`, key: allPostsPath });
-            }
-        } catch (err: any) { errors.push({ id: post.id, type: 'index', error: `Error checking ${allPostsPath}: ${err.message}`, key: allPostsPath }); }
-    }
-
-
-    // 3. Validate Feed Items and Counter
-    logger.info("Validating Feed Items and Counter...");
-    const feedItemsPath = 'feedItems'; // Fixed path
-    const feedCounterPath = 'feedStats/itemCount'; // Fixed path
-    let validatedFeedCount = 0;
-    try {
-        let feedItemsData: Record<string, any> | null = await firebaseClientInstance.readPath(feedItemsPath);
-
-        if (feedItemsData) {
-            const items = Object.values(feedItemsData);
-            logger.info(`Found ${items.length} feed items at path '${feedItemsPath}'. Validating...`);
-            const feedItemIds = new Set<string>();
-            for (const item of items) {
-                if (!isValidNewFeedItem(item)) {
-                    errors.push({ id: item?.id || 'unknown', type: 'feed', error: 'Invalid FeedItem structure.', data: item, key: feedItemsPath });
-                } else {
-                    // Check if the feed item corresponds to a migrated post
-                    if (!migratedPosts.some(p => p.id === item.id)) {
-                         errors.push({ id: item.id, type: 'feed', error: 'Feed item references a post not in the migrated set.', data: item, key: feedItemsPath });
-                    }
-                    if (feedItemIds.has(item.id)) {
-                         errors.push({ id: item.id, type: 'feed', error: 'Duplicate Post ID found in feed items.', data: item, key: feedItemsPath });
-                    }
-                    feedItemIds.add(item.id);
-                    validatedFeedCount++;
-                }
-            }
-            // Ensure all migrated posts are in the feed
-            for (const post of migratedPosts) {
-                if (!feedItemIds.has(post.id)) {
-                    errors.push({ id: post.id, type: 'feed', error: 'Migrated post missing from feed items.', key: feedItemsPath });
-                }
-            }
-
-        } else {
-            validatedFeedCount = 0; // No items found
-            logger.info(`No feed items found at path '${feedItemsPath}'. Checking if migrated posts count is also 0.`);
-            if (migratedPosts.length > 0) {
-                 errors.push({ id: feedItemsPath, type: 'feed', error: 'No feed items found, but posts were migrated.', key: feedItemsPath });
-            }
-        }
-
-        // Validate counter
-        let counterValue: number | null = await firebaseClientInstance.readPath(feedCounterPath);
-        const expectedCount = migratedPosts.length; // Counter should match number of migrated posts
-
-        if (typeof counterValue !== 'number') {
-            // If no posts were migrated, counter should be 0 or null (preferably 0)
-            if (expectedCount === 0 && counterValue === null) {
-                logger.info("Feed counter is null, which is acceptable as 0 posts were migrated.");
-            } else {
-                errors.push({ id: feedCounterPath, type: 'feed', error: `Feed counter is not a number or missing. Expected ${expectedCount}, Found: ${counterValue}`, key: feedCounterPath });
-            }
-        } else if (counterValue !== expectedCount) {
-            errors.push({ id: feedCounterPath, type: 'feed', error: `Feed counter (${counterValue}) does not match migrated post count (${expectedCount}).`, key: feedCounterPath });
-        }
-
-    } catch (error: any) {
-        logger.error("Error validating feed items/counter:", error);
-        errors.push({ id: feedItemsPath, type: 'feed', error: `Failed to read feed items/counter: ${error.message}` });
-    }
-
-    // 4. Validate Absence of Old Root Post Data
-    logger.info("Validating absence of old root post data...");
-    // Iterate over originalPostIds (old IDs) to ensure their data is deleted.
-    for (const oldPostId of originalPostIds) {
-        const oldPostPath = oldPostId; // Old data was at the root key (which was the oldPostId)
-        try {
-            const oldData = await firebaseClientInstance.readPath(oldPostPath);
-            if (oldData !== null) { // Should be null after deletion
-                errors.push({ id: oldPostId, type: 'post', error: 'Old post data still exists at root key.', key: oldPostPath, data: oldData });
-            }
-        } catch (err: any) {
-            errors.push({ id: oldPostId, type: 'post', error: `Error checking for old post data at ${oldPostPath}: ${err.message}`, key: oldPostPath });
-        }
-    }
-
-    // 5. Validate Absence of Old Reply Data (by checking new paths are empty)
-    logger.info("Validating absence of reply data (new paths should be empty)...");
-    const replyPathsToCheck = ['replies', 'replyMetadata', 'indexes/repliesFeedByTimestamp', 'indexes/repliesByParentQuoteTimestamp'];
-    for (const path of replyPathsToCheck) {
-        try {
-             const data = await firebaseClientInstance.readPath(path);
-             if (data !== null && (typeof data !== 'object' || Object.keys(data).length > 0)) {
-                  errors.push({ id: path, type: 'reply', error: 'Reply-related path is not empty after migration/clearing.', key: path, data: data });
-             }
-        } catch (err: any) {
-            errors.push({ id: path, type: 'reply', error: `Error checking reply path ${path}: ${err.message}`, key: path });
-        }
-    }
-
-    logger.info(`Validation finished. Found ${errors.length} errors.`);
-    return errors;
-}
-
-
-// Main migration function - Now exported and accepts db client
-export async function migrate(dbClient: DatabaseClient): Promise<void> { 
-    logger.info('Starting data migration function V2...');
+export async function migrate(dbClient: DatabaseClient): Promise<void> {
+    logger.info('Starting Data Migration Script (User Data Migration Stage)...');
     let firebaseClientInstance: FirebaseClient;
+    const previousVersion = "2"; // Assuming posts migration was version "2"
+    const targetVersion = "3";
+    
 
     try {
+        // Obtain FirebaseClient instance (required for direct path operations like root listing and old key deletion)
         if (dbClient instanceof FirebaseClient) {
             firebaseClientInstance = dbClient;
-        } else if (dbClient instanceof LoggedDatabaseClient) { 
-            const underlying = (dbClient as LoggedDatabaseClient).getUnderlyingClient(); 
-            if (underlying instanceof FirebaseClient) {
-                firebaseClientInstance = underlying;
-            } else {
-                logger.error("Migration: LoggedDatabaseClient wraps an unexpected client type. Aborting.");
-                throw new Error("LoggedDatabaseClient does not wrap a FirebaseClient.");
-            }
+        } else if (dbClient instanceof LoggedDatabaseClient && (dbClient as LoggedDatabaseClient).getUnderlyingClient() instanceof FirebaseClient) {
+            firebaseClientInstance = (dbClient as LoggedDatabaseClient).getUnderlyingClient() as unknown as FirebaseClient;
         } else {
-            logger.error("Migration: Could not obtain a raw FirebaseClient instance from the provided dbClient. Aborting.");
-            throw new Error("Migration requires a FirebaseClient instance for direct path operations.");
+            throw new Error("Migration requires a raw FirebaseClient instance for some operations. Could not obtain one from the provided dbClient.");
         }
-        logger.info("Obtained FirebaseClient instance for migration-specific operations.");
-
-        // --- Attempt to set initial database version ---
-        try {
-            await dbClient.set('databaseVersion', { current: "1->2", migrationComplete: false });
-            logger.info("Initial databaseVersion set to: { current: '1->2', migrationComplete: false }");
-        } catch (dbVersionError: any) {
-            logger.error({ err: dbVersionError }, "Failed to set initial databaseVersion. This could make tracking migration status difficult.");
-            // Optional: throw new Error("Failed to set initial database version, aborting migration.");
-        }
-        // --- End Attempt to set initial database version ---
+        logger.info("Obtained FirebaseClient instance for migration.");
 
         await dbClient.connect().catch(err => {
-            logger.error("Migration: Initial DB connection failed.", err);
-            throw err; 
+            logger.error("Migration: Initial DB connection failed.", { err });
+            throw err;
         });
-        logger.info("Database client assumed connected for migration.");
-
-        // Clear old data first
-        await clearOldDataBeforeMigration(dbClient, firebaseClientInstance);
-
-        const postIdsToMigrate = await getImportedPostIds(dbClient, firebaseClientInstance);
-
-        if (!postIdsToMigrate || postIdsToMigrate.length === 0) {
-            logger.warn("Migration V2: No post IDs found to migrate (either from old list or by discovery). Skipping further migration steps.");
-            logger.info('Migration function V2 finished.');
-            return; 
-        }
-
-        const { migratedPosts } = await migrateAllData(dbClient, postIdsToMigrate, firebaseClientInstance);
-
-        if (migratedPosts.length === 0 && postIdsToMigrate.length > 0) {
-            logger.error("Migration V2 attempted but resulted in zero successfully migrated posts. Check logs for details.");
-            throw new Error("Post migration phase failed.");
-        }
-
-        logger.info('-----------------------------------');
-        logger.info('Core Migration V2 Steps Completed.');
-        logger.info('-----------------------------------');
-
-        logger.info('Starting Final Validation (V2)...');
-        const validationErrors = await validateMigration(dbClient, firebaseClientInstance, migratedPosts, postIdsToMigrate);
-
-        if (validationErrors.length > 0) {
-            logger.error(`Migration V2 finished with ${validationErrors.length} validation errors. Check ${DLQ_FILE}.`);
-            // Constructing the error object to match the existing style
-            const errorSummary = validationErrors.map(e => `ID: ${e.id}, Type: ${e.type}, Key: ${e.key}, Error: ${e.error}`).join('; ');
-            const validationError = new Error(`Migration V2 completed with ${validationErrors.length} validation errors: ${errorSummary}`);
-            // Optionally, attach the full errors array to the error object if needed elsewhere
-            // (validationError as any).details = validationErrors; 
-            throw validationError;
-        } else {
-            logger.info('Migration V2 completed and validated successfully!');
-        }
-
-        // If we reach here, all preceding steps in the try block were successful (or involved no data to migrate)
-        // --- Set final database version on overall successful completion ---
+        logger.info("Database client connected for user migration.");
+        
         try {
-            await dbClient.set('databaseVersion', { current: "2", migrationComplete: true });
-            logger.info("DatabaseVersion updated on successful script completion to: { current: '2', migrationComplete: true }");
+            await dbClient.set('databaseVersion', "2->3");
+            logger.info(`Database version set to: "2->3"`);
         } catch (dbVersionError: any) {
-            logger.error({ err: dbVersionError }, "CRITICAL: Migration script completed successfully, but FAILED to set final databaseVersion status. Manual check required.");
-            // Depending on policy, could throw an error to make it explicit.
+            logger.warn({ err: dbVersionError }, "Failed to set initial pending databaseVersion for user migration. Proceeding, but status tracking might be affected.");
         }
-        // --- End Set final database version on overall successful completion ---
+
+        // Call the actual user data migration logic
+        await migrateUsersData(dbClient, firebaseClientInstance);
+
+        await dbClient.set('databaseVersion', "3");
+        logger.info(`User migration script completed successfully. DatabaseVersion updated to: "3"`);
 
     } catch (err: any) {
-        logger.error('Migration script V2 encountered a fatal error:', err);
-        // On any error caught by this block, databaseVersion should remain
-        // { current: "1->2", migrationComplete: false } due to the initial set.
-        throw err;
+        logger.error('User migration script encountered a fatal error:', { err });
+        const failureVersionInfo = { 
+            current: `${targetVersion}_failed`, 
+            fromVersion: previousVersion, 
+            toVersion: targetVersion, 
+            status: "failed_user_migration", 
+            error: err.message,
+            timestamp: new Date().toISOString()
+        };
+        try {
+            await dbClient.set('databaseVersion', failureVersionInfo);
+            logger.info(`Database version updated to reflect user migration failure: ${JSON.stringify(failureVersionInfo)}`);
+        } catch (dbVersionError: any) {
+             logger.error({ err: dbVersionError }, "CRITICAL: FAILED to set databaseVersion after user migration script error. Manual check required.");
+        }
+        throw err; // Re-throw the error to indicate script failure
     } finally {
-        logger.info("Migration function V2 finished executing."); // Adjusted log for clarity
+        logger.info("User migration script execution finished.");
     }
 }
