@@ -736,8 +736,17 @@ class PostTreeOperator {
     }
 
     try {
+      const state = this.getState(); // Get current state early for the new check
+
+      if (state.postTree && state.postTree.levels[levelNumber] && isLastLevel(state.postTree.levels[levelNumber])) {
+        const existingLevelData = state.postTree.levels[levelNumber];
+        if (existingLevelData.lastLevel && state.postTree.post && existingLevelData.lastLevel.rootNodeId === state.postTree.post.id) {
+            console.warn(`[executeLoadLevel] Level ${levelNumber} is already marked as LastLevel in the current state for the correct root. Stopping.`);
+            return;
+        }
+      }
+
       console.log(`PostTreeOperator: Starting executeLoadLevel processing for level ${levelNumber}`);
-      const state = this.getState();
 
       if (!state.postTree) {
         const errorMsg = `PostTreeOperator: postTree not initialized`;

@@ -35,8 +35,7 @@ router.get<'/', FeedItemsResponse | { success: boolean; error: string }>('/', as
     const limit = parseInt(req.query.limit as string) || 3;
     // Cursor is now the Firebase push key (string) or undefined for the first page
     const cursorKey = req.query.cursor as string | undefined;
-
-    logger.info("Handling request for feed with cursorKey %s and limit %d", cursorKey || 'start', limit);
+    const timeBucket = req.query.t as string | undefined; // Read the timeBucket parameter
 
     try {
 
@@ -53,8 +52,6 @@ router.get<'/', FeedItemsResponse | { success: boolean; error: string }>('/', as
              logger.warn('Some items returned from getFeedItemsPage were not valid FeedItems according to the new schema.');
         }
 
-        logger.info("Fetched feed items: %d items", feedItems.length);
-
         // Prepare response data (no compression)
         const responseData: FeedItemsResponse = {
             data: feedItems,
@@ -65,6 +62,9 @@ router.get<'/', FeedItemsResponse | { success: boolean; error: string }>('/', as
                 totalCount: totalItems
             }
         };
+
+        // Set Cache-Control header
+        res.setHeader('Cache-Control', 'public, max-age=60');
 
         // Send plain JSON response
         res.json(responseData);
