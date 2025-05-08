@@ -399,32 +399,57 @@ export class FirebaseClient extends DatabaseClientInterface {
 
     // Firebase RTDB querying by range/offset (like Redis start/end) is tricky.
     // We fetch limit = end + 1 and slice.
-    // orderByKey() works because keys are timestamp_id.
-    const limit = end === -1 ? 10000 : end - start + 1; // Adjust limit based on start/end. -1 means fetch all (up to a practical limit).
-    // If start > 0, we need to fetch more items (start + limit) and slice
-    // However, Firebase doesn't have a direct offset. We might need cursors or fetch more data.
-    // Let's fetch limit items starting from the beginning for simplicity FOR NOW.
-    // THIS IS INEFFICIENT FOR LARGE OFFSETS (start > 0)!
+async zRange(key: string, start: number, end: number): Promise<any[]> {
+  const basePath = this.mapZSetKeyToIndexBasePath(key);
+  if (!basePath) {
+    console.error(`FirebaseClient zRange: Cannot map key '${key}' to an index base path.`);
+    return [];
+  }
 
-    const query = this.db.ref(basePath).orderByKey().limitToFirst(limit); // Fetching potentially more than needed if start > 0
+  // Implement cursor-based pagination
+  if (start === 0) {
+    // Direct fetch if starting from the beginning
+    const limit = end === -1 ? 10000 : end + 1;
+    const query = this.db.ref(basePath).orderByKey().limitToFirst(limit);
     const snapshot = await query.once('value');
 
     const results: any[] = [];
     snapshot.forEach((childSnapshot) => {
-      results.push(childSnapshot.val()); // The value stored directly
+      results.push(childSnapshot.val());
     });
 
-    // Manual slicing - highly inefficient if start is large
-    if (start > 0 && end !== -1) {
-      console.warn(`FirebaseClient zRange: Slicing results for start=${start} is inefficient.`);
-      // This slice assumes we fetched enough items, which might not be true if start is large.
-      // A cursor-based approach would be better.
-      return results.slice(start);
-    } else if (end === -1) {
-      return results.slice(start);
-    } else {
-      return results; // Already limited to approx the correct count (if start was 0)
+    return results;
+  } else {
+    // For pagination with offset, use a two-step process:
+    // 1) Get enough keys to locate the start position
+    const keysQuery = this.db.ref(basePath).orderByKey().limitToFirst(start + 1);
+    const keysSnapshot = await keysQuery.once('value');
+
+    const keys = Object.keys(keysSnapshot.val() || {});
+    if (keys.length <= start) {
+      // Not enough items to reach the requested offset
+      return [];
     }
+
+    const startKey = keys[start];
+
+    // 2) Fetch the actual slice starting at that key
+    const limit = end === -1 ? 10000 : end - start + 1;
+    const dataQuery = this.db
+      .ref(basePath)
+      .orderByKey()
+      .startAt(startKey)
+      .limitToFirst(limit);
+    const dataSnapshot = await dataQuery.once('value');
+
+    const results: any[] = [];
+    dataSnapshot.forEach((childSnapshot) => {
+      results.push(childSnapshot.val());
+    });
+
+    return results;
+  }
+}
   }
 
   async del(key: string): Promise<number> {
