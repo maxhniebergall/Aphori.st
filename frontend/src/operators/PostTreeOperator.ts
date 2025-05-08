@@ -713,7 +713,9 @@ class PostTreeOperator {
       // IMPORTANT: Trigger the next check immediately after finishing
       // Use setTimeout to yield to event loop briefly, allowing state updates to potentially propagate
       // before the next queue check (although sequential execution should handle most cases)
-      setTimeout(() => this.processLoadQueue(), 0);
+      if (this.pendingLoadRequests.length > 0) {
+        setTimeout(() => this.processLoadQueue(), 0);
+      }
     }
   }
 
@@ -869,8 +871,7 @@ class PostTreeOperator {
             levelNumber: levelNumber,
             textContent: reply.text,
             repliedToQuote: quoteInParentToFetchChildrenFor,
-            quoteCounts: quoteCountsMap.get(reply.quote),
-            authorId: reply.authorId,
+            quoteCounts: quoteCountsMap.get(reply.quote) ?? { quoteCounts: [] },            authorId: reply.authorId,
             createdAt: reply.createdAt,
           } as PostTreeNode);
         });
