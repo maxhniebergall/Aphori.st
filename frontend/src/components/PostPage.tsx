@@ -148,7 +148,7 @@ const PostPage: React.FC = (): JSX.Element => {
       };
 
       await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/posts/createPostTree`,
+        `${process.env.REACT_APP_API_URL}/api/posts/createPost`,
         { postTree: newPost }
       );
       navigate('/');
