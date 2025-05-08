@@ -226,7 +226,6 @@ if (process.env.NODE_ENV === 'production') {
         'EMAIL_PORT',
         'EMAIL_USERNAME',
         'EMAIL_PASSWORD',
-        'REDIS_URL' // Add REDIS_URL if applicable
     );
 }
 
