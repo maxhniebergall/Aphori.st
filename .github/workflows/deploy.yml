@@ -12,6 +12,7 @@ env:
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
   BACKEND_URL: "https://backend-132704325993.us-central1.run.app"
   FRONTEND_URL: "https://frontend-132704325993.us-central1.run.app"
+  RUN_MIGRATION: true
 
 jobs:
   setup-build-publish-deploy:
@@ -46,7 +47,7 @@ jobs:
 
     - name: Build Backend Docker image
       run: |
-        docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA -f backend/Dockerfile.prod ./backend --build-arg BACKEND_URL=$BACKEND_URL --build-arg FRONTEND_URL=$FRONTEND_URL
+        docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$BACKEND_IMAGE:$GITHUB_SHA -f backend/Dockerfile.prod ./backend --build-arg BACKEND_URL=$BACKEND_URL --build-arg FRONTEND_URL=$FRONTEND_URL --build-arg RUN_MIGRATION=$RUN_MIGRATION
 
     - name: Push Docker images
       run: |
