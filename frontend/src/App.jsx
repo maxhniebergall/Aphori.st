@@ -11,6 +11,14 @@ import NotFound from './components/NotFound';
 import PostPage from './components/PostPage';
 import { UserProvider } from './context/UserContext';
 import axios from 'axios';
+import { setupCache, buildWebStorage } from 'axios-cache-interceptor';
+
+// Configure Axios with caching
+// Cache will persist in localStorage for 24 hours
+setupCache(axios, {
+  ttl: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
+  storage: buildWebStorage(localStorage, 'axios-cache:'),
+});
 
 function App() {
     useEffect(() => {
