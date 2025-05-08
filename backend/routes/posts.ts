@@ -159,15 +159,28 @@ router.get<{ uuid: string }, Post | { success: boolean; error: string } >('/:uui
             return;
         }
 
-        // Optional: Validate structure just in case? Depends on trust in DB rules.
         if (!isValidPost(postData)) {
             logger.error({ ...logContext, uuid, postData }, 'Invalid post structure retrieved from DB');
-            // Don't expose potentially sensitive invalid data
             res.status(500).json({ success: false, error: 'Invalid post data retrieved' });
             return;
         }
 
-        // Send the post object directly, no compression
+        // Set Caching Headers
+        res.setHeader('Last-Modified', new Date(postData.createdAt).toUTCString());
+        // ETag includes replyCount because it's part of the response and can change
+        const etagValue = `${postData.id}-${new Date(postData.createdAt).getTime()}-${postData.replyCount}`;
+        res.setHeader('ETag', `W/"${etagValue}"`); // Weak ETag
+        res.setHeader('Cache-Control', 'public, max-age=300'); // Cache for 5 minutes
+
+        // Check if client's cache is fresh
+        if (req.fresh) {
+            logger.debug({ ...logContext, uuid }, 'Post cache fresh, sending 304 Not Modified');
+            res.status(304).end();
+            return;
+        }
+
+        logger.debug({ ...logContext, uuid }, 'Sending full post data');
+        // Send the post object directly, no compression needed here as it's handled globally
         res.json(postData);
 
     } catch (error) {
