@@ -300,13 +300,20 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async isConnected(): Promise<boolean> {
-    // Firebase connects automatically
-    return true;
+    // Check the actual connection status using Firebase's built-in mechanism
+    try {
+      const connectedRef = this.db.ref('.info/connected');
+      const snapshot = await connectedRef.once('value');
+      return !!snapshot.val();
+    } catch (error) {
+      console.error('Error checking Firebase connection status:', error);
+      return false;
+    }
   }
 
   async isReady(): Promise<boolean> {
-    // Firebase is always ready after initialization
-    return true;
+    // Can reuse isConnected or add additional checks
+    return this.isConnected();
   }
 
   encodeKey(key: string, prefix?: string): string {
