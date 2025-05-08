@@ -155,45 +155,48 @@ await db.connect().then(async () => { // Make the callback async
     logger.info('Database client connected');
     isDbReady = true;
 
-    let attemptMigrationBasedOnRunFlag = true; // Default to true, will be set to false if dbVersion exists
+    let runMigration = false; // Initialize to not run migration
 
     try {
-        const databaseVersion = await db.get('databaseVersion'); // Assumes db.get returns the object or null
-        if (databaseVersion !== null && databaseVersion !== undefined) {
-            logger.warn(`Database version key 'databaseVersion' found. Value: ${JSON.stringify(databaseVersion)}. Migration based on RUN_MIGRATION flag will be skipped.`);
-            attemptMigrationBasedOnRunFlag = false;
+        const databaseVersion = await db.get('databaseVersion'); // Attempt to get the database version
+        if (databaseVersion === null || databaseVersion === undefined) {
+            // If databaseVersion key does not exist, schedule migration
+            logger.info("No 'databaseVersion' key found in the database. Migration will be scheduled.");
+            runMigration = true;
         } else {
-            logger.info("No 'databaseVersion' key found in the database. Migration will proceed based on RUN_MIGRATION flag if set.");
-            // attemptMigrationBasedOnRunFlag remains true
+            // If databaseVersion key exists, log its presence and skip migration
+            logger.info(`Database version key 'databaseVersion' found. Value: ${JSON.stringify(databaseVersion)}. Migration will be skipped.`);
+            // runMigration remains false
         }
-    } catch (dbVersionCheckError) {
-        logger.error({ err: dbVersionCheckError }, "Error checking for 'databaseVersion' key. Migration will proceed based on RUN_MIGRATION flag as a fallback.");
-        // attemptMigrationBasedOnRunFlag remains true to allow RUN_MIGRATION to decide.
+    } catch (e: any) { // MODIFIED CATCH BLOCK for robustness and to address linter issues
+        const baseMessage = "FATAL: Could not check for 'databaseVersion' key. Server cannot safely determine migration status and will shut down.";
+        if (e instanceof Error) {
+            logger.fatal({ err: e, errorMessage: e.message }, baseMessage);
+        } else {
+            logger.fatal({ errContext: String(e) }, baseMessage);
+        }
+        process.exit(1); // Exit the process
     }
 
-    // --- Run Import or Seed ---
-    if (attemptMigrationBasedOnRunFlag) {
+    // Conditionally run the migration based on the check above
+    if (runMigration) {
         try {
-            // --- Run Migration --- (Only if import was run or if specifically enabled)
-            if (process.env.RUN_MIGRATION === 'true') {
-                logger.info('RUN_MIGRATION was true (even without import), proceeding with migration...');
-                 try {
-                     await migrate(db); // Run the migration logic
-                     logger.info('Data migration completed successfully.');
-                 } catch (migrationError) {
-                     logger.fatal({ err: migrationError }, "FATAL: Data migration failed. Server shutting down.");
-                     process.exit(1); // Stop server if migration fails
-                 }
-             } else {
-                 logger.info("Skipping data migration (RUN_MIGRATION is not 'true').");
-             }
-            // --- End Migration ---
-
-        } catch (importError) { // This catch is for errors in the migration block setup or if RUN_MIGRATION check fails
-            logger.fatal({ err: importError }, "FATAL: migration failed during setup or unexpected issue. Server shutting down.");
-            process.exit(1); // Stop server if import fails
+            logger.info(`Proceeding with data migration as 'databaseVersion' key was not found...`);
+            await migrate(db); // Execute the migration logic
+            logger.info('Data migration completed successfully.');
+            // IMPORTANT: Consider setting the 'databaseVersion' key here after a successful migration
+            // to prevent it from running again on subsequent starts. For example:
+            // await db.set('databaseVersion', 'current_version_identifier');
+            // logger.info(`'databaseVersion' key set after successful migration.`);
+        } catch (migrationError) {
+            // If migration itself fails, log a fatal error and exit.
+            logger.fatal({ err: migrationError }, "FATAL: Data migration failed during execution. Server shutting down.");
+            process.exit(1); // Exit the process
         }
-    } // End of if (attemptMigrationBasedOnRunFlag)
+    } else {
+        // Log if migration is skipped due to 'databaseVersion' key existing
+        logger.info("Skipping data migration because the 'databaseVersion' key was found in the database.");
+    }
 
     // Only seed if import didn't run (assuming import replaces seed)
     if (process.env.NODE_ENV !== 'production') {
