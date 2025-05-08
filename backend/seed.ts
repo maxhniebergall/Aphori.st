@@ -394,7 +394,7 @@ async function storeReply(reply: ReplyData) {
     await db.sAdd(`postReplies:${rootPostId}`, replyId);
 
     // 6. Increment Post Reply Count (/posts/$rootPostId/replyCount) - ATOMICALLY
-    await db.hIncrBy(`posts:${rootPostId}`, 'replyCount', 1);
+    await db.hIncrBy(`posts/${rootPostId}`, 'replyCount', 1);
 
     // 7. Optional: Update Parent Replies Set (/replyMetadata/parentReplies) - Index under DIRECT parent
     await db.sAdd(`parentReplies:${parentId}`, replyId);
