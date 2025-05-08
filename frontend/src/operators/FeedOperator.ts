@@ -17,6 +17,8 @@ class FeedOperator {
     // Rate limiting properties (one call per 1000ms)
     private lastFeedCallTime = 0;
     private readonly rateLimitInterval: number = 1000; // in milliseconds
+    private isLoading = false;
+    private currentFetchingCursor: string | undefined = undefined;
 
     constructor(baseURL: string = process.env.REACT_APP_API_URL || 'http://localhost:5050') {
         this.baseURL = baseURL;
@@ -35,6 +37,19 @@ class FeedOperator {
             await this.sleep(waitTime);
         }
         this.lastFeedCallTime = Date.now();
+
+        if (this.isLoading) {
+            if (this.currentFetchingCursor === cursor) {
+                console.warn(`FeedOperator: Request for cursor "${cursor}" is already in progress.`);
+                return { success: false, error: `Feed items for cursor "${cursor}" are already being fetched.` };
+            } else {
+                console.warn(`FeedOperator: Another feed request (cursor "${this.currentFetchingCursor || 'unknown'}") is already in progress. New request for "${cursor}" blocked.`);
+                return { success: false, error: "Another feed fetch operation is already in progress." };
+            }
+        }
+
+        this.isLoading = true;
+        this.currentFetchingCursor = cursor;
 
         try {
             const response: AxiosResponse<FeedItemsResponse> = await axios.get(`${this.baseURL}/api/feed`, {
@@ -68,6 +83,9 @@ class FeedOperator {
                 success: false,
                 error: axiosError.response?.data?.error || errorMessage
             };
+        } finally {
+            this.isLoading = false;
+            this.currentFetchingCursor = undefined;
         }
     }
 }
