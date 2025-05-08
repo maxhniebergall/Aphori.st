@@ -105,7 +105,7 @@ const corsOptions = {
   origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Frontend-Hash'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Frontend-Hash', 'cache-control'],
   maxAge: 86400, // 24 hours
   optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
 };
