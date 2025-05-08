@@ -302,7 +302,11 @@ class PostTreeOperator {
   }
 
   private async fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
-    const url = `${this.baseURL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(selectedQuote)}/${sortingCriteria}?limit=${limit}`;
+    // Generate time bucket for cache-friendly URL
+    const currentTime = Date.now();
+    const timeBucket = Math.floor(currentTime / (60 * 1000)) * (60 * 1000);
+
+    const url = `${this.baseURL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(selectedQuote)}/${sortingCriteria}?limit=${limit}&t=${timeBucket}`;
     try {
       // Direct axios call
       const response: AxiosResponse<CursorPaginatedResponse<Reply>> = await axios.get(url, {
@@ -329,7 +333,12 @@ class PostTreeOperator {
   private async fetchQuoteCounts(id: string): Promise<QuoteCounts> {
     const url = `${this.baseURL}/api/replies/quoteCounts/${id}`;
     try {
+        // Generate time bucket for cache-friendly URL
+        const currentTime = Date.now();
+        const timeBucket = Math.floor(currentTime / (60 * 1000)) * (60 * 1000);
+
         const response: AxiosResponse<ExistingSelectableQuotesApiFormat> = await axios.get(url, {
+            params: { t: timeBucket }, // Add timeBucket as a query parameter
             validateStatus: status => status === 200
         });
         const apiResult = response.data as any; // Cast to any to bypass strict type checking for now

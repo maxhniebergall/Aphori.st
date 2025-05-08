@@ -209,7 +209,14 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
 // Removed compression
 router.get<{ parentId: string }, { success: boolean, data?: { quote: Quote, count: number }[], error?: string }>('/quoteCounts/:parentId', async (req: Request, res: Response) => {
     const { parentId } = req.params;
+    const timeBucket = req.query.t as string | undefined; // Read timeBucket
+    const requestId = res.locals.requestId;
+    const logContext = { requestId, parentId, timeBucket };
+
+    logger.debug(logContext, 'Handling request for quoteCounts');
+
     if (!parentId) {
+        logger.warn(logContext, 'Parent ID is required for quoteCounts');
         res.status(400).json({ success: false, error: 'Parent ID is required' });
         return;
     }
@@ -240,11 +247,13 @@ router.get<{ parentId: string }, { success: boolean, data?: { quote: Quote, coun
             }
         }
 
+        // Set Cache-Control header
+        res.setHeader('Cache-Control', 'public, max-age=60'); // Cache for 60 seconds
         // Send plain JSON response
         res.json({ success: true, data: quoteCountsArray });
 
     } catch (error) {
-        logger.error({ parentId, err: error }, 'Error retrieving quote counts');
+        logger.error({ ...logContext, err: error }, 'Error retrieving quote counts');
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
@@ -263,6 +272,12 @@ router.get<{ parentId: string }, { success: boolean, data?: { quote: Quote, coun
 router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, CursorPaginatedResponse<ReplyData> | { success: boolean; error: string }>('/getReplies/:parentId/:quote/:sortCriteria', async (req, res) => {
     try {
         const { parentId, quote, sortCriteria } = req.params;
+        const timeBucket = req.query.t as string | undefined; // Read timeBucket
+        const requestId = res.locals.requestId;
+        const logContext = { requestId, parentId, quote, sortCriteria, timeBucket };
+
+        logger.debug(logContext, 'Handling request for getReplies');
+
         let quoteObj: Quote;
 
         // Decode and parse the quote object from the URL parameter
@@ -346,10 +361,21 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
             }
         };
 
+        // Set Cache-Control header
+        res.setHeader('Cache-Control', 'public, max-age=60'); // Cache for 60 seconds
+
         res.json(responseData);
 
     } catch (err) {
-        logger.error('Error fetching replies by quote: %O', err);
+        // Log with context, but don't send context to client for security
+        const minimalLogContext = { 
+            requestId: res.locals.requestId, 
+            parentId: req.params.parentId, 
+            quoteParam: req.params.quote, // Avoid logging potentially large parsed quoteObj unless necessary
+            sortCriteria: req.params.sortCriteria,
+            timeBucket: req.query.t
+        };
+        logger.error({ ...minimalLogContext, err }, 'Error fetching replies by quote');
         res.status(500).json({ success: false, error: 'Server error fetching replies' });
     }
 });
