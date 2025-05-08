@@ -35,7 +35,6 @@ services:
       - EMAIL_PASSWORD=test
       - EMAIL_FROM=noreply@localhost
       - RTDB_EXPORT_PATH=/app/data/aphorist-default-rtdb-export.json
-      - RUN_MIGRATION=true
     depends_on:
       - redis
       - mailhog
