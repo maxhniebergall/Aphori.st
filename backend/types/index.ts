@@ -194,9 +194,12 @@ export interface Pagination {
     totalCount: number;
 }
 
-export interface CursorPaginatedResponse<T> extends CompressedApiResponse<T[]> {
-    pagination: Pagination;
-    data: T[];
+export interface CursorPaginatedResponse<T> {
+  success: boolean;
+  error?: string;
+  message?: string;
+  pagination: Pagination;
+  data: T[];
 }
 
 // Redis Types
