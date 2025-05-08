@@ -11,7 +11,7 @@ Requirements:
 import { uuidv7obj } from "uuidv7";
 import { Uuid25 } from "uuid25";
 import logger from './logger.js';
-import { FeedItem, Post, Reply, Quote } from './types/index.js';
+import { FeedItem, Post, Quote } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { randomInt } from 'crypto';
 import { DatabaseClient, ReplyData } from './types';

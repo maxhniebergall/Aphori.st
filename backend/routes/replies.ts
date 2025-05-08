@@ -12,7 +12,7 @@ import {
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
-import { getQuoteKey as generateHashedQuoteKey } from '../utils/quoteUtils';
+import { getQuoteKey as generateHashedQuoteKey } from '../utils/quoteUtils.js';
 
 // Use the imported type for the placeholder and the setDb function
 let db: DatabaseClientType;
