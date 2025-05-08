@@ -95,7 +95,7 @@ const areNodeContentPropsEqual = (prevProps: NodeContentProps, nextProps: NodeCo
 
 const NodeContent: React.FC<NodeContentProps> = ({
   node,
-  onExistingQuoteSelectionComplete: onExistingQuoteSelectionComplete = () => {},
+  onExistingQuoteSelectionComplete = () => {},
   isReplyTargetNode = false,
   existingSelectableQuotes,
   currentLevelSelectedQuote,
