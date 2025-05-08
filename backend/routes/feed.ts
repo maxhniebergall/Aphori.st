@@ -32,7 +32,7 @@ function isValidFeedItem(item: any): item is FeedItem {
  * @access  Public
  */
 router.get<'/', FeedItemsResponse | { success: boolean; error: string }>('/', async (req, res): Promise<void> => {
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = parseInt(req.query.limit as string) || 3;
     // Cursor is now the Firebase push key (string) or undefined for the first page
     const cursorKey = req.query.cursor as string | undefined;
 
