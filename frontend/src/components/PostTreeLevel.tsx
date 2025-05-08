@@ -426,10 +426,6 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     <div
       ref={containerRef}
       className="post-tree-level-container"
-      style={{
-        position: 'relative',
-        width: '100%'
-      }}
     >
       <AnimatePresence mode="wait">
         <div {...bind()} style={{ touchAction: 'none' }}>
@@ -441,11 +437,6 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             role="article"
-            style={{
-              width: '100%',
-              padding: '16px',
-              position: 'relative'
-            }}
           >
             {nodeToRender && (
               <MemoizedNodeContent
