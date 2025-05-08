@@ -48,10 +48,10 @@ function isValidPost(item: any): item is Post {
  * @desc    Creates a new top-level post (story)
  * @access  Authenticated
  */
-router.post<{}, { id: string }, { postTree: PostCreationRequest }>( // TODO: Update route path and request body type if needed
-    '/createPost', // Changed route name for clarity
+router.post<{}, { id: string }, { postTree: PostCreationRequest }>(
+    '/createPost',
     authenticateToken,
-    async (req: Request<{}, { id: string }, { postTree: PostCreationRequest }>, res: Response) => {
+    async (req: AuthenticatedRequest<{}, { id: string }, { postTree: PostCreationRequest }>, res: Response) => {
         const operationId = randomUUID();
         const requestId = res.locals.requestId;
         const logContext = { requestId, operationId };
