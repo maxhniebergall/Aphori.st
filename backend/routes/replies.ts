@@ -165,46 +165,41 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
 
         // --- Database Writes (Not Atomic) --- 
         // TODO: Implement atomic writes using multi-path updates or transactions if possible.
-        // The following writes are performed sequentially.
+        // The following writes are performed concurrently using Promise.all.
 
-        // 1. Write reply data to /replies/$replyId
-        await db.set(`replies/${replyId}`, newReply, logContext);
-        logger.debug({ ...logContext, replyId }, "Set reply data.");
-
-        // 2. Add to indexes (using Redis-style keys mapped by FirebaseClient)
         const feedZSetKey = 'replies:feed:mostRecent';
-        await db.zAdd(feedZSetKey, score, replyId, logContext);
-        logger.debug({ ...logContext, key: feedZSetKey, replyId }, "Added reply to feed index.");
-
-        // Ensure key matches FirebaseClient.mapZSetKeyToIndexBasePath expected format
         const parentQuoteZSetKey = `replies:uuid:${actualParentId}:quote:${hashedQuoteKey}:mostRecent`;
-        await db.zAdd(parentQuoteZSetKey, score, replyId, logContext);
-        logger.debug({ ...logContext, key: parentQuoteZSetKey, replyId }, "Added reply to parent/quote index.");
-
-        // 3. Update quote count (atomic transaction via FirebaseClient)
-        await db.hIncrementQuoteCount(actualParentId, hashedQuoteKey, quote, logContext);
-        logger.debug({ ...logContext, parentId: actualParentId, quoteKey: hashedQuoteKey }, "Incremented quote count.");
-
-        // 4. Add to user replies set (mapped key, uses set(true))
         const userRepliesSaddKey = `userReplies:${user.id}`;
-        await db.sAdd(userRepliesSaddKey, replyId, logContext);
-        logger.debug({ ...logContext, key: userRepliesSaddKey, replyId }, "Added reply to user replies set.");
-
-        // 5. Add to parent replies index (direct path, uses set(true))
         const parentRepliesPath = `replyMetadata/parentReplies/${actualParentId}/${replyId}`;
-        await db.set(parentRepliesPath, true, logContext); // Or timestamp
-        logger.debug({ ...logContext, path: parentRepliesPath }, "Added reply to parent replies index.");
-
-        // 6. Add to post replies index (direct path, uses set(true))
         const postRepliesPath = `postMetadata/postReplies/${actualRootPostId}/${replyId}`;
-        await db.set(postRepliesPath, true, logContext); // Or timestamp
-        logger.debug({ ...logContext, path: postRepliesPath }, "Added reply to root post replies index.");
-
-        // 7. Increment root post reply count (atomic transaction via FirebaseClient)
-        // Key format `posts:rootPostId` is handled by FirebaseClient.hIncrBy
         const postCounterKey = `posts:${actualRootPostId}`;
-        await db.hIncrBy(postCounterKey, 'replyCount', 1, logContext);
-        logger.debug({ ...logContext, key: postCounterKey }, "Incremented root post reply count.");
+
+        await Promise.all([
+            db.set(`replies/${replyId}`, newReply, logContext).then(() => 
+                logger.debug({ ...logContext, replyId }, "Set reply data.")
+            ),
+            db.zAdd(feedZSetKey, score, replyId, logContext).then(() => 
+                logger.debug({ ...logContext, key: feedZSetKey, replyId }, "Added reply to feed index.")
+            ),
+            db.zAdd(parentQuoteZSetKey, score, replyId, logContext).then(() =>
+                logger.debug({ ...logContext, key: parentQuoteZSetKey, replyId }, "Added reply to parent/quote index.")
+            ),
+            db.hIncrementQuoteCount(actualParentId, hashedQuoteKey, quote, logContext).then(() =>
+                logger.debug({ ...logContext, parentId: actualParentId, quoteKey: hashedQuoteKey }, "Incremented quote count.")
+            ),
+            db.sAdd(userRepliesSaddKey, replyId, logContext).then(() =>
+                logger.debug({ ...logContext, key: userRepliesSaddKey, replyId }, "Added reply to user replies set.")
+            ),
+            db.set(parentRepliesPath, true, logContext).then(() => // Or timestamp
+                logger.debug({ ...logContext, path: parentRepliesPath }, "Added reply to parent replies index.")
+            ),
+            db.set(postRepliesPath, true, logContext).then(() => // Or timestamp
+                logger.debug({ ...logContext, path: postRepliesPath }, "Added reply to root post replies index.")
+            ),
+            db.hIncrBy(postCounterKey, 'replyCount', 1, logContext).then(() =>
+                logger.debug({ ...logContext, key: postCounterKey }, "Incremented root post reply count.")
+            )
+        ]);
         // --- End Database Writes --- 
 
         logger.info({ ...logContext, replyId, parentId: actualParentId }, 'Successfully created new reply');
