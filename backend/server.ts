@@ -27,7 +27,6 @@ import logger from './logger.js';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import compression from 'compression';
-import { seedDevPosts } from './seed.js';
 import * as fsSync from 'fs'; // Keep sync fs for existsSync
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -36,6 +35,13 @@ import {
     DatabaseClient as DatabaseClientType,
 } from './types/index.js';
 import requestLogger from './middleware/requestLogger.js';
+import { optionalAuthMiddleware } from './middleware/optionalAuthMiddleware.js';
+import { 
+  loggedInLimiter, 
+  anonymousLimiterMinute, 
+  anonymousLimiterHour, 
+  anonymousLimiterDay 
+} from './middleware/rateLimitMiddleware.js';
 import authRoutes, { setDb as setAuthDb } from './routes/auth.js';
 import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
@@ -112,6 +118,21 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('X-Build-Hash', BUILD_HASH);
   next();
 });
+
+// --- Apply Optional Authentication and Rate Limiting Middlewares ---
+// This middleware attempts to identify the user from JWT for rate limiting purposes,
+// but does not block unauthenticated requests.
+app.use(optionalAuthMiddleware);
+
+// Apply rate limiters. The 'skip' option within each limiter ensures
+// that only the appropriate one (anonymous or logged-in) applies.
+app.use(loggedInLimiter);
+// Apply layered anonymous limiters in order of restrictiveness (minute, then hour, then day)
+app.use(anonymousLimiterMinute);
+app.use(anonymousLimiterHour);
+app.use(anonymousLimiterDay);
+// app.use(anonymousLimiter); // Comment out or remove the old single anonymous limiter
+// --- End Optional Authentication and Rate Limiting Middlewares ---
 
 // Use the imported type for the db instance
 const db: DatabaseClientType = createDatabaseClient() as DatabaseClientType;
