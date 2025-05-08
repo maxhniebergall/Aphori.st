@@ -1,6 +1,6 @@
 import pino from 'pino';
 
-const logLevel = process.env.LOG_LEVEL || 'debug';
+const logLevel = process.env.LOG_LEVEL || 'info';
 
 // Basic Pino configuration for structured JSON logging
 const logger = pino({
