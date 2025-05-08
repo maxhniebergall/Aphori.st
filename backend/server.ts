@@ -45,6 +45,7 @@ import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
 import { migrate } from './migrate.js';
 import { LoggedDatabaseClient } from "./db/LoggedDatabaseClient.js";
+import { sendStartupEmails, EMAIL_VERSIONS_CONTENT } from './startupMailer.js';
 
 dotenv.config();
 
@@ -201,6 +202,134 @@ await db.connect().then(async () => { // Make the callback async
         // Log if migration is skipped due to 'databaseVersion' key existing
         logger.info("Skipping data migration because the 'databaseVersion' key was found in the database.");
     }
+
+    // --- Startup Email Sending Logic ---
+    try {
+        logger.info("Checking for startup email tasks...");
+        // Define the highest mail version this server code supports. 
+        // Increment this when you add new email content to EMAIL_VERSIONS_CONTENT in startupMailer.ts
+        const LATEST_MAIL_VERSION_TARGET = "1"; 
+
+        let currentMailVersionString: string | null = await db.get('versionLocks/mailVersion');
+        
+        let mailSentMap = await db.get('versionLocks/mailSentList');
+        let mailSentList: string[] = [];
+        if (mailSentMap) {
+            const keys = Object.keys(mailSentMap);
+            if (db instanceof FirebaseClient) {
+                mailSentList = keys.map(key => db.unescapeFirebaseKeyPercentEncoding(key));
+            } else {
+                logger.warn("Database client is not an instance of FirebaseClient. Using raw keys for mailSentList which might be problematic if keys were escaped.");
+                mailSentList = keys; // Fallback: use raw keys
+            }
+        }
+
+        const allUsersData = await db.hGetAll('users');
+        const allUserEmails: string[] = allUsersData ? Object.values(allUsersData).map((user: any) => user.email).filter(email => !!email) : [];
+
+        if (!allUserEmails || allUserEmails.length === 0) {
+            logger.info("No users found to send startup emails to. Skipping email process.");
+        } else {
+            let needsProcessing = false;
+            let targetProcessingVersion = ""; // The "N" in "X->N" or "N" if fully migrated to N
+            let currentTransitionState = currentMailVersionString; // The "X->N" string or final "N"
+
+            if (currentMailVersionString === null) {
+                logger.info(`No mailVersion found. Initializing for version ${LATEST_MAIL_VERSION_TARGET}.`);
+                currentTransitionState = `0->${LATEST_MAIL_VERSION_TARGET}`;
+                await db.set('versionLocks/mailVersion', currentTransitionState);
+                await db.set('versionLocks/mailSentList', {}); // Initialize as empty object
+                mailSentList = [];
+                targetProcessingVersion = LATEST_MAIL_VERSION_TARGET;
+                needsProcessing = true;
+            } else if (currentMailVersionString.includes('->')) {
+                const parts = currentMailVersionString.split('->');
+                const dbTargetVersion = parts[1];
+                logger.info(`Mail version is in transition: ${currentMailVersionString}. Target DB version: ${dbTargetVersion}`);
+                if (parseInt(dbTargetVersion) <= parseInt(LATEST_MAIL_VERSION_TARGET)) {
+                    targetProcessingVersion = dbTargetVersion;
+                    needsProcessing = true;
+                } else {
+                    logger.warn(`Database mailVersion ${currentMailVersionString} aims for version ${dbTargetVersion}, but server code supports up to ${LATEST_MAIL_VERSION_TARGET}. Email processing for this version will be skipped.`);
+                    needsProcessing = false;
+                }
+            } else { // Mail version is a number string, e.g., "1"
+                if (parseInt(currentMailVersionString) < parseInt(LATEST_MAIL_VERSION_TARGET)) {
+                    logger.info(`Current mailVersion ${currentMailVersionString} is less than server target ${LATEST_MAIL_VERSION_TARGET}. Starting new transition.`);
+                    currentTransitionState = `${currentMailVersionString}->${LATEST_MAIL_VERSION_TARGET}`;
+                    await db.set('versionLocks/mailVersion', currentTransitionState);
+                    await db.set('versionLocks/mailSentList', {}); // Clear list for new transition
+                    mailSentList = [];
+                    targetProcessingVersion = LATEST_MAIL_VERSION_TARGET;
+                    needsProcessing = true;
+                } else {
+                    logger.info(`Mail version ${currentMailVersionString} is up-to-date with or newer than server target ${LATEST_MAIL_VERSION_TARGET}. No startup emails needed.`);
+                    needsProcessing = false;
+                }
+            }
+
+            if (needsProcessing && EMAIL_VERSIONS_CONTENT[targetProcessingVersion]) {
+                logger.info(`Processing startup emails for target version ${targetProcessingVersion} (current DB state: ${currentTransitionState}).`);
+                
+                // We need to compare apples to apples. Emails from allUserEmails are raw.
+                // mailSentList now contains unescaped emails.
+                const usersToEmail = allUserEmails.filter(email => !mailSentList.includes(email));
+
+                if (usersToEmail.length > 0) {
+                    logger.info(`Found ${usersToEmail.length} users to email for version ${targetProcessingVersion}.`);
+                    const successfullySentTo = await sendStartupEmails(db, usersToEmail, targetProcessingVersion);
+                    
+                    // Update local mailSentList with newly sent emails (raw, unescaped form)
+                    const newSentEmails = successfullySentTo.map(email => {
+                        if (db instanceof FirebaseClient) {
+                            // To get the raw email back for local list comparison after it was sanitized for DB storage as a key:
+                            // 1. Sanitize it (as it would have been for the key in DB)
+                            // 2. Unescape that sanitized key to get the original email back.
+                            // This assumes sendStartupEmails correctly used sanitizedEmailKey for DB path, and successfullySentTo contains raw emails.
+                            return db.unescapeFirebaseKeyPercentEncoding(db.sanitizeKey(email));
+                        }
+                        return email; // Fallback if not FirebaseClient
+                    });
+                    mailSentList = mailSentList.concat(newSentEmails);
+                } else {
+                    logger.info(`No new users to email for version ${targetProcessingVersion}. All users already in mailSentList or no users.`);
+                }
+
+                const allProcessed = allUserEmails.every(email => mailSentList.includes(email));
+
+                if (allProcessed && allUserEmails.length > 0) { // Ensure allUserEmails is not empty before declaring all processed
+                    logger.info(`All users processed for mail version ${targetProcessingVersion}. Finalizing version.`);
+                    await db.set('versionLocks/mailVersion', targetProcessingVersion);
+                    await db.del('versionLocks/mailSentList');
+                    logger.info(`Mail version updated to ${targetProcessingVersion} and mailSentList cleared.`);
+                } else if (allUserEmails.length > 0) { // Only log remaining if there were users to begin with
+                     const remainingCount = allUserEmails.length - (mailSentList?.length || 0);
+                     if (remainingCount > 0) {
+                        logger.info(`Still ${remainingCount} users remaining for mail version ${targetProcessingVersion}. Will continue on next startup if needed.`);
+                     } else if (!allProcessed) { // All emails are in mailSentList, but allProcessed is false (e.g. if allUserEmails was empty initially but now not)
+                        logger.info(`All users appear in mailSentList for mail version ${targetProcessingVersion}, but allProcessed flag was false. Review logic if this state is unexpected.`);
+                     } else { // All processed and allUserEmails not empty
+                        logger.info(`All users processed for mail version ${targetProcessingVersion}. Waiting for finalization (this log should ideally not be hit if logic is correct and allProcessed was true).`);
+                     }
+                } else { // allUserEmails is empty
+                    logger.info(`No users to process for mail version ${targetProcessingVersion}. Finalizing version.`);
+                    await db.set('versionLocks/mailVersion', targetProcessingVersion);
+                    await db.del('versionLocks/mailSentList');
+                    logger.info(`Mail version updated to ${targetProcessingVersion} (no users to email) and mailSentList cleared.`);
+                }
+            } else if (needsProcessing && !EMAIL_VERSIONS_CONTENT[targetProcessingVersion]) {
+                logger.error(`Cannot process startup emails: No email content defined for target mail version ${targetProcessingVersion}. DB state: ${currentTransitionState}`);
+            }
+        }
+    } catch (emailError: any) {
+        const baseMessage = "Error during startup email processing. This will not halt server startup.";
+        if (emailError instanceof Error) {
+            logger.error({ err: emailError, errorMessage: emailError.message }, baseMessage);
+        } else {
+            logger.error({ errContext: String(emailError) }, baseMessage);
+        }
+    }
+    // --- End Startup Email Sending Logic ---
 
     // Only seed if import didn't run (assuming import replaces seed)
     if (process.env.NODE_ENV !== 'production') {
