@@ -23,6 +23,7 @@ services:
     environment:
       - DB_TYPE=firebase
       - NODE_ENV=production
+      - RUN_MIGRATION=true
     restart: unless-stopped
       
   frontend:
