@@ -9,8 +9,6 @@ import { FeedItemsResponse } from '../types/types';
  * - Return feed items in a format compatible with the Feed component.
  * - Properly handle errors and edge cases.
  *
- * Enhancements:
- * - Added rate limiting to getFeedItems calls.
  */
 class FeedOperator {
     private baseURL: string;
