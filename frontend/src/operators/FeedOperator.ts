@@ -14,11 +14,10 @@ import { FeedItemsResponse } from '../types/types';
  */
 class FeedOperator {
     private baseURL: string;
-    // Rate limiting properties (one call per 1000ms)
-    private lastFeedCallTime = 0;
-    private readonly rateLimitInterval: number = 1000; // in milliseconds
-    private isLoading = false;
-    private currentFetchingCursor: string | undefined = undefined;
+
+    // Queue properties
+    private requestQueue: Array<{ cursor: string, resolve: (value: any) => void, reject: (reason?: any) => void }> = [];
+    private isProcessingQueue = false;
 
     constructor(baseURL: string = process.env.REACT_APP_API_URL || 'http://localhost:5050') {
         this.baseURL = baseURL;
@@ -29,63 +28,70 @@ class FeedOperator {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    async getFeedItems(cursor: string): Promise<{ success: boolean; data?: FeedItemsResponse['data']; pagination?: FeedItemsResponse['pagination']; error?: string; }> {
-        const now = Date.now();
-        const timeElapsed = now - this.lastFeedCallTime;
-        if (timeElapsed < this.rateLimitInterval) {
-            const waitTime = this.rateLimitInterval - timeElapsed;
-            await this.sleep(waitTime);
-        }
-        this.lastFeedCallTime = Date.now();
+    public getFeedItems(cursor: string): Promise<{ success: boolean; data?: FeedItemsResponse['data']; pagination?: FeedItemsResponse['pagination']; error?: string; }> {
+        return new Promise((resolve, reject) => {
+            this.requestQueue.push({ cursor, resolve, reject });
+            this._tryProcessQueue();
+        });
+    }
 
-        if (this.isLoading) {
-            if (this.currentFetchingCursor === cursor) {
-                console.warn(`FeedOperator: Request for cursor "${cursor}" is already in progress.`);
-                return { success: false, error: `Feed items for cursor "${cursor}" are already being fetched.` };
-            } else {
-                console.warn(`FeedOperator: Another feed request (cursor "${this.currentFetchingCursor || 'unknown'}") is already in progress. New request for "${cursor}" blocked.`);
-                return { success: false, error: "Another feed fetch operation is already in progress." };
-            }
+    private async _tryProcessQueue(): Promise<void> {
+        if (this.isProcessingQueue || this.requestQueue.length === 0) {
+            return;
         }
 
-        this.isLoading = true;
-        this.currentFetchingCursor = cursor;
+        this.isProcessingQueue = true;
+        const requestToProcess = this.requestQueue.shift();
+
+        if (!requestToProcess) { // Should theoretically not happen if length > 0
+            this.isProcessingQueue = false;
+            return;
+        }
+
+        const { cursor, resolve, reject } = requestToProcess;
 
         try {
+            // Generate time bucket for cache-friendly URL
+            const currentTime = Date.now();
+            const timeBucket = Math.floor(currentTime / (60 * 1000)) * (60 * 1000);
+
             const response: AxiosResponse<FeedItemsResponse> = await axios.get(`${this.baseURL}/api/feed`, {
-                params: { cursor },
+                params: { 
+                    cursor, 
+                    t: timeBucket 
+                },
                 validateStatus: status => status === 200
             });
 
-            const responseData = response.data; // Already decompressed by browser
+            const responseData = response.data;
 
             if (responseData?.data && Array.isArray(responseData.data) && responseData.pagination) {
-                return {
+                resolve({
                     success: true,
                     data: responseData.data,
                     pagination: responseData.pagination
-                };
+                });
+            } else {
+                console.error("Invalid feed data structure:", responseData);
+                reject({
+                    success: false,
+                    error: "Invalid feed data structure"
+                });
             }
-
-            console.error("Invalid feed data structure:", responseData);
-            return {
-                success: false,
-                error: "Invalid feed data structure"
-            };
         } catch (error: unknown) {
-            console.error('Error fetching feed items:', error);
+            console.error(`Error fetching feed items for cursor "${cursor}":`, error);
             const errorMessage = error instanceof Error 
                 ? error.message 
                 : 'Failed to fetch feed items';
-            // Type assertion for AxiosError to access response property safely
             const axiosError = error as { response?: { data?: { error?: string } } };
-            return {
+            reject({
                 success: false,
                 error: axiosError.response?.data?.error || errorMessage
-            };
+            });
         } finally {
-            this.isLoading = false;
-            this.currentFetchingCursor = undefined;
+            this.isProcessingQueue = false;
+            // Use setTimeout to yield to the event loop before processing the next item
+            setTimeout(() => this._tryProcessQueue(), 0);
         }
     }
 }
