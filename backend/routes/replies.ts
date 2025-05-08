@@ -287,7 +287,6 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
 
         // Generate the hashed quote key for index lookup
         const hashedQuoteKey = generateHashedQuoteKey(quoteObj);
-        logger.info({ parentId, hashedQuoteKey, sortCriteria }, '[getReplies] Processing request');
 
         // Pagination parameters
         const MAX_LIMIT = 100;
@@ -298,7 +297,6 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
         // This key needs to be mapped correctly by FirebaseClient.zscan
         // Example mapping: -> indexes/repliesByParentQuoteTimestamp/$sanitizedParentId/$sanitizedHashedQuoteKey
         const zSetKey = `replies:uuid:${parentId}:quote:${hashedQuoteKey}:${sortCriteria}`;
-        logger.info('[getReplies] Using ZSet key: %s', zSetKey);
 
         // Get total count (using zCard with mapped key)
         const totalCount = await db.zCard(zSetKey) || 0;
@@ -309,7 +307,6 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
         const { items: replyItems, cursor: nextCursorRaw } = await db.zscan(zSetKey, cursor || '0', { count: limit });
         // zscan returns { score: number, value: string (replyId) }[]
 
-        logger.info('[getReplies] Fetched %d reply items via zscan. Next cursor: %s', replyItems.length, nextCursorRaw);
 
         // Fetch the actual reply data for each ID using direct path
         const repliesPromises = replyItems.map(async (item) => {
@@ -333,8 +330,6 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
 
         const repliesData = await Promise.all(repliesPromises);
         const validReplies = repliesData.filter((reply): reply is ReplyData => reply !== null);
-
-        logger.info('[getReplies] Processed %d valid replies.', validReplies.length);
 
         // Determine hasMore based on if zscan returned a cursor indicating more data
         const hasMore = nextCursorRaw !== '0';
