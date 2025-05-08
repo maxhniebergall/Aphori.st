@@ -51,7 +51,6 @@ const Row: React.FC<RowProps> = memo(
     return (
       <div
         style={{
-          padding: '20px', // Apply padding only when visible
           boxSizing: 'border-box',
         }}
         className="row-container"
