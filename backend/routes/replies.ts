@@ -12,7 +12,7 @@ import {
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
-import crypto from 'crypto'; // Import crypto for hashing
+import { getQuoteKey as generateHashedQuoteKey } from '../utils/quoteUtils';
 
 // Use the imported type for the placeholder and the setDb function
 let db: DatabaseClientType;
@@ -29,24 +29,7 @@ const generateCondensedUuid = (): string => {
     return uuid25Instance.value;
 };
 
-// Helper to create a stable hash for quote keys
-// Based on backend_architecture.md recommendation
-// Replace the local SHA-1 implementation with the shared SHA-256 helper
--import crypto from 'crypto';
--
--function generateHashedQuoteKey(quote: Quote): string {
--    // Create a canonical string representation (ensure consistent order)
--    const canonicalString = JSON.stringify({
--        text: quote.text,
--        sourceId: quote.sourceId,
--        selectionRange: {
--            start: quote.selectionRange.start,
--            end: quote.selectionRange.end
--        }
--    });
--    return crypto.createHash('sha1').update(canonicalString).digest('hex');
--}
-+import { getQuoteKey as generateHashedQuoteKey } from '../utils/quoteUtils';
+
 
 // Helper to sanitize keys for Firebase paths (percent encoding)
 function sanitizeKey(key: string): string {
