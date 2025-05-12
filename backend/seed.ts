@@ -14,16 +14,16 @@ import logger from './logger.js';
 import { FeedItem, Post, Quote } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { randomInt } from 'crypto';
-import { DatabaseClient, ReplyData } from './types';
+import { ReplyData } from './types';
 import { FirebaseClient } from './db/FirebaseClient.js';
-
+import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 // const logger = newLogger("seed.ts"); // Removed incorrect instantiation
 
 interface PostContent {
     content: string;
 }
 
-let db: DatabaseClient; // Declare db as a DatabaseClient instance
+let db: LoggedDatabaseClient; // Declare db as a DatabaseClient instance
 
 // List of sample posts
 const samplePosts: PostContent[] = [
