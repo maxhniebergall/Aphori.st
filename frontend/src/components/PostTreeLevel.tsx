@@ -10,22 +10,20 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useGesture } from '@use-gesture/react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { debounce } from 'lodash';
 import { useReplyContext } from '../context/ReplyContext';
 import NodeContent from './NodeContent';
 import NodeFooter from './NodeFooter';
-import { PostTreeLevel as LevelData, Pagination, ACTIONS } from '../types/types';
+import { PostTreeLevel as LevelData, Pagination, ACTIONS, PostTreeNode, Siblings } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
 import postTreeOperator from '../operators/PostTreeOperator';
 import { usePostTree } from '../context/PostTreeContext';
 import { 
-  getSelectedQuoteInParent,
   getSelectedQuoteInThisLevel,
   getSiblings, 
   getSelectedNodeHelper, 
   getLevelNumber,
-  getParentId,
   getPagination,
   isMidLevel,
 } from '../utils/levelDataHelpers';
@@ -114,6 +112,7 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
   } = useReplyContextSelective();
   const initialPagination = getPagination(levelData); // Moved calculation before useState
   const [pagination, setPagination] = useState<Pagination>(initialPagination || { hasMore: false, totalCount: 0, nextCursor: undefined }); // Ensure initial value is always valid Pagination
+  const [animationDirection, setAnimationDirection] = useState<1 | -1>(1); // 1 for next, -1 for prev. Initial direction.
 
   // Calculate dimensions based on viewport - moved up
   const dimensions = useMemo(() => {
@@ -140,36 +139,15 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []); // Dependency array kept empty as intended
 
-  // Get siblings from levelData using the correct key (parent's selected quote) - RESTORED LOGIC
-  const siblings = useMemo(() => {
+  // Get siblings from levelData - Refactored to use the new structure
+  const siblings: Siblings = useMemo(() => {
     if (!isMidLevel(levelData)) { 
-      return [];
+      return { nodes: [] };
     }
-    const siblingsData = getSiblings(levelData);
-    const relevantQuoteKey = getSelectedQuoteInParent(levelData); // Use helper
-
-    if (!siblingsData || siblingsData.levelsMap.length === 0) {
-      console.warn("No siblings data or map found in PostTreeLevel:", levelData);
-      return [];
-    }
-
-    // Find the siblings list in the map that matches the relevant quote
-    const siblingsEntry = siblingsData.levelsMap.find(([quoteKey]) => {
-      // Handle null/undefined cases explicitly before calling areQuotesEqual
-      if ((relevantQuoteKey === null || relevantQuoteKey === undefined) && (quoteKey === null || quoteKey === undefined)) {
-        return true; // Both are null/undefined, they match
-      }
-      if ((relevantQuoteKey === null || relevantQuoteKey === undefined) || (quoteKey === null || quoteKey === undefined)) {
-        return false; // One is null/undefined, the other isn't, they don't match
-      }
-      // Both are non-null/undefined Quotes, now we can safely compare them
-      return areQuotesEqual(quoteKey, relevantQuoteKey);
-    });
-
-    // Extract the list if found, otherwise return empty
-    return siblingsEntry ? siblingsEntry[1] : [];
-
-  }, [levelData]); // Dependency is levelData
+    // getSiblings now directly returns PostTreeNode[] | undefined
+    return getSiblings(levelData) || { nodes: [] }; 
+    // Removed the old logic that tried to filter based on selectedQuoteInParent and levelsMap
+  }, [levelData]);
 
   // Get the current node to render - moved up
   const nodeToRender = useMemo(() => {
@@ -177,8 +155,8 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     if (selectedNode) {
       return selectedNode;
     }
-    if (siblings.length > 0) {
-      return siblings[0];
+    if (siblings.nodes.length > 0) {
+      return siblings.nodes[0];
     }
     return undefined;
   }, [levelData, siblings]); // Dependencies restored
@@ -309,46 +287,46 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
   const navigateToNextSibling = useCallback(async () => {
     if (replyTarget?.id === nodeToRender?.id) { return; }
     if (!nodeToRender) { return; }
-    const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id);
-    if (currentIndex < siblings.length - 1) {
+    const currentIndex = siblings.nodes.findIndex((sibling: PostTreeNode) => sibling.id === getSelectedNodeHelper(levelData)?.id);
+    if (currentIndex < siblings.nodes.length - 1) {
+      setAnimationDirection(1);
       debouncedNavigateNext(); // Call debounced action
     } else if (pagination.hasMore) {
-      setIsLoading(true);
-      try {
-        const parentIdArr = getParentId(levelData);
-        const levelNum = getLevelNumber(levelData);
-        const selQuoteParent = getSelectedQuoteInParent(levelData); 
-        
-        if (!parentIdArr || parentIdArr.length === 0 || levelNum === undefined || !selQuoteParent) {
-            console.warn("Missing data needed to load more items.", { parentIdArr, levelNum, selQuoteParent });
-            setIsLoading(false);
-            return;
-        }
-        await postTreeOperator.loadMoreItems(
-          parentIdArr[0], levelNum, selQuoteParent, siblings.length, siblings.length + 3
-        );
-        // Dispatch the action *after* loading more items completes
-        // NOTE: The debounced function already captures the correct expected node ID
-        // from when the *initial* gesture/call happened, which is what we want.
-        debouncedNavigateNext(); 
-      } catch (error) {
-        console.error("Failed to load more items:", error);
-      } finally {
-        setIsLoading(false);
-      }
+      // ** Temporarily removed loadMoreItems call **
+      // The logic for pagination needs rethinking with the new client-side sorting.
+      // setIsLoading(true);
+      // try {
+      //   const parentIdArr = getParentId(levelData);
+      //   const levelNum = getLevelNumber(levelData);
+      //   // We don't use selQuoteParent for fetching anymore
+      //   if (!parentIdArr || parentIdArr.length === 0 || levelNum === undefined) {
+      //       console.warn("Missing data needed to load more items.", { parentIdArr, levelNum });
+      //       setIsLoading(false);
+      //       return;
+      //   }
+      //   // Call to loadMoreItems needs redesign
+      //   // await postTreeOperator.loadMoreItems(...);
+      //   debouncedNavigateNext(); 
+      // } catch (error) {
+      //   console.error("Failed to load more items:", error);
+      // } finally {
+      //   setIsLoading(false);
+      // }
+      console.log("Load more logic needs implementation for new sorting.");
     } else {
       console.log("No next sibling action taken (already at end or no more pages).");
     }
   }, [
     siblings, pagination, levelData, debouncedNavigateNext, nodeToRender, 
-    replyTarget, setIsLoading
+    replyTarget, // Removed setIsLoading as loadMoreItems is commented out
   ]);
 
   const navigateToPreviousSibling = useCallback(async () => {
     if (replyTarget?.id === nodeToRender?.id) { return; }
     if (!nodeToRender) { return; }
-    const currentIndex = siblings.findIndex(sibling => sibling.id === getSelectedNodeHelper(levelData)?.id);
+    const currentIndex = siblings.nodes.findIndex((sibling: PostTreeNode) => sibling.id === getSelectedNodeHelper(levelData)?.id);
     if (currentIndex > 0) {
+      setAnimationDirection(-1);
       debouncedNavigatePrev(); // Call debounced action
     } else {
         console.log("No previous sibling action taken.");
@@ -357,25 +335,21 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     siblings, debouncedNavigatePrev, levelData, nodeToRender, replyTarget 
   ]);
 
-   // Setup gesture handling for swipe navigation - moved up
-  const bind = useGesture({
-    onDrag: ({ down, movement: [mx], cancel, velocity: [vx], event }) => {
-      if (event && (event.target instanceof HTMLElement) && event.target.closest('.selection-container')) { return; }
-      if (!down) {
-        try {
-          if (mx < -100 || (vx < -0.5 && mx < -50)) {
-            navigateToNextSibling();
-            cancel?.();
-          } else if (mx > 100 || (vx > 0.5 && mx > 50)) {
-            navigateToPreviousSibling();
-            cancel?.();
-          }
-        } catch (error) { console.error("Gesture navigation error:", error); }
-      }
+  // Gesture handling with Framer Motion's drag
+  const handleDragEnd = (
+    event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    const { offset, velocity } = info;
+    const swipeThreshold = 100; // Minimum distance for a swipe
+    const velocityThreshold = 0.3; // Minimum velocity for a swipe
+
+    if (offset.x < -swipeThreshold || (velocity.x < -velocityThreshold && offset.x < -50)) {
+      navigateToNextSibling();
+    } else if (offset.x > swipeThreshold || (velocity.x > velocityThreshold && offset.x > 50)) {
+      navigateToPreviousSibling();
     }
-  }, {
-    drag: { axis: 'x', enabled: Boolean(nodeToRender?.rootNodeId), threshold: 5 }
-  });
+  };
 
   // Report height to parent virtualized list when container size changes - moved up
   // Report height to parent virtualized list when container size changes
@@ -449,55 +423,66 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     <div
       ref={containerRef}
       className="post-tree-level-container"
-      style={{
-        position: 'relative',
-        width: '100%'
-      }}
     >
-      <AnimatePresence mode="wait">
-        <div {...bind()} style={{ touchAction: 'none' }}>
-          <motion.div
-            className={`post-tree-node ${isReplyTarget ? 'reply-target' : ''}`}
-            key={nodeToRender?.rootNodeId + levelData.midLevel?.levelNumber}
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            role="article"
-            style={{
-              width: '100%',
-              padding: '16px',
-              position: 'relative'
-            }}
-          >
-            {nodeToRender && (
-              <MemoizedNodeContent
-                node={nodeToRender}
-                onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
-                isReplyTargetNode={isReplyTarget}
-                existingSelectableQuotes={memoizedQuoteCounts}
-                currentLevelSelectedQuote={currentLevelSelectedQuote ?? undefined}
-                initialQuoteForReply={isReplyTarget ? replyQuote : null}
-              />
-            )}
-            <MemoizedNodeFooter
-              nodeData={nodeToRender}
-              currentIndex={nodeToRender ? siblings.findIndex(sibling => sibling.id === nodeToRender.id) : -1} 
-              totalSiblings={siblings.length}
-              onReplyClick={handleReplyButtonClick}
-              isReplyTarget={isReplyTarget}
-              onNextSibling={navigateToNextSibling}
-              onPreviousSibling={navigateToPreviousSibling}
-              isReplyActive={isReplyActive}
-              replyError={replyError}
+      <AnimatePresence custom={animationDirection} initial={false} mode="wait">
+        <motion.div
+          style={{ touchAction: 'pan-y' }}
+          className={`post-tree-node ${isReplyTarget ? 'reply-target' : ''}`}
+          key={nodeToRender?.rootNodeId + (levelData.midLevel?.levelNumber ?? '') + (nodeToRender?.id ?? '')}
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.5}
+          onDragEnd={handleDragEnd}
+          initial={{
+            opacity: 0,
+            x: animationDirection * 300,
+          }}
+          animate={{
+            opacity: 1,
+            x: 0,
+            transition: {
+              delay: 0.1,
+              type: "spring",
+              stiffness: 260,
+              damping: 25,
+            },
+          }}
+          exit={{
+            opacity: 0,
+            x: animationDirection * -300,
+            transition: {
+              duration: 0.2,
+            },
+          }}
+          role="article"
+        >
+          {nodeToRender && (
+            <MemoizedNodeContent
+              node={nodeToRender}
+              onExistingQuoteSelectionComplete={handleExistingQuoteSelectionCompleted}
+              isReplyTargetNode={isReplyTarget}
+              existingSelectableQuotes={memoizedQuoteCounts}
+              currentLevelSelectedQuote={currentLevelSelectedQuote ?? undefined}
+              initialQuoteForReply={isReplyTarget ? replyQuote : null}
             />
-            {replyError && (
-              <div className="reply-error" role="alert" aria-live="polite">
-                {replyError}
-              </div>
-            )}
-          </motion.div>
-        </div>
+          )}
+          <MemoizedNodeFooter
+            nodeData={nodeToRender}
+            currentIndex={nodeToRender ? siblings.nodes.findIndex((sibling: PostTreeNode) => sibling.id === nodeToRender.id) : -1} 
+            totalSiblings={siblings.nodes.length}
+            onReplyClick={handleReplyButtonClick}
+            isReplyTarget={isReplyTarget}
+            onNextSibling={navigateToNextSibling}
+            onPreviousSibling={navigateToPreviousSibling}
+            isReplyActive={isReplyActive}
+            replyError={replyError}
+          />
+          {replyError && (
+            <div className="reply-error" role="alert" aria-live="polite">
+              {replyError}
+            </div>
+          )}
+        </motion.div>
       </AnimatePresence>
     </div>
   );

@@ -1,0 +1,13 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Rebuild and Run Backend Docker Container on Change
+
+WHEN backend files located in the `backend/` directory are modified
+THEN run the command `docker-compose up --build -d backend`
+AND run the command `sleep 10; docker compose logs backend | cat tail`
+TO ensure changes are reflected, the backend service is updated, and the latest logs are displayed after a short delay.
+
+Refer to [docker-compose.yml](mdc:docker-compose.yml) for service configuration.

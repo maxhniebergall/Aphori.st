@@ -10,7 +10,6 @@
 - Supports retrieving individual replies by UUID
 - Fetches replies by post UUID and quote
 - Supports sorting replies by different criteria
-- Returns compressed reply data from Redis
 - Provides API endpoints for getting replies by UUID, quote, and sorting criteria
 - Supports reply feed retrieval sorted by recency
 - Uses zAdd to maintain sorted sets for replies
@@ -22,63 +21,47 @@
 - Provides API endpoint to retrieve quote reply counts for a given parent ID, returning CompressedApiResponse<ExistingSelectableQuotes>
 */
 
-import express, { Request, Response, NextFunction, RequestHandler } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { createDatabaseClient } from './db/index.js';
 import logger from './logger.js';
 import cors from 'cors';
-import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
-import { sendEmail } from './mailer.js';
-import crypto from 'crypto';
-import rateLimit from 'express-rate-limit';
-import { seedDevPosts } from './seed.js';
-import fs from 'fs';
+import compression from 'compression';
+import * as fsSync from 'fs'; // Keep sync fs for existsSync
 import { fileURLToPath } from 'url';
+import path from 'path';
 import { dirname } from 'path';
 import { 
     DatabaseClient as DatabaseClientType,
-    DatabaseClientBase,
-    User, 
-    ExistingUser,
-    UserResult, 
-    Reply, 
-    FeedItem,
-    AuthenticatedRequest,
-    CompressedApiResponse,
-    CursorPaginatedResponse,
-    TokenPayload,
-    AuthTokenPayload,
-    Quote,
-    Replies,
-    ExistingSelectableQuotes,
-    CreateReplyResponse,
-    RedisSortedSetItem,
-    FeedItemsResponse,
-    RepliesFeedResponse,
-    SortingCriteria,
-    Post,
-    PostCreationRequest,
-    Compressed
 } from './types/index.js';
-import { getQuoteKey } from './utils/quoteUtils.js';
-import { createCursor, decodeCursor } from './utils/cursorUtils.js';
-import { uuidv7obj } from 'uuidv7';
-import { Uuid25 } from 'uuid25';
 import requestLogger from './middleware/requestLogger.js';
+import { optionalAuthMiddleware } from './middleware/optionalAuthMiddleware.js';
+import { 
+  loggedInLimiter, 
+  anonymousLimiterMinute, 
+  anonymousLimiterHour, 
+  anonymousLimiterDay 
+} from './middleware/rateLimitMiddleware.js';
 import authRoutes, { setDb as setAuthDb } from './routes/auth.js';
 import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
-import { authenticateToken } from './middleware/authMiddleware.js';
+import { migrate } from './migrate.js';
 
 dotenv.config();
 
 const PORT = process.env.PORT || 5050;
 
+// Determine the directory of the current module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 // Load build hash
 let BUILD_HASH = 'development';
 try {
-    const buildEnv = fs.readFileSync('.env.build', 'utf8');
+    // Construct path relative to this file's directory
+    const envBuildPath = path.join(__dirname, '../../.env.build'); 
+    const buildEnv = fsSync.readFileSync(envBuildPath, 'utf8');
     BUILD_HASH = buildEnv.split('=')[1].trim();
     logger.info(`Loaded build hash: ${BUILD_HASH}`);
 } catch (err) {
@@ -90,6 +73,9 @@ app.use(express.json());
 
 // Add the request logging middleware early
 app.use(requestLogger);
+
+// Add compression middleware
+app.use(compression());
 
 // Trust proxy - required for rate limiting behind Cloud Run
 app.set('trust proxy', 1);
@@ -119,7 +105,7 @@ const corsOptions = {
   origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Frontend-Hash'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Frontend-Hash', 'cache-control', 'pragma', 'expires'],
   maxAge: 86400, // 24 hours
   optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
 };
@@ -133,8 +119,20 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// --- Apply Optional Authentication and Rate Limiting Middlewares ---
+// This middleware attempts to identify the user from JWT for rate limiting purposes,
+// but does not block unauthenticated requests.
+app.use(optionalAuthMiddleware);
+
+// Apply rate limiters. The 'skip' option within each limiter ensures
+// that only the appropriate one (anonymous or logged-in) applies.
+app.use(loggedInLimiter);
+// Apply layered anonymous limiters in order of restrictiveness (minute, then hour, then day)
+app.use(anonymousLimiterMinute);
+app.use(anonymousLimiterHour);
+app.use(anonymousLimiterDay);
+// app.use(anonymousLimiter); // Comment out or remove the old single anonymous limiter
+// --- End Optional Authentication and Rate Limiting Middlewares ---
 
 // Use the imported type for the db instance
 const db: DatabaseClientType = createDatabaseClient() as DatabaseClientType;
@@ -153,17 +151,59 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
     next();
 });
 
-await db.connect().then(() => {
+await db.connect().then(async () => { // Make the callback async
     logger.info('Database client connected');
     isDbReady = true;
-    // Only seed development stories in non-production environments
-    if (process.env.NODE_ENV !== 'production') {
-        logger.info('Development environment detected, seeding default stories...');
-        // Cast db to the base interface for seeding
-        seedDevPosts(db);
-    } else {
-        logger.info('Production environment detected, skipping dev seed');
+
+    let attemptMigrationBasedOnRunFlag = true; // Default to true, will be set to false if dbVersion exists
+
+    try {
+        const databaseVersion = await db.get('databaseVersion'); // Assumes db.get returns the object or null
+        if (databaseVersion !== null && databaseVersion !== undefined) {
+            logger.warn(`Database version key 'databaseVersion' found. Value: ${JSON.stringify(databaseVersion)}. Migration based on RUN_MIGRATION flag will be skipped.`);
+            attemptMigrationBasedOnRunFlag = false;
+        } else {
+            logger.info("No 'databaseVersion' key found in the database. Migration will proceed based on RUN_MIGRATION flag if set.");
+            // attemptMigrationBasedOnRunFlag remains true
+        }
+    } catch (dbVersionCheckError) {
+        logger.error({ err: dbVersionCheckError }, "Error checking for 'databaseVersion' key. Migration will proceed based on RUN_MIGRATION flag as a fallback.");
+        // attemptMigrationBasedOnRunFlag remains true to allow RUN_MIGRATION to decide.
     }
+
+    // --- Run Import or Seed ---
+    if (attemptMigrationBasedOnRunFlag) {
+        try {
+            // --- Run Migration --- (Only if import was run or if specifically enabled)
+            if (process.env.RUN_MIGRATION === 'true') {
+                logger.info('RUN_MIGRATION was true (even without import), proceeding with migration...');
+                 try {
+                     await migrate(db); // Run the migration logic
+                     logger.info('Data migration completed successfully.');
+                 } catch (migrationError) {
+                     logger.fatal({ err: migrationError }, "FATAL: Data migration failed. Server shutting down.");
+                     process.exit(1); // Stop server if migration fails
+                 }
+             } else {
+                 logger.info("Skipping data migration (RUN_MIGRATION is not 'true').");
+             }
+            // --- End Migration ---
+
+        } catch (importError) { // This catch is for errors in the migration block setup or if RUN_MIGRATION check fails
+            logger.fatal({ err: importError }, "FATAL: migration failed during setup or unexpected issue. Server shutting down.");
+            process.exit(1); // Stop server if import fails
+        }
+    } // End of if (attemptMigrationBasedOnRunFlag)
+
+    // Only seed if import didn't run (assuming import replaces seed)
+    if (process.env.NODE_ENV !== 'production') {
+        logger.info('Development environment detected and import not enabled, seeding default stories...');
+        // Cast db to the base interface for seeding
+        // seedDevPosts(db);
+    } else {
+        logger.info('Production environment detected or import ran, skipping dev seed');
+    }
+    // --- End Import/Seed --- 
 
     // Inject DB instance into route modules
     setAuthDb(db);
@@ -175,11 +215,6 @@ await db.connect().then(() => {
     logger.error({ err }, 'Database connection failed');
     process.exit(1);
 });
-
-// Constants for user-related keys
-const USER_PREFIX = 'user';
-const USER_IDS_SET = 'user_ids';
-const EMAIL_TO_ID_PREFIX = 'email_to_id';
 
 // --- Environment Variable Checks ---
 const requiredEnvVars: string[] = [];

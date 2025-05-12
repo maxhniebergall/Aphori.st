@@ -100,15 +100,22 @@ PostPagePage.js
 ```
 
 ### Data Flow:
-1. `PostPageProvider` and `ReplyProvider` wrap the content in `PostPageHolder.tsx`.
+1. `PostTreeProvider` and `ReplyProvider` wrap the content in `PostPageHolder.tsx`.
 2. `PostPageHolder` effect calls `PostPageOperator.initializePostPage` with the root UUID.
 3. `PostPageOperator` fetches the root post (`/api/getPost/:uuid`), fetches its quote counts, creates the initial level (Level 0), and dispatches `INCLUDE_NODES_IN_LEVELS` to `PostPageContext`.
 4. `VirtualizedPostList` subscribes to `PostPageContext` state for levels. It renders initial rows via `MemoizedRow`.
-5. When the list scrolls to the end (`endReached`), `VirtualizedPostList` calls `PostPageOperator.loadSingleLevel`.
-6. `PostPageOperator` determines the next level to fetch based on the *last* level in context state, fetches replies/nodes (`/api/getReplies/...`), fetches their quote counts, creates the new level(s), and dispatches `INCLUDE_NODES_IN_LEVELS`.
-7. Each `MemoizedRow` renders `PostPageLevelComponent` for that level's data.
-8. `PostPageLevelComponent` displays the selected node using `NodeContent` and `NodeFooter`. Sibling navigation within a level updates the selected node via `PostPageOperator.setSelectedNode`, which dispatches `SET_SELECTED_NODE`.
-9. `useHighlighting.ts` (in `NodeContent`) displays static highlights based on `existingSelectableQuotes` and `levelSelectedQuote`. Clicking a highlight calls `PostPageOperator.setSelectedQuoteForNodeInLevel`.
-10. Clicking "Reply" in `NodeFooter` updates `ReplyContext` (setting `replyTarget`, `replyQuote`). `useTextSelection.ts` (in `NodeContent`) becomes active in the quote container.
-11. Submitting a reply via `ReplyEditor` calls `PostPageOperator.submitReply`, which posts to the API (`/api/createReply`) and potentially updates the relevant level in `PostPageContext`.
+5. When the list scrolls to the end (`endReached`), `VirtualizedPostList` calls `PostPageOperator.requestLoadNextLevel` (or a similar method).
+6. **Modified Reply Fetching Logic in `PostPageOperator` for Level N+1 (when a node in Level N is selected or when loading subsequent levels):**
+    a. The operator identifies the selected parent node in Level N.
+    b. It fetches all direct reply IDs for this parent node (e.g., from backend path like `replyMetadata/parentReplies/$parentId`).
+    c. For each reply ID, it fetches the full reply data and its associated `QuoteCounts` (i.e., how many times quotes *within this reply* have been replied to by *its* children).
+    d. A "total engagement score" is calculated for each reply (sum of its own quote counts).
+    e. Replies are then sorted client-side: primarily by their "total engagement score" (descending), and secondarily by their creation date (descending for ties).
+    f. The `Siblings` data structure for Level N+1 in `PostPageContext` becomes a single sorted array of these `PostTreeNode`s. The concept of `selectedQuoteInParent` is no longer used to determine *which set* of siblings to display.
+    g. `PostPageOperator` dispatches `INCLUDE_NODES_IN_LEVELS` (or `REPLACE_LEVEL_DATA`) with this new level structure containing the sorted list of replies.
+7. Each `MemoizedRow` renders `PostPageLevelComponent` for that level's data (which now contains a single, sorted list of siblings).
+8. `PostPageLevelComponent` displays the selected node using `NodeContent` and `NodeFooter`. Sibling navigation within a level updates the selected node via `PostPageOperator.setSelectedNode`. The displayed siblings are from the sorted list.
+9. `useHighlighting.ts` (in `NodeContent`) displays static highlights based on `existingSelectableQuotes` (quotes within the current node). Clicking a highlight calls `PostPageOperator.setSelectedQuoteForNodeInLevel`.
+10. **Modified effect of `setSelectedQuoteForNodeInLevel`**: When a quote is selected *within* a node in Level N, this updates the `selectedQuoteInThisLevel` state for that node (for UI highlighting in `NodeContent`). However, it **does not** trigger a refetch or change the list of replies displayed in Level N+1. Level N+1 always shows all replies of the parent from Level N, sorted by engagement/recency.
+11. Submitting a reply via `ReplyEditor` calls `PostPageOperator.submitReply`, which posts to the API (`/api/createReply`). After a successful submission, `PostPageOperator` will trigger a refresh of the relevant level (e.g., Level N+1 if the reply was to a node in Level N), applying the new sorting logic.
 12. Context dispatches propagate state changes, triggering UI re‑renders in subscribed components.

@@ -1,9 +1,7 @@
 ---
 description: Use yarn for package management.
 globs: package.json, yarn.lock
-tags: [package-management, yarn]
-priority: 1
-version: 1.0.0
+alwaysApply: false
 ---
 
 ## Context
@@ -13,12 +11,22 @@ version: 1.0.0
 - Use Yarn commands (e.g., `yarn install`, `yarn add`, `yarn remove`) for all package management tasks.
 - Do not use npm commands (e.g., `npm install`).
 - Ensure a valid `yarn.lock` file exists in the project root.
+- cd into the `backend` or `frontend` directory before running any yarn commands. 
 
 ## Examples
 <example>
-Valid: Running `yarn install` to set up the project.
+Valid: Running `cd backend && yarn install` to set up the project.
 </example>
+
+<example>
+Valid: Running `cd frontend && yarn install` to set up the project.
+</example>
+
 
 <example type="invalid">
 Invalid: Running `npm install` to install packages.
+</example>
+
+<example type="invalid">
+Invalid: Running `yarn install` with changing directory to the frontend or backend.
 </example>

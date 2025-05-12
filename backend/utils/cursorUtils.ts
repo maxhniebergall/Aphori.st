@@ -46,7 +46,7 @@ export function decodeCursor(encodedCursor: string): Cursor {
         }
         throw new Error('Decoded cursor is missing required fields');
     } catch (error) {
-        throw new Error('Invalid cursor format');
+        throw new Error('Invalid cursor format', { cause: error });
     }
 }
 
@@ -55,10 +55,4 @@ interface DecodedCursor {
   id: string;
   timestamp: number;
   type: 'post' | 'reply';
-}
-
-export function createCursor(id: string, timestamp: number, type: 'post' | 'reply'): string {
-  const cursorData: DecodedCursor = { id, timestamp, type };
-  const jsonString = JSON.stringify(cursorData);
-  return encodeCursor({ id, timestamp, type });
 }

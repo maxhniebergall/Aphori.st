@@ -1,80 +1,95 @@
-import axios from 'axios';
-import { BaseOperator } from './BaseOperator';
+import axios, { AxiosResponse } from 'axios';
+// Removed: import { BaseOperator } from './BaseOperator';
 import { FeedItemsResponse } from '../types/types';
-import compression from '../utils/compression';
 
 /**
  * Requirements:
- * - Handle compressed response data from backend
- * - Support pagination with cursor-based navigation
- * - Return feed items in a format compatible with the Feed component
- * - Properly handle errors and edge cases
+ * - Handle API response data (decompression now handled by browser).
+ * - Support pagination with cursor-based navigation.
+ * - Return feed items in a format compatible with the Feed component.
+ * - Properly handle errors and edge cases.
  *
- * Enhancements:
- * - Added rate limiting to getFeedItems calls
  */
-class FeedOperator extends BaseOperator {
-    // Rate limiting properties (one call per 1000ms)
-    private lastFeedCallTime = 0;
-    private readonly rateLimitInterval: number = 1000; // in milliseconds
+class FeedOperator {
+    private baseURL: string;
+
+    // Queue properties
+    private requestQueue: Array<{ cursor: string, resolve: (value: any) => void, reject: (reason?: any) => void }> = [];
+    private isProcessingQueue = false;
+
+    constructor(baseURL: string = process.env.REACT_APP_API_URL || 'http://localhost:5050') {
+        this.baseURL = baseURL;
+    }
 
     // Simple sleep helper
     private sleep(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    /**
-     * Fetches feed items, handling rate limiting and API retries.
-     * @param cursor The pagination cursor.
-     * @returns An object containing feed items and pagination info, or an error state.
-     * @throws {Error} If the API call returns no data after retries (internal throw).
-     *                 (Handled: Caught locally, returns { success: false, error: ... }).
-     * Note: Other errors from underlying API calls are caught and converted to the error state return.
-     */
-    async getFeedItems(cursor: string) {
-        // Rate limiting: wait if the last call was too recent
-        const now = Date.now();
-        const timeElapsed = now - this.lastFeedCallTime;
-        if (timeElapsed < this.rateLimitInterval) {
-            const waitTime = this.rateLimitInterval - timeElapsed;
-            await this.sleep(waitTime);
+    public getFeedItems(cursor: string): Promise<{ success: boolean; data?: FeedItemsResponse['data']; pagination?: FeedItemsResponse['pagination']; error?: string; }> {
+        return new Promise((resolve, reject) => {
+            this.requestQueue.push({ cursor, resolve, reject });
+            this._tryProcessQueue();
+        });
+    }
+
+    private async _tryProcessQueue(): Promise<void> {
+        if (this.isProcessingQueue || this.requestQueue.length === 0) {
+            return;
         }
-        this.lastFeedCallTime = Date.now();
+
+        this.isProcessingQueue = true;
+        const requestToProcess = this.requestQueue.shift();
+
+        if (!requestToProcess) { // Should theoretically not happen if length > 0
+            this.isProcessingQueue = false;
+            return;
+        }
+
+        const { cursor, resolve, reject } = requestToProcess;
 
         try {
-            const compressedFeedItems = await this.retryApiCallSimplified<FeedItemsResponse>(
-                () => axios.get(`${this.baseURL}/api/feed`, {
-                    params: { cursor },
-                    validateStatus: status => status === 200
-                })
-            );
-            // Decompress the feed items after fetching
-            const decompressedFeedItems = compression.decompress<FeedItemsResponse>(compressedFeedItems);
+            // Generate time bucket for cache-friendly URL
+            const currentTime = Date.now();
+            const timeBucket = Math.floor(currentTime / (60 * 1000)) * (60 * 1000);
 
-            // If response is already decompressed by BaseOperator
-            if (decompressedFeedItems?.data && Array.isArray(decompressedFeedItems.data) && decompressedFeedItems.pagination) {
-                return {
+            const response: AxiosResponse<FeedItemsResponse> = await axios.get(`${this.baseURL}/api/feed`, {
+                params: { 
+                    cursor, 
+                    t: timeBucket 
+                },
+                validateStatus: status => status === 200
+            });
+
+            const responseData = response.data;
+
+            if (responseData?.data && Array.isArray(responseData.data) && responseData.pagination) {
+                resolve({
                     success: true,
-                    data: decompressedFeedItems.data,
-                    pagination: decompressedFeedItems.pagination
-                };
+                    data: responseData.data,
+                    pagination: responseData.pagination
+                });
+            } else {
+                console.error("Invalid feed data structure:", responseData);
+                reject({
+                    success: false,
+                    error: "Invalid feed data structure"
+                });
             }
-
-            console.error("Invalid feed data structure:", decompressedFeedItems);
-            return {
-                success: false,
-                error: "Invalid feed data structure"
-            };
         } catch (error: unknown) {
-            console.error('Error fetching feed items:', error);
+            console.error(`Error fetching feed items for cursor "${cursor}":`, error);
             const errorMessage = error instanceof Error 
                 ? error.message 
                 : 'Failed to fetch feed items';
-            const responseError = error as { response?: { data?: { error?: string } } };
-            return {
+            const axiosError = error as { response?: { data?: { error?: string } } };
+            reject({
                 success: false,
-                error: responseError.response?.data?.error || errorMessage
-            };
+                error: axiosError.response?.data?.error || errorMessage
+            });
+        } finally {
+            this.isProcessingQueue = false;
+            // Use setTimeout to yield to the event loop before processing the next item
+            setTimeout(() => this._tryProcessQueue(), 0);
         }
     }
 }
