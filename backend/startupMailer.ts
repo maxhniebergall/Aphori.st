@@ -1,5 +1,4 @@
-import { DatabaseClient as DatabaseClientType } from './types/index.js';
-import { FirebaseClient } from './db/FirebaseClient.js'; // For sanitizeKey
+import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js'; // For sanitizeKey
 import { sendEmail as actualSendEmail } from './mailer.js';
 import logger from './logger.js';
 
@@ -33,7 +32,7 @@ export const EMAIL_VERSIONS_CONTENT: Record<string, EmailContent> = {
  * @returns An array of email addresses to whom the email was successfully sent in this run.
  */
 export async function sendStartupEmails(
-    db: DatabaseClientType,
+    db: LoggedDatabaseClient,
     usersToSend: string[],
     targetVersion: string
 ): Promise<string[]> {
@@ -45,13 +44,12 @@ export async function sendStartupEmails(
         return [];
     }
 
-    if (!(db instanceof FirebaseClient)) {
-        logger.error("sendStartupEmails: Database client is not an instance of FirebaseClient. Cannot sanitize email for path construction.");
+    if (!(db instanceof LoggedDatabaseClient)) {
+        logger.error("sendStartupEmails: Database client is not an instance of LoggedDatabaseClient. Cannot sanitize email for path construction.");
         // Depending on your setup, you might throw an error or handle this differently.
         // For now, we'll return, as sanitizeKey is crucial.
         return [];
     }
-    const firebaseDb = db as FirebaseClient; // Cast for sanitizeKey
 
     for (const email of usersToSend) {
         if (!email || typeof email !== 'string') {
@@ -67,8 +65,7 @@ export async function sendStartupEmails(
             sentEmailsThisRun.push(email);
 
             // Update mailSentList in DB for this email. Store as a map: versionLocks/mailSentList/{sanitizedEmail}: true
-            const sanitizedEmailKey = firebaseDb.sanitizeKey(email);
-            await db.set('versionLocks/mailSentList/' + sanitizedEmailKey, true);
+            await db.addProcessedStartupEmail(email);
 
         } catch (error) {
             logger.error(`Failed to send startup email to ${email} for version ${targetVersion}:`, error);
