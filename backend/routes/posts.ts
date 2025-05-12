@@ -80,6 +80,7 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
                 return;
             }
 
+            // Use new semantic method for atomic post creation
             const uuid = generateCondensedUuid();
             const newPost: Post = {
                 id: uuid,
@@ -89,7 +90,6 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
                 replyCount: 0 // Added replyCount
             };
 
-            // Log action intent before DB calls
             logger.info(
                 {
                     ...logContext,
@@ -105,18 +105,13 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
                 'Initiating CreatePost action'
             );
 
-            // Use new semantic methods
-            await db.setPost(uuid, newPost);
-            await db.addPostToGlobalSet(uuid);
-            await db.addPostToUserSet(user.id, uuid);
             const feedItem: FeedItem = {
                 id: uuid,
                 authorId: user.id,
                 textSnippet: trimmedContent.substring(0, 100),
                 createdAt: newPost.createdAt
             };
-            await db.addPostToFeed(feedItem);
-            await db.incrementGlobalFeedCounter(1);
+            await db.createPostTransaction(newPost, feedItem);
 
             logger.info({ ...logContext, postId: uuid }, `Successfully created new Post`);
             res.status(201).json({ id: uuid }); // Use 201 Created status
