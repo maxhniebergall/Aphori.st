@@ -1,101 +1,117 @@
 import { randomUUID } from 'crypto';
-import pinoHttp from 'pino-http';
-import { Request, Response, NextFunction } from 'express'; // Import express types
-import { err } from 'pino-std-serializers'; // Import the error serializer directly
-import logger from '../logger.js'; // Import the shared logger instance
+import pinoHttp, { Options as PinoHttpOptions } from 'pino-http';
+import { Request, Response, NextFunction } from 'express';
+import { err as errSerializer } from 'pino-std-serializers';
+import logger from '../logger.js'; // Your existing pino logger instance
+import { IncomingMessage, ServerResponse } from 'http';
 
-const requestLogger = pinoHttp({
-  logger: logger, // Use our pre-configured logger
+// Define the options for pino-http
+const pinoHttpOptions: PinoHttpOptions = {
+  logger: logger,
 
-  // Generate a unique ID for each request
-  genReqId: function (req: Request, res: Response) { // Use Express types explicitly
-    const existingId = req.id ?? req.headers["x-cloud-trace-context"];
+  genReqId: function (req: IncomingMessage, res: ServerResponse) {
+    const expressReq = req as Request;
+    const expressRes = res as Response;
+    const existingId = expressReq.id ?? expressReq.headers["x-cloud-trace-context"];
     if (existingId) return existingId;
     const id = randomUUID();
-    // Also set it on res.locals for easier access within handlers if needed
-    // Note: pino-http automatically adds req.id to logs if using the same logger instance
-    res.locals.requestId = id; // Now correctly typed
+    expressRes.locals.requestId = id;
     return id;
   },
 
-  // Customize logging output
-  customLogLevel: function (req, res, err) {
+  customLogLevel: function (req: IncomingMessage, res: ServerResponse, err?: Error) {
     if (res.statusCode >= 400 && res.statusCode < 500) {
       return 'warn';
     } else if (res.statusCode >= 500 || err) {
       return 'error';
     } else if (res.statusCode >= 300 && res.statusCode < 400) {
-        return 'silent'; // Usually redirects aren't worth logging unless debugging
+      return 'silent';
     }
-    return 'info'; // Default for 2xx responses
+    return 'info';
   },
 
-  // Customize the log message
-  customSuccessMessage: function (req, res) {
-    // Check if res.statusMessage exists and is non-empty before using it
-    const statusMessage = res.statusMessage && res.statusMessage.trim() !== '' ? ` ${res.statusMessage}` : '';
-    return `${req.method} ${req.url} - ${res.statusCode}${statusMessage}`;
-  },
-  customErrorMessage: function (req, res, err) {
-      return `${req.method} ${req.url} - ${res.statusCode} Error: ${err.message}`;
+  customSuccessMessage: function (req: IncomingMessage, res: ServerResponse) {
+    const expressReq = req as Request;
+    const expressRes = res as Response;
+    const statusMessagePart = expressRes.statusMessage && expressRes.statusMessage.trim() !== '' ? ` ${expressRes.statusMessage}` : '';
+    const baseMessage = `${expressReq.method} ${(expressReq as any).originalUrl || expressReq.url} - ${expressRes.statusCode}${statusMessagePart}`;
+
+    if (expressRes.locals.jsonErrorBody && typeof expressRes.locals.jsonErrorBody.error === 'string' && expressRes.statusCode >= 400 && expressRes.statusCode < 500) {
+      return `${baseMessage} (Client Error: ${expressRes.locals.jsonErrorBody.error})`;
+    }
+    return baseMessage;
   },
 
+  customErrorMessage: function (req: IncomingMessage, res: ServerResponse, err: Error) {
+    const expressReq = req as Request;
+    const expressRes = res as Response;
+    const baseMessage = `${expressReq.method} ${(expressReq as any).originalUrl || expressReq.url} - ${expressRes.statusCode}`;
+    if (err && err.message) {
+        return `${baseMessage} Error: ${err.message}`;
+    }
+    if (expressRes.locals.jsonErrorBody && typeof expressRes.locals.jsonErrorBody.error === 'string') {
+        return `${baseMessage} (Client Error: ${expressRes.locals.jsonErrorBody.error})`;
+    }
+    return `${baseMessage} (Status: ${expressRes.statusCode}, Error: ${err ? err.message || 'Present (no message)' : 'Unknown'})`;
+  },
 
-  // Format log object to include httpRequest structure for Cloud Logging
   serializers: {
-    req: (req) => {
-        // Standard request properties for pino-http
-        const standard = {
-            id: req.id, // Ensure request ID is logged
-            method: req.method,
-            url: req.url,
-            // Include other standard req properties if needed (e.g., headers, remoteAddress)
-            // headers: req.headers,
-            remoteAddress: req.remoteAddress,
-            remotePort: req.remotePort,
-        };
-        // GCP httpRequest specific fields
-        // See: https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#HttpRequest
-        // Note: pino-http automatically adds responseTime for latency
-        const httpRequest = {
-            requestMethod: req.method,
-            requestUrl: req.originalUrl || req.url, // Use originalUrl if available
-            // requestSize: req.headers['content-length'], // Need to parse potentially
-            remoteIp: req.ip || req.headers['x-forwarded-for'] || (req.socket ? req.socket.remoteAddress : undefined), // Standard IP detection, safely check socket
-            userAgent: req.headers['user-agent'],
-            referrer: req.headers['referer'],
-            // protocol: req.protocol, // Available in express 5+ or need to infer
-            // responseSize: res.getHeader('content-length'), // Logged on response side
-            // status: res.statusCode, // Logged on response side
-            // latency: // Calculated by pino-http as responseTime
-        };
-        return { ...standard, httpRequest };
+    req: (reqInSerializer) => {
+      const originalReq = (reqInSerializer as any).raw as Request || reqInSerializer as Request;
+      const standard = {
+        id: originalReq.id,
+        method: originalReq.method,
+        url: originalReq.url,
+        remoteAddress: originalReq.socket?.remoteAddress,
+        remotePort: originalReq.socket?.remotePort,
+      };
+      const httpRequest = {
+        requestMethod: originalReq.method,
+        requestUrl: originalReq.originalUrl || originalReq.url,
+        remoteIp: originalReq.ip ||
+                  (Array.isArray(originalReq.headers?.['x-forwarded-for']) ? originalReq.headers['x-forwarded-for'][0] : originalReq.headers?.['x-forwarded-for']) ||
+                  originalReq.socket?.remoteAddress,
+        userAgent: originalReq.headers?.['user-agent'],
+        referrer: originalReq.headers?.referer,
+      };
+      return { ...standard, httpRequest };
     },
-    res: (res) => {
-        // Standard response properties for pino-http
-        const standard = {
-            statusCode: res.statusCode,
-            // headers: res.getHeaders(), // Can be verbose
-        };
-        // GCP httpRequest specific fields (logged on response)
-        const httpRequest = {
-             status: res.statusCode,
-            // responseSize: res.getHeader('content-length'), // Might need parsing
-        };
-         return { ...standard, httpRequest };
+    res: (resInSerializer) => {
+      const originalRes = (resInSerializer as any).raw as Response || resInSerializer as Response;
+      const standard = {
+        statusCode: originalRes.statusCode,
+      };
+      const httpRequest = {
+        status: originalRes.statusCode,
+      };
+      return { ...standard, httpRequest };
     },
-    // Use standard pino error serializer
-    err: err, 
+    err: errSerializer,
   },
 
-  // Use `trace` level for request start, `info`/`warn`/`error` for completion
-  // autoLogging: true, // Default is true
-  // quietReqLogger: true, // Prevents logging request details twice if not needed
+  customProps: function (req: IncomingMessage, res: ServerResponse): object {
+    const expressRes = res as Response;
+    const props: Record<string, any> = {};
+    if (expressRes.locals.jsonErrorBody && expressRes.statusCode >= 400 && expressRes.statusCode < 500) {
+      props.clientErrorDetails = expressRes.locals.jsonErrorBody;
+    }
+    return props;
+  },
+};
 
-  // Optional: Wrap request object to include custom context if needed later
-  // wrapRequest: (req: Request) => {
-  //   return { ...req, customContext: {} };
-  // },
-});
+const pinoHttpLoggerInstance = pinoHttp(pinoHttpOptions);
 
-export default requestLogger; 
+const requestLogger = (req: Request, res: Response, next: NextFunction) => {
+  const originalJson = res.json;
+
+  res.json = function (body: any) {
+    if (this.statusCode >= 400 && this.statusCode < 500 && body && typeof body.error === 'string') {
+      this.locals.jsonErrorBody = body;
+    }
+    return originalJson.call(this, body);
+  };
+
+  pinoHttpLoggerInstance(req, res, next);
+};
+
+export default requestLogger;

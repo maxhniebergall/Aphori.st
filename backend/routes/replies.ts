@@ -268,8 +268,8 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
 
 
         if (!(sortCriteria in SortingCriteria)) {
-          res.status(400).json({ success: false, error: 'Invalid sort criteria' });
-          return;
+            res.status(400).json({ success: false, error: 'Invalid sort criteria' });
+            return;
         }
                 // Get total count (using zCard with mapped key)
         const totalCount = await db.getReplyCountByParentQuote(parentId, hashedQuoteKey, sortCriteria) || 0;
