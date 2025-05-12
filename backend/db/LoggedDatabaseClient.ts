@@ -1,15 +1,13 @@
-import { pino } from 'pino';
-import { RedisSortedSetItem, Quote } from '../types/index.js'; 
+import type { Logger } from 'pino';   // type-only import
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 import { LogContext } from './loggingTypes.js';
-// Import FirebaseClient specifically for type checking and accessing its methods
 import { FirebaseClient } from './FirebaseClient.js';
 
 export class LoggedDatabaseClient implements DatabaseClientInterface { 
     private underlyingClient: DatabaseClientInterface; 
-    private logger: pino.Logger;
+    private logger: Logger;
 
-    constructor(client: DatabaseClientInterface, loggerInstance: pino.Logger) { 
+    constructor(client: DatabaseClientInterface, loggerInstance: Logger) { 
         this.underlyingClient = client;
         this.logger = loggerInstance.child({ component: 'LoggedDatabaseClient' });
     }
