@@ -1,14 +1,18 @@
-import React, { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import './AuthModal.css';
+import { AuthModalProps } from '../types/userAuth';
 
-function AuthModal({ isOpen, onClose, onSignIn }) {
+function AuthModal({ isOpen, onClose, onSignIn }: AuthModalProps) {
     const [status, setStatus] = useState({ message: '', isError: false });
     
     if (!isOpen) return null;
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        const email = e.target.email.value;
+        const target = e.target as typeof e.target & {
+            email: { value: string };
+        };
+        const email = target.email.value;
         setStatus({ message: 'Sending magic link...', isError: false });
         
         try {

@@ -177,9 +177,7 @@ function Feed(): JSX.Element {
 
   return (
     <>
-      <Header 
-        title=""
-        subtitle=""
+      <Header
         onLogoClick={() => navigate('/feed')}
       />
       <div className="feed" style={{ height: 'calc(100vh - 60px)' }}>

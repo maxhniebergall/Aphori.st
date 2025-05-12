@@ -1,23 +1,24 @@
 import React, { useState } from 'react';
-import PropTypes from 'prop-types';
+// import PropTypes from 'prop-types'; // PropTypes are not needed with TypeScript
 import './Header.css';
 import { useUser } from '../context/UserContext';
 import AuthModal from './AuthModal';
+import { HeaderProps } from '../types/userAuth';
 
-function Header({ title, subtitle, onLogoClick }) {
+function Header({ onLogoClick }: HeaderProps) {
   const { state, logout, sendMagicLink } = useUser();
   const [isModalOpen, setModalOpen] = useState(false);
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
-  const [message, setMessage] = useState('');
 
-  const handleSignIn = async (email) => {
+  const handleSignIn = async (email: string): Promise<{ success: boolean; error?: string }> => {
     // Attempt to sign in
     try {
       await sendMagicLink(email); // Call the method from context
-      setMessage('Magic link sent! Check your email.');
-    } catch (error) {
+      return { success: true }; // Return success structure
+    } catch (error: any) {
       console.error('Error sending magic link:', error);
-      setMessage('Failed to send magic link. Please try again later.');
+      const errorMessage = error?.message || 'Failed to send magic link. Please try again later.';
+      return { success: false, error: errorMessage }; // Return error structure
     }
   };
 
@@ -81,10 +82,10 @@ function Header({ title, subtitle, onLogoClick }) {
   );
 }
 
-Header.propTypes = {
-  title: PropTypes.string,
-  subtitle: PropTypes.string,
-  onLogoClick: PropTypes.func.isRequired
-};
+// Header.propTypes = {
+//   title: PropTypes.string,
+//   subtitle: PropTypes.string,
+//   onLogoClick: PropTypes.func.isRequired
+// };
 
 export default Header; 

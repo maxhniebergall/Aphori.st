@@ -1,11 +1,19 @@
-import React, { createContext, useReducer, useContext, useEffect } from 'react';
+import { createContext, useReducer, useContext, useEffect } from 'react';
 import { userOperator } from '../operators/UserOperator';
+import { 
+    User, 
+    UserState, 
+    UserAction, 
+    UserContextType, 
+    UserProviderProps, 
+    VerifyMagicLinkResponse
+} from '../types/userAuth';
 
-// Define the shape of the context state
-const UserContext = createContext();
+
+const UserContext = createContext<UserContextType | undefined>(undefined);
 
 // Initial state
-const initialState = {
+const initialState: UserState = {
     user: null,
     loading: false,
     error: null,
@@ -13,13 +21,13 @@ const initialState = {
 };
 
 // Development user data
-const DEV_USER = {
+const DEV_USER: User = {
     id: 'dev_user',
     email: 'dev@aphori.st'
 };
 
 // Reducer to handle state changes based on actions
-function userReducer(state, action) {    
+function userReducer(state: UserState, action: UserAction): UserState {    
     switch(action.type) {
         case 'AUTH_REQUEST':
             return { ...state, loading: true, error: null };
@@ -32,19 +40,18 @@ function userReducer(state, action) {
         case 'USER_NOT_FOUND':
             return { ...state, loading: false, error: action.payload, verified: false };
         case 'LOGOUT':
-            return { ...state, user: null, verified: null };
+            return { ...initialState }; // Reset to initial state on logout
         default:
             return state;
     }
 }
-
 // Provider component to wrap the app
-export function UserProvider({ children }) {
+export function UserProvider({ children }: UserProviderProps) {
     const [state, dispatch] = useReducer(userReducer, initialState);
 
     // Add storage event listener
     useEffect(() => {
-        const handleStorageChange = async (e) => {
+        const handleStorageChange = async (e: StorageEvent) => {
             if (e.key === 'token' || e.key === 'userData') {
                 if (!e.newValue) {
                     // Item was removed
@@ -73,23 +80,23 @@ export function UserProvider({ children }) {
     }, []);
 
     // Action to handle sending magic link
-    const sendMagicLink = async (email, isSignup = false) => {
+    const sendMagicLink = async (email: string, isSignup = false): Promise<{ success: boolean; error?: string }> => {
         dispatch({ type: 'AUTH_REQUEST' });
         const result = await userOperator.sendMagicLink(email, isSignup);
         if (result.success) {
             dispatch({ type: 'AUTH_SENT', payload: { email } });
             return { success: true };
         } else {
-            dispatch({ type: 'AUTH_FAILURE', payload: result.error });
+            dispatch({ type: 'AUTH_FAILURE', payload: result.error || 'Unknown error sending magic link' });
             return { success: false, error: result.error };
         }
     };
 
     // Action to handle verifying magic link and authenticating user
-    const verifyMagicLink = async (token) => {
+    const verifyMagicLink = async (token: string): Promise<{ success: boolean; error?: string, result?: VerifyMagicLinkResponse }> => {
         const result = await userOperator.verifyMagicLink(token);
         
-        if (result.success) {
+        if (result.success && result.data) {
             const userData = result.data.user;
             
             dispatch({ type: 'AUTH_SUCCESS', payload: userData });
@@ -101,7 +108,7 @@ export function UserProvider({ children }) {
             dispatch({ type: 'USER_NOT_FOUND', payload: result.error });
             return { success: false, error: result.error, result: result };
         } else {
-            dispatch({ type: 'AUTH_FAILURE', payload: result.error });
+            dispatch({ type: 'AUTH_FAILURE', payload: result.error || 'Unknown magic link verification error' });
             return { success: false, error: result.error};
         }
     };
@@ -159,19 +166,23 @@ export function UserProvider({ children }) {
                         }
                     })
                     .catch(() => {
+                        // If token parsing fails, always logout and remove items
+                        // The check for dev_token seems redundant here as it would be caught earlier if valid
                         dispatch({ type: 'LOGOUT' });
                         localStorage.removeItem('token');
                         localStorage.removeItem('userData');
                     });
             } catch (e) {
                 console.error('Error processing token:', e);
-                // If token parsing fails and it's not the dev token, remove it
-                if (!(process.env.NODE_ENV === 'development' && token === 'dev_token')) {
-                    dispatch({ type: 'LOGOUT' });
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('userData');
-                }
+                // If token parsing fails, always logout and remove items
+                // The check for dev_token seems redundant here as it would be caught earlier if valid
+                dispatch({ type: 'LOGOUT' });
+                localStorage.removeItem('token');
+                localStorage.removeItem('userData');
             }
+        } else {
+            // If there's no token or userData, ensure logged out state
+            dispatch({ type: 'LOGOUT' });
         }
     }, []);
 
@@ -183,6 +194,10 @@ export function UserProvider({ children }) {
 }
 
 // Custom hook to use the UserContext
-export function useUser() {
-    return useContext(UserContext);
+export function useUser(): UserContextType {
+    const context = useContext(UserContext);
+    if (context === undefined) {
+        throw new Error('useUser must be used within a UserProvider');
+    }
+    return context;
 } 

@@ -177,8 +177,6 @@ const PostPage: React.FC = (): JSX.Element => {
   return (
     <div className="post-page">
       <Header 
-        title="Create a New Post"
-        subtitle="Write your post content here using Markdown..."
         onLogoClick={() => navigate('/feed')}
       />
 
