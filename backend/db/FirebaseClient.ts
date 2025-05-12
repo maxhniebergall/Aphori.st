@@ -357,6 +357,39 @@ export class FirebaseClient extends DatabaseClientInterface {
     return { success: true, data: userData };
   }
 
+  async setUserDataForMigration(rawUserId: string, data: any): Promise<void> {
+    const userId = this.sanitizeKey(rawUserId);
+    const path = `users/${userId}`;
+    await this.db.ref(path).set(data);
+  }
+
+  async addUserToCatalog(rawUserId: string): Promise<void> {
+    const userId = this.sanitizeKey(rawUserId);
+    const path = `userMetadata/userIds/${userId}`;
+    await this.db.ref(path).set(true);
+  }
+
+  async setEmailToIdMapping(rawEmail: string, rawUserId: string): Promise<void> {
+    this._assertFirebaseKeyComponentSafe(rawUserId, 'setEmailToIdMapping', 'rawUserId');
+    const escapedEmail = this.sanitizeKey(rawEmail);
+    // Store the raw user ID as the value
+    const path = `userMetadata/emailToId/${escapedEmail}`;
+    await this.db.ref(path).set(rawUserId);
+  }
+
+  async getAllUsers(): Promise<Record<string, any> | null> {
+    const path = `users`;
+    const snapshot = await this.db.ref(path).once('value');
+    if (!snapshot.exists()) {
+        return null;
+    }
+    const usersData: Record<string, any> = snapshot.val();
+    // Note: User IDs stored as keys might need unescaping if they were originally escaped,
+    // but typically we use sanitized keys here and store raw IDs in the object value.
+    // Adjust if your structure differs.
+    return usersData;
+  }
+
   // --- Semantic Methods: Post Management ---
   async getPost(rawPostId: string): Promise<any | null> {
     const postId = this.sanitizeKey(rawPostId);
@@ -639,5 +672,59 @@ export class FirebaseClient extends DatabaseClientInterface {
     const ref = this.db.ref(path);
     const result = await ref.transaction(transactionUpdate);
     return { committed: result.committed, snapshot: result.snapshot ? result.snapshot.val() : null };
+  }
+
+  // --- Semantic Methods: Startup Mailer ---
+  async addProcessedStartupEmail(rawEmail: string): Promise<void> {
+    const sanitizedEmail = this.sanitizeKey(rawEmail);
+    const path = `versionLocks/mailSentList/${sanitizedEmail}`;
+    await this.db.ref(path).set(true); // Mark as processed
+  }
+
+  async getMailerVersion(): Promise<string | null> {
+    const path = 'versionLocks/mailVersion';
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async setMailerVersion(version: string): Promise<void> {
+    const path = 'versionLocks/mailVersion';
+    await this.db.ref(path).set(version);
+  }
+
+  async getMailSentListMap(): Promise<Record<string, any> | null> {
+    const path = 'versionLocks/mailSentList';
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async initializeMailSentList(): Promise<void> {
+    const path = 'versionLocks/mailSentList';
+    await this.db.ref(path).set({}); // Set to empty object
+  }
+
+  async clearMailSentList(): Promise<void> {
+    const path = 'versionLocks/mailSentList';
+    await this.db.ref(path).remove();
+  }
+
+  // --- Semantic Methods: Migration Specific ---
+  async getDatabaseVersion(): Promise<any | null> {
+    const path = 'databaseVersion';
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async setDatabaseVersion(versionData: any): Promise<void> {
+    const path = 'databaseVersion';
+    await this.db.ref(path).set(versionData);
+  }
+
+  async deleteOldEmailToIdKey(oldKey: string): Promise<void> {
+    // This key is a root-level key from the old structure, not following the new sanitized patterns
+    // It should NOT be sanitized here.
+    this._assertFirebaseKeyComponentSafe(oldKey, 'deleteOldEmailToIdKey', 'oldKey (raw root key)'); 
+    const path = oldKey; // Use the raw key directly as the path
+    await this.db.ref(path).remove();
   }
 } 
