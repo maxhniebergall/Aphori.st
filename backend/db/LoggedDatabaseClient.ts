@@ -4,7 +4,7 @@ import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 // import { DatabaseClientInterface } from './DatabaseClientInterface.js'; // Remove direct interface import
 import { LogContext, ReadOptions } from './loggingTypes.js';
 
-export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
+export class LoggedDatabaseClient implements DatabaseClientInterface { 
     private underlyingClient: DatabaseClientInterface; // Revert type
     private logger: pino.Logger;
 
@@ -12,6 +12,33 @@ export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
         this.underlyingClient = client;
         // Create a child logger specific to this component for better filtering
         this.logger = loggerInstance.child({ component: 'LoggedDatabaseClient' });
+    }
+    hGet<T = unknown>(key: string, field: string): Promise<T | null> {
+        throw new Error('Method not implemented.');
+    }
+    lPush<T = unknown>(key: string, value: T): Promise<number> {
+        throw new Error('Method not implemented.');
+    }
+    lRange<T = unknown>(key: string, start: number, end: number): Promise<T[]> {
+        throw new Error('Method not implemented.');
+    }
+    lLen(key: string): Promise<number> {
+        throw new Error('Method not implemented.');
+    }
+    hGetAll(key: string): Promise<Record<string, any> | null> {
+        throw new Error('Method not implemented.');
+    }
+    zCard(key: string): Promise<number> {
+        throw new Error('Method not implemented.');
+    }
+    zRange(key: string, start: number, end: number): Promise<any[]> {
+        throw new Error('Method not implemented.');
+    }
+    zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number; }): Promise<Array<{ score: number; value: T; }>> {
+        throw new Error('Method not implemented.');
+    }
+    zscan(key: string, cursor: string, options?: { match?: string; count?: number; }): Promise<{ cursor: string | null; items: RedisSortedSetItem<string>[]; }> {
+        throw new Error('Method not implemented.');
     }
 
     public getUnderlyingClient(): DatabaseClientInterface { 
@@ -95,21 +122,6 @@ export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
          }
      }
 
-    // Add lPush if used
-    async lPush(key: string, element: string | string[], context?: LogContext): Promise<number> {
-        const args = Array.isArray(element)
-            ? { elementCount: element.length }
-            : { elementType: typeof element };
-        const logPayload = this.createLogPayload('lPush', key, args, context);
-        this.logger.info(logPayload, 'Executing DB command: lPush');
-        try {
-            return await this.underlyingClient.lPush(key, element);
-        } catch (error: any) {
-            this.logger.error({ ...logPayload, err: error }, 'DB command failed: lPush');
-            throw error;
-        }
-    }
-
     // Add other mutations (set, del, hIncrBy) if needed with similar pattern
     async set(key: string, value: any, context?: LogContext): Promise<string | null> {
         const logPayload = this.createLogPayload('set', key, { valueType: typeof value }, context);
@@ -187,7 +199,12 @@ export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
     async getUser(rawUserId: string): Promise<any | null> {
         const logPayload = this.createLogPayload('getUser', rawUserId, null, undefined);
         this.logger.debug(logPayload, 'Executing DB command: getUser');
-        return this.underlyingClient.getUser(rawUserId);
+        try {
+            return this.underlyingClient.getUser(rawUserId);
+        } catch (error: any) {
+            this.logger.error({ ...logPayload, err: error }, 'DB command failed: getUser');
+            throw error;
+        }
     }
     async getUserIdByEmail(rawEmail: string): Promise<string | null> {
         const logPayload = this.createLogPayload('getUserIdByEmail', rawEmail, null, undefined);
@@ -197,7 +214,7 @@ export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
         async createUserProfile(rawUserId: string, rawEmail: string, context?: LogContext): Promise<{ success: boolean, error?: string, data?: any }> {
         const logPayload = this.createLogPayload('createUserProfile', rawUserId, { rawEmail }, context);
         this.logger.debug(logPayload, 'Executing DB command: createUserProfile');
-        return this.underlyingClient.createUserProfile(rawUserId, rawEmail, context);
+        return this.underlyingClient.createUserProfile(rawUserId, rawEmail);
     }
 
     // --- Semantic Methods: Post Management ---

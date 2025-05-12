@@ -136,9 +136,6 @@ app.use(anonymousLimiterDay);
 // createDatabaseClient() now returns LoggedDatabaseClient
 const db = createDatabaseClient();
 
-// createDatabaseClient() now returns LoggedDatabaseClient
-const db = createDatabaseClient();
-
 
 let isDbReady = false;
 

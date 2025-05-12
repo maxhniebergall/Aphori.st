@@ -302,7 +302,7 @@ router.get('/check-user-id/:id', async (req: Request<{ id: string }>, res: Respo
     }
 
     try {
-        const userResult = await getUserById(id, logContext);
+        const userResult = await getUserById(id);
         logger.info({ ...logContext, userId: id, available: !userResult.success }, 'Checked user ID availability');
         res.json({ 
             success: true,
