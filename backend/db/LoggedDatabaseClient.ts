@@ -176,10 +176,6 @@ export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
             ? await this.underlyingClient.isReady() 
             : Promise.resolve(false); 
     }
-    encodeKey(id: string, prefix?: string): string { 
-        // Provide default empty string if prefix is undefined and underlying requires 2 args
-        return this.underlyingClient.encodeKey(id, prefix ?? ''); 
-    }
 
     // --- Methods NOT actively logged --- 
     // Passthrough using underlying client's signature
@@ -198,7 +194,7 @@ export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
         this.logger.debug(logPayload, 'Executing DB command: getUserIdByEmail');
         return this.underlyingClient.getUserIdByEmail(rawEmail);
     }
-    async createUserProfile(rawUserId: string, rawEmail: string, context?: LogContext): Promise<{ success: boolean, error?: string, data?: any }> {
+        async createUserProfile(rawUserId: string, rawEmail: string, context?: LogContext): Promise<{ success: boolean, error?: string, data?: any }> {
         const logPayload = this.createLogPayload('createUserProfile', rawUserId, { rawEmail }, context);
         this.logger.debug(logPayload, 'Executing DB command: createUserProfile');
         return this.underlyingClient.createUserProfile(rawUserId, rawEmail);
@@ -262,8 +258,8 @@ export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
         this.logger.debug(logPayload, 'Executing DB command: addReplyToRootPostRepliesIndex');
         return this.underlyingClient.addReplyToRootPostRepliesIndex(rawRootPostId, rawReplyId);
     }
-    async createReplyTransaction(replyData: any, hashedQuoteKey: string): Promise<void> {
-        const logPayload = this.createLogPayload('createReplyTransaction', null, { replyData, hashedQuoteKey }, undefined);
+    async createReplyTransaction(replyData: any, hashedQuoteKey: string, context?: LogContext): Promise<void> {
+        const logPayload = this.createLogPayload('createReplyTransaction', null, { replyData, hashedQuoteKey }, context);
         this.logger.debug(logPayload, 'Executing DB command: createReplyTransaction');
         return this.underlyingClient.createReplyTransaction(replyData, hashedQuoteKey);
     }

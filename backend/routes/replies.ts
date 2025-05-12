@@ -148,21 +148,7 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
             'Initiating CreateReply action'
         );
 
-        // --- Database Writes (Not Atomic) --- 
-        // TODO: Implement atomic writes using multi-path updates or transactions if possible.
-        // The following writes are performed concurrently using Promise.all.
-
-        await Promise.all([
-            db.setReply(replyId, newReply),
-            db.addReplyToGlobalFeedIndex(replyId, score),
-            db.addReplyToParentQuoteIndex(actualParentId, hashedQuoteKey, replyId, score),
-            db.incrementAndStoreQuoteUsage(actualParentId, hashedQuoteKey, quote),
-            db.addReplyToUserSet(user.id, replyId),
-            db.addReplyToParentRepliesIndex(actualParentId, replyId),
-            db.addReplyToRootPostRepliesIndex(actualRootPostId, replyId),
-            db.incrementPostReplyCounter(actualRootPostId, 1)
-        ]);
-        // --- End Database Writes --- 
+        await db.createReplyTransaction(newReply, hashedQuoteKey, logContext);
 
         logger.info({ ...logContext, replyId, parentId: actualParentId }, 'Successfully created new reply');
 
@@ -283,7 +269,11 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
         const cursor = req.query.cursor as string | undefined; // Cursor is the timestamp_replyId key
 
 
-        // Get total count (using zCard with mapped key)
+        if (!(sortCriteria in SortingCriteria)) {
+          res.status(400).json({ success: false, error: 'Invalid sort criteria' });
+          return;
+        }
+                // Get total count (using zCard with mapped key)
         const totalCount = await db.getReplyCountByParentQuote(parentId, hashedQuoteKey, sortCriteria) || 0;
 
         // Fetch reply IDs using zscan for cursor stability

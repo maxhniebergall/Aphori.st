@@ -88,10 +88,6 @@ export class RedisClient extends DatabaseClientInterface {
     return this.client.isReady;
   }
 
-  encodeKey(key: string, prefix: string): string {
-    return prefix ? `${prefix}:${key}` : key;
-  }
-
   async hGetAll(key: string): Promise<Record<string, any>> {
     return this.client.hGetAll(key);
   }

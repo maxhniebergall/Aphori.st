@@ -57,10 +57,6 @@ export abstract class DatabaseClientInterface {
     throw new Error('Method not implemented');
   }
 
-  encodeKey(key: string, prefix?: string): string {
-    throw new Error('Method not implemented');
-  }
-
   async hGetAll(key: string): Promise<Record<string, any> | null> {
     throw new Error('Method not implemented');
   }
