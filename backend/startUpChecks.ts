@@ -5,7 +5,7 @@ import { sendStartupEmails, EMAIL_VERSIONS_CONTENT } from './startupMailer.js';
 
 // --- Configuration ---
 const LATEST_SUPPORTED_MAIL_VERSION = "1"; // The version currently rolled out to all users
-const IS_TESTING_NEW_MAIL_VERSION = true; // Set to true to test the next version
+const IS_TESTING_NEW_MAIL_VERSION = false; // Set to true to test the next version
 const TEST_EMAIL_RECIPIENT = "admin@aphori.st"; // Email address for testing
 
 // --- Startup Email Processing --- 
