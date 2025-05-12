@@ -9,6 +9,7 @@
 
 import React, { useCallback } from 'react';
 import { useReplyContext } from '../context/ReplyContext';
+import { useUser } from '../context/UserContext';
 import { PostTreeNode } from '../types/types';
 import { Quote } from '../types/quote';
 
@@ -37,6 +38,7 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
 }) => {
   // Get context functions
   const { setReplyTarget, setReplyContent, setIsReplyOpen, setReplyQuote, setReplyError } = useReplyContext();
+  const { state: userState } = useUser();
 
   // Ensure currentIndex and totalSiblings are valid numbers
   const validCurrentIndex = Number.isFinite(currentIndex) ? currentIndex : 0;
@@ -86,6 +88,11 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
 
   // Handler for upvote click
   const handleUpvoteClick = useCallback(() => {
+    if (!userState.user || !userState.verified) {
+      window.alert("Please sign in to comment.");
+      return;
+    }
+
     // Create the default quote spanning the entire text
     const defaultQuote = new Quote(
       nodeData.textContent, // Use the full trimmed text
@@ -98,7 +105,7 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
     setReplyError(null); // Clear any previous errors
 
     setIsReplyOpen(true);
-  }, [nodeData, setReplyTarget, setReplyContent, setIsReplyOpen, setReplyQuote, setReplyError]);
+  }, [nodeData, setReplyTarget, setReplyContent, setIsReplyOpen, setReplyQuote, setReplyError, userState]);
 
   return (
     <div className="post-tree-node-footer">

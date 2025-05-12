@@ -9,7 +9,6 @@
  */
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { useGesture } from '@use-gesture/react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { debounce } from 'lodash';
 import { useReplyContext } from '../context/ReplyContext';
@@ -19,6 +18,7 @@ import { PostTreeLevel as LevelData, Pagination, ACTIONS, PostTreeNode, Siblings
 import { areQuotesEqual, Quote } from '../types/quote';
 import postTreeOperator from '../operators/PostTreeOperator';
 import { usePostTree } from '../context/PostTreeContext';
+import { useUser } from '../context/UserContext';
 import { 
   getSelectedQuoteInThisLevel,
   getSiblings, 
@@ -54,6 +54,7 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
   reportHeight,
 }) => {
   const { dispatch } = usePostTree();
+  const { state: userState } = useUser();
 
   // Debounce the navigation actions
   const debouncedNavigateNext = useMemo(
@@ -212,8 +213,16 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
   );
 
   // Handle reply button click - checks for draft first
-  const handleReplyButtonClick = useCallback((): void => {
+  const handleReplyButtonClick = useCallback(async () => {
+    // Check if user is logged in BEFORE attempting to start a new reply
+    const isStartingNewReply = !isReplyActive || (nodeToRender && replyTarget?.id !== nodeToRender.id);
+    if (isStartingNewReply && (!userState.user || !userState.verified)) {
+      window.alert("Please sign in to comment.");
+      return; // Prevent reply editor from opening
+    }
+
     // Add detailed logging here
+    console.log(`[handleReplyButtonClick] Clicked. Node ID: ${nodeToRender?.id}, isReplyActive: ${isReplyActive}, replyTarget ID: ${replyTarget?.id}`);
     
     if (!nodeToRender) {
       console.error('[handleReplyButtonClick] Error: nodeToRender is null/undefined.');
@@ -280,7 +289,8 @@ export const PostTreeLevelComponent: React.FC<PostTreeLevelProps> = ({
     setReplyQuote, 
     setIsReplyOpen,
     rootUUID, // Add rootUUID dependency
-    setReplyContent // Add setReplyContent dependency
+    setReplyContent, // Add setReplyContent dependency
+    userState // Add userState dependency
   ]);
 
   // Navigation functions with pagination - FIXED
