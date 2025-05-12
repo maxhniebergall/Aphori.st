@@ -13,7 +13,10 @@ const pinoHttpOptions: PinoHttpOptions = {
     const expressReq = req as Request;
     const expressRes = res as Response;
     const existingId = expressReq.id ?? expressReq.headers["x-cloud-trace-context"];
-    if (existingId) return existingId;
+    if (existingId) {
+      expressRes.locals.requestId = existingId;
+      return existingId;
+    }
     const id = randomUUID();
     expressRes.locals.requestId = id;
     return id;
