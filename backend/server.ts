@@ -43,8 +43,7 @@ import authRoutes, { setDb as setAuthDb } from './routes/auth.js';
 import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
-import { migrate } from './migrate.js';
-import { LoggedDatabaseClient } from "./db/LoggedDatabaseClient.js";
+import { checkAndRunMigrations, processStartupEmails } from './startUpChecks.js';
 
 dotenv.config();
 
@@ -129,7 +128,6 @@ app.use(loggedInLimiter);
 app.use(anonymousLimiterMinute);
 app.use(anonymousLimiterHour);
 app.use(anonymousLimiterDay);
-// app.use(anonymousLimiter); // Comment out or remove the old single anonymous limiter
 // --- End Optional Authentication and Rate Limiting Middlewares ---
 
 
@@ -155,52 +153,10 @@ await db.connect().then(async () => { // Make the callback async
     logger.info('Database client connected');
     isDbReady = true;
 
-    let runMigration = false; // Initialize to not run migration
-
-    try {
-        const databaseVersion = await db.get('databaseVersion'); // Attempt to get the database version
-        if (databaseVersion === null || databaseVersion === undefined) {
-            // If databaseVersion key does not exist, schedule migration
-            logger.info("No 'databaseVersion' key found in the database. Migration will be skipped.");
-            runMigration = false;
-        } else if (databaseVersion.migrationComplete && databaseVersion.current === "2") {
-            // If databaseVersion key exists and migrationComplete is true, perform the next migration
-            logger.info(`Database version key 'databaseVersion' found. Value: ${JSON.stringify(databaseVersion)}. Performing next migration.`);
-            runMigration = true;
-        } else {
-            // If databaseVersion key exists, log its presence and skip migration
-            logger.info(`Database version key 'databaseVersion' found. Value: ${JSON.stringify(databaseVersion)}. Migration will be skipped.`);
-            // runMigration remains false
-        }
-    } catch (e: any) { // MODIFIED CATCH BLOCK for robustness and to address linter issues
-        const baseMessage = "FATAL: Could not check for 'databaseVersion' key. Server cannot safely determine migration status and will shut down.";
-        if (e instanceof Error) {
-            logger.fatal({ err: e, errorMessage: e.message }, baseMessage);
-        } else {
-            logger.fatal({ errContext: String(e) }, baseMessage);
-        }
-        process.exit(1); // Exit the process
-    }
-
-    // Conditionally run the migration based on the check above
-    if (runMigration) {
-        try {
-            logger.info(`Proceeding with data migration as 'databaseVersion' key was not found...`);
-            await migrate(db); // Execute the migration logic
-            logger.info('Data migration completed successfully.');
-            // IMPORTANT: Consider setting the 'databaseVersion' key here after a successful migration
-            // to prevent it from running again on subsequent starts. For example:
-            // await db.set('databaseVersion', 'current_version_identifier');
-            // logger.info(`'databaseVersion' key set after successful migration.`);
-        } catch (migrationError) {
-            // If migration itself fails, log a fatal error and exit.
-            logger.fatal({ err: migrationError }, "FATAL: Data migration failed during execution. Server shutting down.");
-            process.exit(1); // Exit the process
-        }
-    } else {
-        // Log if migration is skipped due to 'databaseVersion' key existing
-        logger.info("Skipping data migration because the 'databaseVersion' key was found in the database.");
-    }
+    // --- Run Startup Checks --- 
+    await checkAndRunMigrations(db); // Handles migration logic and potential exit
+    await processStartupEmails(db); // Handles email logic
+    // --- End Startup Checks ---    
 
     // Only seed if import didn't run (assuming import replaces seed)
     if (process.env.NODE_ENV !== 'production') {
