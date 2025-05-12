@@ -8,15 +8,14 @@ Requirements:
 - Must maintain idempotency when run multiple times
 */
 
-import { createClient, RedisClientType } from 'redis';
 import { uuidv7obj } from "uuidv7";
 import { Uuid25 } from "uuid25";
 import logger from './logger.js';
-import { createDatabaseClient } from './db/index.js';
-import { DatabaseClientInterface } from './db/DatabaseClientInterface.js';
 import { FeedItem, Post, Reply, Quote } from './types/index.js';
 import { getQuoteKey } from './utils/quoteUtils.js';
 import { randomInt } from 'crypto';
+import { DatabaseClient, ReplyData } from './types';
+import { FirebaseClient } from './db/FirebaseClient.js';
 
 // const logger = newLogger("seed.ts"); // Removed incorrect instantiation
 
@@ -24,8 +23,7 @@ interface PostContent {
     content: string;
 }
 
-let db: DatabaseClientInterface;
-// let client: RedisClientType; // Removed direct Redis client declaration
+let db: DatabaseClient; // Declare db as a DatabaseClient instance
 
 // List of sample posts
 const samplePosts: PostContent[] = [
@@ -48,76 +46,100 @@ const samplePosts: PostContent[] = [
  * @throws {Error} If clearing old data or creating initial posts fails.
  *                 (Handled - By Design: Logs error and re-throws to stop seeding).
  */
-async function seedDevPosts(dbClient: DatabaseClientInterface): Promise<void> {
+async function seedDevPosts(dbClient: DatabaseClient): Promise<void> {
     try {
         db = dbClient; // Use the passed-in dbClient
         logger.info("Attempting to seed data");
 
-        // Clear existing feed items and post IDs using the db client
-        // Note: This might be redundant if the block above already cleared them,
-        // but can be kept for safety or if seedDevPosts is called independently.
-        try {
-            await db.del('feedItems');
-            await db.del('allPostTreeIds');
-            await db.del('feedStats/itemCount'); // Also clear the counter
-            logger.info("Existing feed items and counter cleared within seedDevPosts using db client");
-        } catch (err) {
-            logger.error('Failed to delete existing keys within seedDevPosts:', err);
+        // Clear existing data using direct path removal via FirebaseClient if possible
+        let firebaseClientInstance: FirebaseClient | null = null;
+        if (dbClient instanceof FirebaseClient) {
+            firebaseClientInstance = dbClient;
+        } // Add more checks if dbClient might be wrapped
+
+        if (firebaseClientInstance) {
+            const pathsToClear = [
+                'posts', // Clear entire posts node
+                'replies', // Clear entire replies node
+                'feedItems', // Clear entire feedItems node
+                'feedStats', // Clear feedStats node
+                'postMetadata', // Clear post metadata
+                'replyMetadata', // Clear reply metadata
+                'userMetadata/userPosts', // Clear user posts maps
+                'userMetadata/userReplies', // Clear user replies maps
+                'indexes' // Clear all indexes
+                // Keep users and userMetadata/userIds, userMetadata/emailToId
+            ];
+            logger.info("Clearing existing data paths using FirebaseClient...");
+            for (const path of pathsToClear) {
+                try {
+                    await firebaseClientInstance.removePath(path);
+                    logger.info(`Cleared path: ${path}`);
+                } catch (clearErr) {
+                    logger.warn(`Failed to clear path ${path}:`, clearErr);
+                }
+            }
+        } else {
+            logger.warn("Could not get FirebaseClient instance, attempting generic key deletion (less reliable)...");
+            // Fallback to less reliable key deletion if direct path removal isn't available
+            try {
+                // This is less ideal as it might rely on old key formats or miss data
+                await db.del('feedItems');
+                await db.del('allPostTreeIds'); // Old key? May not exist or work as expected.
+                await db.del('feedStats/itemCount'); // Old key?
+                // Add deletions for other potentially old top-level keys if known
+                logger.info("Attempted to clear keys using db.del (fallback).");
+            } catch (err) {
+                logger.error('Fallback key deletion failed:', err);
+                // Decide if this is critical enough to stop seeding
+                // throw new Error("Failed to clear existing data during fallback.");
+            }
         }
 
         const postIds: string[] = [];
         const postContents: string[] = [];
 
         // Create each post
-        for (const post of samplePosts) {
+        for (const postContent of samplePosts) {
             const uuid = Uuid25.fromBytes(uuidv7obj().bytes).value;
             postIds.push(uuid);
-            postContents.push(post.content);
+            postContents.push(postContent.content);
             
             // Create the post following Post schema structure
             const formattedPost: Post = {
                 id: uuid,
-                content: post.content,
+                content: postContent.content,
                 authorId: 'seed_user',
                 createdAt: new Date().toISOString(),
-                parentId: null,
+                replyCount: 0 // Initialize reply count
             };
 
-            // Store in Redis, ensuring consistency with create/get endpoints
-            // Use field key 'postTree' and store stringified JSON
-            await db.hSet(uuid, 'postTree', JSON.stringify(formattedPost));
-            await db.lPush('allPostTreeIds', uuid);
-
-            // Add to feed items (only root-level posts go to feed)
-            const feedItem = {
+            // STORE POST DIRECTLY AT /posts/$postId
+            await db.set(`posts/${uuid}`, formattedPost);
+            
+            // Add to global post set using sAdd and correct path mapping
+            await db.sAdd('allPostTreeIds:all', uuid);
+            
+            // Add to user's post set
+            await db.sAdd(`userPosts:${formattedPost.authorId}`, uuid);
+            
+            // Add to feed items
+            const feedItem: FeedItem = {
                 id: uuid,
-                text: formattedPost.content,
                 authorId: formattedPost.authorId,
+                textSnippet: formattedPost.content.substring(0, 100), // Use textSnippet
                 createdAt: formattedPost.createdAt
-            } as FeedItem;
-            // Ensure feed items are stored as strings, consistent with server.ts
-            // await db.lPush('feedItems', JSON.stringify(feedItem));
-            // logger.info(`Added feed item for post ${JSON.stringify(feedItem)}`);
-
-            // Use new methods to add feed item and update counter
-            try {
-                const feedItemKey = await db.addFeedItem(feedItem);
-                await db.incrementFeedCounter(1);
-                logger.info('Seeded feed item for post %s with key %s and incremented counter.', uuid, feedItemKey);
-            } catch (feedError) {
-                logger.error({ err: feedError, postId: uuid }, 'Failed to seed feed item or update counter for post');
-                // If seeding a feed item fails, we might want to stop or log prominently
-            }
-
-            logger.info(`Created new post with UUID: ${uuid}`);
+            };
+            await db.lPush('feedItems', feedItem); // lPush handles path mapping for feedItems
+            await db.incrementFeedCounter(1); // Increment feed counter
+            
+            logger.info(`Created new post with UUID: ${uuid} and added to feed/indexes.`);
         }
         await seedTestReplies(postIds, postContents);
-        logger.info("Successfully seeded dev posts.");
+        logger.info("Successfully seeded dev posts and replies.");
     } catch (error) {
-        // Handled - By Design: Catches errors during initial post creation loop.
-        // Logs the error and re-throws to stop the entire seeding process if base posts fail.
         logger.error('Error seeding dev posts:', error);
-        throw error;
+        throw error; // Re-throw critical seeding errors
     }
 }
 
@@ -208,111 +230,116 @@ async function seedTestReplies(postIds: string[], postContents: string[]): Promi
                 }
 
                 if (!quoteResult || quoteResult.excerpt.length === 0) {
-                    logger.warn(`Could not generate valid excerpt for post ${postId}, skipping reply ${postIdReplyNumber}`);
+                    logger.warn(`Could not generate valid excerpt for post ${postId}, skipping root reply creation ${postIdReplyNumber}`);
                     continue;
                 }
                 // --- End Refactored Excerpt/Quote Generation ---
 
 
-                const replyText = `This is a test reply (to a post tree) to help with testing the reply functionality. postId: [${postId}], postIdReplyNumber: [${postIdReplyNumber}].`;
+                const replyText = `This is reply ${postIdReplyNumber + 1}/15 to post [${postId}]. It quotes '${quoteResult.excerpt}'.`;
 
                 // Create a test quote targeting the calculated excerpt of the parent post
                 const quote: Quote = {
                     text: quoteResult.excerpt,
-                    sourceId: postId,
+                    sourceId: postId, // Source is the post
                     selectionRange: {
                         start: quoteResult.start,
                         end: quoteResult.end
                     }
                 };
 
-                // Create the reply object using rootReplyId
-                const reply: Reply = {
+                // Create the FIRST-LEVEL reply object using rootReplyId - Use ReplyData structure
+                const firstLevelReply: ReplyData = {
                     id: rootReplyId,
                     text: replyText,
-                    parentId: [postId],
+                    parentId: postId,        // Direct parent is the post
+                    parentType: 'post',     // Parent type is post
+                    rootPostId: postId,        // Root is the post itself
                     quote: quote,
                     authorId: 'seed_user',
-                    createdAt: timestamp.toString() // Consider using toISOString() for consistency
+                    createdAt: new Date(timestamp).toISOString() // Use ISO string timestamp
                 };
 
-                // Store 5 identical replies with unique IDs
-                let firstUniqueReplyId = ''; // Store the ID of the first one created
+                // Store 5 copies of this first-level reply, each with a unique ID
+                let firstUniqueReplyId = ''; // Store the ID of the first copy created
                 for (let i = 0; i < 5; i++) {
                     const uniqueReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
                     if (i === 0) {
                         firstUniqueReplyId = uniqueReplyId; // Capture the first ID
                     }
                     const modifiedReplyText = `${replyText} (Copy ${i + 1})`; // Add identifier
-                    const replyToStore: Reply = {
+                    const replyToStore: ReplyData = {
+                        ...firstLevelReply, // Copy base data
                         id: uniqueReplyId, // Assign unique ID
                         text: modifiedReplyText, // Use modified text
-                        parentId: [postId],
-                        quote: quote,
-                        authorId: 'seed_user',
-                        createdAt: timestamp.toString()
+                        createdAt: new Date(timestamp + i).toISOString() // Slightly different timestamp for ordering
                     };
                     await storeReply(replyToStore);
                 }
 
-                // create replies to the reply
-                const replyWords = replyText.split(/\s+/); // Split by whitespace
-                const replyWordCount = replyWords.length;
+                // --- Create replies TO the first-level reply ---
+                const parentReplyText = firstLevelReply.text; // Text of the first-level reply (before modification)
+                const parentReplyId = firstUniqueReplyId; // ID of the first copy of the first-level reply
+                const parentReplyWords = parentReplyText.split(/\s+/);
+                const parentReplyWordCount = parentReplyWords.length;
 
-                // Create 8 replies to the first-level reply
+                // Create 8 replies to the first-level reply (specifically, to the first copy)
                 for (let replyReplyNumber = 0; replyReplyNumber < 8; replyReplyNumber++) {
-                    const replyReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
-                    const timestampReply = Date.now(); // Use a new timestamp
+                    const secondLevelReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
+                    const timestampReply = timestamp + 1000 * (replyReplyNumber + 1); // Use a new timestamp
 
-                     // --- Refactored Excerpt/Quote Generation for Reply Content ---
+                     // --- Refactored Excerpt/Quote Generation for Parent Reply Content ---
                     let quoteResultReply: { start: number; end: number; excerpt: string } | null = null;
-                    if (replyWordCount > 0) {
-                         const maxExcerptLengthReply = Math.min(replyWordCount, 10); // Limit excerpt length
+                    if (parentReplyWordCount > 0) {
+                         const maxExcerptLengthReply = Math.min(parentReplyWordCount, 10); // Limit excerpt length
                          const excerptLengthReply = randomInt(1, maxExcerptLengthReply + 1); // Ensure length is at least 1
-                         const startWordIndexReply = randomInt(0, replyWordCount - excerptLengthReply + 1); // Ensure start index allows for excerpt length
+                         const startWordIndexReply = randomInt(0, parentReplyWordCount - excerptLengthReply + 1); // Ensure start index allows for excerpt length
                          const endWordIndexReply = startWordIndexReply + excerptLengthReply;
 
-                        quoteResultReply = calculateCharIndices(replyText, startWordIndexReply, endWordIndexReply);
+                        quoteResultReply = calculateCharIndices(parentReplyText, startWordIndexReply, endWordIndexReply);
                     }
 
                      if (!quoteResultReply || quoteResultReply.excerpt.length === 0) {
-                        logger.warn(`Could not generate valid excerpt for reply ${rootReplyId}, skipping reply-reply ${replyReplyNumber}`);
+                        logger.warn(`Could not generate valid excerpt for reply ${parentReplyId}, skipping second-level reply ${replyReplyNumber}`);
                         continue;
                      }
                      // --- End Refactored Excerpt/Quote Generation ---
 
 
-                    const replyReplyText = `This is a test reply (to a reply) to help with testing the reply functionality. postId: [${postId}], postIdReplyNumber: [${postIdReplyNumber}], replyReplyNumber: [${replyReplyNumber}].`;
+                    const replyReplyText = `This is reply ${replyReplyNumber + 1}/8 to reply [${parentReplyId.substring(0, 5)}...]. It quotes '${quoteResultReply.excerpt}'.`;
 
 
                     // Create a test quote targeting the calculated excerpt of the parent reply
                     const quoteReply: Quote = {
                         text: quoteResultReply.excerpt,
-                        sourceId: firstUniqueReplyId, // Parent is the first of the 5 identical first-level replies
+                        sourceId: parentReplyId, // Source is the parent reply
                         selectionRange: {
                             start: quoteResultReply.start,
                             end: quoteResultReply.end
                         }
                     };
 
-                    // Create the reply object template
-                    const replyReply: Reply = {
+                    // Create the SECOND-LEVEL reply object template
+                    const secondLevelReply: ReplyData = {
                         id: '', // Placeholder ID, will be replaced in loop
                         text: replyReplyText,
-                        parentId: [firstUniqueReplyId], // Parent is the FIRST of the 5 identical first-level replies
+                        parentId: parentReplyId,    // Direct parent is the first-level reply
+                        parentType: 'reply',   // Parent type is reply
+                        rootPostId: postId,        // Root is still the original post
                         quote: quoteReply,
                         authorId: 'seed_user',
-                        createdAt: timestampReply.toString() // Consider using toISOString()
+                        createdAt: new Date(timestampReply).toISOString() // Use ISO string timestamp
                     };
 
-                    // Store 5 identical replies with unique IDs
+                    // Store 5 identical copies of this second-level reply with unique IDs
                     for (let j = 0; j < 5; j++) {
                         const uniqueReplyReplyId = Uuid25.fromBytes(uuidv7obj().bytes).value;
                         const modifiedReplyReplyText = `${replyReplyText} (Copy ${j + 1})`; // Add identifier
-                        const replyReplyToStore: Reply = {
-                           ...replyReply, // Copy base reply-reply data (includes parentId, quote, author, createdAt)
+                        const replyReplyToStore: ReplyData = {
+                           ...secondLevelReply, // Copy base reply-reply data
                             id: uniqueReplyReplyId, // Assign unique ID
                             text: modifiedReplyReplyText, // Use modified text
+                            createdAt: new Date(timestampReply + j).toISOString() // Slightly different timestamp
                         };
                          await storeReply(replyReplyToStore);
                     }
@@ -322,10 +349,6 @@ async function seedTestReplies(postIds: string[], postContents: string[]): Promi
 
         logger.info(`Successfully seeded test replies for ${postIds.length} posts`);
     } catch (error) {
-        // Handled - By Design: Catches errors during reply creation loops (including from storeReply).
-        // Logs the error and re-throws. The error is then caught by the main seedDevPosts
-        // catch block, which logs again but *doesn't* re-throw, allowing the script to terminate
-        // after logging the failure without necessarily crashing the parent process.
         logger.error('Error seeding test replies:', error);
         throw error;
     }
@@ -337,39 +360,51 @@ async function seedTestReplies(postIds: string[], postContents: string[]): Promi
  * @throws {Error} If any database operation (hSet, zAdd, hIncrementQuoteCount) fails.
  *                 (Handled: Propagated up to seedTestReplies).
  */
-async function storeReply(reply: Reply) {
-    const parentId = reply.parentId[0]; // Assuming single parent for simplicity
+async function storeReply(reply: ReplyData) {
+    const parentId = reply.parentId; // Direct parent ID
     const quote = reply.quote;
     const replyId = reply.id;
-    const score = Date.now(); // Use current timestamp for score
+    const score = new Date(reply.createdAt).getTime(); // Use createdAt for score consistently
+    const authorId = reply.authorId;
+    const rootPostId = reply.rootPostId;
 
-    // Store the reply object itself - PASS THE OBJECT DIRECTLY
-    await db.hSet(replyId, 'reply', reply);
+    // STORE REPLY DIRECTLY AT /replies/$replyId
+    await db.set(`replies/${replyId}`, reply);
 
-    // Indexing - use safe quote key
-    const quoteKey = getQuoteKey(quote);
+    // Update Metadata/Indexes using correct paths/methods
+    const quoteKey = getQuoteKey(quote); // Use consistent quote key generation
 
-    // 1. Index for "Replies by Parent ID and Quote"
+    // 1. Index for "Replies Feed by Timestamp" (/indexes/repliesFeedByTimestamp)
+    await db.zAdd('replies:feed:mostRecent', score, replyId);
+
+    // 2. Index for "Replies by Parent and Quote Timestamp" (/indexes/repliesByParentQuoteTimestamp)
+    // Ensure parentId and quoteKey are sanitized if they contain forbidden chars
+    // Assuming db.zAdd handles mapping 'replies:uuid:...' to the correct index path
     await db.zAdd(`replies:uuid:${parentId}:quote:${quoteKey}:mostRecent`, score, replyId);
 
-    // 2. Increment quote count in the hash using the new method
-    await db.hIncrementQuoteCount(`${parentId}:quoteCounts`, quoteKey, quote);
-    
-    // --- Reinstate removed indices ---
-    // 3. Global replies feed
-    await db.zAdd('replies:feed:mostRecent', score, replyId);
-    
-    // 4. Replies by Quote (General - using quoteKey)
-    await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, score, replyId);
+    // 3. Increment Quote Count (/replyMetadata/quoteCounts)
+    // The key passed should map correctly, e.g., 'replyMetadata:quoteCounts:parentId' -> path + hashedQuoteKey
+    // Assuming db.hIncrementQuoteCount handles path mapping
+    await db.hIncrementQuoteCount(`replyMetadata:quoteCounts:${parentId}`, quoteKey, quote);
 
-    // 5. Replies by Parent ID and Sanitized Quote Text
-    await db.zAdd(`replies:${parentId}:${quote.text}:mostRecent`, score, replyId);
+    // 4. Update User Replies Set (/userMetadata/userReplies)
+    await db.sAdd(`userReplies:${authorId}`, replyId);
 
-    // 6. Conditional Replies by Sanitized Quote Text Only
-    await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId);
-    // --- End reinstated indices ---
+    // 5. Update Post Replies Set (/postMetadata/postReplies) - Index under ROOT post
+    await db.sAdd(`postReplies:${rootPostId}`, replyId);
 
-    logger.info(`Stored reply ${replyId} and updated indices for parent ${parentId}`);
+    // 6. Increment Post Reply Count (/posts/$rootPostId/replyCount) - ATOMICALLY
+    await db.hIncrBy(`posts/${rootPostId}`, 'replyCount', 1);
+
+    // 7. Optional: Update Parent Replies Set (/replyMetadata/parentReplies) - Index under DIRECT parent
+    await db.sAdd(`parentReplies:${parentId}`, replyId);
+
+    // REMOVED old/redundant indices based on text - rely on quoteKey and timestamp indices
+    // await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, score, replyId); // Redundant if covered by #2?
+    // await db.zAdd(`replies:${parentId}:${quote.text}:mostRecent`, score, replyId); // Unreliable text index
+    // await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId); // Unreliable text index
+
+    logger.info(`Stored reply ${replyId} and updated indices/metadata.`);
 }
 
 export { seedDevPosts }; 

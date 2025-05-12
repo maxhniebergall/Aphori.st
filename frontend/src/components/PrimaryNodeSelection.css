@@ -28,6 +28,8 @@
 /* Style for when text is in highlight mode */
 .primary-node-selection.highlight-mode .wmde-markdown {
   position: relative;
+  background-color: #000;
+
 }
 
 .primary-node-selection.highlight-mode .wmde-markdown::before {

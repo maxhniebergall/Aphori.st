@@ -27,14 +27,11 @@
  * - Implement caching with CacheService
  */
 
-import { ACTIONS, PostTreeNode, PostTreeState, PostTreeLevel, Action, CursorPaginatedResponse, Reply, QuoteCounts, CompressedApiResponse, CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat } from '../types/types';
+import { ACTIONS, PostTreeNode, PostTreeState, PostTreeLevel, Action, CursorPaginatedResponse, Reply, QuoteCounts, /* CompressedApiResponse, */ CreateReplyResponse, Post, Pagination, Siblings, ExistingSelectableQuotesApiFormat, CreateReplyRequest } from '../types/types';
 import { areQuotesEqual, Quote } from '../types/quote';
-import axios, { AxiosError } from 'axios';
-import { BaseOperator } from './BaseOperator';
+import axios, { AxiosError, AxiosResponse } from 'axios';
 import PostTreeError from '../errors/PostTreeError';
-import { Compressed } from '../types/compressed';
-import compression from '../utils/compression';
-import { 
+import {
   createMidLevel,
   getSelectedQuoteInParent,
   getSelectedQuoteInThisLevel,
@@ -55,8 +52,8 @@ interface ReplyContextSetters {
   // Add other setters if needed directly by the operator
 }
 
-class PostTreeOperator extends BaseOperator {
-  // Introduce a store property to hold state and dispatch injected from a React component.
+class PostTreeOperator {
+  private baseURL: string;
   private store: { state: PostTreeState, dispatch: React.Dispatch<Action> } | null = null;
   private userContext: { state: { user: { id: string } | null } } | null = null;
   // Add property to hold ReplyContext setters
@@ -68,13 +65,12 @@ class PostTreeOperator extends BaseOperator {
   private pendingLoadRequests: number[] = [];
   private isLoadingLevel = false;
 
-  constructor() {
-    super();
+  constructor(baseURL: string = process.env.REACT_APP_API_URL || 'http://localhost:5050') {
+    this.baseURL = baseURL;
     // Removed React hooks from here.
     // Bind methods
     this.loadMoreItems = this.loadMoreItems.bind(this);
     this.fetchPostTree = this.fetchPostTree.bind(this);
-    this.validateNode = this.validateNode.bind(this);
   }
 
   // Method to inject the store (state and dispatch) from a React functional component
@@ -127,15 +123,6 @@ class PostTreeOperator extends BaseOperator {
     return this.userContext.state.user.id;
   }
 
-  validateNode(level: any): level is PostTreeLevel {
-    return level &&
-      typeof level === 'object' &&
-      typeof level.rootNodeId === 'string' &&
-      typeof level.levelNumber === 'number' &&
-      level.siblings &&
-      typeof level.siblings === 'object' &&
-      level.siblings.levelsMap instanceof Map;
-  }
 
   /**
    * Fetches the root node of the post tree for a given UUID and initializes the post tree structure.
@@ -144,36 +131,23 @@ class PostTreeOperator extends BaseOperator {
    * @param uuid - The unique identifier for the root node of the post tree.
    * @returns A promise that resolves to the fully constructed PostTree object.
    * @throws {PostTreeError} Throws an error if fetching or processing the post tree data fails,
-   *                          or if decompression fails.
    *                          (Handled - Propagation / Depends on Caller/UI).
    */
   private async fetchPostTree(uuid: string): Promise<void> {
-    const url = `${process.env.REACT_APP_API_URL}/api/posts/${uuid}`;
+    const url = `${this.baseURL}/api/posts/${uuid}`;
     try {
-      const compressedPost = await this.retryApiCallSimplified<Compressed<Post>>(
-        () => axios.get<CompressedApiResponse<Compressed<Post>>>(url, {
-            validateStatus: status => status === 200
-        })
-      );
-
-      const decompressedPost = await compression.decompress<Post>(compressedPost);
-      if (!decompressedPost) {
-        // Handled - Depends on Caller/UI: Data corruption/API issue.
-        // Calling component should handle (e.g., show error message) or use Error Boundary.
-        throw new PostTreeError('Failed to decompress post');
+      const response: AxiosResponse<Post> = await axios.get(url, {
+        validateStatus: status => status === 200
+      });
+      const postData = response.data;
+      if (!postData) {
+        throw new PostTreeError('Failed to get post data');
       }
-
-      // Add the root post content and fetch its quote counts
-      // updates postTree.levels as a side effect
-      // fetches quote counts async, so we don't immediately have quote counts after this runs
-      await this.addPostContentToLevelZero(decompressedPost); // this part seems to be working
-
-      return Promise.resolve();
+      await this.addPostContentToLevelZero(postData);
     } catch (error) {
       const axiosErr = error as AxiosError;
       const statusCode = axiosErr.response?.status;
       const postTreeErr = new PostTreeError('Error fetching root node', statusCode, url, error);
-      
       if (this.store && this.store.dispatch) {
         this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
       }
@@ -193,7 +167,6 @@ class PostTreeOperator extends BaseOperator {
     const contentNode: PostTreeNode = {
       id: post.id,
       rootNodeId: post.id,
-      parentId: [],
       levelNumber: 0,
       textContent: post.content,
       authorId: post.authorId,
@@ -209,12 +182,12 @@ class PostTreeOperator extends BaseOperator {
     if (this.store && this.store.dispatch) {
       // Always create and dispatch a level 0
       const siblings: Siblings = {
-        levelsMap: [[null, [contentNode]]] // Keep null key for the map itself
+        nodes: [contentNode] // Keep null key for the map itself
       };
 
       const contentLevel = createMidLevel(
         post.id,
-        [],
+        "",
         0,
         null, // selectedQuoteInParent is null for level 0
         initialSelectedQuote, // selectedQuoteInThisLevel is the initial selection within level 0
@@ -247,86 +220,71 @@ class PostTreeOperator extends BaseOperator {
       }
       cursorString = pagination.nextCursor;
     }
-    
+
     const parentId = getParentId(level);
     const levelNumber = getLevelNumber(level);
     // Use getSelectedQuoteInParent to determine which siblings list is relevant
-    const selectedQuoteParent = getSelectedQuoteInParent(level); 
+    const selectedQuoteParent = getSelectedQuoteInParent(level);
     const rootNodeId = getRootNodeId(level);
-    
+
     // Check selectedQuoteParent specifically
-    if (!parentId || parentId.length === 0 || levelNumber === undefined || !selectedQuoteParent || !rootNodeId) {
+    if (!parentId || levelNumber === undefined || !selectedQuoteParent || !rootNodeId) {
       console.warn('[fetchAndDispatchReplies] Missing critical data:', { parentId, levelNumber, selectedQuoteParent, rootNodeId });
       return;
     }
-    
+
     // Use static method for encoding
-    const url = `${process.env.REACT_APP_API_URL}/api/replies/getReplies/${parentId[0]}/${Quote.toEncodedString(selectedQuoteParent)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
-    
+    const url = `${this.baseURL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(selectedQuoteParent)}/${sortingCriteria}?limit=${limit}&cursor=${cursorString}`;
+
     try {
-      const compressedPaginatedResponse = await this.retryApiCallSimplified<Compressed<CursorPaginatedResponse<Reply>>>(
-        () => axios.get(url, {
-          validateStatus: status => status === 200
-        })
-      );
-      
-      const decompressedPaginatedData = await compression.decompress<CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
-      
-      if (decompressedPaginatedData && decompressedPaginatedData.pagination) {
-        const quoteCountsMap = new Map<Quote, QuoteCounts>();
-        const repliesData = decompressedPaginatedData.data;
-        await Promise.all(repliesData.map(async (reply: Reply) => {
-          const quoteCounts = await this.fetchQuoteCounts(reply.id);
-          quoteCountsMap.set(reply.quote, quoteCounts);
-        }));
-        const replyNodes: PostTreeNode[] = repliesData.map((reply: Reply) => ({
+      // Direct axios call
+      const response: AxiosResponse<CursorPaginatedResponse<Reply>> = await axios.get(url, {
+        validateStatus: status => status === 200
+      });
+      const paginatedData = response.data; // Already decompressed
+
+      if (paginatedData && paginatedData.pagination) {
+        const repliesData = paginatedData.data;
+        // Fetch quote counts for all replies in parallel
+        const quoteCountsPromises = repliesData.map(reply => this.fetchQuoteCounts(reply.id));
+        const quoteCountsResults = await Promise.all(quoteCountsPromises);
+        
+        const replyNodes: PostTreeNode[] = repliesData.map((reply: Reply, index: number) => ({
           id: reply.id,
           rootNodeId: rootNodeId,
           parentId: reply.parentId,
-          levelNumber: levelNumber + 1, // Correct level number for replies
+          levelNumber: levelNumber + 1,
           textContent: reply.text,
+          repliedToQuote: reply.quote,
+          quoteCounts: quoteCountsResults[index], // Use fetched quote counts
           authorId: reply.authorId,
           createdAt: reply.createdAt,
-          repliedToQuote: reply.quote, // The quote in the parent this node replies to
-          quoteCounts: quoteCountsMap.get(reply.quote) || null
         }));
+        if (replyNodes.length === 0) { // Should be caught by paginatedData.data.length === 0 earlier if API is consistent
+            this.dispatchLastLevel(levelNumber +1 );
+            return;
+        }
         const initialSelectedQuoteInNewLevel = this.mostQuoted(replyNodes[0].quoteCounts);
         const newLevelData = createMidLevel(
-          rootNodeId,
-          parentId, // Parent ID comes from the current level's selected node
-          levelNumber + 1, // Level number for the replies
-          selectedQuoteParent, // The quote selected in the parent (current level) that led to these replies
-          initialSelectedQuoteInNewLevel, // The default selected quote *within* the first reply node of the new level
-          replyNodes[0], // The selected node for the new level is the first reply
-          {
-            // The siblings map for the new level contains these replies, keyed by the quote from the parent
-            levelsMap: [[selectedQuoteParent, replyNodes]] 
-          },
-          decompressedPaginatedData.pagination
+          rootNodeId, parentId, levelNumber + 1, selectedQuoteParent, 
+          initialSelectedQuoteInNewLevel, replyNodes[0], 
+          { nodes: replyNodes }, 
+          paginatedData.pagination
         );
-        
         if (this.store && this.store.dispatch) {
-          this.store.dispatch({
-            type: ACTIONS.INCLUDE_NODES_IN_LEVELS,
-            payload: [newLevelData]
-          });
+          this.store.dispatch({ type: ACTIONS.INCLUDE_NODES_IN_LEVELS, payload: [newLevelData] });
         } else {
           throw new PostTreeError('Store not initialized when dispatching replies');
         }
       } else {
-        // Dispatch an action to indicate the end of this branch if needed
         if (this.store && this.store.dispatch) {
-          this.store.dispatch({
-            type: ACTIONS.SET_LAST_LEVEL,
-            payload: { levelNumber }
-          });
+          this.store.dispatch({ type: ACTIONS.SET_LAST_LEVEL, payload: { levelNumber } });
         }
       }
     } catch (error) {
       const axiosErr = error as AxiosError;
       const statusCode = axiosErr.response?.status;
       const postTreeErr = new PostTreeError('Error fetching or dispatching replies', statusCode, url, error);
-      
       if (this.store && this.store.dispatch) {
         this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
       }
@@ -334,24 +292,21 @@ class PostTreeOperator extends BaseOperator {
   }
 
   private async fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
-    // Use static method for encoding
-    const url = `${process.env.REACT_APP_API_URL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(selectedQuote)}/${sortingCriteria}?limit=${limit}`;
-    
+    // Generate time bucket for cache-friendly URL
+    const currentTime = Date.now();
+    const timeBucket = Math.floor(currentTime / (60 * 1000)) * (60 * 1000);
+
+    const url = `${this.baseURL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(selectedQuote)}/${sortingCriteria}?limit=${limit}&t=${timeBucket}`;
     try {
-      const compressedPaginatedResponse = await this.retryApiCallSimplified<Compressed<CursorPaginatedResponse<Reply>>>(
-        () => axios.get(url, {
-          validateStatus: status => status === 200
-        })
-      );
-      
-      const decompressedPaginatedData = await compression.decompress<CursorPaginatedResponse<Reply>>(compressedPaginatedResponse);
-      
-      return decompressedPaginatedData || null;
+      // Direct axios call
+      const response: AxiosResponse<CursorPaginatedResponse<Reply>> = await axios.get(url, {
+        validateStatus: status => status === 200
+      });
+      return response.data || null; // Already decompressed
     } catch (error) {
       const axiosErr = error as AxiosError;
       const statusCode = axiosErr.response?.status;
       const postTreeErr = new PostTreeError('Error fetching first replies', statusCode, url, error);
-      
       if (this.store && this.store.dispatch) {
         this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
       }
@@ -366,17 +321,42 @@ class PostTreeOperator extends BaseOperator {
    * @returns A promise resolving to QuoteCounts.
    */
   private async fetchQuoteCounts(id: string): Promise<QuoteCounts> {
-    const url = `${process.env.REACT_APP_API_URL}/api/replies/quoteCounts/${id}`;
-    const compressedResponse = await this.retryApiCallSimplified<Compressed<ExistingSelectableQuotesApiFormat>>(
-      () => axios.get(url, {
-        validateStatus: status => status === 200
-      })
-    );
-    const decompressedResponse = await compression.decompress<ExistingSelectableQuotesApiFormat>(compressedResponse);
-    if (!decompressedResponse || !decompressedResponse.quoteCounts) {
-      throw new PostTreeError('Invalid data received for quote counts');
+    const url = `${this.baseURL}/api/replies/quoteCounts/${id}`;
+    try {
+        // Generate time bucket for cache-friendly URL
+        const currentTime = Date.now();
+        const timeBucket = Math.floor(currentTime / (60 * 1000)) * (60 * 1000);
+
+        const response: AxiosResponse<ExistingSelectableQuotesApiFormat> = await axios.get(url, {
+            params: { t: timeBucket }, // Add timeBucket as a query parameter
+            validateStatus: status => status === 200
+        });
+        const apiResult = response.data as any; // Cast to any to bypass strict type checking for now
+
+        // Check if the response structure matches what we expect from logs/backend
+        if (!apiResult || typeof apiResult.success !== 'boolean' || !Array.isArray(apiResult.data)) {
+            console.warn(`fetchQuoteCounts for ${id} received API response with unexpected structure. API Response:`, apiResult);
+            return { quoteCounts: [] }; // Return valid QuoteCounts structure
+        }
+
+        if (!apiResult.success) {
+            console.warn(`fetchQuoteCounts for ${id} API call was not successful. API Response:`, apiResult);
+            return { quoteCounts: [] };
+        }
+
+        // Transform apiResult.data (Array of objects) to Array of [Quote, number] tuples
+        const transformedQuoteCounts: Array<[Quote, number]> = apiResult.data.map((item: { quote: Quote; count: number }) => {
+          return [item.quote, item.count];
+        });
+        
+        return { quoteCounts: transformedQuoteCounts };
+
+    } catch (error) {
+        const axiosErr = error as AxiosError;
+        const statusCode = axiosErr.response?.status;
+        console.error(`Error fetching quote counts for ${id}, status: ${statusCode}, error:`, error);
+        return { quoteCounts: [] }; // Return valid QuoteCounts structure
     }
-    return {quoteCounts: decompressedResponse.quoteCounts};
   }
 
   /**
@@ -404,25 +384,22 @@ class PostTreeOperator extends BaseOperator {
     const limit = stopIndex - startIndex;
     const sortingCriteria = 'mostRecent'
     try {
-      { // block scoping to ensure updated state
-        // this block is used to fetch the replies and update the state, including the quoteCounts
 
         const state = this.getState();
-          if (!state?.postTree) {
-            return;
-          }
+        if (!state?.postTree) {
+          return;
+        }
         const currentLevel = state.postTree.levels[levelNumber];
-        await this.fetchAndDispatchReplies(currentLevel, sortingCriteria, limit); 
-      }
-      
+        await this.fetchAndDispatchReplies(currentLevel, sortingCriteria, limit);
+
     } catch (error) {
       const axiosErr = error as AxiosError;
       const statusCode = axiosErr.response?.status;
       const postTreeErr = new PostTreeError(
-        'Error loading more items', 
-        statusCode, 
+        'Error loading more items',
+        statusCode,
         // Use static method for encoding
-        `${process.env.REACT_APP_API_URL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(quote)}/mostRecent`,
+        `${this.baseURL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(quote)}/mostRecent`,
         error
       );
       throw postTreeErr;
@@ -451,7 +428,7 @@ class PostTreeOperator extends BaseOperator {
     if (this.store?.dispatch) {
       this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: true });
     } else {
-       console.error("[refreshLevel] Store not available to dispatch loading state.");
+      console.error("[refreshLevel] Store not available to dispatch loading state.");
       return; // Can't proceed without dispatch
     }
 
@@ -477,11 +454,10 @@ class PostTreeOperator extends BaseOperator {
       if (repliesResponse && repliesResponse.data.length > 0) {
         // Transform replies into PostTreeNodes
         const nodes: PostTreeNode[] = await Promise.all(repliesResponse.data.map(async (reply): Promise<PostTreeNode> => {
-          const quoteCounts = await this.fetchQuoteCounts(reply.id); // Fetch quote counts for each reply
+          const quoteCounts = await this.fetchQuoteCounts(reply.id);
           return {
             id: reply.id,
             rootNodeId: state.postTree!.post.id, // Use rootNodeId from the existing story tree
-            parentId: [parentId], // The parent ID is the node we are refreshing replies for
             levelNumber: targetLevelIndex,
             textContent: reply.text,
             authorId: reply.authorId,
@@ -499,13 +475,13 @@ class PostTreeOperator extends BaseOperator {
 
         // Construct siblings map for the new level
         const siblingsMap: Siblings = {
-          levelsMap: [[quoteInParent, nodes]] // Use the parent's quote as the key
+          nodes: nodes // Use the parent's quote as the key
         };
 
         // Create the new MidLevel
         newLevel = createMidLevel(
           state.postTree.post.id,
-          [parentId],
+          parentId,
           targetLevelIndex,
           quoteInParent, // The quote selected *in the parent* that led to this level
           selectedQuoteInThisLevel, // The quote pre-selected *within* this new level
@@ -517,12 +493,12 @@ class PostTreeOperator extends BaseOperator {
         // If no replies are found, create a LastLevel
         console.log(`[refreshLevel] No replies found for parent ${parentId} and quote. Creating LastLevel for index ${targetLevelIndex}.`);
         newLevel = { // Manually construct LastLevel structure
-           isLastLevel: true,
-           midLevel: null,
-           lastLevel: {
-               rootNodeId: state.postTree.post.id,
-               levelNumber: targetLevelIndex
-           }
+          isLastLevel: true,
+          midLevel: null,
+          lastLevel: {
+            rootNodeId: state.postTree.post.id,
+            levelNumber: targetLevelIndex
+          }
         };
       }
 
@@ -549,10 +525,10 @@ class PostTreeOperator extends BaseOperator {
             // Continue without updating parent counts if fetch fails
           }
         } else {
-           console.warn(`[refreshLevel] Parent node mismatch or not found when trying to update counts. Parent ID: ${parentId}, Node found: ${parentNode?.id}`);
+          console.warn(`[refreshLevel] Parent node mismatch or not found when trying to update counts. Parent ID: ${parentId}, Node found: ${parentNode?.id}`);
         }
       } else {
-         console.warn(`[refreshLevel] Parent level ${parentLevelIndex} not found or not MidLevel when trying to update counts.`);
+        console.warn(`[refreshLevel] Parent level ${parentLevelIndex} not found or not MidLevel when trying to update counts.`);
       }
       // --- End Parent Level Update ---
 
@@ -577,7 +553,7 @@ class PostTreeOperator extends BaseOperator {
       const errorMessage = error instanceof Error ? error.message : 'Failed to refresh level';
       this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Error refreshing level ${targetLevelIndex}: ${errorMessage}` });
       // Decide if we should dispatch a LastLevel here on error or let the UI handle the error state
-       this.dispatchLastLevel(targetLevelIndex); // Tentatively set LastLevel on error
+      this.dispatchLastLevel(targetLevelIndex); // Tentatively set LastLevel on error
     } finally {
       // Ensure loading state is reset
       if (this.store?.dispatch) {
@@ -600,49 +576,50 @@ class PostTreeOperator extends BaseOperator {
   public async submitReply(text: string, parentId: string, quote: Quote): Promise<{ replyId?: string; error?: string }> {
     // Ensure reply context setters are available before proceeding
     if (!this.replyContextSetters) {
-        console.error("[submitReply] ReplyContext setters not initialized in PostTreeOperator.");
-        return { error: 'Internal configuration error: Reply context not available.' };
+      console.error("[submitReply] ReplyContext setters not initialized in PostTreeOperator.");
+      return { error: 'Internal configuration error: Reply context not available.' };
     }
     try {
       // Get the user ID, which will throw if user is not authenticated
-      const authorId = this.getUserId();
+      this.getUserId();
 
-      const response = await axios.post<CreateReplyResponse>(`${process.env.REACT_APP_API_URL}/api/replies/createReply`, {
+      // Direct axios call
+      const createReplyRequest: CreateReplyRequest = {
         text,
-        parentId: [parentId], // Ensure parentId is always an array
+        parentId,
         quote,
-        metadata: {
-          authorId,
-        }
+      };
+      const response: AxiosResponse<CreateReplyResponse> = await axios.post(`${this.baseURL}/api/replies/createReply`, createReplyRequest, {
+        validateStatus: status => status === 201 || status === 200 // Adjust as per API success codes
       });
 
-    if (!response.data.success || !response.data.data?.id) {
-      return { error: response.data.error || 'Unknown error occurred during reply submission' };
-    }
-
-    const newReplyId = response.data.data.id;
-    console.log(`[submitReply] Reply successfully submitted with ID: ${newReplyId}`);
-
-    // --- Refetch Logic ---
-    const state = this.getState();
-    if (state.postTree && state.postTree.levels) {
-      // Find the index of the parent level
-      const parentLevelIndex = state.postTree.levels.findIndex(level =>
-        isMidLevel(level) && level.midLevel?.selectedNode.id === parentId
-      );
-
-      if (parentLevelIndex !== -1) {
-        const targetLevelIndex = parentLevelIndex + 1;
-        console.log(`[submitReply] Triggering refresh for level ${targetLevelIndex} after submitting reply to parent ${parentId}`);
-        await this.refreshLevel(targetLevelIndex, parentId, quote);
-      } else {
-        console.error(`[submitReply] Could not find parent level index for parentId: ${parentId}. Cannot refresh level.`);
-        // Handle this case - maybe dispatch an error or warning?
+      if (!response.data.success || !response.data.data?.id) {
+        return { error: response.data.error || 'Unknown error occurred during reply submission' };
       }
-    } else {
-       console.warn(`[submitReply] Post tree or levels not found in state after reply submission. Cannot refresh level.`);
-    }
-    // --- End Refetch Logic ---
+
+      const newReplyId = response.data.data.id;
+      console.log(`[submitReply] Reply successfully submitted with ID: ${newReplyId}`);
+
+      // --- Refetch Logic ---
+      const state = this.getState();
+      if (state.postTree && state.postTree.levels) {
+        // Find the index of the parent level
+        const parentLevelIndex = state.postTree.levels.findIndex(level =>
+          isMidLevel(level) && level.midLevel?.selectedNode.id === parentId
+        );
+
+        if (parentLevelIndex !== -1) {
+          const targetLevelIndex = parentLevelIndex + 1;
+          console.log(`[submitReply] Triggering refresh for level ${targetLevelIndex} after submitting reply to parent ${parentId}`);
+          await this.refreshLevel(targetLevelIndex, parentId, quote);
+        } else {
+          console.error(`[submitReply] Could not find parent level index for parentId: ${parentId}. Cannot refresh level.`);
+          // Handle this case - maybe dispatch an error or warning?
+        }
+      } else {
+        console.warn(`[submitReply] Post tree or levels not found in state after reply submission. Cannot refresh level.`);
+      }
+      // --- End Refetch Logic ---
 
       // Reset Reply UI State BEFORE returning
       this.replyContextSetters.resetReplyState();
@@ -665,79 +642,81 @@ class PostTreeOperator extends BaseOperator {
 
   // New public method called by UI
   public requestLoadNextLevel(): void {
-      const state = this.getState();
-      if (!state || !state.postTree) {
-          console.warn("[Queue] Cannot request next level, state not ready.");
-          return;
-      }
-      const nextLevelNumber = state.postTree.levels.length;
+    const state = this.getState();
+    if (!state || !state.postTree) {
+      console.warn("[Queue] Cannot request next level, state not ready.");
+      return;
+    }
+    const nextLevelNumber = state.postTree.levels.length;
 
-      // Prevent adding duplicates if already loading or queued
-      if (this.isLoadingLevel && this.loadingLevelNumber === nextLevelNumber) {
-          return;
-      }
-      if (this.pendingLoadRequests.includes(nextLevelNumber)) {
-          return;
-      }
+    // Prevent adding duplicates if already loading or queued
+    if (this.isLoadingLevel && this.loadingLevelNumber === nextLevelNumber) {
+      return;
+    }
+    if (this.pendingLoadRequests.includes(nextLevelNumber)) {
+      return;
+    }
 
-      this.pendingLoadRequests.push(nextLevelNumber);
-      // Sort queue to ensure levels are processed sequentially? Generally FIFO is fine here.
-      // this.pendingLoadRequests.sort((a, b) => a - b); // Optional: Keep sorted
-      this.processLoadQueue(); // Attempt to process immediately
+    this.pendingLoadRequests.push(nextLevelNumber);
+    // Sort queue to ensure levels are processed sequentially? Generally FIFO is fine here.
+    // this.pendingLoadRequests.sort((a, b) => a - b); // Optional: Keep sorted
+    this.processLoadQueue(); // Attempt to process immediately
   }
 
   private async processLoadQueue(): Promise<void> {
-      if (this.isLoadingLevel || this.pendingLoadRequests.length === 0) {
-          return; // Already processing or queue is empty
-      }
+    if (this.isLoadingLevel || this.pendingLoadRequests.length === 0) {
+      return; // Already processing or queue is empty
+    }
 
-      this.isLoadingLevel = true;
-      // Get the next level (FIFO)
-      const levelToLoad = this.pendingLoadRequests.shift();
+    this.isLoadingLevel = true;
+    // Get the next level (FIFO)
+    const levelToLoad = this.pendingLoadRequests.shift();
 
-      if (levelToLoad === undefined) { // Safety check
-           this.isLoadingLevel = false;
-           return;
-      }
+    if (levelToLoad === undefined) { // Safety check
+      this.isLoadingLevel = false;
+      return;
+    }
 
-      this.loadingLevelNumber = levelToLoad; // Track current level
+    this.loadingLevelNumber = levelToLoad; // Track current level
 
-      // Ensure store exists before dispatching START loading action
-      // We can dispatch this based on the queue state now
+    // Ensure store exists before dispatching START loading action
+    // We can dispatch this based on the queue state now
+    if (this.store?.dispatch) {
+      this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: true });
+    }
+
+    try {
+      // Call the actual loading logic, passing the specific level number from the queue
+      await this.executeLoadLevel(levelToLoad);
+    } catch (error) {
+      // executeLoadLevel should handle its own errors/dispatch SET_ERROR
+      console.error(`[Queue] Error processing level ${levelToLoad} in processLoadQueue:`, error);
+      // Ensure error state is set if executeLoadLevel failed to do so
       if (this.store?.dispatch) {
-        this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: true });
+        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Queue processing failed for level ${levelToLoad}: ${error instanceof Error ? error.message : String(error)}` });
+      }
+      // Dispatch LastLevel for the *failed* level to prevent further loading attempts on this branch?
+      // This mirrors the error handling within executeLoadLevel
+      this.dispatchLastLevel(levelToLoad);
+
+    } finally {
+      this.isLoadingLevel = false;
+      this.loadingLevelNumber = null;
+
+      // Dispatch context update for loading state immediately
+      if (this.store?.dispatch) {
+        this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false });
+      } else {
+        console.error("PostTreeOperator: Store not available for dispatching SET_LOADING_MORE false in queue.");
       }
 
-      try {
-          // Call the actual loading logic, passing the specific level number from the queue
-          await this.executeLoadLevel(levelToLoad);
-      } catch (error) {
-          // executeLoadLevel should handle its own errors/dispatch SET_ERROR
-          console.error(`[Queue] Error processing level ${levelToLoad} in processLoadQueue:`, error);
-          // Ensure error state is set if executeLoadLevel failed to do so
-          if (this.store?.dispatch) {
-            this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: `Queue processing failed for level ${levelToLoad}: ${error instanceof Error ? error.message : String(error)}` });
-          }
-          // Dispatch LastLevel for the *failed* level to prevent further loading attempts on this branch?
-          // This mirrors the error handling within executeLoadLevel
-          this.dispatchLastLevel(levelToLoad);
-
-      } finally {
-          this.isLoadingLevel = false;
-          this.loadingLevelNumber = null;
-
-          // Dispatch context update for loading state immediately
-          if (this.store?.dispatch) {
-            this.store.dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false });
-          } else {
-            console.error("PostTreeOperator: Store not available for dispatching SET_LOADING_MORE false in queue.");
-          }
-
-          // IMPORTANT: Trigger the next check immediately after finishing
-          // Use setTimeout to yield to event loop briefly, allowing state updates to potentially propagate
-          // before the next queue check (although sequential execution should handle most cases)
-          setTimeout(() => this.processLoadQueue(), 0);
+      // IMPORTANT: Trigger the next check immediately after finishing
+      // Use setTimeout to yield to event loop briefly, allowing state updates to potentially propagate
+      // before the next queue check (although sequential execution should handle most cases)
+      if (this.pendingLoadRequests.length > 0) {
+        setTimeout(() => this.processLoadQueue(), 0);
       }
+    }
   }
 
   /**
@@ -751,110 +730,78 @@ class PostTreeOperator extends BaseOperator {
    *                          (Handled - Propagation/Depends on Caller/UI: Thrown errors caught by processLoadQueue or propagate).
    */
   private executeLoadLevel = async (levelNumber: number): Promise<void> => {
-
-    // We still need the store dispatch reference
     const dispatch = this.store?.dispatch;
     if (!dispatch) {
       console.error("[executeLoadLevel] Store or dispatch not available.");
-      // Handled - Internally: This specific error is caught by the processLoadQueue method's
-      // try/catch block, which logs and dispatches a SET_ERROR action.
-      throw new Error("Store not available in executeLoadLevel"); // Throw to be caught by processLoadQueue
+      throw new Error("Store not available in executeLoadLevel");
     }
 
-    // Keep the SET_LOADING_MORE dispatched by the queue processor
-    // dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: true }); // MOVED to processLoadQueue start
-
     try {
-      // Log the level number we are actually processing (passed from queue)
-      console.log(`PostTreeOperator: Starting executeLoadLevel processing for level ${levelNumber}`);
+      const state = this.getState(); // Get current state early for the new check
 
-      const state = this.getState(); // Get current state WHEN THIS level is processed
-
-      { // Validate inputs and state
-        if (!state.postTree) {
-          const errorMsg = `PostTreeOperator: postTree not initialized`;
-          throw new PostTreeError(errorMsg);
-        }
-        // Validate levelNumber passed from queue
-        if (levelNumber < 1) {
-          const errorMsg = `Start level number ${levelNumber} is less than 1, which is not allowed`;
-          throw new PostTreeError(errorMsg);
-        }
-
-        // CRITICAL CHECK: Ensure the level number we are processing matches the expected next level in the *current* state
-        // This prevents issues if the state somehow got ahead (e.g., manual state manipulation?) while this was queued
-        const expectedLevelNumber = state.postTree.levels.length;
-        if (levelNumber !== expectedLevelNumber) {
-            console.warn(`[executeLoadLevel] Attempting to load level ${levelNumber} from queue, but current state expects level ${expectedLevelNumber}. Stopping.`);
-            // Do NOT dispatch LastLevel here, as state might be inconsistent. Just stop processing this queued item.
-            // The queue will proceed to the next item if any.
+      if (state.postTree && state.postTree.levels[levelNumber] && isLastLevel(state.postTree.levels[levelNumber])) {
+        const existingLevelData = state.postTree.levels[levelNumber];
+        if (existingLevelData.lastLevel && state.postTree.post && existingLevelData.lastLevel.rootNodeId === state.postTree.post.id) {
+            console.warn(`[executeLoadLevel] Level ${levelNumber} is already marked as LastLevel in the current state for the correct root. Stopping.`);
             return;
         }
-
-        // Skip root level (level 0) - This check is likely redundant if levelNumber starts at 1
-        if (levelNumber === 0) {
-           console.warn(`[executeLoadLevel] Attempting to load level 0, which is not allowed. Stopping.`);
-           return;
-        }
       }
-      const parentLevel = state.postTree.levels[levelNumber-1];
 
-      // Ensure parentLevel is not undefined before checking isLastLevel
+      console.log(`PostTreeOperator: Starting executeLoadLevel processing for level ${levelNumber}`);
+
+      if (!state.postTree) {
+        const errorMsg = `PostTreeOperator: postTree not initialized`;
+        throw new PostTreeError(errorMsg);
+      }
+      if (levelNumber < 1) {
+        const errorMsg = `Start level number ${levelNumber} is less than 1, which is not allowed`;
+        throw new PostTreeError(errorMsg);
+      }
+      const expectedLevelNumber = state.postTree.levels.length;
+      if (levelNumber !== expectedLevelNumber) {
+        console.warn(`[executeLoadLevel] Attempting to load level ${levelNumber} from queue, but current state expects level ${expectedLevelNumber}. Stopping.`);
+        return;
+      }
+      if (levelNumber === 0) {
+        console.warn(`[executeLoadLevel] Attempting to load level 0, which is not allowed. Stopping.`);
+        return;
+      }
+      
+      const parentLevel = state.postTree.levels[levelNumber - 1];
       if (typeof parentLevel === 'undefined') {
-         console.error(`[executeLoadLevel] Parent level ${levelNumber - 1} is undefined when trying to load level ${levelNumber}. State length: ${state.postTree?.levels?.length}`);
-         // Handled - Depends on Caller/UI: Logic error/unexpected state.
-         // Calling component should handle via Error Boundary.
-         throw new PostTreeError(`Parent level ${levelNumber - 1} is undefined.`);
+        console.error(`[executeLoadLevel] Parent level ${levelNumber - 1} is undefined when trying to load level ${levelNumber}. State length: ${state.postTree?.levels?.length}`);
+        throw new PostTreeError(`Parent level ${levelNumber - 1} is undefined.`);
       }
-
-      // Check if parent level is incorrectly marked as last
       if (isLastLevel(parentLevel)) {
-          console.warn(`[executeLoadLevel] Parent level ${levelNumber - 1} is marked as LastLevel, cannot load level ${levelNumber}. Stopping.`);
-          // Don't dispatchLastLevel here, just stop processing this level.
-          return; // Stop loading
+        console.warn(`[executeLoadLevel] Parent level ${levelNumber - 1} is marked as LastLevel, cannot load level ${levelNumber}. Stopping.`);
+        return; 
       }
 
-      const parentLevelAsLevel : PostTreeLevel = parentLevel;
-      const rootNodeId = state.postTree.post.id; // Moved after state.postTree check
+      const parentLevelAsLevel: PostTreeLevel = parentLevel;
+      const rootNodeId = state.postTree.post.id;
 
-      { // continue validation (selected node in parent)
-        // This check might be redundant now after the explicit undefined check above, but keep for structure
-        if (!parentLevel) { // Should be caught by undefined check now
-          this.dispatchLastLevel(levelNumber); // Still dispatch if parentLevel logically doesn't exist
-          return;
-        }
-        const selectedNode = getSelectedNodeHelper(parentLevelAsLevel);
-        if (!selectedNode) {
-          console.error(`[executeLoadLevel] Error condition reached: Selected node not found for parent level ${levelNumber - 1} when loading level ${levelNumber}.`);
-          console.error(`[executeLoadLevel] Parent Level Data: ${JSON.stringify(parentLevel)}`);
-          console.error(`[executeLoadLevel] Current Levels State: ${JSON.stringify(state.postTree.levels)}`);
-          const errorMsg = `Selected node not found for level ${levelNumber} (based on parent level ${levelNumber-1}); parentLevel: ${JSON.stringify(parentLevel)}; levels: ${JSON.stringify(state.postTree.levels)}`;
-          // Dispatch last level here as we cannot proceed with loading children
-          this.dispatchLastLevel(levelNumber);
-          throw new PostTreeError(errorMsg); // Throw to ensure SET_ERROR is potentially dispatched by caller/queue
-        }
-      }
       const selectedNodeOfParentLevel = getSelectedNodeHelper(parentLevelAsLevel);
       if (!selectedNodeOfParentLevel) {
-          console.error(`[executeLoadLevel] Safeguard check failed: Selected node is null/undefined for parent level ${levelNumber-1}.`);
-          this.dispatchLastLevel(levelNumber); // Dispatch last level
-          throw new PostTreeError(`Selected node not found for level ${levelNumber-1}`);
+        console.error(`[executeLoadLevel] Error condition reached: Selected node not found for parent level ${levelNumber - 1} when loading level ${levelNumber}.`);
+        console.error(`[executeLoadLevel] Parent Level Data: ${JSON.stringify(parentLevel)}`);
+        console.error(`[executeLoadLevel] Current Levels State: ${JSON.stringify(state.postTree.levels)}`);
+        const errorMsg = `Selected node not found for level ${levelNumber} (based on parent level ${levelNumber - 1}); parentLevel: ${JSON.stringify(parentLevel)}; levels: ${JSON.stringify(state.postTree.levels)}`;
+        // Dispatch last level here as we cannot proceed with loading children
+        this.dispatchLastLevel(levelNumber);
+        throw new PostTreeError(errorMsg); // Throw to ensure SET_ERROR is potentially dispatched by caller/queue
       }
       const parentId = selectedNodeOfParentLevel.id;
-      { // continue validation (parent id/text)
-        if (!parentId) { // Removed parentText check - only ID and quote are essential for fetching
-          console.warn(`[executeLoadLevel] Missing parentId for level ${levelNumber - 1}. Cannot load level ${levelNumber}.`);
-          this.dispatchLastLevel(levelNumber);
-          return;
-        }
+      if (!parentId) { 
+        console.warn(`[executeLoadLevel] Missing parentId for level ${levelNumber - 1}. Cannot load level ${levelNumber}.`);
+        this.dispatchLastLevel(levelNumber);
+        return;
       }
+      
       const quoteCountsFromParent = selectedNodeOfParentLevel.quoteCounts;
-      { // continue validation (parent quote counts)
-        if (!quoteCountsFromParent || !quoteCountsFromParent.quoteCounts || quoteCountsFromParent.quoteCounts.length === 0) {
-          console.log(`[executeLoadLevel] Parent node ${parentId} level ${levelNumber-1} has no quotes. Dispatching LastLevel for ${levelNumber}.`);
-          this.dispatchLastLevel(levelNumber);
-          return; // This is a valid end-of-branch condition
-        }
+      if (!quoteCountsFromParent || !quoteCountsFromParent.quoteCounts || quoteCountsFromParent.quoteCounts.length === 0) {
+        console.log(`[executeLoadLevel] Parent node ${parentId} level ${levelNumber - 1} has no quotes. Dispatching LastLevel for ${levelNumber}.`);
+        this.dispatchLastLevel(levelNumber);
+        return; 
       }
 
       // Inner try/catch for the fetching part
@@ -863,42 +810,42 @@ class PostTreeOperator extends BaseOperator {
         const parentHasQuoteSelected = !!quoteInParentToFetchChildrenFor;
         let selectedParentQuoteHasReplies = false;
         if (parentHasQuoteSelected) {
-           selectedParentQuoteHasReplies = quoteCountsFromParent.quoteCounts.some(
+          selectedParentQuoteHasReplies = quoteCountsFromParent.quoteCounts.some(
             ([quote, count]) => count > 0 && areQuotesEqual(quote, quoteInParentToFetchChildrenFor) // Add non-null assertion
           );
         }
 
         if (!parentHasQuoteSelected || !selectedParentQuoteHasReplies) {
-            const mostQuotedInParent = this.mostQuoted(quoteCountsFromParent);
-            if (mostQuotedInParent === null) {
-              console.log(`[executeLoadLevel] No quote selected/replies, and no other quotes have replies for level ${levelNumber-1}. Dispatching LastLevel for ${levelNumber}.`);
-              this.dispatchLastLevel(levelNumber);
-              return;
-            } else {
-              console.log(`[executeLoadLevel] Using most quoted from parent level ${levelNumber-1}:`, mostQuotedInParent);
-              quoteInParentToFetchChildrenFor = mostQuotedInParent;
-            }
+          const mostQuotedInParent = this.mostQuoted(quoteCountsFromParent);
+          if (mostQuotedInParent === null) {
+            console.log(`[executeLoadLevel] No quote selected/replies, and no other quotes have replies for level ${levelNumber - 1}. Dispatching LastLevel for ${levelNumber}.`);
+            this.dispatchLastLevel(levelNumber);
+            return;
+          } else {
+            console.log(`[executeLoadLevel] Using most quoted from parent level ${levelNumber - 1}:`, mostQuotedInParent);
+            quoteInParentToFetchChildrenFor = mostQuotedInParent;
+          }
         }
 
         if (!quoteInParentToFetchChildrenFor) {
-           console.error(`[executeLoadLevel] Logic error: quoteInParentToFetchChildrenFor is null/undefined after checks. Parent Level:`, parentLevelAsLevel);
-           this.dispatchLastLevel(levelNumber);
-           return;
+          console.error(`[executeLoadLevel] Logic error: quoteInParentToFetchChildrenFor is null/undefined after checks. Parent Level:`, parentLevelAsLevel);
+          this.dispatchLastLevel(levelNumber);
+          return;
         }
 
         const sortingCriteria = 'mostRecent';
         const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, quoteInParentToFetchChildrenFor, sortingCriteria, 5);
 
         if (!maybeFirstReplies) {
-           console.warn(`[executeLoadLevel] fetchFirstRepliesForLevel returned null for level ${levelNumber}. Assuming end of branch.`);
-           this.dispatchLastLevel(levelNumber);
-           return;
+          console.warn(`[executeLoadLevel] fetchFirstRepliesForLevel returned null for level ${levelNumber}. Assuming end of branch.`);
+          this.dispatchLastLevel(levelNumber);
+          return;
         }
 
         if (maybeFirstReplies.data.length === 0) {
-           console.log(`[executeLoadLevel] fetchFirstRepliesForLevel returned 0 replies for level ${levelNumber}. Dispatching LastLevel.`);
-           this.dispatchLastLevel(levelNumber);
-           return;
+          console.log(`[executeLoadLevel] fetchFirstRepliesForLevel returned 0 replies for level ${levelNumber}. Dispatching LastLevel.`);
+          this.dispatchLastLevel(levelNumber);
+          return;
         }
 
         const pagination = maybeFirstReplies.pagination;
@@ -907,25 +854,24 @@ class PostTreeOperator extends BaseOperator {
 
         await Promise.all(firstReplies.map(async (reply: Reply) => {
           try {
-              const quoteCounts = await this.fetchQuoteCounts(reply.id);
-              quoteCountsMap.set(reply.quote, quoteCounts);
+            const quoteCounts = await this.fetchQuoteCounts(reply.id);
+            quoteCountsMap.set(reply.quote, quoteCounts);
           } catch (qcError) {
-              console.error(`[executeLoadLevel] Failed to fetch quote counts for reply ${reply.id}:`, qcError);
-              quoteCountsMap.set(reply.quote, { quoteCounts: [] });
+            console.error(`[executeLoadLevel] Failed to fetch quote counts for reply ${reply.id}:`, qcError);
+            quoteCountsMap.set(reply.quote, { quoteCounts: [] });
           }
         }));
 
-        const siblingsForQuote : PostTreeNode[] = [];
+        const siblingsForQuote: PostTreeNode[] = [];
         firstReplies.forEach(reply => {
           siblingsForQuote.push({
             id: reply.id,
             rootNodeId: rootNodeId,
-            parentId: [parentId],
+            parentId: parentId,
             levelNumber: levelNumber,
             textContent: reply.text,
             repliedToQuote: quoteInParentToFetchChildrenFor,
-            quoteCounts: quoteCountsMap.get(reply.quote),
-            authorId: reply.authorId,
+            quoteCounts: quoteCountsMap.get(reply.quote) ?? { quoteCounts: [] },            authorId: reply.authorId,
             createdAt: reply.createdAt,
           } as PostTreeNode);
         });
@@ -935,12 +881,12 @@ class PostTreeOperator extends BaseOperator {
 
         const level: PostTreeLevel = createMidLevel(
           rootNodeId,
-          [parentId],
+          parentId,
           levelNumber,
           quoteInParentToFetchChildrenFor,
           initialSelectedQuoteInNewLevel,
           selectedNodeForNewLevel,
-          { levelsMap: [[quoteInParentToFetchChildrenFor, siblingsForQuote]] },
+          { nodes: siblingsForQuote },
           pagination
         );
 
@@ -948,27 +894,27 @@ class PostTreeOperator extends BaseOperator {
         dispatch({ type: ACTIONS.REPLACE_LEVEL_DATA, payload: level }); // Correct Action Type
 
       } catch (fetchError) {
-         console.error(`[executeLoadLevel] Inner error fetching/processing replies for level ${levelNumber}:`, fetchError);
-         // Dispatch error state
-         dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to process replies for level ${levelNumber}: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}` });
-         // Dispatch LastLevel to prevent further loading attempts on this branch after error
-         this.dispatchLastLevel(levelNumber);
-         // Re-throw? No, let the queue handle the overall state.
+        console.error(`[executeLoadLevel] Inner error fetching/processing replies for level ${levelNumber}:`, fetchError);
+        // Dispatch error state
+        dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to process replies for level ${levelNumber}: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}` });
+        // Dispatch LastLevel to prevent further loading attempts on this branch after error
+        this.dispatchLastLevel(levelNumber);
+        // Re-throw? No, let the queue handle the overall state.
       }
 
     } catch (outerError) { // Catch errors from initial checks/state validation
-        console.error(`[executeLoadLevel] Outer error during executeLoadLevel for level ${levelNumber}:`, outerError);
-        // Dispatch error state if not already handled (e.g., by selectedNode check)
-        dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to load level ${levelNumber}: ${outerError instanceof Error ? outerError.message : String(outerError)}` });
-        // Ensure LastLevel is dispatched if error occurs before inner try block or if thrown from checks
-        // Avoid double-dispatch if already done (e.g. missing selected node case)
-        // This might require checking state again or a flag, maybe simpler to just dispatch again.
-        this.dispatchLastLevel(levelNumber); // Dispatch LastLevel to be safe. Reducer handles duplicates if necessary.
-        // Re-throw the error to be caught by the queue processor's try/catch
-        throw outerError;
+      console.error(`[executeLoadLevel] Outer error during executeLoadLevel for level ${levelNumber}:`, outerError);
+      // Dispatch error state if not already handled (e.g., by selectedNode check)
+      dispatch({ type: ACTIONS.SET_ERROR, payload: `Failed to load level ${levelNumber}: ${outerError instanceof Error ? outerError.message : String(outerError)}` });
+      // Ensure LastLevel is dispatched if error occurs before inner try block or if thrown from checks
+      // Avoid double-dispatch if already done (e.g. missing selected node case)
+      // This might require checking state again or a flag, maybe simpler to just dispatch again.
+      this.dispatchLastLevel(levelNumber); // Dispatch LastLevel to be safe. Reducer handles duplicates if necessary.
+      // Re-throw the error to be caught by the queue processor's try/catch
+      throw outerError;
     } finally {
-       // Loading state is now handled by the queue processor's finally block
-       // dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false }); // MOVED
+      // Loading state is now handled by the queue processor's finally block
+      // dispatch({ type: ACTIONS.SET_LOADING_MORE, payload: false }); // MOVED
     }
   } // End of executeLoadLevel
 
@@ -976,7 +922,7 @@ class PostTreeOperator extends BaseOperator {
     if (!quoteCounts || !quoteCounts.quoteCounts || quoteCounts.quoteCounts.length === 0) {
       return null;
     }
-    
+
     // Find the quote with the highest count
     let maxQuoteTuple = quoteCounts.quoteCounts[0];
     for (const quoteTuple of quoteCounts.quoteCounts) {
@@ -984,7 +930,7 @@ class PostTreeOperator extends BaseOperator {
         maxQuoteTuple = quoteTuple;
       }
     }
-    
+
     // Return just the Quote part of the tuple
     return maxQuoteTuple[0];
   }
@@ -1055,9 +1001,9 @@ class PostTreeOperator extends BaseOperator {
     const rootNodeId = node.rootNodeId; // Assuming consistent rootNodeId
 
     if (!targetLevel || !isMidLevel(targetLevel)) {
-        console.warn(`[setSelectedNode] Target level ${levelNumber} not found or is not a MidLevel. Dispatching SET_SELECTED_NODE only.`);
-        dispatch({ type: ACTIONS.SET_SELECTED_NODE, payload: node });
-        return;
+      console.warn(`[setSelectedNode] Target level ${levelNumber} not found or is not a MidLevel. Dispatching SET_SELECTED_NODE only.`);
+      dispatch({ type: ACTIONS.SET_SELECTED_NODE, payload: node });
+      return;
     }
 
     // --- Step 1: Dispatch update for the selected node in the current level ---
@@ -1067,151 +1013,157 @@ class PostTreeOperator extends BaseOperator {
     const currentSelectedQuote = getSelectedQuoteInThisLevel(targetLevel);
     let isPreviouslySelectedQuoteValidForNewNode = false;
     if (currentSelectedQuote) {
-        const quotesMap = node.quoteCounts?.quoteCounts;
-        if (quotesMap) {
-            isPreviouslySelectedQuoteValidForNewNode = quotesMap.some(([quoteFromMap]) => areQuotesEqual(quoteFromMap, currentSelectedQuote));
-        }
+      const quotesMap = node.quoteCounts?.quoteCounts;
+      if (quotesMap) {
+        isPreviouslySelectedQuoteValidForNewNode = quotesMap.some(([quoteFromMap]) => areQuotesEqual(quoteFromMap, currentSelectedQuote));
+      }
     }
 
     // Determine the quote context that *should* drive the next level
     let quoteToDriveNextLevel: Quote | null = null;
 
     if (currentSelectedQuote && isPreviouslySelectedQuoteValidForNewNode) {
-        // Case A: Previous selection is still valid for the new node.
-        quoteToDriveNextLevel = currentSelectedQuote;
-        console.log(`[setSelectedNode] Prev selected quote is valid for node ${node.id}. Quote:`, quoteToDriveNextLevel);
-        // No need to dispatch UPDATE_THIS_LEVEL_SELECTED_QUOTE as it hasn't changed.
+      // Case A: Previous selection is still valid for the new node.
+      quoteToDriveNextLevel = currentSelectedQuote;
+      console.log(`[setSelectedNode] Prev selected quote is valid for node ${node.id}. Quote:`, quoteToDriveNextLevel);
+      // No need to dispatch UPDATE_THIS_LEVEL_SELECTED_QUOTE as it hasn't changed.
     } else {
-        // Case B: Previous selection is invalid (or didn't exist). Need to find the new default.
-        const newDefaultQuoteForParent = this.mostQuoted(node.quoteCounts);
-        quoteToDriveNextLevel = newDefaultQuoteForParent; // This might be null if no quotes exist
+      // Case B: Previous selection is invalid (or didn't exist). Need to find the new default.
+      const newDefaultQuoteForParent = this.mostQuoted(node.quoteCounts);
+      quoteToDriveNextLevel = newDefaultQuoteForParent; // This might be null if no quotes exist
 
-        console.log(`[setSelectedNode] Prev selected quote invalid or null. New driving quote for node ${node.id}:`, quoteToDriveNextLevel);
+      console.log(`[setSelectedNode] Prev selected quote invalid or null. New driving quote for node ${node.id}:`, quoteToDriveNextLevel);
 
-        // Explicitly update/reset the parent level's selected quote state
-        dispatch({
-            type: ACTIONS.UPDATE_THIS_LEVEL_SELECTED_QUOTE,
-            payload: {
-                levelNumber: levelNumber,
-                // Set to the new default, or null if no default exists.
-                // Setting it here ensures the parent level state reflects the context driving N+1.
-                newQuote: quoteToDriveNextLevel
-            }
-        });
+      // Explicitly update/reset the parent level's selected quote state
+      dispatch({
+        type: ACTIONS.UPDATE_THIS_LEVEL_SELECTED_QUOTE,
+        payload: {
+          levelNumber: levelNumber,
+          // Set to the new default, or null if no default exists.
+          // Setting it here ensures the parent level state reflects the context driving N+1.
+          newQuote: quoteToDriveNextLevel
+        }
+      });
     }
 
     // --- Step 3: Check if the *next* level (N+1) needs updating ---
     // Re-add explicit null check to satisfy linter
     if (!state.postTree) {
-        console.error("[setSelectedNode] state.postTree became null unexpectedly before checking next level.");
-        return; 
+      console.error("[setSelectedNode] state.postTree became null unexpectedly before checking next level.");
+      return;
     }
     const nextLevel = state.postTree.levels[nextLevelNumber];
     let nextLevelNeedsUpdate = true; // Assume update needed unless proven otherwise
 
     if (nextLevel && isMidLevel(nextLevel)) {
-        // Next level exists and has data. Check if its driving quote matches.
-        const nextLevelParentQuote = getSelectedQuoteInParent(nextLevel);
-        if (areQuotesEqual(nextLevelParentQuote, quoteToDriveNextLevel)) {
-            // The next level already shows data for the correct quote. No update needed.
-            nextLevelNeedsUpdate = false;
-            console.log(`[setSelectedNode] Next level ${nextLevelNumber} already reflects the correct quote. No update needed.`);
-        } else {
-             console.log(`[setSelectedNode] Next level ${nextLevelNumber} needs update. Current parent quote:`, nextLevelParentQuote, `Required:`, quoteToDriveNextLevel);
-        }
-    } else if (nextLevel && isLastLevel(nextLevel)) {
-        // Next level exists but is 'End of thread'. Check if it *should* be.
-        if (quoteToDriveNextLevel === null) {
-            // Correct state: Parent context leads to no children. No update needed.
-            nextLevelNeedsUpdate = false;
-            console.log(`[setSelectedNode] Next level ${nextLevelNumber} is LastLevel and driving quote is null. Correct state.`);
-        } else {
-             console.log(`[setSelectedNode] Next level ${nextLevelNumber} is LastLevel, but should show children for quote:`, quoteToDriveNextLevel);
-        }
-    } else if (!nextLevel && quoteToDriveNextLevel !== null) {
-        // Next level doesn't exist yet, but it should (parent has a driving quote).
-         console.log(`[setSelectedNode] Next level ${nextLevelNumber} does not exist, but should be fetched for quote:`, quoteToDriveNextLevel);
-    } else {
-        // Default case: nextLevel doesn't exist and driving quote is null. Correct state.
+      // Next level exists and has data. Check if its driving quote matches.
+      const nextLevelParentQuote = getSelectedQuoteInParent(nextLevel);
+      if (areQuotesEqual(nextLevelParentQuote, quoteToDriveNextLevel)) {
+        // The next level already shows data for the correct quote. No update needed.
         nextLevelNeedsUpdate = false;
-         console.log(`[setSelectedNode] Next level ${nextLevelNumber} does not exist and driving quote is null. Correct state.`);
+        console.log(`[setSelectedNode] Next level ${nextLevelNumber} already reflects the correct quote. No update needed.`);
+      } else {
+        console.log(`[setSelectedNode] Next level ${nextLevelNumber} needs update. Current parent quote:`, nextLevelParentQuote, `Required:`, quoteToDriveNextLevel);
+      }
+    } else if (nextLevel && isLastLevel(nextLevel)) {
+      // Next level exists but is 'End of thread'. Check if it *should* be.
+      if (quoteToDriveNextLevel === null) {
+        // Correct state: Parent context leads to no children. No update needed.
+        nextLevelNeedsUpdate = false;
+        console.log(`[setSelectedNode] Next level ${nextLevelNumber} is LastLevel and driving quote is null. Correct state.`);
+      } else {
+        console.log(`[setSelectedNode] Next level ${nextLevelNumber} is LastLevel, but should show children for quote:`, quoteToDriveNextLevel);
+      }
+    } else if (!nextLevel && quoteToDriveNextLevel !== null) {
+      // Next level doesn't exist yet, but it should (parent has a driving quote).
+      console.log(`[setSelectedNode] Next level ${nextLevelNumber} does not exist, but should be fetched for quote:`, quoteToDriveNextLevel);
+    } else {
+      // Default case: nextLevel doesn't exist and driving quote is null. Correct state.
+      nextLevelNeedsUpdate = false;
+      console.log(`[setSelectedNode] Next level ${nextLevelNumber} does not exist and driving quote is null. Correct state.`);
     }
 
 
     // --- Step 4: If N+1 needs updating, fetch/replace data ---
     if (nextLevelNeedsUpdate) {
-        console.log(`[setSelectedNode] Proceeding to update level ${nextLevelNumber}.`);
-        const parentIdForNextLevel = node.id;
+      console.log(`[setSelectedNode] Proceeding to update level ${nextLevelNumber}.`);
+      const parentIdForNextLevel = node.id;
 
-        try {
-            let nextLevelData: PostTreeLevel;
+      try {
+        let nextLevelData: PostTreeLevel;
 
-            if (quoteToDriveNextLevel) {
-                // Fetch replies for the driving quote
-                const sortingCriteria = 'mostRecent';
-                const limit = 5;
-                const maybeFirstReplies = await this.fetchFirstRepliesForLevel(nextLevelNumber, parentIdForNextLevel, quoteToDriveNextLevel, sortingCriteria, limit);
+        if (quoteToDriveNextLevel) {
+          // Fetch replies for the driving quote
+          const sortingCriteria = 'mostRecent';
+          const limit = 5;
+          const maybeFirstReplies = await this.fetchFirstRepliesForLevel(nextLevelNumber, parentIdForNextLevel, quoteToDriveNextLevel, sortingCriteria, limit);
 
-                if (maybeFirstReplies && maybeFirstReplies.data.length > 0) {
-                    // Construct MidLevel N+1
-                    const firstReplies: Reply[] = maybeFirstReplies.data;
-                    const pagination: Pagination = maybeFirstReplies.pagination;
-                    const quoteCountsMap = new Map<Quote, QuoteCounts>();
-                     await Promise.all(firstReplies.map(async (reply: Reply) => {
-                      const quoteCounts = await this.fetchQuoteCounts(reply.id);
-                      quoteCountsMap.set(reply.quote, quoteCounts);
-                    }));
-                    const siblingsForQuote: PostTreeNode[] = firstReplies.map(reply => ({
-                      id: reply.id, rootNodeId: rootNodeId, parentId: [parentIdForNextLevel], levelNumber: nextLevelNumber,
-                      textContent: reply.text, repliedToQuote: quoteToDriveNextLevel,
-                      quoteCounts: quoteCountsMap.get(reply.quote), authorId: reply.authorId, createdAt: reply.createdAt,
-                    } as PostTreeNode));
-                    const selectedNodeForNewLevel = siblingsForQuote[0];
-                    const initialSelectedQuoteInNewLevel = selectedNodeForNewLevel.quoteCounts ? this.mostQuoted(selectedNodeForNewLevel.quoteCounts) : null;
+          if (maybeFirstReplies && maybeFirstReplies.data.length > 0) {
+            // Construct MidLevel N+1
+            const firstReplies: Reply[] = maybeFirstReplies.data;
+            const pagination: Pagination = maybeFirstReplies.pagination;
+            const quoteCountsMap = new Map<Quote, QuoteCounts>();
+            await Promise.all(firstReplies.map(async (reply: Reply) => {
+              const quoteCounts = await this.fetchQuoteCounts(reply.id);
+              quoteCountsMap.set(reply.quote, quoteCounts);
+            }));
+            const siblingsForQuote: PostTreeNode[] = firstReplies.map(reply => ({
+              id: reply.id, 
+              rootNodeId: rootNodeId, 
+              parentId: parentIdForNextLevel, 
+              levelNumber: nextLevelNumber,
+              textContent: reply.text, 
+              repliedToQuote: quoteToDriveNextLevel,
+              quoteCounts: quoteCountsMap.get(reply.quote), 
+              authorId: reply.authorId, 
+              createdAt: reply.createdAt,
+            } as PostTreeNode));
+            const selectedNodeForNewLevel = siblingsForQuote[0];
+            const initialSelectedQuoteInNewLevel = selectedNodeForNewLevel.quoteCounts ? this.mostQuoted(selectedNodeForNewLevel.quoteCounts) : null;
 
-                    nextLevelData = createMidLevel(
-                      rootNodeId, [parentIdForNextLevel], nextLevelNumber,
-                      quoteToDriveNextLevel, // selectedQuoteInParent for N+1
-                      initialSelectedQuoteInNewLevel, // selectedQuoteInThisLevel for N+1's first node
-                      selectedNodeForNewLevel,
-                      { levelsMap: [[quoteToDriveNextLevel, siblingsForQuote]] },
-                      pagination
-                    );
+            nextLevelData = createMidLevel(
+              rootNodeId, parentIdForNextLevel, nextLevelNumber,
+              quoteToDriveNextLevel, // selectedQuoteInParent for N+1
+              initialSelectedQuoteInNewLevel, // selectedQuoteInThisLevel for N+1's first node
+              selectedNodeForNewLevel,
+              { nodes: siblingsForQuote },
+              pagination
+            );
 
-                } else {
-                    // No replies found for the driving quote, mark N+1 as LastLevel
-                     console.log(`[setSelectedNode] No replies found for quote. Marking level ${nextLevelNumber} as LastLevel.`);
-                    nextLevelData = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: rootNodeId }, midLevel: null };
-                }
-            } else {
-                // Driving quote is null, mark N+1 as LastLevel
-                 console.log(`[setSelectedNode] Driving quote is null. Marking level ${nextLevelNumber} as LastLevel.`);
-                nextLevelData = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: rootNodeId }, midLevel: null };
-            }
-
-            // Dispatch REPLACE_LEVEL_DATA for N+1
-            dispatch({
-                type: ACTIONS.REPLACE_LEVEL_DATA,
-                payload: nextLevelData
-            });
-
-            // Dispatch CLEAR_LEVELS_AFTER N+1
-            dispatch({
-                type: ACTIONS.CLEAR_LEVELS_AFTER,
-                payload: { levelNumber: nextLevelNumber }
-            });
-
-        } catch (error) {
-             console.error(`[setSelectedNode] Error fetching or processing data for level ${nextLevelNumber}:`, error);
-            const postTreeErr = new PostTreeError(`Failed to update level ${nextLevelNumber}: ${error instanceof Error ? error.message : String(error)}`);
-            dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
-            // Add null check before accessing postTree again for rootNodeId
-            const finalRootNodeId = state.postTree ? state.postTree.post.id : 'unknown_root'; // Fallback ID
-            // Mark N+1 as LastLevel on error
-            const errorLevelData: PostTreeLevel = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: finalRootNodeId }, midLevel: null };
-             dispatch({ type: ACTIONS.REPLACE_LEVEL_DATA, payload: errorLevelData });
-             dispatch({ type: ACTIONS.CLEAR_LEVELS_AFTER, payload: { levelNumber: nextLevelNumber } });
+          } else {
+            // No replies found for the driving quote, mark N+1 as LastLevel
+            console.log(`[setSelectedNode] No replies found for quote. Marking level ${nextLevelNumber} as LastLevel.`);
+            nextLevelData = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: rootNodeId }, midLevel: null };
+          }
+        } else {
+          // Driving quote is null, mark N+1 as LastLevel
+          console.log(`[setSelectedNode] Driving quote is null. Marking level ${nextLevelNumber} as LastLevel.`);
+          nextLevelData = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: rootNodeId }, midLevel: null };
         }
+
+        // Dispatch REPLACE_LEVEL_DATA for N+1
+        dispatch({
+          type: ACTIONS.REPLACE_LEVEL_DATA,
+          payload: nextLevelData
+        });
+
+        // Dispatch CLEAR_LEVELS_AFTER N+1
+        dispatch({
+          type: ACTIONS.CLEAR_LEVELS_AFTER,
+          payload: { levelNumber: nextLevelNumber }
+        });
+
+      } catch (error) {
+        console.error(`[setSelectedNode] Error fetching or processing data for level ${nextLevelNumber}:`, error);
+        const postTreeErr = new PostTreeError(`Failed to update level ${nextLevelNumber}: ${error instanceof Error ? error.message : String(error)}`);
+        dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
+        // Add null check before accessing postTree again for rootNodeId
+        const finalRootNodeId = state.postTree ? state.postTree.post.id : 'unknown_root'; // Fallback ID
+        // Mark N+1 as LastLevel on error
+        const errorLevelData: PostTreeLevel = { isLastLevel: true, lastLevel: { levelNumber: nextLevelNumber, rootNodeId: finalRootNodeId }, midLevel: null };
+        dispatch({ type: ACTIONS.REPLACE_LEVEL_DATA, payload: errorLevelData });
+        dispatch({ type: ACTIONS.CLEAR_LEVELS_AFTER, payload: { levelNumber: nextLevelNumber } });
+      }
     }
   }
 
@@ -1267,7 +1219,7 @@ class PostTreeOperator extends BaseOperator {
         newQuote: quote // Pass the necessary info to the reducer
       }
     });
-    
+
     // Add this check to satisfy the linter, although isMidLevel should have handled it
     if (!isMidLevel(level)) {
       throw new PostTreeError('Internal error: Level type changed unexpectedly');
@@ -1290,7 +1242,7 @@ class PostTreeOperator extends BaseOperator {
       if (maybeFirstReplies && maybeFirstReplies.data.length > 0) {
         const firstReplies: Reply[] = maybeFirstReplies.data;
         const pagination: Pagination = maybeFirstReplies.pagination;
-        
+
         // TODO: Consider fetching quote counts for these replies asynchronously later if needed immediately
         const quoteCountsMap = new Map<Quote, QuoteCounts>();
         await Promise.all(firstReplies.map(async (reply: Reply) => {
@@ -1300,12 +1252,12 @@ class PostTreeOperator extends BaseOperator {
 
         const siblingsForQuote: PostTreeNode[] = firstReplies.map(reply => ({
           id: reply.id,
-          rootNodeId: rootNodeId,
-          parentId: [parentId],
+          rootNodeId: rootNodeId, 
+          parentId: parentId,
           levelNumber: nextLevelNumber,
           textContent: reply.text,
           repliedToQuote: quote, // Replies are to the newly selected quote from level N
-          quoteCounts: quoteCountsMap.get(reply.quote), 
+          quoteCounts: quoteCountsMap.get(reply.quote),
           authorId: reply.authorId,
           createdAt: reply.createdAt,
         } as PostTreeNode));
@@ -1317,15 +1269,15 @@ class PostTreeOperator extends BaseOperator {
         // Create the new level N+1 data
         nextLevelData = createMidLevel(
           rootNodeId,
-          [parentId],
+          parentId,
           nextLevelNumber,
           quote, // The quote selected in the parent (level N) that led to this level
           initialSelectedQuoteInNewLevel, // The default selection *within* the first node of this new level N+1
           selectedNodeForNewLevel, // Select the first reply node by default
-          { levelsMap: [[quote, siblingsForQuote]] }, // Siblings keyed by the parent quote
+          { nodes: siblingsForQuote }, // Siblings keyed by the parent quote
           pagination
         );
-        
+
         // 3. Dispatch action to replace level N+1 data
         this.store.dispatch({
           type: ACTIONS.REPLACE_LEVEL_DATA, // New action needed in reducer
@@ -1339,9 +1291,9 @@ class PostTreeOperator extends BaseOperator {
           lastLevel: { levelNumber: nextLevelNumber, rootNodeId: rootNodeId },
           midLevel: null
         };
-        
+
         // Dispatch action to replace level N+1 data with LastLevel
-         this.store.dispatch({
+        this.store.dispatch({
           type: ACTIONS.REPLACE_LEVEL_DATA, // New action needed in reducer
           payload: nextLevelData
         });
@@ -1350,24 +1302,24 @@ class PostTreeOperator extends BaseOperator {
       // 4. Dispatch action to clear levels N+2 onwards
       this.store.dispatch({
         type: ACTIONS.CLEAR_LEVELS_AFTER, // New action needed in reducer
-        payload: { levelNumber: nextLevelNumber } 
+        payload: { levelNumber: nextLevelNumber }
       });
 
       // Optional: Log state after updates
       setTimeout(() => {
         if (this.store) {
-          
+
         }
       }, 0);
 
     } catch (error) {
-       // Optionally dispatch an error state update
-       const postTreeErr = new PostTreeError(`Failed to load replies for the selected quote: ${error instanceof Error ? error.message : String(error)}`);
-        if (this.store && this.store.dispatch) {
-            this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
-        }
-       // Rethrow or handle as appropriate
-       throw postTreeErr; 
+      // Optionally dispatch an error state update
+      const postTreeErr = new PostTreeError(`Failed to load replies for the selected quote: ${error instanceof Error ? error.message : String(error)}`);
+      if (this.store && this.store.dispatch) {
+        this.store.dispatch({ type: ACTIONS.SET_ERROR, payload: postTreeErr.message });
+      }
+      // Rethrow or handle as appropriate
+      throw postTreeErr;
     }
   }
 
@@ -1408,7 +1360,7 @@ class PostTreeOperator extends BaseOperator {
       return; // Do nothing if the state doesn't match expectation
     }
 
-    const siblingsMap = getSiblings(targetLevel)?.levelsMap;
+    const siblingsMap = getSiblings(targetLevel);
     const parentQuote = getSelectedQuoteInParent(targetLevel);
     if (!siblingsMap) {
       console.warn("[handleNavigateNextSibling] Siblings map not found for level:", targetLevel);
@@ -1416,8 +1368,8 @@ class PostTreeOperator extends BaseOperator {
     }
 
     // Find the correct list of siblings based on the parent's selected quote
-    const siblingsEntry = siblingsMap.find(([quoteKey]) => areQuotesEqual(quoteKey, parentQuote));
-    const siblingsList = siblingsEntry ? siblingsEntry[1] : [];
+    // const siblingsEntry = siblingsMap.find(([quoteKey]) => areQuotesEqual(quoteKey, parentQuote));
+    const siblingsList = siblingsMap.nodes;
 
     if (!actualCurrentNode || siblingsList.length === 0) {
       console.warn("[handleNavigateNextSibling] Current node or siblings list is invalid.");
@@ -1467,7 +1419,7 @@ class PostTreeOperator extends BaseOperator {
       return; // Do nothing if the state doesn't match expectation
     }
 
-    const siblingsMap = getSiblings(targetLevel)?.levelsMap;
+    const siblingsMap = getSiblings(targetLevel);
     const parentQuote = getSelectedQuoteInParent(targetLevel);
     if (!siblingsMap) {
       console.warn("[handleNavigatePrevSibling] Siblings map not found for level:", targetLevel);
@@ -1475,8 +1427,8 @@ class PostTreeOperator extends BaseOperator {
     }
 
     // Find the correct list of siblings based on the parent's selected quote
-    const siblingsEntry = siblingsMap.find(([quoteKey]) => areQuotesEqual(quoteKey, parentQuote));
-    const siblingsList = siblingsEntry ? siblingsEntry[1] : [];
+    // const siblingsEntry = siblingsMap.find(([quoteKey]) => areQuotesEqual(quoteKey, parentQuote));
+    const siblingsList = siblingsMap.nodes;
 
     if (!actualCurrentNode || siblingsList.length === 0) {
       console.warn("[handleNavigatePrevSibling] Current node or siblings list is invalid.");

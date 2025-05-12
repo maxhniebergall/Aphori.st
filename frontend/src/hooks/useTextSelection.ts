@@ -702,10 +702,14 @@ export function useTextSelection({
         if (startHandleRef.current) {
             startHandleRef.current.removeEventListener('touchstart', startSelection as EventListener);
             startHandleRef.current.removeEventListener('mousedown', startSelection as EventListener);
+            // Remove the handle from the old node
+            oldNode.removeChild(startHandleRef.current); 
         }
         if (endHandleRef.current) {
             endHandleRef.current.removeEventListener('touchstart', startSelection as EventListener);
             endHandleRef.current.removeEventListener('mousedown', startSelection as EventListener);
+            // Remove the handle from the old node
+            oldNode.removeChild(endHandleRef.current);
         }
         // It's safer to remove global listeners on unmount/node change
         document.removeEventListener('mousemove', handleMouseMove);
@@ -723,7 +727,7 @@ export function useTextSelection({
 
     if (node) {
       setContainerText(node.textContent || '');
-      // Create/append handles if they don't exist
+      // Create/append handles if they don't exist AND the new node is valid
       if (!startHandleRef.current) {
           startHandleRef.current = document.createElement('span');
           startHandleRef.current.className = 'selection-handle start';
@@ -743,9 +747,9 @@ export function useTextSelection({
       // Update positions based on current refs (might be 0 initially)
       updateHandlePositions(node, startHandleRef.current, endHandleRef.current, startOffsetRef.current, endOffsetRef.current);
     } else {
-      // Clear refs if node is null
-      startHandleRef.current?.remove();
-      endHandleRef.current?.remove();
+      // Clear refs if node is null (Handles are removed by the cleanup logic above if oldNode existed)
+      // startHandleRef.current?.remove(); // These are already removed from oldNode
+      // endHandleRef.current?.remove();
       startHandleRef.current = null;
       endHandleRef.current = null;
     }
@@ -763,9 +767,20 @@ export function useTextSelection({
         document.removeEventListener('touchend', handleTouchEndNativeRef.current);
       }
       throttledAnimationLoop.cancel();
-      // Ensure handles are removed from DOM if component unmounts
-      startHandleRef.current?.remove();
-      endHandleRef.current?.remove();
+      // Ensure handles are removed from DOM if component unmounts AND they exist
+      // This covers the case where the component unmounts before setContainerRef(null) is called
+      const currentContainer = containerRef.current;
+      if (currentContainer) {
+          if (startHandleRef.current && startHandleRef.current.parentNode === currentContainer) {
+              currentContainer.removeChild(startHandleRef.current);
+          }
+          if (endHandleRef.current && endHandleRef.current.parentNode === currentContainer) {
+              currentContainer.removeChild(endHandleRef.current);
+          }
+      }
+      // Also clear refs on unmount
+      startHandleRef.current = null;
+      endHandleRef.current = null;
     };
   }, [handleMouseMove, handleGlobalMouseUp]); // Correct dependencies
 

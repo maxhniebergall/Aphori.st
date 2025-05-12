@@ -30,9 +30,9 @@ export interface DatabaseClientBase {
     lLen: (key: string, context?: LogContext) => Promise<number>;
     del: (key: string, context?: LogContext) => Promise<number>;
     hIncrementQuoteCount: (key: string, field: string, quoteValue: any, context?: LogContext) => Promise<number>;
-    addFeedItem: (item: any, context?: LogContext) => Promise<string>;
     incrementFeedCounter: (amount: number, context?: LogContext) => Promise<void>;
     getFeedItemsPage: (limit: number, cursorKey?: string, context?: LogContext) => Promise<{ items: any[], nextCursorKey: string | null }>;
+    getAllListItems: (key: string, context?: LogContext) => Promise<any[]>;
 }
 
 // Export the base interface AND keep the extended one if needed for now,
@@ -68,14 +68,28 @@ export interface Quote {
 export interface Reply {
     id: string;
     text: string;
-    parentId: string[];
+    parentId: string;
+    rootPostId: string;
     quote: Quote;
     authorId: string;
     createdAt: string;
 }
 
+// Define ReplyData structure based on backend_architecture.md
+export interface ReplyData {
+    id: string;
+    authorId: string;
+    // authorUsername?: string; // Optional field
+    text: string;
+    parentId: string; // Direct parent ID
+    parentType: "post" | "reply"; // Type of direct parent
+    rootPostId: string; // ID of the root post
+    quote: Quote; // Re-use existing Quote interface
+    createdAt: string; // ISO 8601 Timestamp String
+}
+
 export interface Replies {
-    replies: Reply[];
+    replies: Reply[]; // Keep this for now, maybe refactor later if needed
 }
 
 export enum SortingCriteria {
@@ -86,7 +100,7 @@ export enum SortingCriteria {
 // Feed Types
 export interface FeedItem {
     id: string;
-    text: string;
+    textSnippet: string;
     authorId: string;
     createdAt: string;
 }
@@ -151,9 +165,9 @@ export interface AuthTokenPayload extends User {
 export interface Post {
     id: string;
     content: string;
-    parentId: string | null;
     authorId: string;
     createdAt: string;
+    replyCount?: number;
 }
 
 export interface PostCreationRequest {
@@ -180,13 +194,22 @@ export interface Pagination {
     totalCount: number;
 }
 
-export interface CursorPaginatedResponse<T> extends CompressedApiResponse<T[]> {
-    pagination: Pagination;
-    data: T[];
+export interface CursorPaginatedResponse<T> {
+  success: boolean;
+  error?: string;
+  message?: string;
+  pagination: Pagination;
+  data: T[];
 }
 
 // Redis Types
 export interface RedisSortedSetItem<T> {
     score: number;
     value: T;
+}
+
+export interface CreateReplyRequest {
+    text: string;
+    parentId: string;
+    quote: Quote;
 }

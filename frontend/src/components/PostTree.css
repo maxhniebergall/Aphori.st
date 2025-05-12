@@ -44,10 +44,13 @@ html, body, #root {
 /* Scrollable content area */
 .post-tree-content {
   position: relative;
-  height: 100%;
-  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  padding: 10px 10px;
+  overflow: visible;
   display: flex;
   flex-direction: column;
+  background-color: #fff;
 }
 
 /* Virtualized list container */
@@ -68,7 +71,6 @@ html, body, #root {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .post-list {
@@ -167,21 +169,27 @@ button {
 }
 
 /* Footer styling */
-.post-node-footer {
+.post-tree-node-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 8px;
-  padding-bottom: 8px;
-  overflow: visible;
-  margin-top: auto;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
-.footer-left {  
-  flex: 1;
-  text-align: left;
+.post-tree-level-container {
+  padding-top: 12px;
+}
+
+.footer-left {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer-left-upvote {
+  /* Styles for the SVG container if needed */
+  cursor: pointer;
 }
 
 .footer-right {
@@ -459,8 +467,6 @@ h2 {
 }
 
 .text-content {
-  margin-bottom: 16px;
-  padding: 8px;
   border-radius: 4px;
   background-color: rgba(255, 255, 255, 0.5);
 }

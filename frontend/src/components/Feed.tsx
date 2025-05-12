@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useCallback, useEffect, useState } from 'react';
 import './Feed.css';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
@@ -84,29 +83,22 @@ function Feed(): JSX.Element {
    *                 (Error is caught by calling useEffect/loadMoreItems and sets component error state).
    */
   const fetchFeedItems = useCallback(async (cursor?: string): Promise<FetchResult> => {
-    const response = await feedOperator.getFeedItems(cursor || "");
-    if (!isFeedResponse(response)) {
-      // Handled: Caught by useEffect/loadMoreItems, sets error state.
-      throw new Error('Invalid response format received from server.');
-    }
+    const apiResponse = await feedOperator.getFeedItems(cursor || "");
 
-    if (!response.success) {
-      // Handled: Caught by useEffect/loadMoreItems, sets error state.
-      throw new Error(response.error || 'Unknown error from server.');
+    if (!isFeedResponse(apiResponse)) { 
+      throw new Error(`Invalid response format received from server. ${JSON.stringify(apiResponse)}`);
     }
-      
-    if (!response.data || !Array.isArray(response.data)) {
-      // Handled: Caught by useEffect/loadMoreItems, sets error state.
-      throw new Error('Invalid data format received from server.');
-    }
+    
+    // If the type guard passed, apiResponse IS KNOWN to be of type FeedResponse.
+    // apiResponse.pagination is therefore guaranteed to be defined by the isFeedResponse guard.
 
     return {
-      data: response.data,
+      data: apiResponse.data,
       pagination: {
-        nextCursor: response.pagination.nextCursor,
-        prevCursor: response.pagination.prevCursor,
-        hasMore: response.pagination.hasMore,
-        totalCount: response.pagination.totalCount
+        nextCursor: apiResponse.pagination!.nextCursor,   // Added non-null assertion
+        prevCursor: apiResponse.pagination!.prevCursor,   // Added non-null assertion
+        hasMore: apiResponse.pagination!.hasMore,         // Added non-null assertion
+        totalCount: apiResponse.pagination!.totalCount    // Added non-null assertion
       }
     };
   }, []);
@@ -117,6 +109,7 @@ function Feed(): JSX.Element {
       setError(null);
       try {
         const result = await fetchFeedItems();
+        console.log("result", result);
         setItems(result.data);
         setPagination(result.pagination);
       } catch (error) {
@@ -156,9 +149,8 @@ function Feed(): JSX.Element {
   // Define the item rendering function for Virtuoso
   const renderItem = useCallback((index: number, item: FeedItem) => {
     return (
-      <motion.div
+      <div
         key={item.id}
-        layoutId={item.id}
         onClick={() => {
           if(!item?.id) {
             console.warn("Encountered item with missing ID - navigation skipped");
@@ -166,18 +158,14 @@ function Feed(): JSX.Element {
             navigateToPostTree(item.id);
           }
         }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
         className="feed-item"
       >
-        {item.title && <motion.h3>{item.title}</motion.h3>}
-        <motion.div className="feed-item-content">
+        <div className="feed-item-content">
           <p className="feed-text">
-            {item.text ? truncateText(item.text) : 'Loading...'}
+            {item.textSnippet ? truncateText(item.textSnippet) : 'Loading...'}
           </p>
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     );
   }, [navigateToPostTree]);
 

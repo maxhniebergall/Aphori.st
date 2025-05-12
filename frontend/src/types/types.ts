@@ -27,7 +27,6 @@ export interface ExistingSelectableQuotesApiFormat {
 export interface Post { // this is the value returned from the backend, representing the root node of the post tree
   id: string; // probably a UUID, appears in the URL; same as the rootNodeId
   content: string;
-  quote?: Quote;
   authorId: string;
   createdAt: string;
 }
@@ -46,10 +45,9 @@ export interface Pagination {
 
 export interface FeedItem {
   id: string;
-  text: string;
+  textSnippet: string;
   authorId: string;
   createdAt: string;
-  title?: string; // Added title property
 }
 
 export interface FeedItemsResponse{
@@ -74,7 +72,7 @@ export interface FetchResult {
 export interface PostTreeNode { // this value only exists in the frontend. it combines the post and the levels of the post tree
   id: string;
   rootNodeId: string;
-  parentId: string[];
+  parentId?: string;
   levelNumber: number;
   textContent: string;
   repliedToQuote: Quote | null;
@@ -85,7 +83,8 @@ export interface PostTreeNode { // this value only exists in the frontend. it co
 
 export interface Siblings {
   // Store siblings as an array of entries [Quote | null, PostTreeNode[]] for better serialization
-  levelsMap: [Quote | null, PostTreeNode[]][];
+  // levelsMap: [Quote | null, PostTreeNode[]][];
+  nodes: PostTreeNode[]; // New: A single, sorted list of sibling nodes for the level
 }
 
 export interface PostTreeLevel {
@@ -96,7 +95,7 @@ export interface PostTreeLevel {
 
 export interface MidLevel {
   rootNodeId: string;
-  parentId: string[];
+  parentId: string;
   levelNumber: number;
   selectedQuoteInParent: Quote | null;
   selectedQuoteInThisLevel: Quote | null;
@@ -121,6 +120,14 @@ export interface PostTreeState { // required to allow postTree to be null before
   postTree: PostTree | null;
   error: string | null;
   isLoadingMore: boolean;
+  navigationRequest?: NavigationRequest | null;
+}
+
+// Define the NavigationRequest type
+export interface NavigationRequest {
+  type: 'next' | 'prev';
+  levelNumber: number;
+  expectedCurrentNodeId: string | null;
 }
 
 // Cache Types
@@ -144,6 +151,12 @@ export interface ApiResponse<T = unknown> {
   data?: T;
 }
 
+// CreateReplyRequest is the request body for the createReply endpoint
+export interface CreateReplyRequest {
+  text: string;
+  parentId: string;
+  quote: Quote;
+}
 // Specific response type for createReply endpoint
 export interface CreateReplyResponse {
   success: boolean;
@@ -154,8 +167,9 @@ export interface CreateReplyResponse {
 }
 
 export interface CursorPaginatedResponse<T> {
+  success: boolean;
   pagination: Pagination;
-  data: T[]; 
+  data: T[];
 }
 
 export interface DecompressedCursorPaginatedResponse<T> extends ApiResponse<T[]> {
@@ -166,7 +180,9 @@ export interface DecompressedCursorPaginatedResponse<T> extends ApiResponse<T[]>
 export interface Reply {
   id: string;
   text: string;
-  parentId: string[];
+  parentId: string;
+  parentType: "post" | "reply";
+  rootPostId: string;
   quote: Quote;
   authorId: string;
   createdAt: string;
@@ -186,6 +202,7 @@ export const ACTIONS = {
   SET_LOADING_MORE: 'SET_LOADING_MORE',
   NAVIGATE_NEXT_SIBLING: 'NAVIGATE_NEXT_SIBLING',
   NAVIGATE_PREV_SIBLING: 'NAVIGATE_PREV_SIBLING',
+  CLEAR_NAVIGATION_REQUEST: 'CLEAR_NAVIGATION_REQUEST',
 } as const;
 
 export type Action =
@@ -202,4 +219,5 @@ export type Action =
   | { type: typeof ACTIONS.CLEAR_ERROR }
   | { type: typeof ACTIONS.SET_LOADING_MORE; payload: boolean }
   | { type: typeof ACTIONS.NAVIGATE_NEXT_SIBLING; payload: { levelNumber: number; expectedCurrentNodeId: string | null } }
-  | { type: typeof ACTIONS.NAVIGATE_PREV_SIBLING; payload: { levelNumber: number; expectedCurrentNodeId: string | null } };
+  | { type: typeof ACTIONS.NAVIGATE_PREV_SIBLING; payload: { levelNumber: number; expectedCurrentNodeId: string | null } }
+  | { type: typeof ACTIONS.CLEAR_NAVIGATION_REQUEST };
