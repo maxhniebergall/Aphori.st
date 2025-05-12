@@ -47,6 +47,10 @@ export function saveReplyContent(key: string, content: string, quote: Quote): vo
         console.warn("Attempted to save reply draft without a quote.");
         return;
     }
+    if (!content || content.length === 0 || content.trim() === '') {
+      localStorage.removeItem(key);
+        return;
+    }
     const data: StoredReply = { content, quote, timestamp: Date.now() };
     localStorage.setItem(key, JSON.stringify(data));
   } catch (error) {
