@@ -12,6 +12,7 @@ This document provides an overview of the Aphorist backend architecture, detaili
       * [Reply APIs](#reply-apis)
       * [Post APIs](#post-apis)
       * [Feed APIs](#feed-apis)
+      * [Search APIs](#search-apis)
   * [Backend Data Model (Firebase RTDB)](#backend-data-model-firebase-rtdb)
   * [Database Access Patterns (Firebase RTDB)](#database-access-patterns-firebase-rtdb)
       * [Replies Access Patterns](#replies-access-patterns)
@@ -375,6 +376,44 @@ interface GetFeedResponse {
 
 ```
 
+### Search APIs
+
+#### GET /api/search/vector
+
+**Description:**
+Performs a semantic vector search across posts and replies based on a text query. Requires the backend VectorService to be initialized.
+
+**Query Parameters:**
+
+  * query: string - The text to search for.
+
+**Response Interface:**
+
+```typescript
+interface VectorSearchResponse {
+  success: boolean;
+  results: Array<{
+    id: string;        // ID of the post or reply
+    type: 'post' | 'reply'; // Type of the content
+    score: number;     // Relevance score from the vector search
+    data: PostData | ReplyData; // Full data of the post or reply
+  }>;
+  error?: string;
+}
+
+// PostData and ReplyData interfaces are defined elsewhere
+// (e.g., in Post APIs and Reply APIs sections)
+```
+
+**Authentication:**
+Currently public, but could be restricted later if needed.
+
+**Error Responses:**
+
+  * 400: Missing or invalid `query` parameter.
+  * 500: Internal server error during search or data retrieval.
+  * 503: Service unavailable (e.g., if VectorService index is not ready).
+
 ## Backend Data Model (Firebase RTDB)
 
 The backend utilizes Firebase Realtime Database (RTDB). The following data model is designed to leverage RTDB's strengths while enabling efficient querying and security rule enforcement.
@@ -524,6 +563,30 @@ The backend utilizes Firebase Realtime Database (RTDB). The following data model
       //         "$timestamp_$replyId": "$replyId"
       //     }
       // }
+  },
+
+  // 7. Vector Search Data
+  "vectorIndexMetadata": {
+    // Stores metadata about the vector shards
+    "activeWriteShard": "shard_20240101T000000Z", // ID of the current shard for writes
+    "shardCapacity": 10000, // Max vectors per shard (matches FAISS limit)
+    "totalVectorCount": 12345, // Total vectors across all shards (updated via Transaction)
+    "shards": {
+      "$shardId": { // e.g., "shard_20240101T000000Z"
+        "count": 9876, // Number of vectors in this shard (updated via Transaction)
+        "createdAt": "ISO8601_Timestamp_String" // When the shard was created
+      }
+    }
+  },
+  "vectorIndexStore": {
+    // Stores the actual vector data, sharded by $shardId
+    "$shardId": {
+      "$contentId": { // Key is the post or reply ID
+        "vector": [0.1, 0.2, ...], // The embedding vector (array of numbers)
+        "type": "post" | "reply", // Type of content
+        "createdAt": "ISO8601_Timestamp_String" // When the vector was added
+      }
+    }
   }
 }
 ```
@@ -616,16 +679,21 @@ The backend architecture has been significantly refactored to align with Firebas
 
 *(Update file descriptions based on final implementation)*
 
-  * **Aphorist/backend/server.ts:** Initializes Firebase Admin SDK, `FirebaseClient`, handles startup logic (migration?), sets up Express app, injects DB client into route handlers.
-  * **Aphorist/backend/routes/\*.ts:** Define API endpoints, handle requests/responses, interact with the database via the injected `DatabaseClientInterface` (`db`). Needs careful review of key formats passed to `db`.
-  * **Aphorist/backend/db/FirebaseClient.ts:** Implements `DatabaseClientInterface` using Firebase Admin SDK. Contains logic for direct path operations, mapping abstract commands (like `zAdd`) to RTDB index writes, and handling key parsing/sanitization. **Crucially uses Transactions for atomic increments.**
+  * **Aphorist/backend/server.ts:** Initializes Firebase Admin SDK, `LoggedDatabaseClient`, and `VectorService`. Handles startup logic (migration checks, vector index initialization), sets up Express app, injects DB client and `VectorService` into route handlers, manages graceful shutdown including `VectorService` shutdown.
+  * **Aphorist/backend/routes/auth.ts:** Handles authentication logic.
+  * **Aphorist/backend/routes/feed.ts:** Handles feed retrieval.
+  * **Aphorist/backend/routes/posts.ts:** Defines post-related API endpoints. Interacts with `db` for post creation/retrieval and calls `vectorService.addVector` after successful post creation.
+  * **Aphorist/backend/routes/replies.ts:** Defines reply-related API endpoints. Interacts with `db` for reply creation/retrieval and calls `vectorService.addVector` after successful reply creation.
+  * **Aphorist/backend/routes/search.ts:** Defines search-related API endpoints, specifically `/api/search/vector`. Uses `vectorService.searchVectors` to find relevant content IDs and then uses `db` to fetch the full data for those IDs.
+  * **Aphorist/backend/services/vectorService.ts:** Manages the in-memory FAISS index and interacts with Vertex AI for embedding generation. Handles index initialization (loading from RTDB), adding new vectors (generating embedding, updating FAISS index, updating RTDB shard/metadata), searching vectors, and graceful shutdown (persisting index if needed, though current design reloads on start).
+  * **Aphorist/backend/db/FirebaseClient.ts:** Implements `DatabaseClientInterface` using Firebase Admin SDK. Contains logic for direct path operations, mapping abstract commands (like `zAdd`) to RTDB index writes, and handling key parsing/sanitization. **Crucially uses Transactions for atomic increments.** Includes methods specifically for reading/writing vector index metadata and sharded vector data (`getVectorIndexMetadata`, `updateVectorIndexMetadata`, `getAllVectorsFromShards`, `addVectorToShardTransaction`).
   * **Aphorist/backend/db/DatabaseClientInterface.ts:** Defines the abstract interface for database operations.
-  * **Aphorist/backend/db/LoggedDatabaseClient.ts:** (Optional) Wraps `FirebaseClient` to add logging.
+  * **Aphorist/backend/db/LoggedDatabaseClient.ts:** Wraps `FirebaseClient` to add logging. Passed to routes and `VectorService`.
   * **Aphorist/backend/db/CompressedDatabaseClient.ts:** **Deprecated/Removed.** No longer needed as database compression is removed.
   * **Aphorist/backend/db/DatabaseCompression.ts:** **Deprecated/Removed.** No longer needed.
   * **Aphorist/backend/mailer.ts:** Handles sending emails (e.g., magic links).
   * **Aphorist/backend/seed.ts:** Populates Firebase with sample data following the new model.
-  * **Aphorist/backend/migrate.ts:** Contains logic to migrate data to the new model. Needs updating.
+  * **Aphorist/backend/migrate.ts:** Contains logic to migrate data to the new model. Needs updating to include backfilling vector embeddings into `/vectorIndexStore`.
 
 ## Data Compression
 

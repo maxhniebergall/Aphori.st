@@ -9,12 +9,15 @@ import {
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
-import { randomUUID } from 'crypto';
-
 import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
+import { VectorService } from '../services/vectorService.js';
+
 let db: LoggedDatabaseClient;
-export const setDb = (databaseClient: LoggedDatabaseClient) => {
+let vectorService: VectorService;
+
+export const setDb = (databaseClient: LoggedDatabaseClient, vs: VectorService) => {
     db = databaseClient;
+    vectorService = vs;
 };
 
 const router = Router();
@@ -49,7 +52,7 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
     '/createPost',
     authenticateToken,
     async (req: Request<{}, any, { postTree: PostCreationRequest }>, res: Response<{ id: string } | { error: string }>) => {
-        const operationId = randomUUID();
+        const operationId = generateCondensedUuid()
         const requestId = res.locals.requestId;
         const logContext = { requestId, operationId };
 
@@ -114,6 +117,14 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
             await db.createPostTransaction(newPost, feedItem);
 
             logger.info({ ...logContext, postId: uuid }, `Successfully created new Post`);
+
+            // Add to vector index (fire and forget for now, or await if critical)
+            if (vectorService) {
+                vectorService.addVector(newPost.id, 'post', newPost.content)
+                    .then(() => logger.info({ ...logContext, postId: newPost.id }, 'Post content added to vector index.'))
+                    .catch(err => logger.error({ ...logContext, postId: newPost.id, err }, 'Error adding post content to vector index.'));
+            }
+
             res.status(201).json({ id: uuid }); // Use 201 Created status
         } catch (err) {
             logger.error({ ...logContext, err }, 'Error creating Post');
