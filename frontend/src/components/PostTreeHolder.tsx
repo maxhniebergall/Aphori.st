@@ -47,10 +47,7 @@ function PostTreeContent() {
 
   return (
     <div className="post-tree-container">
-      <Header 
-        title="Posts"
-        subtitle="View and respond to posts"
-        onLogoClick={() => navigate('/feed')}
+      <Header onLogoClick={() => navigate('/feed')}
       />
       <main className="post-tree-content" role="main">
         {state.error ? (
