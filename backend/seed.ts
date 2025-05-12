@@ -46,7 +46,7 @@ const samplePosts: PostContent[] = [
  * @throws {Error} If clearing old data or creating initial posts fails.
  *                 (Handled - By Design: Logs error and re-throws to stop seeding).
  */
-async function seedDevPosts(dbClient: DatabaseClient): Promise<void> {
+async function seedDevPosts(dbClient: LoggedDatabaseClient): Promise<void> {
     try {
         db = dbClient; // Use the passed-in dbClient
         logger.info("Attempting to seed data");
