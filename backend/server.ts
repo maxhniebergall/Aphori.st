@@ -132,8 +132,13 @@ app.use(anonymousLimiterDay);
 // app.use(anonymousLimiter); // Comment out or remove the old single anonymous limiter
 // --- End Optional Authentication and Rate Limiting Middlewares ---
 
-// Use the imported type for the db instance
-const db: LoggedDatabaseClient = createDatabaseClient() as LoggedDatabaseClient;
+
+// createDatabaseClient() now returns LoggedDatabaseClient
+const db = createDatabaseClient();
+
+// createDatabaseClient() now returns LoggedDatabaseClient
+const db = createDatabaseClient();
+
 
 let isDbReady = false;
 
