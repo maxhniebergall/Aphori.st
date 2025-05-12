@@ -13,24 +13,6 @@ export class DatabaseCompression {
         this.compressionThreshold = compressionThreshold;
     }
 
-    /**
-     * Encodes a key by adding a prefix and sanitizing characters unsafe for Firebase keys.
-     * @param key The original key.
-     * @param prefix The prefix to add.
-     * @returns The encoded key.
-     * @throws {Error} If the input key is not a non-empty string.
-     *                 (Handled - Propagation: Error propagates up).
-     */
-    encodeKey(key: string, prefix: string): string {
-        if (!key || typeof key !== 'string') {
-            // Handled - Propagation: Internal validation. Error would propagate through
-            // CompressedDatabaseClient to the application layer if triggered.
-            throw new Error('Key must be a non-empty string');
-        }
-        // Escape both "[" and "]" and include "/" within the character class
-        return `${prefix}:${key.replace(/[.#$\[\]\\\/]/g, '_')}`;
-    }
-
     async compress<T = any>(data: T): Promise<string> {
         const jsonStr = JSON.stringify(data);
         
