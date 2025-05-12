@@ -12,7 +12,7 @@ interface EmailContent {
 export const EMAIL_VERSIONS_CONTENT: Record<string, EmailContent> = {
     "1": { // Content for mail version "1"
         subject: "Important Update from Aphori.st!",
-        html: "<p>Hello {userEmail},</p><p>We have an important update regarding our services. Please log in to your account to see the latest changes.</p><p>Thanks,<br/>The Aphori.st Team</p>"
+        html: "<p>Hello {userEmail},</p><p>Replies are now available on Aphori.st! You can check out the latest and comment on this new feature at https://aphori.st/postTree/03dw98bdnxquy13dbgs75tr40 </p><p>Thanks,<br/>The Aphori.st Team</p>"
     },
     // Example for a future version "2"
     /*
