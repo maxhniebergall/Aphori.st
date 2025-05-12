@@ -1,22 +1,20 @@
 import { Router, Request, Response } from 'express';
 import logger from '../logger.js';
 import {
-    DatabaseClient as DatabaseClientType,
     AuthenticatedRequest,
     User,
     Quote,
     CreateReplyResponse, SortingCriteria, CursorPaginatedResponse,
-    Post,
     CreateReplyRequest
 } from '../types/index.js';
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { getQuoteKey as generateHashedQuoteKey } from '../utils/quoteUtils.js';
+import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
 
-// Use the imported type for the placeholder and the setDb function
-let db: DatabaseClientType;
-export const setDb = (databaseClient: DatabaseClientType) => {
+let db: LoggedDatabaseClient;
+export const setDb = (databaseClient: LoggedDatabaseClient) => {
     db = databaseClient;
 };
 
@@ -96,12 +94,12 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
         // --- Determine parentType and rootPostId --- 
         let parentType: "post" | "reply" | null = null;
         let rootPostId: string | null = null;
-        const parentPost = await db.get<Post>(`posts/${parentId}`, logContext); // Added logContext
+        const parentPost = await db.getPost(parentId); // Added logContext
         if (parentPost && parentPost.id === parentId) { // Add stricter check
             parentType = 'post';
             rootPostId = parentId;
         } else {
-            const parentReply = await db.get<ReplyData>(`replies/${parentId}`, logContext); // Added logContext
+            const parentReply = await db.getReply(parentId); // Added logContext
             if (parentReply && parentReply.id === parentId) { // Add stricter check
                 parentType = 'reply';
                 rootPostId = parentReply.rootPostId;
@@ -154,38 +152,15 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
         // TODO: Implement atomic writes using multi-path updates or transactions if possible.
         // The following writes are performed concurrently using Promise.all.
 
-        const feedZSetKey = 'replies:feed:mostRecent';
-        const parentQuoteZSetKey = `replies:uuid:${actualParentId}:quote:${hashedQuoteKey}:mostRecent`;
-        const userRepliesSaddKey = `userReplies:${user.id}`;
-        const parentRepliesPath = `replyMetadata/parentReplies/${actualParentId}/${replyId}`;
-        const postRepliesPath = `postMetadata/postReplies/${actualRootPostId}/${replyId}`;
-        const postCounterKey = `posts:${actualRootPostId}`;
-
         await Promise.all([
-            db.set(`replies/${replyId}`, newReply, logContext).then(() => 
-                logger.debug({ ...logContext, replyId }, "Set reply data.")
-            ),
-            db.zAdd(feedZSetKey, score, replyId, logContext).then(() => 
-                logger.debug({ ...logContext, key: feedZSetKey, replyId }, "Added reply to feed index.")
-            ),
-            db.zAdd(parentQuoteZSetKey, score, replyId, logContext).then(() =>
-                logger.debug({ ...logContext, key: parentQuoteZSetKey, replyId }, "Added reply to parent/quote index.")
-            ),
-            db.hIncrementQuoteCount(actualParentId, hashedQuoteKey, quote, logContext).then(() =>
-                logger.debug({ ...logContext, parentId: actualParentId, quoteKey: hashedQuoteKey }, "Incremented quote count.")
-            ),
-            db.sAdd(userRepliesSaddKey, replyId, logContext).then(() =>
-                logger.debug({ ...logContext, key: userRepliesSaddKey, replyId }, "Added reply to user replies set.")
-            ),
-            db.set(parentRepliesPath, true, logContext).then(() => // Or timestamp
-                logger.debug({ ...logContext, path: parentRepliesPath }, "Added reply to parent replies index.")
-            ),
-            db.set(postRepliesPath, true, logContext).then(() => // Or timestamp
-                logger.debug({ ...logContext, path: postRepliesPath }, "Added reply to root post replies index.")
-            ),
-            db.hIncrBy(postCounterKey, 'replyCount', 1, logContext).then(() =>
-                logger.debug({ ...logContext, key: postCounterKey }, "Incremented root post reply count.")
-            )
+            db.setReply(replyId, newReply),
+            db.addReplyToGlobalFeedIndex(replyId, score),
+            db.addReplyToParentQuoteIndex(actualParentId, hashedQuoteKey, replyId, score),
+            db.incrementAndStoreQuoteUsage(actualParentId, hashedQuoteKey, quote),
+            db.addReplyToUserSet(user.id, replyId),
+            db.addReplyToParentRepliesIndex(actualParentId, replyId),
+            db.addReplyToRootPostRepliesIndex(actualRootPostId, replyId),
+            db.incrementPostReplyCounter(actualRootPostId, 1)
         ]);
         // --- End Database Writes --- 
 
@@ -222,8 +197,7 @@ router.get<{ parentId: string }, { success: boolean, data?: { quote: Quote, coun
     }
     try {
         // Retrieve the quote reply counts from Firebase direct path
-        const quoteCountsPath = `replyMetadata/quoteCounts/${parentId}`;
-        const rawQuoteData = await db.hGetAll(quoteCountsPath); // hGetAll reads direct path now
+        const rawQuoteData = await db.getQuoteCountsForParent(parentId);
 
         if (!rawQuoteData) {
           // Handle case where no counts exist for this parent
@@ -234,16 +208,16 @@ router.get<{ parentId: string }, { success: boolean, data?: { quote: Quote, coun
         // Process the raw results
         const quoteCountsArray: { quote: Quote, count: number }[] = [];
         for (const [_key, valueObj] of Object.entries(rawQuoteData)) {
-            // The valueObj should be { quote: QuoteObject, count: number }
-            if (valueObj && typeof valueObj === 'object' && valueObj.quote && typeof valueObj.count === 'number') {
+            const v: any = valueObj;
+            if (v && typeof v === 'object' && v.quote && typeof v.count === 'number') {
                 // Basic validation of quote structure
-                if (valueObj.quote.text && valueObj.quote.sourceId && valueObj.quote.selectionRange) {
-                    quoteCountsArray.push({ quote: valueObj.quote as Quote, count: valueObj.count });
+                if (v.quote.text && v.quote.sourceId && v.quote.selectionRange) {
+                    quoteCountsArray.push({ quote: v.quote as Quote, count: v.count });
                 } else {
-                    logger.warn({ parentId, quote: valueObj.quote }, 'Invalid quote structure found in quoteCounts');
+                    logger.warn({ parentId, quote: v.quote }, 'Invalid quote structure found in quoteCounts');
                 }
             } else {
-                logger.warn({ parentId, data: valueObj }, 'Invalid data structure found in quoteCounts');
+                logger.warn({ parentId, data: v }, 'Invalid data structure found in quoteCounts');
             }
         }
 
@@ -308,28 +282,24 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
         const limit = Math.min(parseInt(req.query.limit as string) || 10, MAX_LIMIT);
         const cursor = req.query.cursor as string | undefined; // Cursor is the timestamp_replyId key
 
-        // Build the sorted set key for replies based on parent ID, HASHED quote key, and sorting criteria.
-        // This key needs to be mapped correctly by FirebaseClient.zscan
-        // Example mapping: -> indexes/repliesByParentQuoteTimestamp/$sanitizedParentId/$sanitizedHashedQuoteKey
-        const zSetKey = `replies:uuid:${parentId}:quote:${hashedQuoteKey}:${sortCriteria}`;
 
         // Get total count (using zCard with mapped key)
-        const totalCount = await db.zCard(zSetKey) || 0;
+        const totalCount = await db.getReplyCountByParentQuote(parentId, hashedQuoteKey, sortCriteria) || 0;
 
         // Fetch reply IDs using zscan for cursor stability
         // FirebaseClient.zscan should handle mapping zSetKey to the index path
         // and using orderByKey().limitToFirst().startAfter(cursor)
-        const { items: replyItems, cursor: nextCursorRaw } = await db.zscan(zSetKey, cursor || '0', { count: limit });
+        const { items: replyItems, nextCursor: nextCursorRaw } = await db.getReplyIdsByParentQuote(parentId, hashedQuoteKey, sortCriteria, limit, cursor);
         // zscan returns { score: number, value: string (replyId) }[]
 
 
         // Fetch the actual reply data for each ID using direct path
-        const repliesPromises = replyItems.map(async (item) => {
+        const repliesPromises = replyItems.map(async (item: any) => {
             const replyId = item.value; // Reply ID is in the 'value' field
             try {
                 // Remove surrounding quotes from replyId if they exist
                 const sanitizedReplyId = replyId.replace(/^"|"$/g, '');
-                const replyData = await db.get<ReplyData>(`replies/${sanitizedReplyId}`);
+                const replyData = await db.getReply(sanitizedReplyId);
                 if (replyData) {
                     // TODO: Add validation check (isValidNewReply) if needed
                     return replyData;
@@ -348,7 +318,7 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
 
         // Determine hasMore based on if zscan returned a cursor indicating more data
         const hasMore = nextCursorRaw !== '0';
-        const nextCursor = hasMore ? nextCursorRaw : undefined;
+        const nextCursor = hasMore && nextCursorRaw ? nextCursorRaw : undefined;
 
         // Prepare the response object (no compression)
         const responseData: CursorPaginatedResponse<ReplyData> = {
