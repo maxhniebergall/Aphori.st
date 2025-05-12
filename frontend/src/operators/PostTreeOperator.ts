@@ -393,7 +393,7 @@ class PostTreeOperator {
     }
 
     const limit = stopIndex - startIndex;
-    const sortingCriteria = 'mostRecent'
+    const sortingCriteria = 'MOST_RECENT'
     try {
 
         const state = this.getState();
@@ -410,7 +410,7 @@ class PostTreeOperator {
         'Error loading more items',
         statusCode,
         // Use static method for encoding
-        `${this.baseURL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(quote)}/mostRecent`,
+        `${this.baseURL}/api/replies/getReplies/${parentId}/${Quote.toEncodedString(quote)}/MOST_RECENT`,
         error
       );
       throw postTreeErr;
@@ -447,8 +447,8 @@ class PostTreeOperator {
 
     try {
       // Fetch the first page of replies for the parent node and the specific quote.
-      // Use a default sorting criteria, e.g., 'mostRecent'
-      const sortingCriteria = 'mostRecent'; // Or fetch this from context/config if needed
+      // Use a default sorting criteria, e.g., 'MOST_RECENT'
+      const sortingCriteria = 'MOST_RECENT'; // Or fetch this from context/config if needed
       const limit = 5; // Or fetch this from context/config if needed
 
       // Re-use fetchFirstRepliesForLevel logic
@@ -844,7 +844,7 @@ class PostTreeOperator {
           return;
         }
 
-        const sortingCriteria = 'mostRecent';
+        const sortingCriteria = 'MOST_RECENT';
         const maybeFirstReplies = await this.fetchFirstRepliesForLevel(levelNumber, parentId, quoteInParentToFetchChildrenFor, sortingCriteria, 5);
 
         if (!maybeFirstReplies) {
@@ -1105,7 +1105,7 @@ class PostTreeOperator {
 
         if (quoteToDriveNextLevel) {
           // Fetch replies for the driving quote
-          const sortingCriteria = 'mostRecent';
+          const sortingCriteria = 'MOST_RECENT';
           const limit = 5;
           const maybeFirstReplies = await this.fetchFirstRepliesForLevel(nextLevelNumber, parentIdForNextLevel, quoteToDriveNextLevel, sortingCriteria, limit);
 
@@ -1243,7 +1243,7 @@ class PostTreeOperator {
 
     try {
       // 2. Fetch the first page of replies for the new quote (which is now the parent selection) in the next level (N+1)
-      const sortingCriteria = 'mostRecent'; // Or fetch from config/state
+      const sortingCriteria = 'MOST_RECENT'; // Or fetch from config/state
       const limit = 5; // Or fetch from config/state
       // Fetch using 'quote' which is the selection made in level N
       const maybeFirstReplies = await this.fetchFirstRepliesForLevel(nextLevelNumber, parentId, quote, sortingCriteria, limit);
