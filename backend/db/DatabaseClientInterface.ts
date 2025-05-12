@@ -9,41 +9,7 @@ Requirements:
 import { RedisSortedSetItem } from '../types/index.js';
 
 export abstract class DatabaseClientInterface {
-  async get<T = unknown>(key: string): Promise<T | null> {
-    throw new Error('Method not implemented');
-  }
 
-  async set<T = unknown>(key: string, value: T): Promise<string | null> {
-    throw new Error('Method not implemented');
-  }
-
-  async hGet<T = unknown>(key: string, field: string): Promise<T | null> {
-    throw new Error('Method not implemented');
-  }
-
-  async hSet<T = unknown>(key: string, field: string, value: T): Promise<number> {
-    throw new Error('Method not implemented');
-  }
-
-  async lPush<T = unknown>(key: string, value: T): Promise<number> {
-    throw new Error('Method not implemented');
-  }
-
-  async lRange<T = unknown>(key: string, start: number, end: number): Promise<T[]> {
-    throw new Error('Method not implemented');
-  }
-
-  async lLen(key: string): Promise<number> {
-    throw new Error('Method not implemented');
-  }
-
-  async sAdd(key: string, value: string): Promise<number> {
-    throw new Error('Method not implemented');
-  }
-
-  async sMembers(key: string): Promise<string[]> {
-    throw new Error('Method not implemented');
-  }
 
   async connect(): Promise<void> {
     throw new Error('Method not implemented');
@@ -57,55 +23,18 @@ export abstract class DatabaseClientInterface {
     throw new Error('Method not implemented');
   }
 
-  async hGetAll(key: string): Promise<Record<string, any> | null> {
-    throw new Error('Method not implemented');
-  }
-
-  async zCard(key: string): Promise<number> {
-    throw new Error('Method not implemented');
-  }
-
-  async zRange(key: string, start: number, end: number): Promise<any[]> {
-    throw new Error('Method not implemented');
-  }
-
-  async zAdd(key: string, score: number, value: string): Promise<number> {
-    throw new Error('Method not implemented');
-  }
-
-  async del(key: string): Promise<number> {
-    throw new Error('Method not implemented');
-  }
-
-  async hIncrBy(key: string, field: string, increment: number): Promise<number> {
-    throw new Error('Method not implemented');
-  }
-
-  zRevRangeByScore<T = string>(key: string, max: number, min: number, options?: { limit?: number }): Promise<Array<{ score: number, value: T }>> {
-    throw new Error('Method not implemented');
-  }
-
-  zscan(key: string, cursor: string, options?: { match?: string; count?: number }): Promise<{ cursor: string | null; items: RedisSortedSetItem<string>[] }> {
-    throw new Error('Method not implemented');
-  }
-
-  abstract hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number>;
-
   abstract incrementFeedCounter(amount: number): Promise<void>;
 
   abstract getFeedItemsPage(limit: number, cursorKey?: string): Promise<{ items: any[], nextCursorKey: string | null }>;
-
-  // Add method for retrieving all items from a list-like structure
-  abstract getAllListItems(key: string): Promise<any[]>;
-
-  keys(pattern: string): Promise<string[]> {
-    throw new Error('Method not implemented');
-  }
 
   // --- Semantic Methods: User Management ---
   abstract getUser(rawUserId: string): Promise<any | null>;
   abstract getUserIdByEmail(rawEmail: string): Promise<string | null>;
   abstract createUserProfile(rawUserId: string, rawEmail: string): Promise<{ success: boolean, error?: string, data?: any }>;
+  abstract setUserDataForMigration(rawUserId: string, data: any): Promise<void>;
+  abstract addUserToCatalog(rawUserId: string): Promise<void>;
+  abstract setEmailToIdMapping(rawEmail: string, rawUserId: string): Promise<void>;
+  abstract getAllUsers(): Promise<Record<string, any> | null>;
 
   // --- Semantic Methods: Post Management ---
   abstract getPost(rawPostId: string): Promise<any | null>;
@@ -138,6 +67,19 @@ export abstract class DatabaseClientInterface {
   // --- Semantic Methods: Quote Management ---
   abstract incrementAndStoreQuoteUsage(rawParentId: string, rawHashedQuoteKey: string, quoteObject: any): Promise<number>;
   abstract getQuoteCountsForParent(rawParentId: string): Promise<Record<string, { quote: any, count: number }> | null>;
+
+  // --- Semantic Methods: Startup Mailer ---
+  abstract addProcessedStartupEmail(rawEmail: string): Promise<void>;
+  abstract getMailerVersion(): Promise<string | null>;
+  abstract setMailerVersion(version: string): Promise<void>;
+  abstract getMailSentListMap(): Promise<Record<string, any> | null>;
+  abstract initializeMailSentList(): Promise<void>;
+  abstract clearMailSentList(): Promise<void>;
+
+  // --- Semantic Methods: Migration Specific ---
+  abstract getDatabaseVersion(): Promise<any | null>;
+  abstract setDatabaseVersion(versionData: any): Promise<void>;
+  abstract deleteOldEmailToIdKey(oldKey: string): Promise<void>; // Specific deletion for migration
 
   // --- Semantic Methods: Low-Level Generic ---
   abstract getRawPath(path: string): Promise<any | null>;
