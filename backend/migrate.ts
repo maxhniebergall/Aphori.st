@@ -90,21 +90,16 @@ async function migrateUsersData(dbClient: LoggedDatabaseClient, firebaseClientIn
             // --- Write to new paths based on backend_architecture.md ---
 
             // 1. User data: /users/{userId}
-            const newUserPath = `users/${newUser.id}`;
-            await dbClient.set(newUserPath, newUser);
+            await dbClient.setUserDataForMigration(newUser.id, newUser);
 
             // 2. Email to ID mapping: /userMetadata/emailToId/{escapedActualEmail}
-            // firebaseClientInstance.sanitizeKey uses percent-encoding for Firebase keys
-            const escapedEmail = firebaseClientInstance.sanitizeKey(newUser.email);
-            const newEmailMapPath = `userMetadata/emailToId/${escapedEmail}`;
-            await dbClient.set(newEmailMapPath, newUser.id);
+            await dbClient.setEmailToIdMapping(newUser.email, newUser.id);
 
             // 3. User ID set: /userMetadata/userIds/{userId} = true
-            const newUserIdSetPath = `userMetadata/userIds/${newUser.id}`;
-            await dbClient.set(newUserIdSetPath, true);
+            await dbClient.addUserToCatalog(newUser.id);
 
             // 4. Delete old entry from root
-            await firebaseClientInstance.removePath(oldEmailKey);
+            await dbClient.deleteOldEmailToIdKey(oldEmailKey);
 
             logger.info(`Successfully migrated user ID '${newUser.id}' (Email: ${newUser.email}) from old key '${oldEmailKey}'.`);
             migratedUserCount++;
@@ -145,7 +140,7 @@ export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
         logger.info("Database client connected for user migration.");
         
         try {
-            await dbClient.set('databaseVersion', "2->3");
+            await dbClient.setDatabaseVersion("2->3");
             logger.info(`Database version set to: "2->3"`);
         } catch (dbVersionError: any) {
             logger.warn({ err: dbVersionError }, "Failed to set initial pending databaseVersion for user migration. Proceeding, but status tracking might be affected.");
@@ -154,7 +149,7 @@ export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
         // Call the actual user data migration logic
         await migrateUsersData(dbClient as LoggedDatabaseClient, firebaseClientInstance);
 
-        await dbClient.set('databaseVersion', "3");
+        await dbClient.setDatabaseVersion("3");
         logger.info(`User migration script completed successfully. DatabaseVersion updated to: "3"`);
 
     } catch (err: any) {
@@ -168,7 +163,7 @@ export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
             timestamp: new Date().toISOString()
         };
         try {
-            await dbClient.set('databaseVersion', failureVersionInfo);
+            await dbClient.setDatabaseVersion(failureVersionInfo);
             logger.info(`Database version updated to reflect user migration failure: ${JSON.stringify(failureVersionInfo)}`);
         } catch (dbVersionError: any) {
              logger.error({ err: dbVersionError }, "CRITICAL: FAILED to set databaseVersion after user migration script error. Manual check required.");
