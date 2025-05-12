@@ -198,8 +198,8 @@ export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
         this.logger.debug(logPayload, 'Executing DB command: getUserIdByEmail');
         return this.underlyingClient.getUserIdByEmail(rawEmail);
     }
-    async createUserProfile(rawUserId: string, rawEmail: string): Promise<{ success: boolean, error?: string, data?: any }> {
-        const logPayload = this.createLogPayload('createUserProfile', rawUserId, { rawEmail }, undefined);
+    async createUserProfile(rawUserId: string, rawEmail: string, context?: LogContext): Promise<{ success: boolean, error?: string, data?: any }> {
+        const logPayload = this.createLogPayload('createUserProfile', rawUserId, { rawEmail }, context);
         this.logger.debug(logPayload, 'Executing DB command: createUserProfile');
         return this.underlyingClient.createUserProfile(rawUserId, rawEmail);
     }
