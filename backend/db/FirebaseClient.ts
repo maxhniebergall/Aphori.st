@@ -68,7 +68,18 @@ export class FirebaseClient extends DatabaseClientInterface {
 
     });
   }
-  
+
+
+  async get(key: string): Promise<any> {
+    // Use direct key/path now
+    // Caller is responsible for ensuring 'key' is a valid, fully-formed Firebase path.
+    // Any dynamic segments within 'key' must be pre-sanitized.
+    // For example, if key is `users/${userId}`, userId must be sanitized before this call.
+    this._assertFirebaseKeyComponentSafe(key, 'get', 'key (as full path, expecting pre-sanitized segments)');
+    const snapshot = await this.db.ref(key).once('value');
+    return snapshot.val();
+  }
+
   /**
    * Fetches a page of feed items from the fixed 'feedItems' path.
    * @param limit Max items.
@@ -139,8 +150,6 @@ export class FirebaseClient extends DatabaseClientInterface {
    */
   async hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number> {
     // Assert raw inputs before they are sanitized.
-    this._assertFirebaseKeyComponentSafe(key, 'hIncrementQuoteCount', 'raw key (intended as parentId)');
-    this._assertFirebaseKeyComponentSafe(field, 'hIncrementQuoteCount', 'raw field (intended as hashedQuoteKey)');
     const parentId = this.sanitizeKey(key);
     const hashedQuoteKey = this.sanitizeKey(field);
     
@@ -224,7 +233,6 @@ export class FirebaseClient extends DatabaseClientInterface {
    */
   async getAllListItems(key: string): Promise<any[]> {
     // Assert raw key before sanitization
-    this._assertFirebaseKeyComponentSafe(key, 'getAllListItems', 'raw key (before sanitization)');
     // Assume direct path
     const path = this.sanitizeKey(key);
     const snapshot = await this.db.ref(path).once('value');
@@ -311,7 +319,6 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // --- Semantic Methods: User Management ---
   async getUser(rawUserId: string): Promise<any | null> {
-    this._assertFirebaseKeyComponentSafe(rawUserId, 'getUser', 'rawUserId');
     const userId = this.sanitizeKey(rawUserId);
     const path = `users/${userId}`;
     const snapshot = await this.db.ref(path).once('value');
@@ -356,7 +363,6 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // --- Semantic Methods: Post Management ---
   async getPost(rawPostId: string): Promise<any | null> {
-    this._assertFirebaseKeyComponentSafe(rawPostId, 'getPost', 'rawPostId');
     const postId = this.sanitizeKey(rawPostId);
     const path = `posts/${postId}`;
     const snapshot = await this.db.ref(path).once('value');
@@ -364,22 +370,18 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async setPost(rawPostId: string, postData: any): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(rawPostId, 'setPost', 'rawPostId');
     const postId = this.sanitizeKey(rawPostId);
     const path = `posts/${postId}`;
     await this.db.ref(path).set(postData);
   }
 
   async addPostToGlobalSet(rawPostId: string): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(rawPostId, 'addPostToGlobalSet', 'rawPostId');
     const postId = this.sanitizeKey(rawPostId);
     const path = `postMetadata/allPostTreeIds/${postId}`;
     await this.db.ref(path).set(true);
   }
 
   async addPostToUserSet(rawUserId: string, rawPostId: string): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(rawUserId, 'addPostToUserSet', 'rawUserId');
-    this._assertFirebaseKeyComponentSafe(rawPostId, 'addPostToUserSet', 'rawPostId');
     const userId = this.sanitizeKey(rawUserId);
     const postId = this.sanitizeKey(rawPostId);
     const path = `userMetadata/userPosts/${userId}/${postId}`;
@@ -387,7 +389,6 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async incrementPostReplyCounter(rawPostId: string, incrementAmount: number): Promise<number> {
-    this._assertFirebaseKeyComponentSafe(rawPostId, 'incrementPostReplyCounter', 'rawPostId');
     const postId = this.sanitizeKey(rawPostId);
     const refPath = `posts/${postId}/replyCount`;
     const ref = this.db.ref(refPath);
@@ -426,7 +427,6 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // --- Semantic Methods: Reply Management ---
   async getReply(rawReplyId: string): Promise<any | null> {
-    this._assertFirebaseKeyComponentSafe(rawReplyId, 'getReply', 'rawReplyId');
     const replyId = this.sanitizeKey(rawReplyId);
     const path = `replies/${replyId}`;
     const snapshot = await this.db.ref(path).once('value');
@@ -434,15 +434,12 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async setReply(rawReplyId: string, replyData: any): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(rawReplyId, 'setReply', 'rawReplyId');
     const replyId = this.sanitizeKey(rawReplyId);
     const path = `replies/${replyId}`;
     await this.db.ref(path).set(replyData);
   }
 
   async addReplyToUserSet(rawUserId: string, rawReplyId: string): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(rawUserId, 'addReplyToUserSet', 'rawUserId');
-    this._assertFirebaseKeyComponentSafe(rawReplyId, 'addReplyToUserSet', 'rawReplyId');
     const userId = this.sanitizeKey(rawUserId);
     const replyId = this.sanitizeKey(rawReplyId);
     const path = `userMetadata/userReplies/${userId}/${replyId}`;
@@ -450,8 +447,6 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async addReplyToParentRepliesIndex(rawParentId: string, rawReplyId: string): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(rawParentId, 'addReplyToParentRepliesIndex', 'rawParentId');
-    this._assertFirebaseKeyComponentSafe(rawReplyId, 'addReplyToParentRepliesIndex', 'rawReplyId');
     const parentId = this.sanitizeKey(rawParentId);
     const replyId = this.sanitizeKey(rawReplyId);
     const path = `replyMetadata/parentReplies/${parentId}/${replyId}`;
@@ -459,8 +454,6 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async addReplyToRootPostRepliesIndex(rawRootPostId: string, rawReplyId: string): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(rawRootPostId, 'addReplyToRootPostRepliesIndex', 'rawRootPostId');
-    this._assertFirebaseKeyComponentSafe(rawReplyId, 'addReplyToRootPostRepliesIndex', 'rawReplyId');
     const rootPostId = this.sanitizeKey(rawRootPostId);
     const replyId = this.sanitizeKey(rawReplyId);
     const path = `postMetadata/postReplies/${rootPostId}/${replyId}`;
@@ -516,7 +509,6 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // --- Semantic Methods: Feed Management / Indexing ---
   async addReplyToGlobalFeedIndex(rawReplyId: string, score: number, replyTeaserData?: any): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(rawReplyId, 'addReplyToGlobalFeedIndex', 'rawReplyId');
     const replyId = this.sanitizeKey(rawReplyId);
     const uniqueKey = `${score}_${replyId}`;
     const path = `indexes/repliesFeedByTimestamp/${uniqueKey}`;
@@ -607,8 +599,6 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // --- Semantic Methods: Quote Management ---
   async incrementAndStoreQuoteUsage(rawParentId: string, rawHashedQuoteKey: string, quoteObject: any): Promise<number> {
-    this._assertFirebaseKeyComponentSafe(rawParentId, 'incrementAndStoreQuoteUsage', 'rawParentId');
-    this._assertFirebaseKeyComponentSafe(rawHashedQuoteKey, 'incrementAndStoreQuoteUsage', 'rawHashedQuoteKey');
     const parentId = this.sanitizeKey(rawParentId);
     const hashedQuoteKey = this.sanitizeKey(rawHashedQuoteKey);
     const refPath = `replyMetadata/quoteCounts/${parentId}/${hashedQuoteKey}`;
@@ -630,7 +620,6 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async getQuoteCountsForParent(rawParentId: string): Promise<Record<string, { quote: any, count: number }> | null> {
-    this._assertFirebaseKeyComponentSafe(rawParentId, 'getQuoteCountsForParent', 'rawParentId');
     const parentId = this.sanitizeKey(rawParentId);
     const path = `replyMetadata/quoteCounts/${parentId}`;
     const snapshot = await this.db.ref(path).once('value');
