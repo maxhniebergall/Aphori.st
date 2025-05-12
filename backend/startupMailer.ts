@@ -11,8 +11,8 @@ interface EmailContent {
 // The keys ("1", "2", etc.) correspond to the target mail version.
 export const EMAIL_VERSIONS_CONTENT: Record<string, EmailContent> = {
     "1": { // Content for mail version "1"
-        subject: "Important Update from Aphori.st!",
-        html: "<p>Hello {userEmail},</p><p>Replies are now available on Aphori.st! You can check out the latest and comment on this new feature at https://aphori.st/postTree/03dw98bdnxquy13dbgs75tr40 </p><p>Thanks,<br/>The Aphori.st Team</p>"
+        subject: "Replies are now available on Aphorist!",
+        html: "<p>Hello {userEmail},</p><p>Replies are now available on Aphorist! You can check out the latest and comment on this new feature at https://aphori.st/postTree/03dw98bdnxquy13dbgs75tr40 </p><p>Thanks,<br/>The Aphorist Team</p>"
     },
     // Example for a future version "2"
     /*
