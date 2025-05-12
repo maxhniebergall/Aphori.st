@@ -420,9 +420,9 @@ export class FirebaseClient extends DatabaseClientInterface {
     updates[allPostTreeIdsPath] = true;
     updates[userPostsPath] = true;
     updates[`${feedItemsPath}/${feedRef.key as string}`] = feedItemData;
+    updates[feedStatsPath] = ServerValue.increment(1);
     // Increment feedStats/itemCount using transaction
     await this.db.ref().update(updates);
-    await this.db.ref(feedStatsPath).transaction((currentValue) => (currentValue || 0) + 1);
   }
 
   // --- Semantic Methods: Reply Management ---
