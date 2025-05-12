@@ -197,7 +197,7 @@ export class LoggedDatabaseClient { // Remove implements DatabaseClientInterface
         async createUserProfile(rawUserId: string, rawEmail: string, context?: LogContext): Promise<{ success: boolean, error?: string, data?: any }> {
         const logPayload = this.createLogPayload('createUserProfile', rawUserId, { rawEmail }, context);
         this.logger.debug(logPayload, 'Executing DB command: createUserProfile');
-        return this.underlyingClient.createUserProfile(rawUserId, rawEmail);
+        return this.underlyingClient.createUserProfile(rawUserId, rawEmail, context);
     }
 
     // --- Semantic Methods: Post Management ---
