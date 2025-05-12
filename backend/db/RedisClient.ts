@@ -13,6 +13,45 @@ import { RedisSortedSetItem, Quote } from '../types/index.js';
 import logger from '../logger.js';
 
 export class RedisClient extends DatabaseClientInterface {
+  setUserDataForMigration(rawUserId: string, data: any): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  addUserToCatalog(rawUserId: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  setEmailToIdMapping(rawEmail: string, rawUserId: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  getAllUsers(): Promise<Record<string, any> | null> {
+    throw new Error('Method not implemented.');
+  }
+  addProcessedStartupEmail(rawEmail: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  getMailerVersion(): Promise<string | null> {
+    throw new Error('Method not implemented.');
+  }
+  setMailerVersion(version: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  getMailSentListMap(): Promise<Record<string, any> | null> {
+    throw new Error('Method not implemented.');
+  }
+  initializeMailSentList(): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  clearMailSentList(): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  getDatabaseVersion(): Promise<any | null> {
+    throw new Error('Method not implemented.');
+  }
+  setDatabaseVersion(versionData: any): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  deleteOldEmailToIdKey(oldKey: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
   getUser(rawUserId: string): Promise<any | null> {
     throw new Error('Method not implemented.');
   }
