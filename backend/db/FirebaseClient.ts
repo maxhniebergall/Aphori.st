@@ -71,10 +71,6 @@ export class FirebaseClient extends DatabaseClientInterface {
 
 
   async get(key: string): Promise<any> {
-    // Use direct key/path now
-    // Caller is responsible for ensuring 'key' is a valid, fully-formed Firebase path.
-    // Any dynamic segments within 'key' must be pre-sanitized.
-    // For example, if key is `users/${userId}`, userId must be sanitized before this call.
     this._assertFirebaseKeyComponentSafe(key, 'get', 'key (as full path, expecting pre-sanitized segments)');
     const snapshot = await this.db.ref(key).once('value');
     return snapshot.val();

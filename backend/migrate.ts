@@ -1,5 +1,4 @@
 import logger from './logger.js';
-import { DatabaseClient } from './types/index.js';
 import { FirebaseClient } from './db/FirebaseClient.js';
 import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 
@@ -18,7 +17,7 @@ interface NewUser {
     createdAt: string;
 }
 
-async function migrateUsersData(dbClient: DatabaseClient, firebaseClientInstance: FirebaseClient): Promise<void> {
+async function migrateUsersData(dbClient: LoggedDatabaseClient, firebaseClientInstance: FirebaseClient): Promise<void> {
     logger.info('Starting User Data Migration Process...');
     let migratedUserCount = 0;
     let failedUserCount = 0;
@@ -121,7 +120,7 @@ async function migrateUsersData(dbClient: DatabaseClient, firebaseClientInstance
     }
 }
 
-export async function migrate(dbClient: DatabaseClient): Promise<void> {
+export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
     logger.info('Starting Data Migration Script (User Data Migration Stage)...');
     let firebaseClientInstance: FirebaseClient;
     const previousVersion = "2"; // Assuming posts migration was version "2"
@@ -153,7 +152,7 @@ export async function migrate(dbClient: DatabaseClient): Promise<void> {
         }
 
         // Call the actual user data migration logic
-        await migrateUsersData(dbClient, firebaseClientInstance);
+        await migrateUsersData(dbClient as LoggedDatabaseClient, firebaseClientInstance);
 
         await dbClient.set('databaseVersion', "3");
         logger.info(`User migration script completed successfully. DatabaseVersion updated to: "3"`);
