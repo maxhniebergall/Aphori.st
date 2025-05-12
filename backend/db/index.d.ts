@@ -1,3 +1,4 @@
-import { DatabaseClient } from '../types';
 
-export function createDatabaseClient(): DatabaseClient; 
+import { LoggedDatabaseClient } from './LoggedDatabaseClient';
+
+export function createDatabaseClient(): LoggedDatabaseClient;

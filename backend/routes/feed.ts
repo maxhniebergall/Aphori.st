@@ -1,14 +1,12 @@
 import { Router } from 'express';
 import logger from '../logger.js';
 import {
-    DatabaseClient as DatabaseClientType,
     FeedItem,
     FeedItemsResponse,
 } from '../types/index.js';
-
-// Use the imported type for the placeholder and the setDb function
-let db: DatabaseClientType;
-export const setDb = (databaseClient: DatabaseClientType) => {
+import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
+let db: LoggedDatabaseClient;
+export const setDb = (databaseClient: LoggedDatabaseClient) => {
     db = databaseClient;
 };
 
@@ -39,12 +37,12 @@ router.get<'/', FeedItemsResponse | { success: boolean; error: string }>('/', as
 
     try {
 
-        // Get total items using the updated lLen (reads feedStats/itemCount)
-        const totalItems = await db.lLen('feedItems');
+        // Get total items using the new semantic method
+        const totalItems = await db.getGlobalFeedItemCount();
         logger.info('Total feed items count: %d', totalItems);
 
-        // Fetch page using the new method
-        const { items, nextCursorKey } = await db.getFeedItemsPage(limit, cursorKey);
+        // Fetch page using the new semantic method
+        const { items, nextCursorKey } = await db.getGlobalFeedItemsPage(limit, cursorKey);
 
         // Filter/validate items - ensure they match the FeedItem structure
         const feedItems: FeedItem[] = items.filter(isValidFeedItem);

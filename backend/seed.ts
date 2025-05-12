@@ -375,12 +375,12 @@ async function storeReply(reply: ReplyData) {
     const quoteKey = getQuoteKey(quote); // Use consistent quote key generation
 
     // 1. Index for "Replies Feed by Timestamp" (/indexes/repliesFeedByTimestamp)
-    await db.zAdd('replies:feed:mostRecent', score, replyId);
+    await db.zAdd('replies:feed:MOST_RECENT', score, replyId);
 
     // 2. Index for "Replies by Parent and Quote Timestamp" (/indexes/repliesByParentQuoteTimestamp)
     // Ensure parentId and quoteKey are sanitized if they contain forbidden chars
     // Assuming db.zAdd handles mapping 'replies:uuid:...' to the correct index path
-    await db.zAdd(`replies:uuid:${parentId}:quote:${quoteKey}:mostRecent`, score, replyId);
+    await db.zAdd(`replies:uuid:${parentId}:quote:${quoteKey}:MOST_RECENT`, score, replyId);
 
     // 3. Increment Quote Count (/replyMetadata/quoteCounts)
     // The key passed should map correctly, e.g., 'replyMetadata:quoteCounts:parentId' -> path + hashedQuoteKey
@@ -400,9 +400,9 @@ async function storeReply(reply: ReplyData) {
     await db.sAdd(`parentReplies:${parentId}`, replyId);
 
     // REMOVED old/redundant indices based on text - rely on quoteKey and timestamp indices
-    // await db.zAdd(`replies:quote:${quoteKey}:mostRecent`, score, replyId); // Redundant if covered by #2?
-    // await db.zAdd(`replies:${parentId}:${quote.text}:mostRecent`, score, replyId); // Unreliable text index
-    // await db.zAdd(`replies:quote:${quote.text}:mostRecent`, score, replyId); // Unreliable text index
+    // await db.zAdd(`replies:quote:${quoteKey}:MOST_RECENT`, score, replyId); // Redundant if covered by #2?
+    // await db.zAdd(`replies:${parentId}:${quote.text}:MOST_RECENT`, score, replyId); // Unreliable text index
+    // await db.zAdd(`replies:quote:${quote.text}:MOST_RECENT`, score, replyId); // Unreliable text index
 
     logger.info(`Stored reply ${replyId} and updated indices/metadata.`);
 }

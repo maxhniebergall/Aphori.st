@@ -6,18 +6,19 @@ This document provides an overview of the Aphorist backend architecture, detaili
 
 ## Table of Contents
 
-  * [Frontend APIs](https://www.google.com/search?q=%23frontend-apis)
-      * [Authentication APIs](https://www.google.com/search?q=%23authentication-apis)
-      * [User Management APIs](https://www.google.com/search?q=%23user-management-apis)
-      * [Reply APIs](https://www.google.com/search?q=%23reply-apis)
-      * [Post APIs](https://www.google.com/search?q=%23post-apis)
-      * [Feed APIs](https://www.google.com/search?q=%23feed-apis)
-  * [Backend Data Model (Firebase RTDB)](https://www.google.com/search?q=%23backend-data-model-firebase-rtdb)
-  * [Database Access Patterns (Firebase RTDB)](https://www.google.com/search?q=%23database-access-patterns-firebase-rtdb)
-      * [Replies Access Patterns](https://www.google.com/search?q=%23replies-access-patterns)
-  * [Implementation Status & Next Steps](https://www.google.com/search?q=%23implementation-status--next-steps)
-  * [Backend Files Overview](https://www.google.com/search?q=%23backend-files-overview)
-  * [Data Compression](https://www.google.com/search?q=%23data-compression)
+  * [Frontend APIs](#frontend-apis)
+      * [Authentication APIs](#authentication-apis)
+      * [User Management APIs](#user-management-apis)
+      * [Reply APIs](#reply-apis)
+      * [Post APIs](#post-apis)
+      * [Feed APIs](#feed-apis)
+  * [Backend Data Model (Firebase RTDB)](#backend-data-model-firebase-rtdb)
+  * [Database Access Patterns (Firebase RTDB)](#database-access-patterns-firebase-rtdb)
+      * [Replies Access Patterns](#replies-access-patterns)
+  * [Implementation Status & Next Steps](#implementation-status--next-steps)
+  * [Path Management and Key Sanitization (Proposed Enhancement)](#path-management-and-key-sanitization-proposed-enhancement)
+  * [Backend Files Overview](#backend-files-overview)
+  * [Data Compression](#data-compression)
 
 ## Frontend APIs
 
@@ -609,6 +610,7 @@ The backend architecture has been significantly refactored to align with Firebas
 4.  **Update `migrate.ts`:** Refactor the migration script to work with the *new* data model paths and structures. Remove dependencies on deprecated components like `CompressedDatabaseClient`.
 5.  **Align `database.rules.json`:** **Critically important.** Modify security rules to *exactly* match this data model's paths and structures. Add validation for all nodes, including the `indexes/*` paths (e.g., ensuring `$timestamp_$replyId` keys store string `replyId` values). Define `.indexOn` rules for fields used in queries (e.g., `rootPostId` on `/replies` if using `orderByChild`).
 6.  **Test Thoroughly:** Perform comprehensive end-to-end testing of all API endpoints and data operations after all changes are complete.
+
 
 ## Backend Files Overview
 

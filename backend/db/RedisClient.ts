@@ -13,6 +13,96 @@ import { RedisSortedSetItem, Quote } from '../types/index.js';
 import logger from '../logger.js';
 
 export class RedisClient extends DatabaseClientInterface {
+  getUser(rawUserId: string): Promise<any | null> {
+    throw new Error('Method not implemented.');
+  }
+  getUserIdByEmail(rawEmail: string): Promise<string | null> {
+    throw new Error('Method not implemented.');
+  }
+  createUserProfile(rawUserId: string, rawEmail: string): Promise<{ success: boolean; error?: string; data?: any; }> {
+    throw new Error('Method not implemented.');
+  }
+  getPost(rawPostId: string): Promise<any | null> {
+    throw new Error('Method not implemented.');
+  }
+  setPost(rawPostId: string, postData: any): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  addPostToGlobalSet(rawPostId: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  addPostToUserSet(rawUserId: string, rawPostId: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  incrementPostReplyCounter(rawPostId: string, incrementAmount: number): Promise<number> {
+    throw new Error('Method not implemented.');
+  }
+  createPostTransaction(postData: any, feedItemData: any): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  getReply(rawReplyId: string): Promise<any | null> {
+    throw new Error('Method not implemented.');
+  }
+  setReply(rawReplyId: string, replyData: any): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  addReplyToUserSet(rawUserId: string, rawReplyId: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  addReplyToParentRepliesIndex(rawParentId: string, rawReplyId: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  addReplyToRootPostRepliesIndex(rawRootPostId: string, rawReplyId: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  createReplyTransaction(replyData: any, hashedQuoteKey: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  addReplyToGlobalFeedIndex(rawReplyId: string, score: number, replyTeaserData?: any): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  addReplyToParentQuoteIndex(rawParentId: string, rawHashedQuoteKey: string, rawReplyId: string, score: number): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  getReplyCountByParentQuote(rawParentId: string, rawHashedQuoteKey: string, sortCriteria: string): Promise<number> {
+    throw new Error('Method not implemented.');
+  }
+  getReplyIdsByParentQuote(rawParentId: string, rawHashedQuoteKey: string, sortCriteria: string, limit: number, cursor?: string): Promise<{ items: Array<{ score: number; value: string; }>; nextCursor: string | null; }> {
+    throw new Error('Method not implemented.');
+  }
+  addPostToFeed(feedItemData: any): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  getGlobalFeedItemCount(): Promise<number> {
+    throw new Error('Method not implemented.');
+  }
+  incrementGlobalFeedCounter(amount: number): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  getGlobalFeedItemsPage(limit: number, cursorKey?: string): Promise<{ items: any[]; nextCursorKey: string | null; }> {
+    throw new Error('Method not implemented.');
+  }
+  incrementAndStoreQuoteUsage(rawParentId: string, rawHashedQuoteKey: string, quoteObject: any): Promise<number> {
+    throw new Error('Method not implemented.');
+  }
+  getQuoteCountsForParent(rawParentId: string): Promise<Record<string, { quote: any; count: number; }> | null> {
+    throw new Error('Method not implemented.');
+  }
+  getRawPath(path: string): Promise<any | null> {
+    throw new Error('Method not implemented.');
+  }
+  setRawPath(path: string, value: any): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  updateRawPaths(updates: Record<string, any>): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  removeRawPath(path: string): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  runTransaction(path: string, transactionUpdate: (currentData: any) => any): Promise<{ committed: boolean; snapshot: any | null; }> {
+    throw new Error('Method not implemented.');
+  }
   private client: RedisClientType;
 
   constructor(config: any) {
@@ -86,10 +176,6 @@ export class RedisClient extends DatabaseClientInterface {
 
   async isReady(): Promise<boolean> {
     return this.client.isReady;
-  }
-
-  encodeKey(key: string, prefix: string): string {
-    return prefix ? `${prefix}:${key}` : key;
   }
 
   async hGetAll(key: string): Promise<Record<string, any>> {

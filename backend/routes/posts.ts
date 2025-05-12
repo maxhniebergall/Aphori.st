@@ -1,22 +1,19 @@
 import { Router, Response, Request } from 'express';
 import logger from '../logger.js';
 import {
-    DatabaseClient as DatabaseClientType,
     AuthenticatedRequest,
     Post,
     PostCreationRequest,
-    FeedItem,
-    CompressedApiResponse,
-    Compressed
+    FeedItem
 } from '../types/index.js';
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { randomUUID } from 'crypto';
 
-// Use the imported type for the placeholder and the setDb function
-let db: DatabaseClientType;
-export const setDb = (databaseClient: DatabaseClientType) => {
+import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
+let db: LoggedDatabaseClient;
+export const setDb = (databaseClient: LoggedDatabaseClient) => {
     db = databaseClient;
 };
 
@@ -83,6 +80,7 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
                 return;
             }
 
+            // Use new semantic method for atomic post creation
             const uuid = generateCondensedUuid();
             const newPost: Post = {
                 id: uuid,
@@ -92,7 +90,6 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
                 replyCount: 0 // Added replyCount
             };
 
-            // Log action intent before DB calls
             logger.info(
                 {
                     ...logContext,
@@ -108,22 +105,13 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
                 'Initiating CreatePost action'
             );
 
-            // Store post at /posts/$postId
-            await db.set(`posts/${uuid}`, newPost, logContext);
-
-            // Add post ID to relevant sets/indexes
-            await db.sAdd('allPostTreeIds:all', uuid, logContext); // Add to global post set
-            await db.sAdd(`userPosts:${user.id}`, uuid, logContext); // Add to user's post set
-
-            // Add to feed items
             const feedItem: FeedItem = {
                 id: uuid,
                 authorId: user.id,
-                textSnippet: trimmedContent.substring(0, 100), // Use textSnippet
+                textSnippet: trimmedContent.substring(0, 100),
                 createdAt: newPost.createdAt
             };
-            await db.lPush('feedItems', feedItem, logContext); // Pass object, not string
-            await db.incrementFeedCounter(1, logContext); // Increment feed counter
+            await db.createPostTransaction(newPost, feedItem);
 
             logger.info({ ...logContext, postId: uuid }, `Successfully created new Post`);
             res.status(201).json({ id: uuid }); // Use 201 Created status
@@ -150,8 +138,8 @@ router.get<{ uuid: string }, Post | { success: boolean; error: string } >('/:uui
         return;
     }
     try {
-        // Get post directly from /posts/$uuid
-        const postData = await db.get<Post>(`posts/${uuid}`, logContext);
+        // Use new semantic method
+        const postData = await db.getPost(uuid);
 
         if (!postData) {
             logger.warn({ ...logContext, uuid }, 'Post not found');

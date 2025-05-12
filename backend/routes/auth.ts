@@ -6,133 +6,62 @@ import logger from '../logger.js';
 import {
     User,
     UserResult,
-    ExistingUser,
     AuthTokenPayload,
-    TokenPayload,
-    DatabaseClient as DatabaseClientType
+    TokenPayload
 } from '../types/index.js';
 import { sendEmail } from '../mailer.js';
 import { LogContext } from '../db/loggingTypes.js';
+import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
 
-// Use the imported type for the placeholder and the setDb function
-let db: DatabaseClientType;
-export const setDb = (databaseClient: DatabaseClientType) => {
+// Use the logged database client for all DB operations
+let db: LoggedDatabaseClient;
+export const setDb = (databaseClient: LoggedDatabaseClient) => {
     db = databaseClient;
 };
 
 const router = Router();
 
-// Constants for user-related keys - REMOVED, using direct paths now
-// const USER_PREFIX = 'user';
-// const USER_IDS_SET = 'user_ids';
-// const EMAIL_TO_ID_PREFIX = 'email_to_id';
 
-// --- Helper Functions ---
-
-// Helper to escape email for Firebase keys (using percent encoding)
-// Duplicates FirebaseClient.sanitizeKey logic for now
-function escapeEmailForKey(email: string): string {
-    let encoded = encodeURIComponent(email);
-    encoded = encoded.replace(/\./g, '%2E');
-    encoded = encoded.replace(/\$/g, '%24');
-    encoded = encoded.replace(/#/g, '%23');
-    encoded = encoded.replace(/\[/g, '%5B');
-    encoded = encoded.replace(/\]/g, '%5D');
-    encoded = encoded.replace(/\//g, '%2F');
-    return encoded;
-}
-
-const getUserById = async (id: string, context?: LogContext): Promise<UserResult> => {
-    // Read directly from the /users/$userId path
-    const userPath = `users/${id}`;
-    // logger.debug({ ...context, path: userPath }, 'Attempting to get user by ID'); // Optional debug log
-    const userData = await db.get<ExistingUser>(userPath, context);
+// New helper using semantic DB methods
+const getUserById = async (id: string): Promise<UserResult> => {
+    const userData = await db.getUser(id);
     if (!userData) {
-        // logger.debug({ ...context, path: userPath }, 'User not found by ID'); // Optional debug log
         return {
             success: false,
             error: 'User not found'
         };
     }
-    // logger.debug({ ...context, path: userPath, userId: userData.id }, 'User found by ID'); // Optional debug log
     return {
         success: true,
-        data: userData // Should be the ExistingUser object
+        data: userData
     };
 };
 
-const getUserByEmail = async (email: string, context?: LogContext): Promise<UserResult> => {
+const getUserByEmail = async (email: string): Promise<UserResult> => {
     const lowerEmail = email.toLowerCase();
-    const escapedEmail = escapeEmailForKey(lowerEmail);
-    // Get user ID from email mapping in userMetadata
-    const emailMapPath = `userMetadata/emailToId/${escapedEmail}`;
-    // logger.debug({ ...context, path: emailMapPath }, 'Attempting to get user ID by email'); // Optional debug log
-    const userId = await db.get<string>(emailMapPath, context);
+    const userId = await db.getUserIdByEmail(lowerEmail);
     if (!userId) {
-        // logger.debug({ ...context, path: emailMapPath, email: lowerEmail }, 'User ID not found for email'); // Optional debug log
         return {
             success: false,
             error: 'User not found'
         };
     }
-    // logger.debug({ ...context, path: emailMapPath, email: lowerEmail, userId }, 'Found user ID for email, getting user data'); // Optional debug log
-    return getUserById(userId, context); // Reuse getUserById
+    return getUserById(userId);
 };
 
 const createUser = async (id: string, email: string, context?: LogContext): Promise<UserResult> => {
     const lowerEmail = email.toLowerCase();
-    const escapedEmail = escapeEmailForKey(lowerEmail);
-    const userPath = `users/${id}`;
-    const emailMapPath = `userMetadata/emailToId/${escapedEmail}`;
-    const userIdSetKey = 'userIds:all'; // Key for sAdd, maps to userMetadata/userIds/$id
-
-    // Use transactions or multi-path updates for atomicity if possible,
-    // but for now, perform checks and writes sequentially.
-
-    // Check if ID is taken (read from new path)
-    const existingUserCheck = await db.get(userPath, context);
-    if (existingUserCheck) {
+    const result = await db.createUserProfile(id, lowerEmail, context);
+    if (!result.success) {
         return {
             success: false,
-            error: 'User ID already exists'
+            error: result.error || 'Server error creating user'
         };
     }
-
-    // Check if email is already registered (read from new path)
-    const existingEmailCheck = await db.get(emailMapPath, context);
-    if (existingEmailCheck) {
-        return {
-            success: false,
-            error: 'Email already registered'
-        };
-    }
-
-    const newUser: ExistingUser = {
-        id,
-        email: lowerEmail, // Store lowercase email
-        createdAt: new Date().toISOString()
+    return {
+        success: true,
+        data: result.data
     };
-
-    try {
-        // Store user data at /users/$id
-        await db.set(userPath, newUser, context);
-        // Add ID to set of user IDs at /userMetadata/userIds/$id
-        await db.sAdd(userIdSetKey, id, context);
-        // Create email to ID mapping at /userMetadata/emailToId/$escapedEmail
-        await db.set(emailMapPath, id, context);
-
-        return {
-            success: true,
-            data: newUser
-        };
-    } catch (error: any) {
-        logger.error({ ...context, err: error, userId: id, email: lowerEmail }, 'Database error creating user');
-        // Consider trying to clean up partial writes if possible, though complex.
-        return {
-            success: false,
-            error: 'Server error creating user'
-        };
-    }
 };
 
 const generateMagicToken = (email: string): string => {
@@ -373,7 +302,7 @@ router.get('/check-user-id/:id', async (req: Request<{ id: string }>, res: Respo
     }
 
     try {
-        const userResult = await getUserById(id, logContext);
+        const userResult = await getUserById(id);
         logger.info({ ...logContext, userId: id, available: !userResult.success }, 'Checked user ID availability');
         res.json({ 
             success: true,

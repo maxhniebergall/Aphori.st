@@ -31,9 +31,6 @@ import * as fsSync from 'fs'; // Keep sync fs for existsSync
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { dirname } from 'path';
-import { 
-    DatabaseClient as DatabaseClientType,
-} from './types/index.js';
 import requestLogger from './middleware/requestLogger.js';
 import { optionalAuthMiddleware } from './middleware/optionalAuthMiddleware.js';
 import { 
@@ -47,6 +44,7 @@ import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
 import { migrate } from './migrate.js';
+import { LoggedDatabaseClient } from "./db/LoggedDatabaseClient.js";
 
 dotenv.config();
 
@@ -134,8 +132,10 @@ app.use(anonymousLimiterDay);
 // app.use(anonymousLimiter); // Comment out or remove the old single anonymous limiter
 // --- End Optional Authentication and Rate Limiting Middlewares ---
 
-// Use the imported type for the db instance
-const db: DatabaseClientType = createDatabaseClient() as DatabaseClientType;
+
+// createDatabaseClient() now returns LoggedDatabaseClient
+const db = createDatabaseClient();
+
 
 let isDbReady = false;
 
