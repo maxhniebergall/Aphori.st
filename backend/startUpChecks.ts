@@ -3,8 +3,10 @@ import logger from './logger.js';
 import { migrate } from './migrate.js';
 import { sendStartupEmails, EMAIL_VERSIONS_CONTENT } from './startupMailer.js';
 
-// Define constants for database keys to avoid magic strings
-const LATEST_SUPPORTED_MAIL_VERSION = "1";
+// --- Configuration ---
+const LATEST_SUPPORTED_MAIL_VERSION = "1"; // The version currently rolled out to all users
+const IS_TESTING_NEW_MAIL_VERSION = true; // Set to true to test the next version
+const TEST_EMAIL_RECIPIENT = "admin@aphori.st"; // Email address for testing
 
 // --- Startup Email Processing --- 
 
@@ -86,7 +88,7 @@ export async function processStartupEmails(db: LoggedDatabaseClient): Promise<vo
         const versionState = await determineMailerVersionState(db);
 
         if (versionState.needsProcessing && EMAIL_VERSIONS_CONTENT[versionState.targetVersion]) {
-            logger.info(`Processing startup emails for target version ${versionState.targetVersion} (DB state: ${versionState.currentStateDescription}).`);
+            logger.info(`Processing startup emails. Target version: ${versionState.targetVersion}${IS_TESTING_NEW_MAIL_VERSION ? ' (TESTING MODE - admin only)' : ''}. DB state: ${versionState.currentStateDescription}.`);
             
             const processedEmailsAfterRun = await sendEmailsToUnprocessedUsers(db, allUserEmails, versionState.processedEmails, versionState.targetVersion);
             
@@ -94,7 +96,7 @@ export async function processStartupEmails(db: LoggedDatabaseClient): Promise<vo
 
         } else if (versionState.needsProcessing) {
             // Needs processing but content is missing for the target version
-            logger.error(`Cannot process startup emails: No email content defined for target mail version ${versionState.targetVersion}. DB state: ${versionState.currentStateDescription}`);
+            logger.error(`Cannot process startup emails: No email content defined for target mail version ${versionState.targetVersion}. DB state: ${versionState.currentStateDescription}${IS_TESTING_NEW_MAIL_VERSION ? ' (TESTING MODE)' : ''}`);
         }
         // If !versionState.needsProcessing, logging is handled within determineMailerVersionState
 
@@ -131,35 +133,62 @@ async function determineMailerVersionState(db: LoggedDatabaseClient): Promise<Ma
     };
 
     if (currentDbVersion === null) {
-        logger.info(`No mailer version found. Initializing for version ${LATEST_SUPPORTED_MAIL_VERSION}.`);
+        // Initial state: No version set. Start transition towards the latest supported version.
+        logger.info(`No mailer version found. Initializing transition for version ${LATEST_SUPPORTED_MAIL_VERSION}${IS_TESTING_NEW_MAIL_VERSION ? ' (TESTING MODE)' : ''}.`);
         state.currentStateDescription = `0->${LATEST_SUPPORTED_MAIL_VERSION}`;
         await db.setMailerVersion(state.currentStateDescription);
-        await db.initializeMailSentList();
-        state.processedEmails = []; // Reset list
+        // Initialize list only if NOT testing
+        if (!IS_TESTING_NEW_MAIL_VERSION) {
+            logger.info(`Initializing mailSentList for transition: ${state.currentStateDescription}`);
+            await db.initializeMailSentList();
+            state.processedEmails = []; // Reset list
+        } else {
+            logger.info(`TESTING MODE: Preserving mailSentList during initial transition.`);
+        }
         state.targetVersion = LATEST_SUPPORTED_MAIL_VERSION;
         state.needsProcessing = true;
     } else if (currentDbVersion.includes('->')) {
+        // Transitional state: e.g., "0->1"
         const parts = currentDbVersion.split('->');
         const dbTargetVersion = parts[1];
-        logger.info(`Mailer version is in transition: ${currentDbVersion}.`);
+        logger.info(`Mailer version is in transition: ${currentDbVersion}${IS_TESTING_NEW_MAIL_VERSION ? ' (TESTING MODE)' : ''}.`);
+        
+        // Check if the DB target version is supported by the server
         if (parseInt(dbTargetVersion) <= parseInt(LATEST_SUPPORTED_MAIL_VERSION)) {
             state.targetVersion = dbTargetVersion;
             state.needsProcessing = true;
         } else {
-            logger.warn(`Database mailer version ${currentDbVersion} targets ${dbTargetVersion}, but server only supports up to ${LATEST_SUPPORTED_MAIL_VERSION}. Skipping.`);
+            logger.warn(`Database mailer version ${currentDbVersion} targets ${dbTargetVersion}, but server only supports up to ${LATEST_SUPPORTED_MAIL_VERSION}${IS_TESTING_NEW_MAIL_VERSION ? ' (TESTING MODE)' : ''}. Skipping.`);
             state.needsProcessing = false;
         }
-    } else { // Version is a final number string
-        if (parseInt(currentDbVersion) < parseInt(LATEST_SUPPORTED_MAIL_VERSION)) {
-            logger.info(`Current mailer version ${currentDbVersion} is less than server target ${LATEST_SUPPORTED_MAIL_VERSION}. Starting transition.`);
+    } else { // Final state: Version is a number string, e.g., "0"
+        const currentVersionInt = parseInt(currentDbVersion);
+        const latestSupportedVersionInt = parseInt(LATEST_SUPPORTED_MAIL_VERSION);
+
+        if (currentVersionInt < latestSupportedVersionInt) {
+            // DB version is lower than what the server supports.
+            logger.info(`Current mailer version ${currentDbVersion} is less than server target ${LATEST_SUPPORTED_MAIL_VERSION}${IS_TESTING_NEW_MAIL_VERSION ? ' (TESTING MODE)' : ''}. Starting transition.`);
             state.currentStateDescription = `${currentDbVersion}->${LATEST_SUPPORTED_MAIL_VERSION}`;
-            await db.setMailerVersion(state.currentStateDescription);
-            await db.initializeMailSentList();
-            state.processedEmails = []; // Reset list
+            
+            // Set the transition state in DB
+            await db.setMailerVersion(state.currentStateDescription); 
+            
+            // Initialize list only if NOT testing
+            if (!IS_TESTING_NEW_MAIL_VERSION) {
+                 logger.info(`Initializing mailSentList for transition: ${state.currentStateDescription}`);
+                 await db.initializeMailSentList();
+                 state.processedEmails = []; // Reset list for full rollout
+            } else {
+                 logger.info(`TESTING MODE: Preserving mailSentList during transition from ${currentDbVersion}.`);
+                 // Use existing processedEmails list loaded earlier
+            }
+            
             state.targetVersion = LATEST_SUPPORTED_MAIL_VERSION;
             state.needsProcessing = true;
+
         } else {
-            logger.info(`Mailer version ${currentDbVersion} is up-to-date with or newer than server target ${LATEST_SUPPORTED_MAIL_VERSION}. No startup emails needed.`);
+            // DB version is up-to-date or newer than the server target
+            logger.info(`Mailer version ${currentDbVersion} is up-to-date with or newer than server target ${LATEST_SUPPORTED_MAIL_VERSION}${IS_TESTING_NEW_MAIL_VERSION ? ' (TESTING MODE)' : ''}. No startup emails needed.`);
             state.needsProcessing = false;
         }
     }
@@ -172,15 +201,20 @@ async function sendEmailsToUnprocessedUsers(
     processedEmails: string[],
     targetVersion: string
 ): Promise<string[]> { // Returns the updated list of processed emails
-    const usersToEmail = allUserEmails.filter(email => !processedEmails.includes(email));
+    
+    // Determine the list of users to consider based on testing mode
+    const effectiveUserList = IS_TESTING_NEW_MAIL_VERSION ? [TEST_EMAIL_RECIPIENT] : allUserEmails;
+    const logSuffix = IS_TESTING_NEW_MAIL_VERSION ? ` (TESTING MODE: targeting only ${TEST_EMAIL_RECIPIENT})` : '';
+
+    const usersToEmail = effectiveUserList.filter(email => email && !processedEmails.includes(email));
     let updatedProcessedEmails = [...processedEmails]; // Start with current list
 
     if (usersToEmail.length > 0) {
-        logger.info(`Found ${usersToEmail.length} users to email for version ${targetVersion}.`);
+        logger.info(`Found ${usersToEmail.length} users to email for version ${targetVersion}${logSuffix}.`);
         const successfullySentTo = await sendStartupEmails(db, usersToEmail, targetVersion);
         updatedProcessedEmails = updatedProcessedEmails.concat(successfullySentTo);
     } else {
-        logger.info(`No new users to email for version ${targetVersion}.`);
+        logger.info(`No new users to email for version ${targetVersion}${logSuffix}.`);
     }
     return updatedProcessedEmails;
 }
@@ -191,6 +225,16 @@ async function finalizeMailerVersionIfNeeded(
     finalProcessedEmails: string[],
     targetVersion: string
 ): Promise<void> {
+
+    // ** Skip finalization if in testing mode **
+    if (IS_TESTING_NEW_MAIL_VERSION) {
+        // Log status of test recipient, useful for debugging
+        const testUserProcessed = finalProcessedEmails.includes(TEST_EMAIL_RECIPIENT);
+        logger.info(`TESTING MODE: Skipping finalization for version ${targetVersion}. Test recipient (${TEST_EMAIL_RECIPIENT}) processed status: ${testUserProcessed}.`);
+        return;
+    }
+
+    // Original logic for non-testing mode:
     // Check if all known users are now processed for this target version
     const allProcessed = allUserEmails.every(email => finalProcessedEmails.includes(email));
 
