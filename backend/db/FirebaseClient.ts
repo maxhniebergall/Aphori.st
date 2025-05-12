@@ -71,33 +71,52 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   async get(key: string): Promise<any> {
     // Use direct key/path now
+    // Caller is responsible for ensuring 'key' is a valid, fully-formed Firebase path.
+    // Any dynamic segments within 'key' must be pre-sanitized.
+    // For example, if key is `users/${userId}`, userId must be sanitized before this call.
+    this._assertFirebaseKeyComponentSafe(key, 'get', 'key (as full path, expecting pre-sanitized segments)');
     const snapshot = await this.db.ref(key).once('value');
     return snapshot.val();
   }
 
   async set(key: string, value: any): Promise<string | null> {
     // Use direct key/path now
+    // Caller is responsible for ensuring 'key' is a valid, fully-formed Firebase path.
+    // Any dynamic segments within 'key' must be pre-sanitized.
+    this._assertFirebaseKeyComponentSafe(key, 'set', 'key (as full path, expecting pre-sanitized segments)');
     await this.db.ref(key).set(value);
     return 'OK';
   }
 
   async hGet(key: string, field: string): Promise<any> {
     // Construct path directly
-    const path = `${key}/${field}`; // Simple concatenation, may need refinement based on usage
+    // 'key' is assumed to be a base path; dynamic segments in it must be pre-sanitized by the caller.
+    this._assertFirebaseKeyComponentSafe(key, 'hGet', 'key (as base path, expecting pre-sanitized segments)');
+    // 'field' is a dynamic segment and will be sanitized here by this.sanitizeKey.
+    // No assertion on raw 'field' as it's immediately sanitized.
+    const path = `${key}/${this.sanitizeKey(field)}`;
     const snapshot = await this.db.ref(path).once('value');
     return snapshot.val();
   }
 
   async hSet(key: string, field: string, value: any): Promise<number> {
     // Construct path directly
-    const { basePath, id } = this.parseKey(key);
-    if (!basePath || !id) {
+    const { basePath, id: rawId } = this.parseKey(key); // 'id' from parseKey is raw
+    // basePath from parseKey is a literal like 'users', 'posts', inherently safe.
+    // No assertion for rawId as it's sanitized before use.
+    // No assertion for raw field as it's sanitized before use.
+
+    if (!basePath || !rawId) {
       console.error(`FirebaseClient hSet: Could not parse key: ${key}`);
       return 0; // Indicate error or no update
     }
+    const sanitizedId = this.sanitizeKey(rawId);
+    const sanitizedField = this.sanitizeKey(field); // field is a dynamic segment
+
     const updates: Record<string, any> = {};
-    updates[field] = value;
-    await this.db.ref(`${basePath}/${id}`).update(updates);
+    updates[sanitizedField] = value;
+    // Path to update uses sanitizedId. The field key in 'updates' is also sanitized.
+    await this.db.ref(`${basePath}/${sanitizedId}`).update(updates);
 
     return 1; // Firebase set doesn't return a count like Redis hset
   }
@@ -111,7 +130,9 @@ export class FirebaseClient extends DatabaseClientInterface {
    */
   async lPush(key: string, value: any): Promise<number> {
     // Use direct path for 'feedItems', hash otherwise
-    const path = key;
+    const path = key; // 'key' is assumed to be a safe, pre-defined path like 'feedItems'.
+    this._assertFirebaseKeyComponentSafe(path, 'lPush', 'path (key, expecting fixed or pre-sanitized)');
+                     // If 'key' could be dynamic and contain user input, it would need sanitization by the caller.
     const ref = this.db.ref(path);
     try {
       let dataToPush = value;
@@ -146,7 +167,9 @@ export class FirebaseClient extends DatabaseClientInterface {
    */
   async getFeedItemsPage(limit: number, cursorKey?: string): Promise<{ items: any[], nextCursorKey: string | null }> {
     // Use the fixed, unhashed path for the global feed
-    const feedItemsRef = this.db.ref('feedItems');
+    const feedItemsRef = this.db.ref('feedItems'); // Fixed path, inherently safe
+    // cursorKey is a Firebase key, expected to be already valid (potentially percent-encoded).
+    this._assertFirebaseKeyComponentSafe(cursorKey, 'getFeedItemsPage', 'cursorKey (expecting valid Firebase key format)');
     let query = feedItemsRef.orderByKey();
 
     if (typeof cursorKey === 'string' && cursorKey) {
@@ -183,7 +206,9 @@ export class FirebaseClient extends DatabaseClientInterface {
    */
   async lLen(key: string): Promise<number> {
     // Always read the fixed counter path, regardless of the input key
-    const counterPath = 'feedStats/itemCount';
+    const counterPath = 'feedStats/itemCount'; // Fixed path, inherently safe
+    // 'key' is informational, not used in path construction.
+    // No assertion on 'key' itself as its content doesn't affect Firebase safety here.
     if (key !== 'feedItems') {
       console.warn(`FirebaseClient lLen called with unexpected key: [${key}]. Reading ${counterPath} anyway.`);
     }
@@ -199,23 +224,23 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async sAdd(key: string, value: any): Promise<number> {
-    // Use direct key/path
-    // const ref = this.db.ref(key); // OLD
-
-    // Escape the value to use as the child key for the set member
-    // const escapedValue = this._escapeFirebaseKey(String(value)); // OLD Escape logic removed
-
-    // NEW LOGIC based on assumed key format like 'collection:parentId' and value 'childId'
-    // Needs refinement based on actual key formats used in the application
+    // 'key' is parsed into components. The raw 'key' isn't directly used as a path segment.
+    // Assertions will be on the derived parentId and childId after they are extracted
+    // but before sanitization to check the raw input parts.
     const parts = key.split(':');
     let path = '';
     if (parts.length === 2) {
-      const collection = parts[0]; // e.g., 'userPosts', 'postReplies'
-      const parentId = parts[1];
-      const childId = String(value); // The value is the ID to add to the set
+      const collection = parts[0]; // Literal, assumed safe.
+      const rawParentId = parts[1];
+      const rawChildId = String(value);
 
-      // Map collection names to actual paths based on the new data model
-      // This mapping needs to be comprehensive based on backend_architecture.md
+      this._assertFirebaseKeyComponentSafe(rawParentId, 'sAdd', 'rawParentId from key');
+      this._assertFirebaseKeyComponentSafe(rawChildId, 'sAdd', 'rawChildId from value');
+
+      const parentId = this.sanitizeKey(rawParentId);
+      const childId = this.sanitizeKey(rawChildId);
+
+      // Path construction uses sanitized versions.
       if (collection === 'userPosts') {
         path = `userMetadata/userPosts/${parentId}/${childId}`;
       } else if (collection === 'userReplies') {
@@ -225,48 +250,41 @@ export class FirebaseClient extends DatabaseClientInterface {
       } else if (collection === 'parentReplies') { // Index replies under direct parent
         path = `replyMetadata/parentReplies/${parentId}/${childId}`;
       } else if (collection === 'userIds') {
-        // Here the 'value' IS the userId, and parentId is likely 'userIds' itself or irrelevant
         path = `userMetadata/userIds/${childId}`;
       } else if (collection === 'allPostTreeIds') {
         path = `postMetadata/allPostTreeIds/${childId}`;
       }
       else {
         console.error(`FirebaseClient sAdd: Unhandled key format or collection name: ${key}`);
-        // Decide on error handling: throw error or return 0?
-        // For now, let's prevent writing to an unknown path
         return 0;
       }
     } else {
       console.error(`FirebaseClient sAdd: Unexpected key format: ${key}. Expected 'collection:parentId'.`);
-      // Prevent writing to an unknown path
       return 0;
     }
 
 
     const ref = this.db.ref(path);
-    // Check if the childId already exists as a key at this path
     const snapshot = await ref.once('value');
 
     if (!snapshot.exists()) {
-      // If it doesn't exist, add it with a value of true
       await ref.set(true);
-      return 1; // Indicate an item was added
+      return 1; 
     }
-    return 0; // Indicate the item already existed
+    return 0; 
   }
 
   async sMembers(key: string): Promise<string[]> {
-    // Use direct key/path
-    // const snapshot = await this.db.ref(key).once('value'); // OLD
-
-    // NEW LOGIC based on assumed key format like 'collection:parentId'
+    // 'key' is parsed. Assertion on rawParentId derived from it.
     const parts = key.split(':');
     let path = '';
     if (parts.length === 2) {
-      const collection = parts[0];
-      const parentId = parts[1];
+      const collection = parts[0]; // Literal, assumed safe.
+      const rawParentId = parts[1];
+      this._assertFirebaseKeyComponentSafe(rawParentId, 'sMembers', 'rawParentId from key');
+      const parentId = this.sanitizeKey(rawParentId);
 
-      // Map collection names to actual paths
+      // Path construction uses sanitized parentId.
       if (collection === 'userPosts') {
         path = `userMetadata/userPosts/${parentId}`;
       } else if (collection === 'userReplies') {
@@ -276,12 +294,12 @@ export class FirebaseClient extends DatabaseClientInterface {
       } else if (collection === 'parentReplies') {
         path = `replyMetadata/parentReplies/${parentId}`;
       } else if (collection === 'userIds') {
-        path = 'userMetadata/userIds'; // Get all user IDs
+        path = 'userMetadata/userIds'; 
       } else if (collection === 'allPostTreeIds') {
-        path = 'postMetadata/allPostTreeIds';
+        path = 'postMetadata/allPostTreeIds'; 
       } else {
         console.error(`FirebaseClient sMembers: Unhandled key format or collection name: ${key}`);
-        return []; // Return empty array on error
+        return []; 
       }
     } else {
       console.error(`FirebaseClient sMembers: Unexpected key format: ${key}. Expected 'collection:parentId'.`);
@@ -290,12 +308,6 @@ export class FirebaseClient extends DatabaseClientInterface {
 
     const snapshot = await this.db.ref(path).once('value');
     const currentSet = snapshot.val() || {};
-    // Get the escaped keys // OLD
-    // const escapedKeys = Object.keys(currentSet); // OLD
-    // Unescape each key to return the original values // OLD
-    // return escapedKeys.map(escapedKey => this._unescapeFirebaseKey(escapedKey)); // OLD
-
-    // NEW: Keys are the member IDs (e.g., postIds, replyIds), return them directly
     return Object.keys(currentSet);
   }
 
@@ -312,41 +324,34 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async isReady(): Promise<boolean> {
-    // Can reuse isConnected or add additional checks
+    // Can reuse isConnected or additional checks
     return this.isConnected();
   }
 
   encodeKey(key: string, prefix?: string): string {
+    this._assertFirebaseKeyComponentSafe(key, 'encodeKey', 'key (raw input)');
+    this._assertFirebaseKeyComponentSafe(prefix, 'encodeKey', 'prefix (raw input)');
     return prefix ? `${prefix}:${key}` : key;
   }
 
   async hGetAll(key: string): Promise<Record<string, any> | null> {
     // Use direct key/path
+    // Caller is responsible for ensuring 'key' is a valid, fully-formed Firebase path.
+    this._assertFirebaseKeyComponentSafe(key, 'hGetAll', 'key (as full path, expecting pre-sanitized segments)');
     const snapshot = await this.db.ref(key).once('value');
     return snapshot.val();
   }
 
   async zAdd(key: string, score: number, value: string | { id: string }): Promise<number> {
-    // Use score directly as child key, store { score, value } object // OLD
-    // Use direct key/path // OLD
-    // const ref = this.db.ref(`${key}/${score}`); // OLD
-    // await ref.set({ score: score, value: value }); // OLD
+    // 'key' is used for mapping, not directly as a path segment, assertion on it before mapping.
+    this._assertFirebaseKeyComponentSafe(key, 'zAdd', 'key (for basePath mapping, raw input)');
+    const rawItemId = typeof value === 'object' && value.id ? value.id : String(value);
+    // Assert rawItemId before sanitization.
+    this._assertFirebaseKeyComponentSafe(rawItemId, 'zAdd', 'rawItemId from value');
+    const itemId = this.sanitizeKey(rawItemId); 
+    const timestampScore = score; 
+    const uniqueKey = `${timestampScore}_${itemId}`; 
 
-    // NEW LOGIC: Assume score is a timestamp. Store value under a path incorporating the timestamp.
-    // The exact path structure depends on the specific sorted set.
-    // Example for a global feed sorted by time: replies:feed:mostRecent
-    // We might store at /repliesFeedByTimestamp/<timestamp>_<uniqueId> = value
-    // Or store { value, timestamp } under /replies/<replyId> and query an index.
-    // Let's assume for now zAdd targets a dedicated index path where the score (timestamp) is primary.
-    // We'll use a combined key <score>_<value_id> to ensure uniqueness if scores can collide.
-    // This assumes 'value' has an 'id' property or is the ID itself.
-
-    const itemId = typeof value === 'object' && value.id ? value.id : String(value);
-    const timestampScore = score; // Assuming score is the timestamp
-    const uniqueKey = `${timestampScore}_${itemId}`; // Combine score and ID for unique path
-
-    // Assume the 'key' provided tells us the base path for the index
-    // e.g., key = 'replies:feed:mostRecent' -> basePath = 'indexes/repliesFeedByTimestamp'
     const basePath = this.mapZSetKeyToIndexBasePath(key);
     if (!basePath) {
       console.error(`FirebaseClient zAdd: Cannot map key '${key}' to an index base path.`);
@@ -354,18 +359,13 @@ export class FirebaseClient extends DatabaseClientInterface {
     }
 
     const ref = this.db.ref(`${basePath}/${uniqueKey}`);
-    // Store the actual value (or reference like itemId) at this timestamped key
     await ref.set(value);
     return 1;
   }
 
   async zCard(key: string): Promise<number> {
-    // Use direct key/path // OLD
-    // const snapshot = await this.db.ref(key).once('value'); // OLD
-    // Count children (each child key is a score) // OLD
-    // return snapshot.numChildren(); // OLD
-
-    // NEW LOGIC: Count children at the mapped index path
+    // 'key' is used for mapping, assertion on it before mapping.
+    this._assertFirebaseKeyComponentSafe(key, 'zCard', 'key (for basePath mapping, raw input)');
     const basePath = this.mapZSetKeyToIndexBasePath(key);
     if (!basePath) {
       console.error(`FirebaseClient zCard: Cannot map key '${key}' to an index base path.`);
@@ -379,6 +379,8 @@ export class FirebaseClient extends DatabaseClientInterface {
   // Firebase RTDB querying by range/offset (like Redis start/end) is tricky.
   // We fetch limit = end + 1 and slice.
   async zRange(key: string, start: number, end: number): Promise<any[]> {
+    // 'key' is used for mapping, assertion on it before mapping.
+    this._assertFirebaseKeyComponentSafe(key, 'zRange', 'key (for basePath mapping, raw input)');
     const basePath = this.mapZSetKeyToIndexBasePath(key);
     if (!basePath) {
       console.error(`FirebaseClient zRange: Cannot map key '${key}' to an index base path.`);
@@ -411,6 +413,7 @@ export class FirebaseClient extends DatabaseClientInterface {
       }
 
       const startKey = keys[start];
+      this._assertFirebaseKeyComponentSafe(startKey, 'zRange', 'startKey (derived Firebase key, should be safe)');
 
       // 2) Fetch the actual slice starting at that key
       const limit = end === -1 ? 10000 : end - start + 1;
@@ -432,6 +435,9 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   async del(key: string): Promise<number> {
     // Use direct key/path
+    // Caller is responsible for ensuring 'key' is a valid, fully-formed Firebase path.
+    // Any dynamic segments within 'key' must be pre-sanitized.
+    this._assertFirebaseKeyComponentSafe(key, 'del', 'key (as full path, expecting pre-sanitized segments)');
     await this.db.ref(key).remove();
     return 1;
   }
@@ -442,31 +448,23 @@ export class FirebaseClient extends DatabaseClientInterface {
    * @returns The new value after incrementing.
    */
   async hIncrBy(key: string, field: string, increment: number): Promise<number> {
-    // Construct path directly // OLD
-    // const refPath = `${key}/${field}`; // Simple concatenation, may need refinement based on usage // OLD
-    // const ref = this.db.ref(refPath); // OLD
-
-    // NEW LOGIC: Construct path based on parsed key and specific field logic
-    // Example: key = 'posts:postId', field = 'replyCount' -> path = 'posts/postId/replyCount'
-    // Example: key = 'quoteCounts:parentId', field = 'hashedQuoteKey' -> path = 'replyMetadata/quoteCounts/parentId/hashedQuoteKey/count'
-
-    const { basePath, id } = this.parseKey(key); // Assume key format like 'collection:id'
+    const { basePath, id: rawId } = this.parseKey(key); // 'id' from parseKey is raw
+    // basePath is literal. No assertion on rawId/field as they are sanitized immediately after or are literals.
+    const sanitizedId = rawId ? this.sanitizeKey(rawId) : null;
+    const sanitizedField = this.sanitizeKey(field);
+    
     let refPath = '';
 
-    // Special case: key is 'posts:postId' and field is 'replyCount'
-    if (basePath === 'posts' && id && field === 'replyCount') {
-      refPath = `posts/${id}/replyCount`;
+    if (basePath === 'posts' && sanitizedId && field === 'replyCount') { 
+      refPath = `posts/${sanitizedId}/replyCount`;
     }
-    // Add other specific counter paths here based on the data model
-    // else if (basePath === 'someCounterCollection' && id) { ... }
     else {
-      // Attempt a generic path construction, but log a warning as it might be incorrect
       console.warn(`FirebaseClient hIncrBy: Using generic path construction for key: ${key}, field: ${field}. Verify this is correct.`);
-      if (!basePath || !id) {
+      if (!basePath || !sanitizedId) {
         console.error(`FirebaseClient hIncrBy: Could not parse key: ${key} for generic path construction.`);
         return 0;
       }
-      refPath = `${basePath}/${id}/${field}`;
+      refPath = `${basePath}/${sanitizedId}/${sanitizedField}`;
     }
 
     const ref = this.db.ref(refPath);
@@ -498,36 +496,9 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async zRevRangeByScore(key: string, max: number, min: number, options?: { limit?: number }): Promise<Array<{ score: number, value: any }>> {
-    // Use direct key/path // OLD
-    // let query = this.db.ref(key).orderByKey(); // OLD
-
-    // Use string representation for range queries on numeric keys // OLD
-    // const minStr = String(min); // OLD
-    // const maxStr = String(max); // OLD
-    // query = query.startAt(minStr).endAt(maxStr); // OLD
-
-    // Apply limit if provided // OLD
-    // if (options?.limit) { // OLD
-    // Cannot directly limit with start/end AND get correct reverse order easily. // OLD
-    // Fetch all in range, then sort/limit in code. // OLD
-    // For large ranges, this is inefficient. Consider alternative structure if performance critical. // OLD
-    // } // OLD
-
-    // const snapshot = await query.once('value'); // OLD
-    // const results: Array<{ score: number, value: any }> = []; // OLD
-    // snapshot.forEach((childSnapshot) => { // OLD
-    //   results.push(childSnapshot.val()); // Value is { score, value } // OLD
-    // }); // OLD
-
-    // Sort descending by score and apply limit // OLD
-    // results.sort((a, b) => b.score - a.score); // OLD
-    // if (options?.limit) { // OLD
-    //   return results.slice(0, options.limit); // OLD
-    // } // OLD
-    // return results; // OLD
-
-    // NEW LOGIC: Query mapped index path, order by key (timestamp_id), filter by score range
-    const basePath = this.mapZSetKeyToIndexBasePath(key);
+    // 'key' is used for mapping, assertion on it before mapping.
+   this._assertFirebaseKeyComponentSafe(key, 'zRevRangeByScore', 'key (for basePath mapping, raw input)');
+   const basePath = this.mapZSetKeyToIndexBasePath(key);
     if (!basePath) {
       console.error(`FirebaseClient zRevRangeByScore: Cannot map key '${key}' to an index base path.`);
       return [];
@@ -538,7 +509,9 @@ export class FirebaseClient extends DatabaseClientInterface {
     // Since keys are timestamp_id, we use startAt/endAt with the scores
     // Need to append a boundary character to include all items with that score
     const startKey = `${min}`;          // Keys >= minScore_
-    const endKey = `${max}~`;         // Keys <= maxScore_￿ (high Unicode char)
+    const endKey = `${max}~`;         // Keys <= maxScore_ (high Unicode char)
+    // These derived keys are used directly by Firebase, assuming numeric scores are safe.
+    // If scores could contain forbidden chars, they'd need sanitization too.
 
     let query = this.db.ref(basePath)
       .orderByKey()
@@ -566,42 +539,10 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // Simulate Redis ZSCAN using Firebase queries
   async zscan(key: string, cursor: string, options?: { match?: string; count?: number }): Promise<{ cursor: string | null; items: RedisSortedSetItem<string>[] }> {
-    // const count = options?.count || 10; // OLD
-    // Cursor is the score (as string key) to start after // OLD
-    // const startAfterKey = cursor && cursor !== '0' ? cursor : null; // OLD
-
-    // let query = this.db.ref(key).orderByKey(); // Order by score (key) // OLD
-
-    // if (startAfterKey) { // OLD
-    //   query = query.startAfter(startAfterKey); // OLD
-    // } // OLD
-
-    // query = query.limitToFirst(count + 1); // OLD
-
-    // const snapshot = await query.once('value'); // OLD
-    // const items: RedisSortedSetItem<string>[] = []; // OLD
-    // snapshot.forEach((childSnapshot) => { // OLD
-    //   const data = childSnapshot.val(); // OLD
-    //   // Value is { score, value } // OLD
-    //   if (data && typeof data.score === 'number' && typeof data.value !== 'undefined') { // OLD
-    //     // Convert value to string for RedisSortedSetItem compatibility if needed, or adjust type // OLD
-    //     items.push({ score: data.score, value: String(data.value) }); // OLD
-    //   } else { // OLD
-    //     console.warn(`Invalid data structure in sorted set ${key}:`, data); // Use direct key in warning // OLD
-    //   } // OLD
-    // }); // OLD
-
-    // let nextCursor: string | null = null; // OLD
-    // if (items.length > count) { // OLD
-    //   const lastItem = items.pop(); // Remove extra item // OLD
-    //   if (lastItem) { // OLD
-    //     nextCursor = String(lastItem.score); // Next cursor is the score of the last item fetched // OLD
-    //   } // OLD
-    // } // OLD
-
-    // return { cursor: nextCursor, items }; // OLD
-
-    // NEW LOGIC: Paginate through mapped index using orderByKey and startAfter
+    // 'key' is used for mapping. Assertion on it before mapping.
+    this._assertFirebaseKeyComponentSafe(key, 'zscan', 'key (for basePath mapping, raw input)');
+    // 'cursor' is a Firebase key from a previous scan, expected to be valid.
+    this._assertFirebaseKeyComponentSafe(cursor, 'zscan', 'cursor (expecting valid Firebase key format)');
     const basePath = this.mapZSetKeyToIndexBasePath(key);
     if (!basePath) {
       console.error(`FirebaseClient zscan: Cannot map key '${key}' to an index base path.`);
@@ -649,24 +590,21 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // Atomically sets or increments a quote count using a transaction
   /**
-   * Atomically increments a quote count associated with a specific field (quoteKey) within a hash (parent node).
    * Stores the quote object along with the count.
-   * @param key The key of the hash (e.g., parentId:quoteCounts).
-   * @param field The field within the hash, representing the quote (e.g., generated quote key).
+   * @param key 
+   * @param field 
    * @param quoteValue The actual Quote object being referenced.
    * @returns The new count after the increment.
    * @throws {Error} If the Firebase transaction fails after internal retries.
    *                 (Handled: Propagated to callers like server.ts routes).
    */
   async hIncrementQuoteCount(key: string, field: string, quoteValue: any): Promise<number> {
-    // Construct path directly // OLD
-    // const refPath = `${key}/${field}`; // Simple concatenation, may need refinement based on usage // OLD
-    // const ref = this.db.ref(refPath); // OLD
-
-    // NEW LOGIC: Assume key format 'replyMetadata:quoteCounts:parentId' and field is hashedQuoteKey
-    // Or perhaps key is just parentId? Need to check call site. Assuming key is parentId for now.
-    const parentId = key; // Assuming the key IS the parentId here
-    const hashedQuoteKey = field; // Assuming the field IS the hashedQuoteKey
+    // Assert raw inputs before they are sanitized.
+    this._assertFirebaseKeyComponentSafe(key, 'hIncrementQuoteCount', 'raw key (intended as parentId)');
+    this._assertFirebaseKeyComponentSafe(field, 'hIncrementQuoteCount', 'raw field (intended as hashedQuoteKey)');
+    const parentId = this.sanitizeKey(key);
+    const hashedQuoteKey = this.sanitizeKey(field);
+    
 
     // Path structure from model: /replyMetadata/quoteCounts/$parentId/$hashedQuoteKey
     const refPath = `replyMetadata/quoteCounts/${parentId}/${hashedQuoteKey}`;
@@ -696,7 +634,7 @@ export class FirebaseClient extends DatabaseClientInterface {
    */
   async incrementFeedCounter(amount: number): Promise<void> {
     // Use the fixed, unhashed path 'feedStats/itemCount'
-    const counterRef = this.db.ref('feedStats/itemCount');
+    const counterRef = this.db.ref('feedStats/itemCount'); // Fixed path, inherently safe
     const transactionResult = await counterRef.transaction((currentValue) => {
       return (currentValue || 0) + amount;
     });
@@ -716,6 +654,8 @@ export class FirebaseClient extends DatabaseClientInterface {
     if (!path || typeof path !== 'string') {
       throw new Error('Invalid path provided to removePath.');
     }
+    // Path is used directly, expecting pre-sanitized segments if dynamic.
+    this._assertFirebaseKeyComponentSafe(path, 'removePath', 'path (expecting pre-sanitized segments)');
     // this.logger.warn({ path }, 'Removing data at fixed path.'); // Logging removed, handled by caller if needed
     await this.db.ref(path).remove();
   }
@@ -729,6 +669,8 @@ export class FirebaseClient extends DatabaseClientInterface {
     if (!path || typeof path !== 'string') {
       throw new Error('Invalid path provided to readPath.');
     }
+    // Path is used directly, expecting pre-sanitized segments if dynamic.
+    this._assertFirebaseKeyComponentSafe(path, 'readPath', 'path (expecting pre-sanitized segments)');
     // this.logger.debug({ path }, 'Reading data from fixed path.'); // Logging removed, handled by caller if needed
     const snapshot = await this.db.ref(path).once('value');
     return snapshot.val();
@@ -742,8 +684,10 @@ export class FirebaseClient extends DatabaseClientInterface {
    * @returns An array containing the values of all children under the path.
    */
   async getAllListItems(key: string): Promise<any[]> {
+    // Assert raw key before sanitization
+    this._assertFirebaseKeyComponentSafe(key, 'getAllListItems', 'raw key (before sanitization)');
     // Assume direct path
-    const path = key;
+    const path = this.sanitizeKey(key);
     const snapshot = await this.db.ref(path).once('value');
     const data = snapshot.val();
     if (!data || typeof data !== 'object') {
@@ -754,7 +698,13 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // Helper function to parse keys like 'collection:id' into path segments
   // Needs to be robust and handle various expected key formats.
+  // Returns RAW, UNSANITIZED parts. Callers are responsible for sanitizing
+  // the 'id' component if it's used to construct a Firebase path.
   private parseKey(key: string): { basePath: string | null, id: string | null } {
+    // 'key' is parsed. Assertions on its parts will be done by the caller if necessary.
+    // For internal use, we assume the format and handle derived parts.
+    // This assertion checks the whole key string, which might be overly broad if it contains a colon.
+    this._assertFirebaseKeyComponentSafe(key, 'parseKey', 'key (as full input string)');
     const parts = key.split(':');
     if (parts.length !== 2) {
       console.warn(`parseKey: Unexpected key format: ${key}`);
@@ -766,8 +716,8 @@ export class FirebaseClient extends DatabaseClientInterface {
       return { basePath: null, id: null };
     }
 
-    const collection = parts[0];
-    const id = parts[1];
+    const collection = parts[0]; // Literal component, assumed safe.
+    const id = parts[1]; // Raw ID component.
     let basePath = null;
 
     // Mapping based on the new data model structure
@@ -794,6 +744,9 @@ export class FirebaseClient extends DatabaseClientInterface {
   // Helper to map Redis-style zset keys to Firebase index paths
   private mapZSetKeyToIndexBasePath(key: string): string | null {
     // Mapping based on keys found in backend/seed.ts
+    // 'key' is for mapping, not directly a path segment here.
+    // Assertion on the input key.
+    this._assertFirebaseKeyComponentSafe(key, 'mapZSetKeyToIndexBasePath', 'key for mapping (raw input)');
 
     if (key === 'replies:feed:mostRecent') {
       // Global feed of replies, ordered by timestamp
@@ -804,10 +757,10 @@ export class FirebaseClient extends DatabaseClientInterface {
       const parts = key.split(':');
       // Ensure enough parts and check markers
       if (parts.length >= 6 && parts[0] === 'replies' && parts[1] === 'uuid' && parts[3] === 'quote' && parts[parts.length - 1] === 'mostRecent') {
-        const parentId = parts[2];
+        const parentId = parts[2]; // Raw parentId
         // Quote key might contain colons, join the middle parts
-        const quoteKey = parts.slice(4, -1).join(':');
-        // Index replies by parent and quote, ordered by timestamp
+        const quoteKey = parts.slice(4, -1).join(':'); // Raw quoteKey
+        // These raw parts are then sanitized before being used in the returned path.
         return `indexes/repliesByParentQuoteTimestamp/${this.sanitizeKey(parentId)}/${this.sanitizeKey(quoteKey)}`;
       }
 
@@ -815,7 +768,7 @@ export class FirebaseClient extends DatabaseClientInterface {
       // Key format: replies:quote:<quoteKeyOrText>:mostRecent
       const parts = key.split(':');
       if (parts.length >= 4 && parts[0] === 'replies' && parts[1] === 'quote' && parts[parts.length - 1] === 'mostRecent') {
-        const quoteIdentifier = parts.slice(2, -1).join(':'); // Get everything between replies:quote: and :mostRecent
+        const quoteIdentifier = parts.slice(2, -1).join(':'); // Raw identifier
         // Index replies by quote identifier, ordered by timestamp
         // Note: This mixes quoteKey and quoteText into one index path type.
         // Consider splitting if querying specifically by hashed key vs raw text is needed.
@@ -827,8 +780,8 @@ export class FirebaseClient extends DatabaseClientInterface {
       const parts = key.split(':');
       // Needs at least replies:<parentId>:<text>:<mostRecent> (4 parts)
       if (parts.length >= 4 && parts[0] === 'replies' && parts[parts.length - 1] === 'mostRecent') {
-        const parentId = parts[1];
-        const quoteText = parts.slice(2, -1).join(':');
+        const parentId = parts[1]; // Raw parentId
+        const quoteText = parts.slice(2, -1).join(':'); // Raw quoteText
         // Index replies by parent and quote text, ordered by timestamp
         return `indexes/repliesByParentTextTimestamp/${this.sanitizeKey(parentId)}/${this.sanitizeKey(quoteText)}`;
       }
@@ -840,19 +793,21 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   sanitizeKey(key: string): string {
+    // No assertion here as this IS the sanitization function.
     return this.escapeFirebaseKeyPercentEncoding(key);
   }
 
   /**
    * Escapes a string for use as a Firebase key using percent-encoding.
- * Note: This makes keys less human-readable in the Firebase console.
- * It encodes *all* characters that are not alphanumeric or one of "-_".
- * This is often more robust than custom replacements if inputs are unpredictable.
- *
- * @param input The string to escape.
- * @returns A string safe to use as an RTDB key.
- */
+   * Note: This makes keys less human-readable in the Firebase console.
+   * It encodes *all* characters that are not alphanumeric or one of "-_".
+   * This is often more robust than custom replacements if inputs are unpredictable.
+   *
+   * @param input The string to escape.
+   * @returns A string safe to use as an RTDB key.
+   */
   escapeFirebaseKeyPercentEncoding(input: string): string {
+    // No assertion here.
     // Encode the entire string
     let encoded = encodeURIComponent(input);
 
@@ -887,6 +842,7 @@ export class FirebaseClient extends DatabaseClientInterface {
    * @returns The original string.
    */
   unescapeFirebaseKeyPercentEncoding(input: string): string {
+    // No assertion here.
     try {
       // No special replacements needed here, decodeURIComponent handles %XX codes.
       return decodeURIComponent(input);
@@ -897,5 +853,17 @@ export class FirebaseClient extends DatabaseClientInterface {
     }
   }
 
+  // Assertion helper
+  private _keyComponentContainsForbiddenChars(keyComponent: string): boolean {
+    return /[.#$[\]/]/.test(keyComponent);
+  }
+
+  private _assertFirebaseKeyComponentSafe(keyComponent: string | null | undefined, functionName: string, argName: string): void {
+    if (keyComponent && this._keyComponentContainsForbiddenChars(keyComponent)) {
+        console.warn(`FirebaseClient: ${functionName} called with ${argName} ("${keyComponent}") containing raw forbidden characters. It should be pre-sanitized by the caller or this function should explicitly sanitize it if it's a dynamic segment.`);
+        // In a stricter development environment, one might throw an error here:
+        // throw new Error(`FirebaseClient: ${functionName} received ${argName} ("${keyComponent}") with forbidden characters.`);
+    }
+  }
 
 } 

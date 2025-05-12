@@ -6,18 +6,19 @@ This document provides an overview of the Aphorist backend architecture, detaili
 
 ## Table of Contents
 
-  * [Frontend APIs](https://www.google.com/search?q=%23frontend-apis)
-      * [Authentication APIs](https://www.google.com/search?q=%23authentication-apis)
-      * [User Management APIs](https://www.google.com/search?q=%23user-management-apis)
-      * [Reply APIs](https://www.google.com/search?q=%23reply-apis)
-      * [Post APIs](https://www.google.com/search?q=%23post-apis)
-      * [Feed APIs](https://www.google.com/search?q=%23feed-apis)
-  * [Backend Data Model (Firebase RTDB)](https://www.google.com/search?q=%23backend-data-model-firebase-rtdb)
-  * [Database Access Patterns (Firebase RTDB)](https://www.google.com/search?q=%23database-access-patterns-firebase-rtdb)
-      * [Replies Access Patterns](https://www.google.com/search?q=%23replies-access-patterns)
-  * [Implementation Status & Next Steps](https://www.google.com/search?q=%23implementation-status--next-steps)
-  * [Backend Files Overview](https://www.google.com/search?q=%23backend-files-overview)
-  * [Data Compression](https://www.google.com/search?q=%23data-compression)
+  * [Frontend APIs](#frontend-apis)
+      * [Authentication APIs](#authentication-apis)
+      * [User Management APIs](#user-management-apis)
+      * [Reply APIs](#reply-apis)
+      * [Post APIs](#post-apis)
+      * [Feed APIs](#feed-apis)
+  * [Backend Data Model (Firebase RTDB)](#backend-data-model-firebase-rtdb)
+  * [Database Access Patterns (Firebase RTDB)](#database-access-patterns-firebase-rtdb)
+      * [Replies Access Patterns](#replies-access-patterns)
+  * [Implementation Status & Next Steps](#implementation-status--next-steps)
+  * [Path Management and Key Sanitization (Proposed Enhancement)](#path-management-and-key-sanitization-proposed-enhancement)
+  * [Backend Files Overview](#backend-files-overview)
+  * [Data Compression](#data-compression)
 
 ## Frontend APIs
 
@@ -609,6 +610,78 @@ The backend architecture has been significantly refactored to align with Firebas
 4.  **Update `migrate.ts`:** Refactor the migration script to work with the *new* data model paths and structures. Remove dependencies on deprecated components like `CompressedDatabaseClient`.
 5.  **Align `database.rules.json`:** **Critically important.** Modify security rules to *exactly* match this data model's paths and structures. Add validation for all nodes, including the `indexes/*` paths (e.g., ensuring `$timestamp_$replyId` keys store string `replyId` values). Define `.indexOn` rules for fields used in queries (e.g., `rootPostId` on `/replies` if using `orderByChild`).
 6.  **Test Thoroughly:** Perform comprehensive end-to-end testing of all API endpoints and data operations after all changes are complete.
+
+## Path Management and Key Sanitization (Proposed Enhancement)
+
+**Current State & Challenge:**
+- The `FirebaseClient.ts` currently constructs Firebase paths using string templates and direct calls to sanitization utilities (e.g., `this.sanitizeKey()`).
+- Specific path structures are often hardcoded within various methods (e.g., in `sAdd`, `hIncrBy`, `mapZSetKeyToIndexBasePath`).
+- While recent efforts have improved sanitization consistency, this approach can be error-prone, difficult to maintain, and makes schema changes cumbersome. Ensuring every dynamic path segment is correctly sanitized relies on developer diligence within each method.
+
+**Proposed Strategy: Centralized Path Generation & Typed Identifiers**
+
+To improve robustness, maintainability, and type safety, a more centralized path management system is proposed:
+
+1.  **Path Definition Module/Service:**
+    *   Create a dedicated module (e.g., `firebasePaths.ts` or a `PathBuilder` class) responsible for generating all Firebase Realtime Database paths.
+    *   This module would contain typed functions for each distinct path structure in the application.
+    *   Example:
+        ```typescript
+        // firebasePaths.ts
+        import { sanitizeKey } from './firebaseUtils'; // Assuming sanitizeKey is extracted or accessible
+
+        export const paths = {
+          user: (userId: string) => `users/${sanitizeKey(userId)}`,
+          userEmailMap: (escapedEmail: string) => `userMetadata/emailToId/${escapedEmail}`, // Assumes email is pre-escaped by caller
+          post: (postId: string) => `posts/${sanitizeKey(postId)}`,
+          reply: (replyId: string) => `replies/${sanitizeKey(replyId)}`,
+          replyQuoteCount: (
+            parentId: string, 
+            hashedQuoteKey: string
+          ) => `replyMetadata/quoteCounts/${sanitizeKey(parentId)}/${sanitizeKey(hashedQuoteKey)}`,
+          index: {
+            repliesFeedByTimestamp: () => `indexes/repliesFeedByTimestamp`,
+            repliesByParentQuoteTimestamp: (
+              parentId: string, 
+              sanitizedQuoteKey: string
+            ) => `indexes/repliesByParentQuoteTimestamp/${sanitizeKey(parentId)}/${sanitizedQuoteKey}` // Note: might expect pre-sanitized quoteKey
+          },
+          // ... other paths for userPosts, postReplies, feedItems, etc.
+        };
+        ```
+    *   Sanitization logic for path segments would be encapsulated within these path builder functions, ensuring consistency.
+
+2.  **FirebaseClient Integration:**
+    *   The `FirebaseClient` methods would import and use this path building module/service instead of constructing paths manually.
+    *   Example (inside `FirebaseClient.ts`):
+        ```typescript
+        // Assuming 'this.paths' is an instance of the PathBuilder or imports 'paths'
+        async hIncrementQuoteCount(parentId: string, hashedQuoteKey: string, quoteValue: any): Promise<number> {
+            // parentId and hashedQuoteKey are raw inputs here
+            const refPath = this.paths.reply.quoteCount(parentId, hashedQuoteKey);
+            const ref = this.db.ref(refPath);
+            // ... transaction logic ...
+        }
+        ```
+
+3.  **Typed Resource Identifiers (Optional but Recommended):**
+    *   Introduce simple opaque types or branded types for different kinds of IDs (e.g., `UserId`, `PostId`, `HashedQuoteKey`).
+    *   Path builder functions would accept these typed IDs, improving type safety and clarity about what kind of identifier is expected.
+    *   Sanitization functions might then be more specific, e.g., `sanitizeUserId(id: UserId): string`.
+
+**Benefits:**
+*   **Single Source of Truth:** Path structures are defined in one place, making schema changes easier to implement and verify.
+*   **Reduced Errors:** Consistent sanitization applied by the path builders minimizes the risk of missed sanitization in client methods.
+*   **Improved Readability & Maintainability:** `FirebaseClient` methods become cleaner as path construction logic is abstracted away.
+*   **Enhanced Testability:** The path generation logic can be unit-tested independently.
+*   **Type Safety (with typed IDs):** Reduces the chance of passing the wrong type of ID to a path function.
+
+**Migration Steps (If Adopted):**
+1.  Develop the `firebasePaths.ts` module with functions for all known paths.
+2.  Refactor `FirebaseClient.ts` methods one by one to use the new path builders.
+3.  Update call sites of `FirebaseClient` methods if their parameter signatures change (e.g., if they now expect raw IDs instead of pre-formatted/pre-sanitized keys for some operations).
+
+This proposal aims to address the current challenges with path management and make the backend data access layer more robust and maintainable in the long term.
 
 ## Backend Files Overview
 
