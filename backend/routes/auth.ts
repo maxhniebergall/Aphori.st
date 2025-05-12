@@ -23,7 +23,7 @@ const router = Router();
 
 
 // New helper using semantic DB methods
-const getUserById = async (id: string, context?: LogContext): Promise<UserResult> => {
+const getUserById = async (id: string): Promise<UserResult> => {
     const userData = await db.getUser(id);
     if (!userData) {
         return {
@@ -37,7 +37,7 @@ const getUserById = async (id: string, context?: LogContext): Promise<UserResult
     };
 };
 
-const getUserByEmail = async (email: string, context?: LogContext): Promise<UserResult> => {
+const getUserByEmail = async (email: string): Promise<UserResult> => {
     const lowerEmail = email.toLowerCase();
     const userId = await db.getUserIdByEmail(lowerEmail);
     if (!userId) {
@@ -46,12 +46,12 @@ const getUserByEmail = async (email: string, context?: LogContext): Promise<User
             error: 'User not found'
         };
     }
-    return getUserById(userId, context);
+    return getUserById(userId);
 };
 
 const createUser = async (id: string, email: string, context?: LogContext): Promise<UserResult> => {
     const lowerEmail = email.toLowerCase();
-    const result = await db.createUserProfile(id, lowerEmail);
+    const result = await db.createUserProfile(id, lowerEmail, context);
     if (!result.success) {
         return {
             success: false,
