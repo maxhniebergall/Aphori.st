@@ -487,24 +487,14 @@ export class FirebaseClient extends DatabaseClientInterface {
     updates[userRepliesPath] = true;
     updates[parentRepliesPath] = true;
     updates[rootPostRepliesPath] = true;
+    // Add quote count and reply count to the same update
+    updates[quoteCountPath] = { 
+      quote: replyData.quote, 
+      count: ServerValue.increment(1) 
+    };
+    updates[postReplyCountPath] = ServerValue.increment(1);
 
     await this.db.ref().update(updates);
-
-    // Transaction: increment quote count
-    await this.db.ref(quoteCountPath).transaction((currentData) => {
-      if (currentData === null) {
-        return { quote: replyData.quote, count: 1 };
-      } else {
-        if (!currentData.quote) currentData.quote = replyData.quote;
-        currentData.count = (currentData.count || 0) + 1;
-        return currentData;
-      }
-    });
-
-    // Transaction: increment post reply count
-    await this.db.ref(postReplyCountPath).transaction((currentValue) => {
-      return (typeof currentValue === 'number' ? currentValue : 0) + 1;
-    });
   }
 
   // --- Semantic Methods: Feed Management / Indexing ---
