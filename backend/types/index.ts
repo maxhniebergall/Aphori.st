@@ -1,44 +1,4 @@
 import { Request } from 'express';
-import { LogContext } from '../db/loggingTypes.js'; // Import LogContext
-
-// Database Types
-export interface DatabaseClientBase {
-    connect: () => Promise<void>;
-    disconnect?: () => Promise<void>;
-    isConnected: () => Promise<boolean>;
-    isReady: () => Promise<boolean>;
-    hGet: <T = any>(key: string, field: string, options?: { returnCompressed: boolean }, context?: LogContext) => Promise<T>;
-    hGetAll: <T = any>(key: string, options?: { returnCompressed: boolean }, context?: LogContext) => Promise<Record<string, T>>;
-    hSet: (key: string, field: string, value: any, context?: LogContext) => Promise<number>;
-    hIncrBy: (key: string, field: string, increment: number, context?: LogContext) => Promise<number>;
-    get: <T = any>(key: string, context?: LogContext) => Promise<T>;
-    set: (key: string, value: any, context?: LogContext) => Promise<string | null>;
-    lPush: (key: string, value: any, context?: LogContext) => Promise<number>;
-    lRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }, context?: LogContext) => Promise<T[]>;
-    lSet: (key: string, index: number, value: any, context?: LogContext) => Promise<void>;
-    sAdd: (key: string, value: string, context?: LogContext) => Promise<number>;
-    sMembers: (key: string, context?: LogContext) => Promise<string[]>;
-    zAdd: (key: string, score: number, value: string, context?: LogContext) => Promise<number>;
-    zRange: <T = any>(key: string, start: number, end: number, options?: { returnCompressed: boolean }, context?: LogContext) => Promise<T[]>;
-    zCard: (key: string, context?: LogContext) => Promise<number>;
-    encodeKey: (id: string, prefix: string) => string;
-    compress: <T = any>(data: T) => Promise<Compressed<T>>;
-    decompress: <T = any>(data: T) => Promise<T>;
-    zRevRangeByScore: <T = string>(key: string, max: number, min: number, options?: { limit?: number }, context?: LogContext) => Promise<RedisSortedSetItem<T>[]>;
-    zscan: (key: string, cursor: string, options?: { match?: string; count?: number }, context?: LogContext) => Promise<{ cursor: string; items: RedisSortedSetItem<string>[] }>;
-    keys: (pattern: string, context?: LogContext) => Promise<string[]>;
-    lLen: (key: string, context?: LogContext) => Promise<number>;
-    del: (key: string, context?: LogContext) => Promise<number>;
-    hIncrementQuoteCount: (key: string, field: string, quoteValue: any, context?: LogContext) => Promise<number>;
-    incrementFeedCounter: (amount: number, context?: LogContext) => Promise<void>;
-    getFeedItemsPage: (limit: number, cursorKey?: string, context?: LogContext) => Promise<{ items: any[], nextCursorKey: string | null }>;
-    getAllListItems: (key: string, context?: LogContext) => Promise<any[]>;
-}
-
-// Export the base interface AND keep the extended one if needed for now,
-// or ideally, consolidate into one DatabaseClient interface.
-// For simplicity, let's rename the base and make the main one the extended one.
-export type DatabaseClient = DatabaseClientBase; // Keep this for now, or remove if all use the extended one
 
 // User Types
 export interface User {
@@ -93,7 +53,7 @@ export interface Replies {
 }
 
 export enum SortingCriteria {
-    MOST_RECENT = 'mostRecent'
+    MOST_RECENT = 'MOST_RECENT'
     // TODO add other sorting criteria
 }
 
