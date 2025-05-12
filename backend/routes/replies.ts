@@ -222,7 +222,7 @@ router.get<{ parentId: string }, { success: boolean, data?: { quote: Quote, coun
  * @access  Public (Adjust if auth needed)
  * @param   {string} parentId - The ID of the parent node (previously uuid).
  * @param   {string} quote - URL-encoded JSON string of the Quote object.
- * @param   {SortingCriteria} sortCriteria - Sorting order (e.g., 'mostRecent').
+ * @param   {SortingCriteria} sortCriteria - Sorting order (e.g., 'MOST_RECENT').
  * @query   {number} [limit=10] - Max number of replies per page.
  * @query   {string} [cursor] - Pagination cursor (timestamp_replyId key for zscan).
  * @returns {CursorPaginatedResponse<ReplyData>} Response with replies and pagination.
@@ -267,7 +267,7 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
         const cursor = req.query.cursor as string | undefined; // Cursor is the timestamp_replyId key
 
 
-        if (!(sortCriteria in SortingCriteria)) {
+        if (!(SortingCriteria[sortCriteria] in SortingCriteria)) {
             res.status(400).json({ success: false, error: 'Invalid sort criteria' });
             return;
         }

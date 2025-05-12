@@ -525,8 +525,8 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async getReplyCountByParentQuote(rawParentId: string, rawHashedQuoteKey: string, sortCriteria: string): Promise<number> {
-    // Only 'mostRecent' is supported for now
-    if (sortCriteria !== 'mostRecent') throw new Error('Only mostRecent supported');
+    // Only 'MOST_RECENT' is supported for now
+    if (sortCriteria !== 'MOST_RECENT') throw new Error('Only MOST_RECENT supported');
     const parentId = this.sanitizeKey(rawParentId);
     const hashedQuoteKey = this.sanitizeKey(rawHashedQuoteKey);
     const path = `indexes/repliesByParentQuoteTimestamp/${parentId}/${hashedQuoteKey}`;
@@ -535,8 +535,8 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async getReplyIdsByParentQuote(rawParentId: string, rawHashedQuoteKey: string, sortCriteria: string, limit: number, cursor?: string): Promise<{ items: Array<{ score: number, value: string }>, nextCursor: string | null }> {
-    // Only 'mostRecent' is supported for now
-    if (sortCriteria !== 'mostRecent') throw new Error('Only mostRecent supported');
+    // Only 'MOST_RECENT' is supported for now
+    if (sortCriteria !== 'MOST_RECENT') throw new Error('Only MOST_RECENT supported');
     const parentId = this.sanitizeKey(rawParentId);
     const hashedQuoteKey = this.sanitizeKey(rawHashedQuoteKey);
     const path = `indexes/repliesByParentQuoteTimestamp/${parentId}/${hashedQuoteKey}`;

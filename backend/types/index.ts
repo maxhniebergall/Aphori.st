@@ -53,7 +53,7 @@ export interface Replies {
 }
 
 export enum SortingCriteria {
-    MOST_RECENT = 'mostRecent'
+    MOST_RECENT = 'MOST_RECENT'
     // TODO add other sorting criteria
 }
 
