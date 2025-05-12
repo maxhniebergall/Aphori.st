@@ -122,10 +122,8 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
             createdAt: new Date().toISOString()
         };
 
-        const score = new Date(newReply.createdAt).getTime();
         const replyId = newReply.id;
         const actualParentId = newReply.parentId;
-        const actualRootPostId = newReply.rootPostId;
         const hashedQuoteKey = generateHashedQuoteKey(quote);
 
         // Log the replayable action intent and parameters *before* database calls

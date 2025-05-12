@@ -291,6 +291,17 @@ class PostTreeOperator {
     }
   }
 
+  /**
+   * Fetches the first page of replies for a given parent ID and quote,
+   * using a time bucket for cache-friendly URL construction.
+   *
+   * @param levelNumber - The current level number. only required for rendering purposes.
+   * @param parentId - The id of the parent node.
+   * @param selectedQuote - The quote in the parent node that these replies are responding to.
+   * @param sortingCriteria - The sorting criteria for the replies.
+   * @param limit - The number of replies to fetch.
+   * @returns A promise resolving to the first page of replies.
+   */
   private async fetchFirstRepliesForLevel(levelNumber: number, parentId: string, selectedQuote: Quote, sortingCriteria: string, limit: number): Promise<CursorPaginatedResponse<Reply> | null> {
     // Generate time bucket for cache-friendly URL
     const currentTime = Date.now();
