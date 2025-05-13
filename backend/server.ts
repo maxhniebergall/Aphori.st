@@ -27,10 +27,6 @@ import logger from './logger.js';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import compression from 'compression';
-import * as fsSync from 'fs'; // Keep sync fs for existsSync
-import { fileURLToPath } from 'url';
-import path from 'path';
-import { dirname } from 'path';
 import requestLogger from './middleware/requestLogger.js';
 import { optionalAuthMiddleware } from './middleware/optionalAuthMiddleware.js';
 import { 
@@ -48,26 +44,16 @@ import { checkAndRunMigrations, processStartupEmails } from './startUpChecks.js'
 import { VectorService } from './services/vectorService.js'; // Import VectorService
 import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 
+// --- Embedding Provider Imports ---
+import { EmbeddingProvider } from './services/embeddingProvider.js';
+import { GCPEmbeddingProvider } from './services/vertexAIEmbeddingProvider.js';
+import { MockEmbeddingProvider } from './services/mockEmbeddingProvider.js';
+// --- End Embedding Provider Imports ---
+
 dotenv.config();
 
 const PORT = process.env.PORT || 5050;
-export const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
-
-// Determine the directory of the current module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Load build hash
-let BUILD_HASH = 'development';
-try {
-    // Construct path relative to this file's directory
-    const envBuildPath = path.join(__dirname, '../../.env.build'); 
-    const buildEnv = fsSync.readFileSync(envBuildPath, 'utf8');
-    BUILD_HASH = buildEnv.split('=')[1].trim();
-    logger.info(`Loaded build hash: ${BUILD_HASH}`);
-} catch (err) {
-    logger.warn('No build hash found, using development');
-}
+export var SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 
 const app = express();
 app.use(express.json());
@@ -114,12 +100,6 @@ const corsOptions = {
 // Apply CORS middleware
 app.use(cors(corsOptions));
 
-// Set build hash after CORS headers
-app.use((req: Request, res: Response, next: NextFunction) => {
-  res.setHeader('X-Build-Hash', BUILD_HASH);
-  next();
-});
-
 // --- Apply Optional Authentication and Rate Limiting Middlewares ---
 // This middleware attempts to identify the user from JWT for rate limiting purposes,
 // but does not block unauthenticated requests.
@@ -140,15 +120,38 @@ const db = createDatabaseClient();
 
 // --- Initialize Vector Service ---
 // Ensure GCP Project ID and Location are available in environment
-const gcpProjectId = process.env.GCP_PROJECT_ID;
-const gcpLocation = process.env.GCP_LOCATION; 
+// const gcpProjectId = process.env.GCP_PROJECT_ID;
+// const gcpLocation = process.env.GCP_LOCATION; 
 
-if (!gcpProjectId || !gcpLocation) {
-    logger.fatal('FATAL ERROR: GCP_PROJECT_ID and GCP_LOCATION environment variables are required for VectorService.');
+// if (!gcpProjectId || !gcpLocation) {
+//     logger.fatal('FATAL ERROR: GCP_PROJECT_ID and GCP_LOCATION environment variables are required for VectorService.');
+//     process.exit(1);
+// }
+
+// --- Embedding Provider Setup ---
+let embeddingProvider: EmbeddingProvider;
+
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID;
+const GCP_LOCATION_ID = process.env.GCP_LOCATION; // Renamed for consistency from user example
+const EMBEDDING_MODEL_ID = 'gemini-embedding-exp-03-07'; 
+const GEMINI_EMBEDDING_DIMENSION = 768; // Defaulting to 768, see for options: https://ai.google.dev/gemini-api/docs/models#gemini-embedding
+
+if (NODE_ENV === 'production' || process.env.USE_VERTEX_AI_LOCALLY === 'true') {
+  if (!GCP_PROJECT_ID || !GCP_LOCATION_ID) {
+    logger.fatal("GCP_PROJECT_ID and GCP_LOCATION_ID must be set for VertexAIEmbeddingProvider in production or when USE_VERTEX_AI_LOCALLY is true");
     process.exit(1);
+  }
+  embeddingProvider = new GCPEmbeddingProvider(
+    EMBEDDING_MODEL_ID,
+    GEMINI_EMBEDDING_DIMENSION
+  );
+  logger.info("Using real VertexAIEmbeddingProvider.");
+} else {
+  embeddingProvider = new MockEmbeddingProvider();
+  logger.info("Using MockEmbeddingProvider for local development.");
 }
-
-// --- End Vector Service Initialization ---
+// --- End Embedding Provider Setup ---
 
 
 let isDbReady = false;
@@ -209,7 +212,7 @@ await db.connect().then(async () => { // Make the callback async
     await processStartupEmails(db); // Handles email logic
     // --- End Startup Checks ---    
 
-    const vectorService = new VectorService(db, gcpProjectId, gcpLocation);
+    const vectorService = new VectorService(db, embeddingProvider); // Pass the chosen provider
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM', vectorService));
     process.on('SIGINT', () => gracefulShutdown('SIGINT', vectorService));
 
@@ -236,13 +239,13 @@ await db.connect().then(async () => { // Make the callback async
     }
     // --- End Import/Seed --- 
 
-    // Inject DB instance into route modules
+    // Inject DB instance and VectorService into route modules
     setAuthDb(db);
     setFeedDb(db);
     setPostDb(db, vectorService); // Pass vectorService
     setReplyDb(db, vectorService); // Pass vectorService
     setSearchDbAndVectorService(db, vectorService); // Inject into search routes
-    logger.info('Database and VectorService instances injected into route modules.');
+    logger.info('Database and VectorService (with chosen EmbeddingProvider) instances injected into route modules.');
 }).catch((err: Error) => {
     logger.error({ err }, 'Database connection failed');
     process.exit(1);
@@ -258,6 +261,7 @@ if (process.env.NODE_ENV === 'production') {
         'EMAIL_PORT',
         'EMAIL_USERNAME',
         'EMAIL_PASSWORD',
+        'GEMINI_API_KEY'
     );
 }
 
@@ -284,5 +288,4 @@ app.use('/api/search', searchRoutes);
 // --- Start Server ---
 const server = app.listen(PORT, () => { // Store server instance
     logger.info(`Server is running on port ${PORT}`);
-    logger.info(`Build hash: ${BUILD_HASH}`);
 });
