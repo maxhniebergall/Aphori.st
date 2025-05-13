@@ -27,9 +27,9 @@ const router = Router();
  * @returns {VectorSearchResponse} Search results with score and original data.
  */
 router.get<
-    {},
+    Record<string, never>,
     VectorSearchResponse, 
-    {},
+    Record<string, never>,
     { query?: string } // Specify query parameters type
 >('/vector', async (req: Request<{}, VectorSearchResponse, {}, { query?: string }>, res: Response<VectorSearchResponse>) => {
     const { query } = req.query;

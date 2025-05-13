@@ -1,175 +1,146 @@
 import logger from './logger.js';
 import { FirebaseClient } from './db/FirebaseClient.js';
 import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
+import { VectorService } from './services/vectorService.js';
+import { Post, Reply, VectorIndexEntry } from './types/index.js';
+import dotenv from 'dotenv';
 
-// pako would be needed if oldDataContainer.c could be true and meant pako compression
-// import pako from 'pako';
+// Load environment variables for GCP config needed by VectorService
+dotenv.config();
 
-interface OldUserEmailValue {
-    v: number;
-    c: boolean; // compression flag
-    d: string;  // base64 encoded JSON string of the user ID
-}
+async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorService: VectorService): Promise<void> {
+    logger.info('Starting Vector Embedding Backfill Process...'); // Updated log message
+    let processedPosts = 0;
+    let processedReplies = 0;
+    let failedPosts = 0;
+    let failedReplies = 0;
 
-interface NewUser {
-    id: string;
-    email: string;
-    createdAt: string;
-}
+    // 1. Fetch all posts
+    logger.info('Fetching all posts...');
+    // Use getRawPath which should be available on LoggedDatabaseClient
+    const postsData = await dbClient.getRawPath('/posts'); 
+    const posts: Post[] = postsData ? Object.values(postsData) : [];
+    logger.info(`Found ${posts.length} posts to process.`);
 
-async function migrateUsersData(dbClient: LoggedDatabaseClient, firebaseClientInstance: FirebaseClient): Promise<void> {
-    logger.info('Starting User Data Migration Process...');
-    let migratedUserCount = 0;
-    let failedUserCount = 0;
-
-    const rootData = await firebaseClientInstance.readPath('/');
-    if (!rootData || typeof rootData !== 'object') {
-        logger.warn('No data found at database root or data is not an object. Cannot migrate users.');
-        return;
-    }
-
-    const oldEmailKeys = Object.keys(rootData).filter(key => key.startsWith('email_to_id:'));
-
-    if (oldEmailKeys.length === 0) {
-        logger.info('No old user email_to_id keys found (e.g., starting with "email_to_id:"). User migration skipped.');
-        return;
-    }
-
-    logger.info(`Found ${oldEmailKeys.length} old user email_to_id keys to migrate.`);
-
-    for (const oldEmailKey of oldEmailKeys) {
+    for (const post of posts) {
+        if (!post || !post.id || !post.content) {
+            logger.warn('Skipping invalid post object:', post);
+            failedPosts++;
+            continue;
+        }
         try {
-            const rawJsonString = rootData[oldEmailKey];
-            if (typeof rawJsonString !== 'string') {
-                logger.warn(`Value for key ${oldEmailKey} is not a string. Skipping. Value: ${JSON.stringify(rawJsonString)}`);
-                failedUserCount++;
-                continue;
-            }
-
-            const oldDataContainer: OldUserEmailValue = JSON.parse(rawJsonString);
-
-            let actualUserId: string;
-            // The 'd' field is a Base64 encoded JSON string (e.g., "Admin", "arock")
-            const base64DecodedJsonStringUserId = Buffer.from(oldDataContainer.d, 'base64').toString('utf8');
-
-            if (oldDataContainer.c === true) {
-                // If c:true truly meant pako compression, this would be:
-                // const compressedPayload = Buffer.from(oldDataContainer.d, 'base64');
-                // const jsonStringUserId = pako.inflate(compressedPayload, { to: 'string' });
-                // actualUserId = JSON.parse(jsonStringUserId);
-                logger.warn(`Compression flag 'c' is true for ${oldEmailKey}. Pako decompression for 'c:true' is not implemented in this script. Proceeding as if 'd' is base64 of JSON string UserID.`);
-                actualUserId = JSON.parse(base64DecodedJsonStringUserId);
-            } else {
-                // c:false means 'd' is base64 of JSON string UserID
-                actualUserId = JSON.parse(base64DecodedJsonStringUserId);
-            }
-
-            if (!actualUserId || typeof actualUserId !== 'string' || actualUserId.trim() === '') {
-                logger.error(`Could not extract a valid user ID for key ${oldEmailKey}. Decoded ID: '${actualUserId}'. Skipping.`);
-                failedUserCount++;
-                continue;
-            }
-
-            // Extract and clean email from the old key structure
-            // Old key: "email_to_id:some_email_with_underscores"
-            const emailPartInKey = oldEmailKey.substring('email_to_id:'.length);
-            const actualEmail = emailPartInKey.replace(/_/g, '.'); // Replace underscore with dot
-
-            const newUser: NewUser = {
-                id: actualUserId, // This is the old string ID (e.g., "Admin", "Max")
-                email: actualEmail.toLowerCase(), // Store email consistently in lowercase
-                createdAt: new Date().toISOString(), // No old timestamp available in this data
-            };
-
-            if (!newUser.id || !newUser.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser.email)) {
-                 logger.error(`Invalid user object created for old key ${oldEmailKey}. Data: ${JSON.stringify(newUser)}. Skipping.`);
-                 failedUserCount++;
-                 continue;
-            }
-
-            // --- Write to new paths based on backend_architecture.md ---
-
-            // 1. User data: /users/{userId}
-            await dbClient.setUserDataForMigration(newUser.id, newUser);
-
-            // 2. Email to ID mapping: /userMetadata/emailToId/{escapedActualEmail}
-            await dbClient.setEmailToIdMapping(newUser.email, newUser.id);
-
-            // 3. User ID set: /userMetadata/userIds/{userId} = true
-            await dbClient.addUserToCatalog(newUser.id);
-
-            // 4. Delete old entry from root
-            await dbClient.deleteOldEmailToIdKey(oldEmailKey);
-
-            logger.info(`Successfully migrated user ID '${newUser.id}' (Email: ${newUser.email}) from old key '${oldEmailKey}'.`);
-            migratedUserCount++;
-
+            logger.debug(`Processing post ${post.id}...`);
+            // Call addVector - it handles embedding and storing in the correct shard
+            await vectorService.addVector(post.id, 'post', post.content);
+            processedPosts++;
+            logger.debug(`Successfully processed post ${post.id}`);
+            // Add a small delay to avoid overwhelming Vertex AI or RTDB (optional)
+            await new Promise(resolve => setTimeout(resolve, 50)); 
         } catch (error: any) {
-            logger.error(`Failed to migrate user data for old key ${oldEmailKey}: ${error.message}`, { err: error, keyDetails: oldEmailKey });
-            failedUserCount++;
+            logger.error(`Failed to process vector for post ${post.id}: ${error.message}`, { err: error });
+            failedPosts++;
         }
     }
-    logger.info(`User data migration process finished. Successfully migrated: ${migratedUserCount}, Failed: ${failedUserCount}`);
-    if (failedUserCount > 0) {
-        throw new Error(`User migration completed with ${failedUserCount} failures.`);
+    logger.info(`Finished processing posts. Success: ${processedPosts}, Failed: ${failedPosts}`);
+
+    // 2. Fetch all replies
+    logger.info('Fetching all replies...');
+    const repliesData = await dbClient.getRawPath('/replies');
+    const replies: Reply[] = repliesData ? Object.values(repliesData) : [];
+    logger.info(`Found ${replies.length} replies to process.`);
+
+    for (const reply of replies) {
+        if (!reply || !reply.id || !reply.text) {
+            logger.warn('Skipping invalid reply object:', reply);
+            failedReplies++;
+            continue;
+        }
+        try {
+            logger.debug(`Processing reply ${reply.id}...`);
+            // Call addVector for reply
+            await vectorService.addVector(reply.id, 'reply', reply.text);
+            processedReplies++;
+            logger.debug(`Successfully processed reply ${reply.id}`);
+             // Add a small delay (optional)
+             await new Promise(resolve => setTimeout(resolve, 50));
+        } catch (error: any) {
+            logger.error(`Failed to process vector for reply ${reply.id}: ${error.message}`, { err: error });
+            failedReplies++;
+        }
+    }
+    logger.info(`Finished processing replies. Success: ${processedReplies}, Failed: ${failedReplies}`);
+
+    logger.info(`Vector Embedding Backfill Process finished. Total Processed: Posts=${processedPosts}, Replies=${processedReplies}. Total Failed: Posts=${failedPosts}, Replies=${failedReplies}`); // Updated log message
+
+    if (failedPosts > 0 || failedReplies > 0) {
+        // Decide if failure is critical. For now, just log and maybe throw a warning-level error.
+        logger.warn(`Vector embedding backfill completed with ${failedPosts} post failures and ${failedReplies} reply failures.`);
+        // Optionally throw an error to halt further migrations if this is critical
+        // throw new Error(`Vector migration completed with failures.`);
     }
 }
+// --- END: Vector Embedding Backfill Migration ---
 
 export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
-    logger.info('Starting Data Migration Script (User Data Migration Stage)...');
-    let firebaseClientInstance: FirebaseClient;
-    const previousVersion = "2"; // Assuming posts migration was version "2"
-    const targetVersion = "3";
+    logger.info('Starting Data Migration Script (Vector Embedding Backfill Stage)...'); // Updated log
+    const currentDbVersion = await dbClient.getDatabaseVersion() || '0'; // Get current version
+    logger.info(`Current database version: ${currentDbVersion}`);
+
+    const TARGET_VERSION = '4'; // Define target version for vector migration
+    const MIGRATION_VERSION_STRING = '3->4';
+
+    if (currentDbVersion === TARGET_VERSION) {
+        logger.info(`Database is already at version ${TARGET_VERSION}. Skipping Vector Embedding Backfill.`);
+        return; // Exit if already at target version
+    }
     
+    if (currentDbVersion !== '3') {
+        logger.error(`Migration script expected database version '3' to run vector backfill, but found version '${currentDbVersion}'. Halting migration.`);
+        throw new Error(`Migration prerequisite not met: Expected DB version '3', found '${currentDbVersion}'.`);
+    }
+
+    // Proceed only if currentDbVersion is '3'
+    logger.info(`Running Vector Embedding Backfill Migration (Version ${MIGRATION_VERSION_STRING})...`);
 
     try {
-        // Obtain FirebaseClient instance (required for direct path operations like root listing and old key deletion)
-        if (dbClient instanceof FirebaseClient) {
-            firebaseClientInstance = dbClient;
-        } else if (dbClient instanceof LoggedDatabaseClient && (dbClient as LoggedDatabaseClient).getUnderlyingClient() instanceof FirebaseClient) {
-            firebaseClientInstance = (dbClient as LoggedDatabaseClient).getUnderlyingClient() as unknown as FirebaseClient;
-        } else {
-            throw new Error("Migration requires a raw FirebaseClient instance for some operations. Could not obtain one from the provided dbClient.");
-        }
-        logger.info("Obtained FirebaseClient instance for migration.");
-
+        // No longer need to explicitly get firebaseClientInstance here, as VectorService takes LoggedDatabaseClient
         await dbClient.connect().catch(err => {
             logger.error("Migration: Initial DB connection failed.", { err });
             throw err;
         });
-        logger.info("Database client connected for user migration.");
-        
-        try {
-            await dbClient.setDatabaseVersion("2->3");
-            logger.info(`Database version set to: "2->3"`);
-        } catch (dbVersionError: any) {
-            logger.warn({ err: dbVersionError }, "Failed to set initial pending databaseVersion for user migration. Proceeding, but status tracking might be affected.");
+        logger.info("Database client connected for vector migration.");
+
+        // Instantiate VectorService here, requires GCP creds from env
+        const gcpProjectId = process.env.GCP_PROJECT_ID;
+        const gcpLocation = process.env.GCP_LOCATION;
+        if (!gcpProjectId || !gcpLocation) {
+           throw new Error('GCP_PROJECT_ID and GCP_LOCATION environment variables are required for VectorService in migration.');
         }
+        const vectorService = new VectorService(dbClient, gcpProjectId, gcpLocation);
 
-        // Call the actual user data migration logic
-        await migrateUsersData(dbClient as LoggedDatabaseClient, firebaseClientInstance);
-
-        await dbClient.setDatabaseVersion("3");
-        logger.info(`User migration script completed successfully. DatabaseVersion updated to: "3"`);
+        await dbClient.setDatabaseVersion(MIGRATION_VERSION_STRING);
+        await backfillVectorEmbeddings(dbClient, vectorService);
+        // Note: backfillVectorEmbeddings logs its own errors but doesn't throw critical errors by default
+        await dbClient.setDatabaseVersion(TARGET_VERSION);
+        logger.info(`Vector embedding backfill script completed successfully. DatabaseVersion updated to: ${TARGET_VERSION}`);
 
     } catch (err: any) {
-        logger.error('User migration script encountered a fatal error:', { err });
         const failureVersionInfo = { 
-            current: `${targetVersion}_failed`, 
-            fromVersion: previousVersion, 
-            toVersion: targetVersion, 
-            status: "failed_user_migration", 
+            current: `${TARGET_VERSION}_failed`, 
+            fromVersion: currentDbVersion, // Should be '3' here
+            toVersion: TARGET_VERSION, 
+            status: "failed_vector_migration", 
             error: err.message,
             timestamp: new Date().toISOString()
         };
         try {
             await dbClient.setDatabaseVersion(failureVersionInfo);
-            logger.info(`Database version updated to reflect user migration failure: ${JSON.stringify(failureVersionInfo)}`);
+            logger.error(`Vector migration (${MIGRATION_VERSION_STRING}) failed. DB version set to indicate failure. Error: ${err.message}`, { err });
         } catch (dbVersionError: any) {
-             logger.error({ err: dbVersionError }, "CRITICAL: FAILED to set databaseVersion after user migration script error. Manual check required.");
+            logger.error({ err: dbVersionError }, "CRITICAL: FAILED to set databaseVersion after vector migration script error. Manual check required.");
         }
         throw err; // Re-throw the error to indicate script failure
     } finally {
-        logger.info("User migration script execution finished.");
+        logger.info("Migration script execution finished.");
     }
 }

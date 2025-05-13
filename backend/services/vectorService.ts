@@ -108,14 +108,7 @@ export class VectorService {
             // Handle dimension change: If the index exists and its dimension doesn't match,
             // or if the index doesn't exist yet, update our expected dimension and potentially reset the index.
             if (generatedDimension !== this.embeddingDimension) {
-                 logger.warn(`Generated embedding dimension (${generatedDimension}) differs from current service dimension (${this.embeddingDimension}). Updating service dimension.`);
-                 this.embeddingDimension = generatedDimension;
-                 // Reset FAISS index only if it exists and dimension mismatches
-                 if (this.faissIndex) {
-                    logger.warn(`Re-initializing FAISS index with new dimension ${generatedDimension}. Existing index data lost.`);
-                    this.faissIndex = new IndexFlatL2(this.embeddingDimension);
-                    this.faissIdMap.clear();
-                 }
+                 logger.error(`Generated embedding dimension (${generatedDimension}) differs from current service dimension (${this.embeddingDimension}). Discarding new embedding and using old dimension.`);
             }
 
             return embeddingValues;
