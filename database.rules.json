@@ -141,7 +141,12 @@
       ".write": "false",
       "$shardId": {
         "$contentId": {
-          ".validate": "newData.hasChildren(['vector', 'type', 'createdAt']) && newData.child('vector').hasChildren() && newData.child('type').isString() && (newData.child('type').val() === 'post' || newData.child('type').val() === 'reply') && newData.child('createdAt').isString()"
+          ".validate": "newData.hasChildren(['vector', 'type', 'createdAt']) && newData.child('type').isString() && (newData.child('type').val() === 'post' || newData.child('type').val() === 'reply') && newData.child('createdAt').isString()",
+          "vector": {
+            "$idx": {
+              ".validate": "newData.isNumber()"
+            }
+          }
         }
       }
     }
