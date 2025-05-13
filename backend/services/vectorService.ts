@@ -1,9 +1,10 @@
-import { IndexFlatL2, IndexFlatIP } from 'faiss-node'; // Use IndexFlatL2 or IndexFlatIP based on Gemini embedding characteristics
-import { VertexAI } from '@google-cloud/vertexai';
+import faiss from 'faiss-node';
 import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
 import { VectorIndexEntry, VectorIndexMetadata, VectorDataForFaiss } from '../types/index.js';
 import { SHUTDOWN_TIMEOUT } from '../server.js';
 import logger from '../logger.js';
+import { MAX_POST_LENGTH } from '../routes/posts.js';
+import { EmbeddingProvider } from './embeddingProvider.js';
 
 const MAX_FAISS_INDEX_SIZE = 10000; // Configurable limit from design doc
 const SHUTDOWN_WAIT_TIMEOUT_MS = SHUTDOWN_TIMEOUT - 5000; // Slightly less than server's timeout
@@ -12,28 +13,27 @@ if (SHUTDOWN_WAIT_TIMEOUT_MS <= 0) {
 }
 
 export class VectorService {
-    // Use 'any' type for VertexAI client temporarily if exact type is problematic
-    private vertexAI: any;
-    private faissIndex: IndexFlatL2 | IndexFlatIP | null = null;
+    private embeddingProvider: EmbeddingProvider;
+    private faissIndex: faiss.IndexFlatL2 | faiss.IndexFlatIP | null = null;
     private faissIdMap: Map<number, { id: string, type: 'post' | 'reply' }> = new Map();
-    private embeddingDimension: number = 768; // Default/initial dimension
+    private embeddingDimension: number;
     private firebaseClient: LoggedDatabaseClient;
-    private embeddingModelName = 'gemini-embedding-exp-03-07'; // As per design doc
     private pendingAddOperations: Set<Promise<any>> = new Set(); // Track in-flight addVector operations
 
-    constructor(firebaseClient: LoggedDatabaseClient, gcpProjectId: string, gcpLocation: string) {
+    constructor(firebaseClient: LoggedDatabaseClient, embeddingProvider: EmbeddingProvider) {
         this.firebaseClient = firebaseClient;
-        // Correct instantiation based on documentation
-        this.vertexAI = new VertexAI({ project: gcpProjectId, location: gcpLocation });
-        this.faissIndex = new IndexFlatL2(this.embeddingDimension);
-       logger.info('FAISS Index initialized (L2, dimension: ', this.embeddingDimension, ')');
+        this.embeddingProvider = embeddingProvider;
+        this.embeddingDimension = this.embeddingProvider.getDimension();
+        
+        this.faissIndex = new faiss.IndexFlatL2(this.embeddingDimension);
+        logger.info('FAISS Index initialized (L2, dimension: ', this.embeddingDimension, ') via EmbeddingProvider.');
     }
 
     // --- Initialization ---
 
     async initializeIndex(): Promise<void> {
        logger.info('Starting FAISS index initialization from RTDB...');
-        this.faissIndex = new IndexFlatL2(this.embeddingDimension); // Re-instantiate with current dimension
+        this.faissIndex = new faiss.IndexFlatL2(this.embeddingDimension); // Re-instantiate with current dimension
         this.faissIdMap.clear();
        logger.info('FAISS Index re-initialized/reset.');
 
@@ -90,30 +90,36 @@ export class VectorService {
     // --- Embedding Generation ---
 
     async generateEmbedding(text: string): Promise<number[] | null> {
+        if (typeof text !== 'string') {
+            throw new Error('generateEmbedding called with non-string argument: [' + text + '] typeof [' + typeof text + ']');
+        }
+        if (text.trim().length === 0) {
+            throw new Error('generateEmbedding called with empty string');
+        }
+        if (text.length > MAX_POST_LENGTH) {
+            throw new Error('generateEmbedding called with string longer than [' + MAX_POST_LENGTH + '] characters, was [' + text.length + ']');
+        }
         try {
-            // Use the GenerativeModel interface
-            const generativeModel = this.vertexAI.getGenerativeModel({ model: this.embeddingModelName });
-            const resp = await generativeModel.embedContent(text);
-            
-            // Accessing response based on typical SDK patterns
-            const embeddingValues = resp?.response?.embeddings?.[0]?.values;
+            const embeddingValues = await this.embeddingProvider.generateEmbedding(text);
 
             if (!embeddingValues || embeddingValues.length === 0) {
-                logger.error('Failed to generate embedding for text (no values received):', text);
+                logger.error('Failed to generate embedding for text (no values received from provider):', text);
                 return null;
             }
 
             const generatedDimension = embeddingValues.length;
 
-            // Handle dimension change: If the index exists and its dimension doesn't match,
-            // or if the index doesn't exist yet, update our expected dimension and potentially reset the index.
             if (generatedDimension !== this.embeddingDimension) {
-                 logger.error(`Generated embedding dimension (${generatedDimension}) differs from current service dimension (${this.embeddingDimension}). Discarding new embedding and using old dimension.`);
+                 logger.error(`Generated embedding dimension (${generatedDimension}) from provider differs from service dimension (${this.embeddingDimension}). Discarding new embedding.`);
+                 // This case should ideally be prevented by the provider ensuring consistent dimension, 
+                 // or by re-initializing the FAISS index if a dimension change is intentional and supported.
+                 // For now, we'll log an error and return null.
+                 return null; 
             }
 
             return embeddingValues;
         } catch (error: any) {
-            logger.error('Error calling Vertex AI for embedding:', error.message || error);
+            logger.error('Error calling EmbeddingProvider for embedding:', error.message || error);
             return null;
         }
     }
@@ -137,7 +143,7 @@ export class VectorService {
         // Ensure FAISS index is initialized before adding
         if (!this.faissIndex) {
            logger.info('FAISS index is null, initializing with current dimension:', this.embeddingDimension);
-            this.faissIndex = new IndexFlatL2(this.embeddingDimension);
+            this.faissIndex = new faiss.IndexFlatL2(this.embeddingDimension);
         }
 
         const vector = await this.generateEmbedding(text);
@@ -227,7 +233,7 @@ export class VectorService {
                 id: info.id,
                 type: info.type,
                 score: searchResultScores[i] !== undefined ? searchResultScores[i] : Infinity // Handle potential misalignment
-            })).filter(r => r.id && isFinite(r.score));
+            })).filter(r => r.id && Number.isFinite(r.score));
 
             return combinedResults;
 

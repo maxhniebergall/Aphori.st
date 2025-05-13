@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import logger from '../logger.js';
 import { 
     VectorSearchResponse, 
@@ -18,6 +18,20 @@ export const setDbAndVectorService = (databaseClient: LoggedDatabaseClient, vs: 
 };
 
 const router = Router();
+
+// Defensive check – fail fast if dependencies were not injected
+router.use((req: Request, res: Response, next: NextFunction) => {
+  if (!db || !vectorService) {
+    logger.error({ requestId: res.locals.requestId }, 'Vector search dependencies not initialised');
+    res.status(500).json({
+      success: false,
+      results: [],
+      error: 'Vector search service unavailable',
+    });
+    return;
+  }
+  next();
+});
 
 /**
  * @route   GET /api/search/vector

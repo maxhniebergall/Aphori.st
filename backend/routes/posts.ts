@@ -15,6 +15,9 @@ import { VectorService } from '../services/vectorService.js';
 let db: LoggedDatabaseClient;
 let vectorService: VectorService;
 
+export const MAX_POST_LENGTH = 5000;
+const MIN_POST_LENGTH = 100;
+
 export const setDb = (databaseClient: LoggedDatabaseClient, vs: VectorService) => {
     db = databaseClient;
     vectorService = vs;
@@ -69,8 +72,6 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
             }
 
             const trimmedContent = postContent.trim();
-            const MAX_POST_LENGTH = 5000;
-            const MIN_POST_LENGTH = 100;
 
             if (trimmedContent.length > MAX_POST_LENGTH) {
                  logger.warn({ ...logContext, contentLength: trimmedContent.length }, 'Post content exceeds maximum length');

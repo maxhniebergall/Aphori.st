@@ -4,6 +4,7 @@ import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 import { VectorService } from './services/vectorService.js';
 import { Post, Reply, VectorIndexEntry } from './types/index.js';
 import dotenv from 'dotenv';
+import { GCPEmbeddingProvider } from './services/vertexAIEmbeddingProvider.js';
 
 // Load environment variables for GCP config needed by VectorService
 dotenv.config();
@@ -18,7 +19,7 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
     // 1. Fetch all posts
     logger.info('Fetching all posts...');
     // Use getRawPath which should be available on LoggedDatabaseClient
-    const postsData = await dbClient.getRawPath('/posts'); 
+    const postsData = await dbClient.getRawPath('posts'); 
     const posts: Post[] = postsData ? Object.values(postsData) : [];
     logger.info(`Found ${posts.length} posts to process.`);
 
@@ -45,7 +46,7 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
 
     // 2. Fetch all replies
     logger.info('Fetching all replies...');
-    const repliesData = await dbClient.getRawPath('/replies');
+    const repliesData = await dbClient.getRawPath('replies');
     const replies: Reply[] = repliesData ? Object.values(repliesData) : [];
     logger.info(`Found ${replies.length} replies to process.`);
 
@@ -116,7 +117,11 @@ export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
         if (!gcpProjectId || !gcpLocation) {
            throw new Error('GCP_PROJECT_ID and GCP_LOCATION environment variables are required for VectorService in migration.');
         }
-        const vectorService = new VectorService(dbClient, gcpProjectId, gcpLocation);
+        const embeddingProvider = new GCPEmbeddingProvider(
+            'gemini-embedding-exp-03-07',
+            768
+          );
+        const vectorService = new VectorService(dbClient, embeddingProvider);
 
         await dbClient.setDatabaseVersion(MIGRATION_VERSION_STRING);
         await backfillVectorEmbeddings(dbClient, vectorService);
