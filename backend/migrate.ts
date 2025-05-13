@@ -8,6 +8,14 @@ import dotenv from 'dotenv';
 // Load environment variables for GCP config needed by VectorService
 dotenv.config();
 
+/**
+ * Generates and stores vector embeddings for all posts and replies in the database.
+ *
+ * Fetches all posts and replies, validates their structure, and uses the {@link VectorService} to generate and store vector embeddings for each valid entry. Logs progress and counts of successful and failed operations.
+ *
+ * @remark
+ * Invalid posts or replies (missing required fields) are skipped. Failures in embedding generation are logged and counted but do not halt execution.
+ */
 async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorService: VectorService): Promise<void> {
     logger.info('Starting Vector Embedding Backfill Process...'); // Updated log message
     let processedPosts = 0;
@@ -79,7 +87,13 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
         // throw new Error(`Vector migration completed with failures.`);
     }
 }
-// --- END: Vector Embedding Backfill Migration ---
+/**
+ * Migrates the database from version 3 to 4 by generating and storing vector embeddings for all posts and replies.
+ *
+ * Validates the current database version, ensures required environment variables for GCP are set, and uses the {@link VectorService} to backfill vector embeddings. Updates the database version to reflect migration progress and handles errors by marking the migration as failed if necessary.
+ *
+ * @throws {Error} If the database version prerequisite is not met, required environment variables are missing, or a critical error occurs during migration.
+ */
 
 export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
     logger.info('Starting Data Migration Script (Vector Embedding Backfill Stage)...'); // Updated log
