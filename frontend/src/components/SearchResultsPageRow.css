@@ -1,0 +1,95 @@
+.search-result-row {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background-color: #ffffff;
+  transition: box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out;
+  overflow: hidden; /* Ensures child Link styling behaves well */
+}
+
+.search-result-row:hover {
+  box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+  transform: translateY(-2px);
+}
+
+.search-result-row-link {
+  display: block;
+  padding: 15px 20px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.search-result-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.search-result-type {
+  font-size: 0.8rem;
+  font-weight: bold;
+  padding: 3px 8px;
+  border-radius: 12px;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.type-post {
+  background-color: #007bff; /* Blue for posts */
+}
+
+.type-reply {
+  background-color: #28a745; /* Green for replies */
+}
+
+.search-result-score {
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.search-result-content-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #343a40;
+  margin-top: 0;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.search-result-author,
+.search-result-date,
+.search-result-reply-count {
+  font-size: 0.85rem;
+  color: #495057;
+  margin-bottom: 4px;
+}
+
+.search-result-reply-to-quote {
+  margin-top: 12px;
+  padding: 10px;
+  background-color: #f8f9fa;
+  border-left: 4px solid #ced4da;
+  border-radius: 4px;
+}
+
+.reply-to-quote-label {
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: #6c757d;
+  margin-bottom: 5px;
+}
+
+.reply-to-quote-text {
+  font-size: 0.9rem;
+  color: #495057;
+  margin: 0;
+  padding-left: 10px;
+  font-style: italic;
+}
+
+.reply-to-quote-source {
+  font-size: 0.75rem;
+  color: #6c757d;
+  margin-top: 5px;
+  text-align: right;
+} 

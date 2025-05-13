@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import './Header.css';
 import { useUser } from '../context/UserContext';
 import AuthModal from './AuthModal';
+import SearchBar from './SearchBar';
 import { HeaderProps } from '../types/userAuth';
 
 function Header({ onLogoClick }: HeaderProps) {
@@ -37,6 +38,9 @@ function Header({ onLogoClick }: HeaderProps) {
             onClick={onLogoClick}
           />
         </div>
+        <div className="search-bar-header-integration">
+            <SearchBar />
+          </div>
         <div className="header-controls">
           {state?.user?.id && state.verified ? (
             <button className="profile-button" onClick={toggleMenu}>
