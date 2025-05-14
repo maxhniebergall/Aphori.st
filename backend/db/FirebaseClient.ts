@@ -4,6 +4,8 @@ import { cert } from 'firebase-admin/app';
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 import { VectorIndexMetadata, VectorIndexEntry, VectorDataForFaiss } from '../types/index.js';
 
+// Import the full firebase-admin package for app management (helps with types) for testing
+import admin from 'firebase-admin';
 
 export interface FirebaseConfig {
   credential: any;
@@ -11,7 +13,9 @@ export interface FirebaseConfig {
 }
 
 export class FirebaseClient extends DatabaseClientInterface {
-  private db: Database;
+  protected db: Database;
+  // Add a static flag for tests
+  private static isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.FIREBASE_DATABASE_EMULATOR_HOST !== undefined;
 
   constructor(config: FirebaseConfig) {
     super();
@@ -28,7 +32,23 @@ export class FirebaseClient extends DatabaseClientInterface {
       console.log('Initializing Firebase Admin SDK without explicit credentials (connecting to emulator).');
     }
 
-    const app = initializeApp(appOptions);
+    // Safely initialize the app or reuse existing one
+    var app;
+    // Check if admin and admin.apps are available and not empty
+    if (FirebaseClient.isTestEnvironment && admin && admin.apps && admin.apps.length > 0) {
+      // In test environment, reuse the default app if it exists
+      const defaultApp = admin.apps.find(a => a && a.name === '[DEFAULT]');
+      if (defaultApp) {
+        app = defaultApp;
+        console.log('Reusing existing Firebase default app in test environment');
+      } else {
+        app = initializeApp(appOptions);
+      }
+    } else {
+      // In non-test environments, initialize as normal
+      app = initializeApp(appOptions);
+    }
+    
     this.db = getDatabase(app);
   }
 
