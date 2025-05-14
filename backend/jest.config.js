@@ -28,4 +28,7 @@ export default {
     //     useESM: true,
     //   }
     // }
+    globalSetup: './jest.globalSetup.js', // Adjust path if needed
+    globalTeardown: './jest.globalTeardown.js', // Adjust path if needed
+
 };

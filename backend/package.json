@@ -3,12 +3,11 @@
   "version": "1.0.0",
   "main": "dist/server.js",
   "scripts": {
-    "test": "node --experimental-vm-modules --experimental-specifier-resolution=node $(yarn bin jest)",
-    "test:watch": "node --experimental-vm-modules --experimental-specifier-resolution=node $(yarn bin jest) --watch",
+    "test": "FIREBASE_DATABASE_EMULATOR_HOST=\"localhost:9000\" node --experimental-vm-modules --experimental-specifier-resolution=node $(yarn bin jest)",
+    "test:watch": "FIREBASE_DATABASE_EMULATOR_HOST=\"localhost:9000\" node --experimental-vm-modules --experimental-specifier-resolution=node $(yarn bin jest) --watch",
     "start": "node dist/server.js",
     "dev": "tsx watch server.ts",
     "build": "tsc",
-    "test-firebase": "node scripts/test-firebase.js",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix"
   },
