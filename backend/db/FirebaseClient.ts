@@ -5,7 +5,7 @@ import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 import { VectorIndexMetadata, VectorIndexEntry, VectorDataForFaiss } from '../types/index.js';
 
 
-interface FirebaseConfig {
+export interface FirebaseConfig {
   credential: any;
   databaseURL: string;
 }
