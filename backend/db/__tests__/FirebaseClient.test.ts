@@ -1,5 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { FirebaseClient } from '../FirebaseClient.js';
+import { FirebaseClient, FirebaseConfig } from '../FirebaseClient.js';
 import { VectorIndexMetadata, VectorIndexEntry, VectorDataForFaiss } from '../../types/index.js';
 
 // Firebase Admin SDK Mocks - Define all elemental mock functions first
@@ -75,16 +75,11 @@ const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => {
 
 // Skip these tests for now since Firebase Admin SDK credential validation 
 // is difficult to properly mock in ESM 
-describe.skip('FirebaseClient - Vector Search Methods', () => {
+
   let firebaseClient: FirebaseClient;
   const mockConfig = {
-    credential: { 
-      projectId: 'test-project',
-      private_key: '-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQ==\n-----END PRIVATE KEY-----',
-      client_email: 'firebase-adminsdk-test@test-project.iam.gserviceaccount.com',
-    }, 
     databaseURL: 'https://test-project.firebaseio.com',
-  };
+  } as any as FirebaseConfig;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -400,4 +395,3 @@ describe.skip('FirebaseClient - Vector Search Methods', () => {
       );
     });
   });
-}); 
