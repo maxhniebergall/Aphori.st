@@ -1,17 +1,21 @@
-import { initializeApp, App } from 'firebase-admin/app';
+import { initializeApp} from 'firebase-admin/app';
 import { getDatabase, Database, ServerValue } from 'firebase-admin/database';
 import { cert } from 'firebase-admin/app';
-import crypto from 'crypto';
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
-import { RedisSortedSetItem } from '../types/index.js';
+import { VectorIndexMetadata, VectorIndexEntry, VectorDataForFaiss } from '../types/index.js';
 
-interface FirebaseConfig {
+// Import the full firebase-admin package for app management (helps with types) for testing
+import admin from 'firebase-admin';
+
+export interface FirebaseConfig {
   credential: any;
   databaseURL: string;
 }
 
 export class FirebaseClient extends DatabaseClientInterface {
-  private db: Database;
+  protected db: Database;
+  // Add a static flag for tests
+  private static isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.FIREBASE_DATABASE_EMULATOR_HOST !== undefined;
 
   constructor(config: FirebaseConfig) {
     super();
@@ -28,7 +32,23 @@ export class FirebaseClient extends DatabaseClientInterface {
       console.log('Initializing Firebase Admin SDK without explicit credentials (connecting to emulator).');
     }
 
-    const app = initializeApp(appOptions);
+    // Safely initialize the app or reuse existing one
+    var app;
+    // Check if admin and admin.apps are available and not empty
+    if (FirebaseClient.isTestEnvironment && admin && admin.apps && admin.apps.length > 0) {
+      // In test environment, reuse the default app if it exists
+      const defaultApp = admin.apps.find(a => a && a.name === '[DEFAULT]');
+      if (defaultApp) {
+        app = defaultApp;
+        console.log('Reusing existing Firebase default app in test environment');
+      } else {
+        app = initializeApp(appOptions);
+      }
+    } else {
+      // In non-test environments, initialize as normal
+      app = initializeApp(appOptions);
+    }
+    
     this.db = getDatabase(app);
   }
 
@@ -674,6 +694,144 @@ export class FirebaseClient extends DatabaseClientInterface {
     return { committed: result.committed, snapshot: result.snapshot ? result.snapshot.val() : null };
   }
 
+  // --- Semantic Methods: Vector Search Specific (New) ---
+
+  async getVectorIndexMetadata(): Promise<VectorIndexMetadata | null> {
+    const path = 'vectorIndexMetadata';
+    this._assertFirebaseKeyComponentSafe(path, 'getVectorIndexMetadata', 'path (fixed)');
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async getAllVectorsFromShards(shardKeys: string[], faissIndexLimit: number): Promise<VectorDataForFaiss[]> {
+    const allVectors: VectorDataForFaiss[] = [];
+    let vectorsFetched = 0;
+
+    for (const shardKey of shardKeys) {
+      if (vectorsFetched >= faissIndexLimit) {
+        console.log(`Reached FAISS index limit (${faissIndexLimit}), stopping fetching from shards.`);
+        break;
+      }
+
+      const shardPath = `vectorIndexStore/${shardKey}`;
+      // Assuming shardKey is already safe (e.g., 'shard_0', 'shard_1')
+      this._assertFirebaseKeyComponentSafe(shardPath, 'getAllVectorsFromShards', 'shardPath');
+      const snapshot = await this.db.ref(shardPath).limitToFirst(faissIndexLimit - vectorsFetched).once('value');
+
+      if (snapshot.exists()) {
+        const shardData = snapshot.val();
+        for (const contentId in shardData) {
+          if (vectorsFetched >= faissIndexLimit) break;
+          const vectorEntry: VectorIndexEntry = shardData[contentId];
+          // Ensure vector data is present and is an array
+          if (vectorEntry && Array.isArray(vectorEntry.vector)) {
+            allVectors.push({ 
+              id: this.unescapeFirebaseKeyPercentEncoding(contentId), // Unescape the contentId key
+              vector: vectorEntry.vector,
+              type: vectorEntry.type
+            });
+            vectorsFetched++;
+          } else {
+            console.warn(`Skipping invalid vector entry in shard ${shardKey} for contentId ${contentId}`);
+          }
+        }
+      }
+    }
+    console.log(`Fetched ${allVectors.length} vectors from ${shardKeys.length} shards.`);
+    return allVectors;
+  }
+
+  async addVectorToShardStore(rawContentId: string, vectorEntry: VectorIndexEntry): Promise<void> {
+    const contentId = this.sanitizeKey(rawContentId); // Sanitize contentId once
+    const metadataPath = 'vectorIndexMetadata';
+    const storePathRoot = 'vectorIndexStore';
+    const maxShardCapacity = 10000; // Default capacity
+
+    // Atomically update metadata (shard selection, counts, active shard)
+    const metadataTransactionResult = await this.db.ref(metadataPath).transaction((currentMetadata: VectorIndexMetadata | null) => {
+      const nowISO = new Date().toISOString();
+      let determinedShardKeyForThisVector: string;
+
+      if (currentMetadata === null) {
+        // Initialize metadata if it doesn't exist
+        console.log('Initializing new vector index metadata.');
+        determinedShardKeyForThisVector = 'shard_0';
+        return {
+          activeWriteShard: determinedShardKeyForThisVector,
+          shardCapacity: maxShardCapacity,
+          totalVectorCount: 1, // First vector
+          shards: {
+            [determinedShardKeyForThisVector]: { count: 1, createdAt: nowISO }
+          },
+          lastUpdatedAt: nowISO,
+        };
+      }
+
+      // Create a mutable copy for modifications
+      const metadataToUpdate = JSON.parse(JSON.stringify(currentMetadata));
+      if (!metadataToUpdate.shards) { // Ensure shards object exists
+          metadataToUpdate.shards = {};
+      }
+
+      let activeShardKey = metadataToUpdate.activeWriteShard;
+      let activeShardInfo = metadataToUpdate.shards[activeShardKey];
+      const capacity = metadataToUpdate.shardCapacity || maxShardCapacity;
+
+      // Check if active shard is full or needs initialization
+      if (!activeShardInfo || activeShardInfo.count >= capacity) {
+        if (activeShardInfo) {
+          console.log(`Shard ${activeShardKey} is full (${activeShardInfo.count}/${capacity}). Creating new shard.`);
+        } else {
+          console.warn(`Active shard ${activeShardKey} info not found in metadata. Will create it or a new one.`);
+          // If activeShardKey itself was problematic, we'll ensure a new, valid one is chosen.
+        }
+        
+        const existingShardIndices = Object.keys(metadataToUpdate.shards)
+          .map(key => parseInt(key.split('_')[1], 10))
+          .filter(num => !isNaN(num));
+        const nextShardIndex = existingShardIndices.length > 0 ? Math.max(...existingShardIndices) + 1 : 0;
+        
+        determinedShardKeyForThisVector = `shard_${nextShardIndex}`;
+        console.log(`New active shard will be: ${determinedShardKeyForThisVector}`);
+
+        metadataToUpdate.activeWriteShard = determinedShardKeyForThisVector;
+        metadataToUpdate.shards[determinedShardKeyForThisVector] = { count: 1, createdAt: nowISO }; // New shard gets its first vector
+      } else {
+        // Current active shard has space
+        determinedShardKeyForThisVector = activeShardKey;
+        metadataToUpdate.shards[activeShardKey].count = (metadataToUpdate.shards[activeShardKey].count || 0) + 1;
+      }
+
+      // Increment total vector count
+      metadataToUpdate.totalVectorCount = (metadataToUpdate.totalVectorCount || 0) + 1;
+      metadataToUpdate.lastUpdatedAt = nowISO;
+      
+      return metadataToUpdate;
+    });
+
+    // Check transaction outcome
+    if (!metadataTransactionResult.committed || !metadataTransactionResult.snapshot || !metadataTransactionResult.snapshot.exists()) {
+      console.error(`Atomic metadata update transaction failed for vector ${rawContentId}. Committed: ${metadataTransactionResult.committed}`);
+      throw new Error(`Atomic metadata update transaction failed for vector ${rawContentId}`);
+    }
+
+    const finalCommittedMetadata = metadataTransactionResult.snapshot.val() as VectorIndexMetadata;
+    // The activeWriteShard in the committed metadata is the shard this vector was assigned to.
+    const actualTargetShardKey = finalCommittedMetadata.activeWriteShard; 
+
+    // Write the actual vector data to the determined shard.
+    // This write is separate from the metadata transaction.
+    const vectorDataPath = `${storePathRoot}/${actualTargetShardKey}/${contentId}`;
+    try {
+      await this.db.ref(vectorDataPath).set(vectorEntry);
+      console.log(`Vector ${rawContentId} (ID: ${contentId}) data written to shard ${actualTargetShardKey}. Metadata and counts updated atomically.`);
+    } catch (error) {
+      console.error(`CRITICAL: Metadata updated for vector ${rawContentId} (shard ${actualTargetShardKey}), but FAILED to write vector data to ${vectorDataPath}:`, error);
+      // Consider adding a mechanism for reconciliation or cleanup if this occurs.
+      throw new Error(`Failed to write vector data for ${rawContentId} to shard ${actualTargetShardKey} after metadata update: ${(error as Error).message}`);
+    }
+  }
+
   // --- Semantic Methods: Startup Mailer ---
   async addProcessedStartupEmail(rawEmail: string): Promise<void> {
     const sanitizedEmail = this.sanitizeKey(rawEmail);
@@ -727,4 +885,4 @@ export class FirebaseClient extends DatabaseClientInterface {
     const path = oldKey; // Use the raw key directly as the path
     await this.db.ref(path).remove();
   }
-} 
+}   

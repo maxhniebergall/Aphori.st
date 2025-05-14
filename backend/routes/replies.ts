@@ -12,10 +12,14 @@ import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { getQuoteKey as generateHashedQuoteKey } from '../utils/quoteUtils.js';
 import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
+import { VectorService } from '../services/vectorService.js';
 
 let db: LoggedDatabaseClient;
-export const setDb = (databaseClient: LoggedDatabaseClient) => {
+let vectorService: VectorService;
+
+export const setDb = (databaseClient: LoggedDatabaseClient, vs: VectorService) => {
     db = databaseClient;
+    vectorService = vs;
 };
 
 const router = Router();
@@ -26,20 +30,6 @@ const generateCondensedUuid = (): string => {
     const uuid25Instance = Uuid25.fromBytes(uuidObj.bytes);
     return uuid25Instance.value;
 };
-
-
-
-// Helper to sanitize keys for Firebase paths (percent encoding)
-function sanitizeKey(key: string): string {
-    let encoded = encodeURIComponent(key);
-    encoded = encoded.replace(/\./g, '%2E');
-    encoded = encoded.replace(/\$/g, '%24');
-    encoded = encoded.replace(/#/g, '%23');
-    encoded = encoded.replace(/\[/g, '%5B');
-    encoded = encoded.replace(/\]/g, '%5D');
-    encoded = encoded.replace(/\//g, '%2F');
-    return encoded;
-}
 
 // Define ReplyData structure inline (based on backend_architecture.md)
 interface ReplyData {
@@ -150,6 +140,13 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
 
         logger.info({ ...logContext, replyId, parentId: actualParentId }, 'Successfully created new reply');
 
+        // Add to vector index (fire and forget for now, or await if critical)
+        if (vectorService) {
+            vectorService.addVector(newReply.id, 'reply', newReply.text)
+                .then(() => logger.info({ ...logContext, replyId: newReply.id }, 'Reply content added to vector index.'))
+                .catch(err => logger.error({ ...logContext, replyId: newReply.id, err }, 'Error adding reply content to vector index.'));
+        }
+
         const response: CreateReplyResponse = {
             success: true,
             data: { id: replyId }
@@ -161,11 +158,6 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
     }
 });
 
-// Removed temporary debug route
-
-// Retrieves quote reply counts for a given parent ID.
-// Returns { success: boolean, data?: { quote: Quote, count: number }[], error?: string }
-// Removed compression
 router.get<{ parentId: string }, { success: boolean, data?: { quote: Quote, count: number }[], error?: string }>('/quoteCounts/:parentId', async (req: Request, res: Response) => {
     const { parentId } = req.params;
     const timeBucket = req.query.t as string | undefined; // Read timeBucket

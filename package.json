@@ -4,7 +4,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "cd backend && NODE_OPTIONS=--experimental-vm-modules yarn jest",
+    "test:backend": "cd backend && NODE_OPTIONS=--experimental-vm-modules yarn jest",
+    "test:frontend": "cd frontend && yarn test"
   },
   "keywords": [],
   "author": "Max Hniebergall <max@hniebergall.com>",
