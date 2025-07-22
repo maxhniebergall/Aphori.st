@@ -30,3 +30,4 @@ backend/database-debug.log
 backend/firebase-debug.log
 backend/backend.log
 database-debug.log
+*.log
