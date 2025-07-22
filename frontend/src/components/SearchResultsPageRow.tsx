@@ -35,14 +35,14 @@ const SearchResultsPageRow: React.FC<SearchResultsPageRowProps> = ({ item }) => 
           <p className="search-result-reply-count">Replies: {(item as PostDisplaySearchResult).replyCount}</p>
         )}
 
-        {item.type === 'reply' && (item as ReplyDisplaySearchResult).replyToQuote && (
+        {item.type === 'reply' && item.replyToQuote && (
           <div className="search-result-reply-to-quote">
             <p className="reply-to-quote-label">Replying to:</p>
             <blockquote className="reply-to-quote-text">
-              {(item as ReplyDisplaySearchResult).replyToQuote?.text.substring(0, 100)}
-              {(item as ReplyDisplaySearchResult).replyToQuote?.text && (item as ReplyDisplaySearchResult).replyToQuote!.text.length > 100 ? '...' : ''}
+              {item.replyToQuote.text.substring(0, 100)}
+              {item.replyToQuote.text.length > 100 ? '...' : ''}
             </blockquote>
-            {/* <p className="reply-to-quote-source">Source ID: {(item as ReplyDisplaySearchResult).replyToQuote?.sourceId}</p> */}
+            {/* <p className="reply-to-quote-source">Source ID: {item.replyToQuote.sourceId}</p> */}
           </div>
         )}
       </Link>

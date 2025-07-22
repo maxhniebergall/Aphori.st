@@ -46,7 +46,7 @@ import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 
 // --- Embedding Provider Imports ---
 import { EmbeddingProvider } from './services/embeddingProvider.js';
-import { GCPEmbeddingProvider } from './services/vertexAIEmbeddingProvider.js';
+import { GCPEmbeddingProvider } from './services/gcpEmbeddingProvider.js';
 import { MockEmbeddingProvider } from './services/mockEmbeddingProvider.js';
 // --- End Embedding Provider Imports ---
 
@@ -118,30 +118,14 @@ app.use(anonymousLimiterDay);
 // createDatabaseClient() now returns LoggedDatabaseClient
 const db = createDatabaseClient();
 
-// --- Initialize Vector Service ---
-// Ensure GCP Project ID and Location are available in environment
-// const gcpProjectId = process.env.GCP_PROJECT_ID;
-// const gcpLocation = process.env.GCP_LOCATION; 
-
-// if (!gcpProjectId || !gcpLocation) {
-//     logger.fatal('FATAL ERROR: GCP_PROJECT_ID and GCP_LOCATION environment variables are required for VectorService.');
-//     process.exit(1);
-// }
-
 // --- Embedding Provider Setup ---
 let embeddingProvider: EmbeddingProvider;
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID;
-const GCP_LOCATION_ID = process.env.GCP_LOCATION; // Renamed for consistency from user example
 const EMBEDDING_MODEL_ID = 'gemini-embedding-exp-03-07'; 
 const GEMINI_EMBEDDING_DIMENSION = 768; // Defaulting to 768, see for options: https://ai.google.dev/gemini-api/docs/models#gemini-embedding
 
 if (NODE_ENV === 'production' || process.env.USE_VERTEX_AI_LOCALLY === 'true') {
-  if (!GCP_PROJECT_ID || !GCP_LOCATION_ID) {
-    logger.fatal("GCP_PROJECT_ID and GCP_LOCATION_ID must be set for VertexAIEmbeddingProvider in production or when USE_VERTEX_AI_LOCALLY is true");
-    process.exit(1);
-  }
   embeddingProvider = new GCPEmbeddingProvider(
     EMBEDDING_MODEL_ID,
     GEMINI_EMBEDDING_DIMENSION
@@ -213,13 +197,13 @@ await db.connect().then(async () => { // Make the callback async
     // --- End Startup Checks ---    
 
     const vectorService = new VectorService(db, embeddingProvider); // Pass the chosen provider
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM', vectorService));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT', vectorService));
 
     // --- Initialize Vector Index ---
     try {
         await vectorService.initializeIndex();
         isVectorIndexReady = true;
+        process.on('SIGTERM', () => gracefulShutdown('SIGTERM', vectorService));
+        process.on('SIGINT', () => gracefulShutdown('SIGINT', vectorService));
         logger.info('Vector service index initialized successfully.');
     } catch (err) {
         logger.error({ err }, 'Failed to initialize vector service index. Service will start but search may be unavailable.');

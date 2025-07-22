@@ -182,6 +182,142 @@ describe('POST /api/replies/createReply', () => {
     expect(response.body.error).toBe('Parent not found');
   });
 
-  // Add other validation tests for text length, missing fields etc. as in posts.test.ts
-  // For brevity, those are omitted here but should follow the same pattern.
+  it('should return 400 if reply text is missing', async () => {
+    const invalidRequest = {
+      ...validReplyRequest,
+      text: undefined
+    };
+
+    const response = await request(appReplies)
+      .post('/api/replies/createReply')
+      .set('Authorization', 'Bearer dev_token')
+      .send(invalidRequest);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Missing required fields.');
+  });
+
+  it('should return 400 if parentId is missing', async () => {
+    const invalidRequest = {
+      ...validReplyRequest,
+      parentId: undefined
+    };
+
+    const response = await request(appReplies)
+      .post('/api/replies/createReply')
+      .set('Authorization', 'Bearer dev_token')
+      .send(invalidRequest);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Missing required fields.');
+  });
+
+  it('should return 400 if quote is missing', async () => {
+    const invalidRequest = {
+      ...validReplyRequest,
+      quote: undefined
+    };
+
+    const response = await request(appReplies)
+      .post('/api/replies/createReply')
+      .set('Authorization', 'Bearer dev_token')
+      .send(invalidRequest);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Missing required fields.');
+  });
+
+  it('should return 400 if quote text is missing', async () => {
+    const invalidRequest = {
+      ...validReplyRequest,
+      quote: { ...validReplyRequest.quote, text: undefined }
+    };
+
+    const response = await request(appReplies)
+      .post('/api/replies/createReply')
+      .set('Authorization', 'Bearer dev_token')
+      .send(invalidRequest);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Missing required fields.');
+  });
+
+  it('should return 400 if quote sourceId is missing', async () => {
+    const invalidRequest = {
+      ...validReplyRequest,
+      quote: { ...validReplyRequest.quote, sourceId: undefined }
+    };
+
+    const response = await request(appReplies)
+      .post('/api/replies/createReply')
+      .set('Authorization', 'Bearer dev_token')
+      .send(invalidRequest);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Missing required fields.');
+  });
+
+  it('should return 400 if quote selectionRange is missing', async () => {
+    const invalidRequest = {
+      ...validReplyRequest,
+      quote: { ...validReplyRequest.quote, selectionRange: undefined }
+    };
+
+    const response = await request(appReplies)
+      .post('/api/replies/createReply')
+      .set('Authorization', 'Bearer dev_token')
+      .send(invalidRequest);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Missing required fields.');
+  });
+
+  it(`should return 400 if reply text is too short (less than ${MIN_REPLY_LENGTH} chars)`, async () => {
+    const shortText = 'a'.repeat(MIN_REPLY_LENGTH - 1);
+    const shortTextRequest = {
+      ...validReplyRequest,
+      text: shortText
+    };
+
+    const response = await request(appReplies)
+      .post('/api/replies/createReply')
+      .set('Authorization', 'Bearer dev_token')
+      .send(shortTextRequest);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Reply text below min length.');
+  });
+
+  it('should return 400 if reply text is too long (more than 1000 chars)', async () => {
+    const longText = 'a'.repeat(1001);
+    const longTextRequest = {
+      ...validReplyRequest,
+      text: longText
+    };
+
+    const response = await request(appReplies)
+      .post('/api/replies/createReply')
+      .set('Authorization', 'Bearer dev_token')
+      .send(longTextRequest);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Reply text exceeds max length.');
+  });
+
+  it('should return 500 if database transaction fails', async () => {
+    mockGetPost.mockResolvedValue({ id: 'parentPostId123', authorId: 'testAuthor', content: 'parent content', createdAt: 'date', replyCount: 0 });
+    mockGetReply.mockResolvedValue(null);
+    
+    const dbError = new Error('DB transaction failed');
+    mockCreateReplyTransaction.mockRejectedValue(dbError);
+
+    const response = await request(appReplies)
+      .post('/api/replies/createReply')
+      .set('Authorization', 'Bearer dev_token')
+      .send(validReplyRequest);
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('Server error creating reply');
+    expect(mockAddVectorReplies).not.toHaveBeenCalled();
+  });
 }); 
