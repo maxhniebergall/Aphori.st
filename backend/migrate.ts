@@ -4,7 +4,7 @@ import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 import { VectorService } from './services/vectorService.js';
 import { Post, Reply, VectorIndexEntry } from './types/index.js';
 import dotenv from 'dotenv';
-import { GCPEmbeddingProvider } from './services/vertexAIEmbeddingProvider.js';
+import { GCPEmbeddingProvider } from './services/gcpEmbeddingProvider.js';
 
 // Load environment variables for GCP config needed by VectorService
 dotenv.config();

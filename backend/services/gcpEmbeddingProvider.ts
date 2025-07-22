@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
-import { EmbeddingProvider } from './embeddingProvider'; // Import the interface
+import { EmbeddingProvider } from './embeddingProvider.js'; // Import the interface
 import logger from '../logger.js'; // Assuming logger is in a similar path
+import { MAX_POST_LENGTH } from "../routes/posts.js";
 
 // const GEMINI_EMBEDDING_DIMENSION = 768; // This will be passed in constructor
 
@@ -12,23 +13,32 @@ export class GCPEmbeddingProvider implements EmbeddingProvider {
   constructor(modelId: string, dimension: number) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-        logger.error("GEMINI_API_KEY environment variable not set. VertexAIEmbeddingProvider cannot be initialized.");
-        throw new Error("GEMINI_API_KEY environment variable not set.");
+      logger.error("GEMINI_API_KEY environment variable not set. VertexAIEmbeddingProvider cannot be initialized.");
+      throw new Error("GEMINI_API_KEY environment variable not set.");
     }
     // Initialize with options object, as suggested by linter error and common practice.
-    this.genAI = new GoogleGenAI({ apiKey }); 
+    this.genAI = new GoogleGenAI({ apiKey });
     this.modelIdForEmbeddings = modelId; // Store the model ID passed from server.ts
     this.dimension = dimension;
     logger.info(`VertexAIEmbeddingProvider initialized with GoogleGenAI for model: ${this.modelIdForEmbeddings}, dimension: ${this.dimension}. ProjectID/LocationID params from constructor are ignored.`);
   }
 
   async generateEmbedding(textToEmbed: string): Promise<number[] | null> {
+    if (typeof textToEmbed !== 'string') {
+      throw new Error('generateEmbedding called with non-string argument: [' + textToEmbed + '] typeof [' + typeof textToEmbed + ']');
+    }
+    if (textToEmbed.trim().length === 0) {
+      throw new Error('generateEmbedding called with empty string');
+    }
+    if (textToEmbed.length > MAX_POST_LENGTH) {
+      throw new Error('generateEmbedding called with string longer than [' + MAX_POST_LENGTH + '] characters, was [' + textToEmbed.length + ']');
+    }
     try {
       const response = await this.genAI.models.embedContent({
         model: this.modelIdForEmbeddings,
         contents: [textToEmbed], // Changed to 'contents' and wrapped in an array as it expects multiple contents, even for one.
-                                // The JS example uses a single string for 'contents', but TS types often prefer array for 'contents'.
-                                // Let's try with an array first. If it complains, we can revert to single string for `contents`.
+        // The JS example uses a single string for 'contents', but TS types often prefer array for 'contents'.
+        // Let's try with an array first. If it complains, we can revert to single string for `contents`.
         config: { // As per JS documentation and linter feedback
           taskType: "SEMANTIC_SIMILARITY" // Use camelCase taskType inside config
         }
@@ -41,7 +51,7 @@ export class GCPEmbeddingProvider implements EmbeddingProvider {
         if (embeddingObject && embeddingObject.values && Array.isArray(embeddingObject.values)) {
           const values = embeddingObject.values;
           if (values.length !== this.dimension) {
-              logger.warn(`VertexAIEmbeddingProvider: Generated embedding dimension (${values.length}) for model '${this.modelIdForEmbeddings}' does not match configured dimension (${this.dimension}). Returning provided embedding anyway.`);
+            logger.warn(`VertexAIEmbeddingProvider: Generated embedding dimension (${values.length}) for model '${this.modelIdForEmbeddings}' does not match configured dimension (${this.dimension}). Returning provided embedding anyway.`);
           }
           return values;
         }

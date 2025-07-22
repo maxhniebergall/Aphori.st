@@ -1,4 +1,4 @@
-import { EmbeddingProvider } from './embeddingProvider';
+import { EmbeddingProvider } from './embeddingProvider.js';
 import logger from '../logger.js'; // Assuming logger is in a similar path
 
 const MOCK_EMBEDDING_DIMENSION = 768; // Match the expected dimension of your real model
