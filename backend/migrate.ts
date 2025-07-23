@@ -32,7 +32,7 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
         try {
             logger.debug(`Processing post ${post.id}...`);
             // Call addVector - it handles embedding and storing in the correct shard
-            await vectorService.addVector(post.id, 'post', post.content);
+            await vectorService.addVector(post.content, post.id, 'post');
             processedPosts++;
             logger.debug(`Successfully processed post ${post.id}`);
             // Add a small delay to avoid overwhelming Vertex AI or RTDB (optional)
@@ -59,7 +59,7 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
         try {
             logger.debug(`Processing reply ${reply.id}...`);
             // Call addVector for reply
-            await vectorService.addVector(reply.id, 'reply', reply.text);
+            await vectorService.addVector(reply.text, reply.id, 'reply');
             processedReplies++;
             logger.debug(`Successfully processed reply ${reply.id}`);
              // Add a small delay (optional)
@@ -104,12 +104,8 @@ export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
     logger.info(`Running Vector Embedding Backfill Migration (Version ${MIGRATION_VERSION_STRING})...`);
 
     try {
-        // No longer need to explicitly get firebaseClientInstance here, as VectorService takes LoggedDatabaseClient
-        await dbClient.connect().catch(err => {
-            logger.error("Migration: Initial DB connection failed.", { err });
-            throw err;
-        });
-        logger.info("Database client connected for vector migration.");
+        // Database client is already connected when migration is called from server.ts
+        logger.info("Using existing database connection for vector migration.");
 
         // Instantiate VectorService here, requires GCP creds from env
         const gcpProjectId = process.env.GCP_PROJECT_ID;
