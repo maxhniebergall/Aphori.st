@@ -33,6 +33,33 @@ export class VectorService {
 
     async initializeIndex(): Promise<void> {
        logger.info('Starting FAISS index initialization from RTDB...');
+        
+        // Check for existing vectors and validate dimensions before reset
+        try {
+            const metadata: VectorIndexMetadata | null = await (this.firebaseClient as any).getVectorIndexMetadata();
+            if (metadata && metadata.shards && Object.keys(metadata.shards).length > 0) {
+                const shardKeys = Object.keys(metadata.shards);
+                const vectorsData: VectorDataForFaiss[] = await (this.firebaseClient as any).getAllVectorsFromShards(shardKeys, 10); // Sample first 10 vectors
+                
+                if (vectorsData.length > 0) {
+                    const existingDimensions = [...new Set(vectorsData.map(v => v.vector.length))];
+                    const newDimension = this.embeddingDimension;
+                    
+                    // If there are existing vectors with different dimensions, prevent reset
+                    if (existingDimensions.length > 0 && !existingDimensions.includes(newDimension)) {
+                        const existingDimension = existingDimensions[0]; // Use first found dimension
+                        logger.warn(`Dimension mismatch: existing vectors have dimension ${existingDimension}, service expects ${newDimension}`);
+                        throw new Error('Dimension mismatch requires manual migration. Cannot automatically reset FAISS index with existing vectors.');
+                    }
+                }
+            }
+        } catch (error) {
+            if (error instanceof Error && error.message.includes('Dimension mismatch requires manual migration')) {
+                throw error; // Re-throw dimension mismatch errors
+            }
+            logger.warn('Warning during dimension validation (continuing with initialization):', error);
+        }
+        
         this.faissIndex = new faiss.IndexFlatL2(this.embeddingDimension); // Re-instantiate with current dimension
         this.faissIdMap.clear();
        logger.info('FAISS Index re-initialized/reset.');
@@ -54,11 +81,37 @@ export class VectorService {
             }
 
             if (vectorsData.length > 0 && this.faissIndex) {
-                 // Ensure vectors match the index dimension before adding
+                 // Check for dimension consistency issues before loading
                 const currentDimension = this.embeddingDimension;
+                const dimensionCounts = new Map<number, number>();
+                
+                // Count vectors by dimension
+                vectorsData.forEach(v => {
+                    const dim = v.vector.length;
+                    dimensionCounts.set(dim, (dimensionCounts.get(dim) || 0) + 1);
+                });
+                
+                const uniqueDimensions = Array.from(dimensionCounts.keys());
+                
+                // Check for dimension mismatch problems
+                if (uniqueDimensions.length > 1) {
+                    logger.warn(`DIMENSION INCONSISTENCY DETECTED: Found vectors with ${uniqueDimensions.length} different dimensions:`, 
+                        Object.fromEntries(dimensionCounts));
+                    logger.warn(`Current service dimension: ${currentDimension}`);
+                }
+                
                 const filteredVectorsData = vectorsData.filter(v => v.vector.length === currentDimension);
-                if (filteredVectorsData.length !== vectorsData.length) {
-                    logger.warn(`Filtered out ${vectorsData.length - filteredVectorsData.length} vectors due to dimension mismatch during load.`);
+                const filteredCount = vectorsData.length - filteredVectorsData.length;
+                
+                if (filteredCount > 0) {
+                    logger.warn(`PRODUCTION WARNING: Filtered out ${filteredCount} vectors due to dimension mismatch during FAISS index load.`);
+                    logger.warn(`This may indicate a dimension change or data corruption. Review vector storage consistency.`);
+                    
+                    // In production, we might want to be more strict
+                    if (filteredCount > vectorsData.length * 0.1) { // If >10% of vectors are filtered
+                        logger.error(`CRITICAL: More than 10% of vectors (${filteredCount}/${vectorsData.length}) have dimension mismatches.`);
+                        logger.error(`Consider manual inspection before proceeding. Service dimension: ${currentDimension}`);
+                    }
                 }
 
                 if (filteredVectorsData.length > 0) {
@@ -84,6 +137,26 @@ export class VectorService {
 
         } catch (error) {
             logger.error('Error initializing FAISS index from RTDB:', error);
+        }
+    }
+
+    // --- Vector Validation ---
+
+    private validateVector(vector: number[]): void {
+        if (!Array.isArray(vector)) {
+            throw new Error('Vector must be an array');
+        }
+        
+        if (vector.length === 0) {
+            throw new Error('Vector cannot be empty');
+        }
+        
+        if (vector.some(v => typeof v !== 'number' || !isFinite(v))) {
+            throw new Error('All vector elements must be finite numbers');
+        }
+        
+        if (vector.length !== this.embeddingDimension) {
+            throw new Error(`Vector dimension mismatch: expected ${this.embeddingDimension}, got ${vector.length}`);
         }
     }
 
@@ -153,10 +226,12 @@ export class VectorService {
             return;
         }
 
-        // Double-check dimension consistency after embedding generation
-        if (vector.length !== this.embeddingDimension) {
-             logger.error(`Generated vector dimension (${vector.length}) unexpectedly differs from service dimension (${this.embeddingDimension}) after generation. Skipping add.`);
-             return;
+        // Validate the vector before processing
+        try {
+            this.validateVector(vector);
+        } catch (error) {
+            logger.error(`Vector validation failed for ${type} ${contentId}: ${(error as Error).message}. Skipping add.`);
+            return;
         }
 
         let addedToFaiss = false;
