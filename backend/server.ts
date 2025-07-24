@@ -43,6 +43,7 @@ import searchRoutes, { setDbAndVectorService as setSearchDbAndVectorService } fr
 import { checkAndRunMigrations, processStartupEmails } from './startUpChecks.js';
 import { VectorService } from './services/vectorService.js'; // Import VectorService
 import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
+import { errorHandler } from './middleware/errorHandler.js';
 
 // --- Embedding Provider Imports ---
 import { EmbeddingProvider } from './services/embeddingProvider.js';
@@ -140,6 +141,7 @@ if (NODE_ENV === 'production' || process.env.USE_VERTEX_AI_LOCALLY === 'true') {
 
 let isDbReady = false;
 let isVectorIndexReady = false; // Add flag for vector index
+let vectorService: VectorService; // Global reference for health checks
 
 // Database and Vector Index readiness check
 app.use((req: Request, res: Response, next: NextFunction): void => {
@@ -196,7 +198,7 @@ await db.connect().then(async () => { // Make the callback async
     await processStartupEmails(db); // Handles email logic
     // --- End Startup Checks ---    
 
-    const vectorService = new VectorService(db, embeddingProvider); // Pass the chosen provider
+    vectorService = new VectorService(db, embeddingProvider); // Pass the chosen provider
 
     // --- Initialize Vector Index ---
     try {
@@ -258,8 +260,46 @@ if (missingEnvVars.length > 0) {
 // --- End Environment Variable Checks ---
 
 
-app.get('/health', (req: Request, res: Response): void => {
+app.get('/health', (_req: Request, res: Response): void => {
     res.status(200).json({ status: 'healthy' });
+});
+
+app.get('/health/vector-index', (_req: Request, res: Response): void => {
+    try {
+        if (!vectorService) {
+            res.status(503).json({
+                status: 'unavailable',
+                error: 'Vector service not initialized',
+                ready: false
+            });
+            return;
+        }
+
+        const indexStats = {
+            ready: isVectorIndexReady,
+            indexSize: vectorService['faissIndex'] ? vectorService['faissIndex'].ntotal() : 0,
+            dimension: vectorService['embeddingDimension'],
+            maxIndexSize: 10000, // MAX_FAISS_INDEX_SIZE constant
+            pendingOperations: vectorService['pendingAddOperations'].size
+        };
+
+        const isHealthy = isVectorIndexReady && 
+                         indexStats.indexSize >= 0 && 
+                         indexStats.pendingOperations < 100; // Alert if too many pending
+
+        res.status(isHealthy ? 200 : 503).json({
+            status: isHealthy ? 'healthy' : 'degraded',
+            ...indexStats,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        logger.error({ err: error }, 'Error checking vector index health');
+        res.status(500).json({
+            status: 'error',
+            error: 'Failed to check vector index health',
+            ready: false
+        });
+    }
 });
 
 // --- Mount Routers ---
@@ -268,6 +308,9 @@ app.use('/api/feed', feedRoutes);
 app.use('/api/posts', postRoutes); 
 app.use('/api/replies', replyRoutes);
 app.use('/api/search', searchRoutes);
+
+// Add the error handling middleware as the last middleware
+app.use(errorHandler);
 
 // --- Start Server ---
 const server = app.listen(PORT, () => { // Store server instance
