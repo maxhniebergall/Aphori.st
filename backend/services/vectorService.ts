@@ -8,6 +8,9 @@ import { EmbeddingProvider } from './embeddingProvider.js';
 
 const MAX_FAISS_INDEX_SIZE = 10000; // Configurable limit from design doc
 const SHUTDOWN_WAIT_TIMEOUT_MS = SHUTDOWN_TIMEOUT - 5000; // Slightly less than server's timeout
+const MAX_EMBEDDING_TEXT_LENGTH = 8000; // Vertex AI limit
+const MIN_EMBEDDING_TEXT_LENGTH = 3;
+
 if (SHUTDOWN_WAIT_TIMEOUT_MS <= 0) {
     throw new Error('SHUTDOWN_WAIT_TIMEOUT_MS must be greater than 0');
 }
@@ -160,20 +163,37 @@ export class VectorService {
         }
     }
 
+    private sanitizeEmbeddingText(text: string): string {
+        return text
+            .trim()
+            .replace(/[\x00-\x1F\x7F]/g, '') // Control characters
+            .replace(/[\u200B-\u200D\uFEFF]/g, '') // Zero-width spaces
+            .replace(/\s+/g, ' ') // Normalize whitespace
+            .slice(0, MAX_EMBEDDING_TEXT_LENGTH);
+    }
+
     // --- Embedding Generation ---
 
     async generateEmbedding(text: string): Promise<number[] | null> {
         if (typeof text !== 'string') {
             throw new Error('generateEmbedding called with non-string argument: [' + text + '] typeof [' + typeof text + ']');
         }
-        if (text.trim().length === 0) {
-            throw new Error('generateEmbedding called with empty string');
+
+        const sanitizedText = this.sanitizeEmbeddingText(text);
+
+        if (sanitizedText.length === 0) {
+            throw new Error('generateEmbedding called with empty string after sanitization');
         }
+
+        if (sanitizedText.length < MIN_EMBEDDING_TEXT_LENGTH) {
+            throw new Error(`Text too short for embedding: ${sanitizedText.length} chars`);
+        }
+
         if (text.length > MAX_POST_LENGTH) {
             throw new Error('generateEmbedding called with string longer than [' + MAX_POST_LENGTH + '] characters, was [' + text.length + ']');
         }
         try {
-            const embeddingValues = await this.embeddingProvider.generateEmbedding(text);
+            const embeddingValues = await this.embeddingProvider.generateEmbedding(sanitizedText);
 
             if (!embeddingValues || embeddingValues.length === 0) {
                 logger.error('Failed to generate embedding for text (no values received from provider):', text);
@@ -213,42 +233,22 @@ export class VectorService {
     }
 
     private async _addVectorInternal(contentId: string, type: 'post' | 'reply', text: string): Promise<void> {
-        // Ensure FAISS index is initialized before adding
         if (!this.faissIndex) {
-           logger.info('FAISS index is null, initializing with current dimension:', this.embeddingDimension);
+            logger.info('FAISS index is null, initializing with current dimension:', this.embeddingDimension);
             this.faissIndex = new faiss.IndexFlatL2(this.embeddingDimension);
         }
 
         const vector = await this.generateEmbedding(text);
         if (!vector) {
             logger.error(`Failed to generate embedding for ${type} ${contentId}. Skipping add.`);
-            // Still resolve void promise, but log error
             return;
         }
 
-        // Validate the vector before processing
         try {
             this.validateVector(vector);
         } catch (error) {
             logger.error(`Vector validation failed for ${type} ${contentId}: ${(error as Error).message}. Skipping add.`);
             return;
-        }
-
-        let addedToFaiss = false;
-        if (this.faissIndex.ntotal() < MAX_FAISS_INDEX_SIZE) {
-            try {
-                const currentFaissInternalIndex = this.faissIndex.ntotal();
-
-                 this.faissIndex.add(vector);
-                this.faissIdMap.set(currentFaissInternalIndex, { id: contentId, type: type });
-                addedToFaiss = true;
-               logger.info(`Vector for ${contentId} added to in-memory FAISS index (new total: ${this.faissIndex.ntotal()}).`);
-            } catch (error) {
-                logger.error(`Error adding vector for ${contentId} to FAISS index:`, error);
-                // Proceed to RTDB write even if FAISS add fails
-            }
-        } else {
-            logger.warn(`FAISS index limit (${MAX_FAISS_INDEX_SIZE}) reached. Vector for ${contentId} not added to in-memory index, but will be saved to RTDB.`);
         }
 
         const vectorEntry: VectorIndexEntry = {
@@ -258,19 +258,39 @@ export class VectorService {
         };
 
         try {
-            // This is the critical part that needs to complete before shutdown
             await (this.firebaseClient as any).addVectorToShardStore(contentId, vectorEntry);
-           logger.info(`Vector for ${contentId} saved to RTDB vector store.`);
+            logger.info(`Vector for ${contentId} saved to RTDB vector store.`);
         } catch (error) {
             logger.error(`Error saving vector for ${contentId} to RTDB:`, error);
-            if (addedToFaiss && this.faissIndex) {
-                 // Potentially rollback FAISS add if RTDB fails? Complex, skip for now.
-                 logger.error(`RTDB write failed for [${contentId}][${vectorEntry}], but it was added to FAISS.`);
+            return;
+        }
+
+        if (this.faissIndex.ntotal() < MAX_FAISS_INDEX_SIZE) {
+            try {
+                const currentFaissInternalIndex = this.faissIndex.ntotal();
+                this.faissIndex.add(vector);
+                this.faissIdMap.set(currentFaissInternalIndex, { id: contentId, type: type });
+                logger.info(`Vector for ${contentId} added to in-memory FAISS index (new total: ${this.faissIndex.ntotal()}).`);
+            } catch (error) {
+                logger.error(`Error adding vector for ${contentId} to FAISS index:`, error);
+                // If FAISS add fails after successful RTDB write, we have an inconsistency.
+                // For now, we log this. A more robust solution would be a reconciliation process.
+                logger.error(`CRITICAL INCONSISTENCY: Vector for ${contentId} saved to RTDB but failed to add to FAISS.`);
             }
+        } else {
+            logger.warn(`FAISS index limit (${MAX_FAISS_INDEX_SIZE}) reached. Vector for ${contentId} not added to in-memory index, but was saved to RTDB.`);
         }
     }
 
     async searchVectors(queryText: string, k: number): Promise<{ id: string, type: 'post' | 'reply', score: number }[]> {
+        // Validate k parameter bounds
+        if (!Number.isInteger(k) || k <= 0) {
+            throw new Error(`Invalid k parameter: must be a positive integer, got ${k}`);
+        }
+        
+        if (k > 100) {
+            throw new Error(`Invalid k parameter: maximum value is 100, got ${k}`);
+        }
         if (!this.faissIndex || this.faissIndex.ntotal() === 0) {
            logger.info('FAISS index is not initialized or empty. Cannot search.');
             return [];
@@ -282,15 +302,26 @@ export class VectorService {
             return [];
         }
 
-        // Check dimension before search
         if (queryVector.length !== this.embeddingDimension) {
             logger.error(`Query vector dimension (${queryVector.length}) does not match service/index dimension (${this.embeddingDimension}). Cannot search.`);
             return [];
         }
 
+        const totalVectors = this.faissIndex.ntotal();
+        let effectiveK = k;
+
+        if (!Number.isInteger(k) || k <= 0) {
+            logger.warn(`Requested k=${k} is not a positive integer. Defaulting to 10.`);
+            effectiveK = 10;
+        }
+
+        if (effectiveK > totalVectors) {
+            logger.warn(`Requested k=${effectiveK} is greater than the total number of vectors (${totalVectors}). Adjusting k to ${totalVectors}.`);
+            effectiveK = totalVectors;
+        }
+
         try {
-            // Assuming search takes number[] based on faiss-node examples/common usage
-            const results = this.faissIndex.search(queryVector, k);
+            const results = this.faissIndex.search(queryVector, effectiveK);
             const { labels, distances } = results;
 
             if (!labels || !distances || labels.length === 0 || distances.length === 0) {
@@ -298,16 +329,14 @@ export class VectorService {
                 return [];
             }
 
-            // Get id and type from map
             const searchResultInfo = labels.map((faissInternalIndex: number) => this.faissIdMap.get(faissInternalIndex))
                                            .filter(info => info !== undefined) as { id: string, type: 'post' | 'reply' }[];
             const searchResultScores: number[] = distances;
 
-            // Combine IDs, types, and scores, ensuring arrays align
-            const combinedResults = searchResultInfo.map((info, i) => ({ // Use info object
+            const combinedResults = searchResultInfo.map((info, i) => ({
                 id: info.id,
                 type: info.type,
-                score: searchResultScores[i] !== undefined ? searchResultScores[i] : Infinity // Handle potential misalignment
+                score: searchResultScores[i] !== undefined ? searchResultScores[i] : Infinity
             })).filter(r => r.id && Number.isFinite(r.score));
 
             return combinedResults;
