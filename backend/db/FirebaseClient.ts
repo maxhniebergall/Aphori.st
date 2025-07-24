@@ -1,17 +1,21 @@
-import { initializeApp, App } from 'firebase-admin/app';
+import { initializeApp} from 'firebase-admin/app';
 import { getDatabase, Database, ServerValue } from 'firebase-admin/database';
 import { cert } from 'firebase-admin/app';
-import crypto from 'crypto';
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
-import { RedisSortedSetItem } from '../types/index.js';
+import { VectorIndexMetadata, VectorIndexEntry, VectorDataForFaiss } from '../types/index.js';
 
-interface FirebaseConfig {
+// Import the full firebase-admin package for app management (helps with types) for testing
+import admin from 'firebase-admin';
+
+export interface FirebaseConfig {
   credential: any;
   databaseURL: string;
 }
 
 export class FirebaseClient extends DatabaseClientInterface {
-  private db: Database;
+  protected db: Database;
+  // Add a static flag for tests
+  private static isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.FIREBASE_DATABASE_EMULATOR_HOST !== undefined;
 
   constructor(config: FirebaseConfig) {
     super();
@@ -28,7 +32,23 @@ export class FirebaseClient extends DatabaseClientInterface {
       console.log('Initializing Firebase Admin SDK without explicit credentials (connecting to emulator).');
     }
 
-    const app = initializeApp(appOptions);
+    // Safely initialize the app or reuse existing one
+    var app;
+    // Check if admin and admin.apps are available and not empty
+    if (FirebaseClient.isTestEnvironment && admin && admin.apps && admin.apps.length > 0) {
+      // In test environment, reuse the default app if it exists
+      const defaultApp = admin.apps.find(a => a && a.name === '[DEFAULT]');
+      if (defaultApp) {
+        app = defaultApp;
+        console.log('Reusing existing Firebase default app in test environment');
+      } else {
+        app = initializeApp(appOptions);
+      }
+    } else {
+      // In non-test environments, initialize as normal
+      app = initializeApp(appOptions);
+    }
+    
     this.db = getDatabase(app);
   }
 
@@ -674,6 +694,137 @@ export class FirebaseClient extends DatabaseClientInterface {
     return { committed: result.committed, snapshot: result.snapshot ? result.snapshot.val() : null };
   }
 
+  // --- Semantic Methods: Vector Search Specific (New) ---
+
+  async getVectorIndexMetadata(): Promise<VectorIndexMetadata | null> {
+    const path = 'vectorIndexMetadata';
+    this._assertFirebaseKeyComponentSafe(path, 'getVectorIndexMetadata', 'path (fixed)');
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async getAllVectorsFromShards(shardKeys: string[], faissIndexLimit: number): Promise<VectorDataForFaiss[]> {
+    const allVectors: VectorDataForFaiss[] = [];
+    let vectorsFetched = 0;
+
+    for (const shardKey of shardKeys) {
+      if (vectorsFetched >= faissIndexLimit) {
+        console.log(`Reached FAISS index limit (${faissIndexLimit}), stopping fetching from shards.`);
+        break;
+      }
+
+      const shardPath = `vectorIndexStore/${shardKey}`;
+      // Assuming shardKey is already safe (e.g., 'shard_0', 'shard_1')
+      this._assertFirebaseKeyComponentSafe(shardPath, 'getAllVectorsFromShards', 'shardPath');
+      const snapshot = await this.db.ref(shardPath).limitToFirst(faissIndexLimit - vectorsFetched).once('value');
+
+      if (snapshot.exists()) {
+        const shardData = snapshot.val();
+        for (const contentId in shardData) {
+          if (vectorsFetched >= faissIndexLimit) break;
+          const vectorEntry: VectorIndexEntry = shardData[contentId];
+          // Ensure vector data is present and is an array
+          if (vectorEntry && Array.isArray(vectorEntry.vector)) {
+            allVectors.push({ 
+              id: this.unescapeFirebaseKeyPercentEncoding(contentId), // Unescape the contentId key
+              vector: vectorEntry.vector,
+              type: vectorEntry.type
+            });
+            vectorsFetched++;
+          } else {
+            console.warn(`Skipping invalid vector entry in shard ${shardKey} for contentId ${contentId}`);
+          }
+        }
+      }
+    }
+    console.log(`Fetched ${allVectors.length} vectors from ${shardKeys.length} shards.`);
+    return allVectors;
+  }
+
+  async addVectorToShardStore(rawContentId: string, vectorEntry: VectorIndexEntry): Promise<void> {
+    const contentId = this.sanitizeKey(rawContentId);
+    const metadataPath = 'vectorIndexMetadata';
+    const storePathRoot = 'vectorIndexStore';
+    const maxShardCapacity = 10000;
+
+    const metadataRef = this.db.ref(metadataPath);
+
+    const { committed, snapshot } = await metadataRef.transaction((currentMetadata: VectorIndexMetadata | null) => {
+      const nowISO = new Date().toISOString();
+
+      if (currentMetadata === null) {
+        console.log('Initializing new vector index metadata inside transaction.');
+        return {
+          activeWriteShard: 'shard_0',
+          shardCapacity: maxShardCapacity,
+          totalVectorCount: 1,
+          shards: {
+            'shard_0': { count: 1, createdAt: nowISO }
+          },
+        };
+      }
+
+      const metadataToUpdate = JSON.parse(JSON.stringify(currentMetadata));
+      if (!metadataToUpdate.shards) {
+        metadataToUpdate.shards = {};
+      }
+
+      let activeShardKey = metadataToUpdate.activeWriteShard;
+      let activeShardInfo = metadataToUpdate.shards[activeShardKey];
+      const capacity = metadataToUpdate.shardCapacity || maxShardCapacity;
+
+      if (!activeShardInfo || activeShardInfo.count >= capacity) {
+        if (activeShardInfo) {
+          console.log(`Shard ${activeShardKey} is full (${activeShardInfo.count}/${capacity}). Creating new shard inside transaction.`);
+        } else {
+          console.warn(`Active shard ${activeShardKey} info not found. Creating new one.`);
+        }
+        
+        const existingShardIndices = Object.keys(metadataToUpdate.shards)
+          .map(key => parseInt(key.split('_')[1], 10))
+          .filter(num => !isNaN(num));
+        const nextShardIndex = existingShardIndices.length > 0 ? Math.max(...existingShardIndices) + 1 : 0;
+        
+        activeShardKey = `shard_${nextShardIndex}`;
+        console.log(`New active shard will be: ${activeShardKey}`);
+        metadataToUpdate.activeWriteShard = activeShardKey;
+        metadataToUpdate.shards[activeShardKey] = { count: 1, createdAt: nowISO };
+      } else {
+        metadataToUpdate.shards[activeShardKey].count = (metadataToUpdate.shards[activeShardKey].count || 0) + 1;
+      }
+
+      metadataToUpdate.totalVectorCount = (metadataToUpdate.totalVectorCount || 0) + 1;
+      
+      return metadataToUpdate;
+    });
+
+    if (!committed || !snapshot.exists()) {
+      throw new Error('Failed to commit transaction for vector index metadata.');
+    }
+
+    const finalMetadata = snapshot.val() as VectorIndexMetadata;
+    const targetShardKey = finalMetadata.activeWriteShard;
+    const vectorDataPath = `${storePathRoot}/${targetShardKey}/${contentId}`;
+
+    try {
+      await this.db.ref(vectorDataPath).set(vectorEntry);
+      console.log(`Vector ${rawContentId} (ID: ${contentId}) data written to shard ${targetShardKey}.`);
+    } catch (error) {
+      console.error(`CRITICAL: Failed to write vector data for ${rawContentId} to shard ${targetShardKey} after successful transaction. Manual intervention may be required to ensure consistency.`, error);
+      // Attempt to roll back the metadata counter changes.
+      await metadataRef.transaction((currentMetadata: VectorIndexMetadata | null) => {
+        if (currentMetadata) {
+          currentMetadata.totalVectorCount = (currentMetadata.totalVectorCount || 1) - 1;
+          if (currentMetadata.shards[targetShardKey]) {
+            currentMetadata.shards[targetShardKey].count = (currentMetadata.shards[targetShardKey].count || 1) - 1;
+          }
+        }
+        return currentMetadata;
+      });
+      throw new Error(`Failed to write vector data for ${rawContentId}: ${(error as Error).message}`);
+    }
+  }
+
   // --- Semantic Methods: Startup Mailer ---
   async addProcessedStartupEmail(rawEmail: string): Promise<void> {
     const sanitizedEmail = this.sanitizeKey(rawEmail);
@@ -727,4 +878,4 @@ export class FirebaseClient extends DatabaseClientInterface {
     const path = oldKey; // Use the raw key directly as the path
     await this.db.ref(path).remove();
   }
-} 
+}   

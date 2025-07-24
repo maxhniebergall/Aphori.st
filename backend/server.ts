@@ -27,10 +27,6 @@ import logger from './logger.js';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import compression from 'compression';
-import * as fsSync from 'fs'; // Keep sync fs for existsSync
-import { fileURLToPath } from 'url';
-import path from 'path';
-import { dirname } from 'path';
 import requestLogger from './middleware/requestLogger.js';
 import { optionalAuthMiddleware } from './middleware/optionalAuthMiddleware.js';
 import { 
@@ -43,27 +39,22 @@ import authRoutes, { setDb as setAuthDb } from './routes/auth.js';
 import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
+import searchRoutes, { setDbAndVectorService as setSearchDbAndVectorService } from './routes/search.js';
 import { checkAndRunMigrations, processStartupEmails } from './startUpChecks.js';
+import { VectorService } from './services/vectorService.js'; // Import VectorService
+import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
+import { errorHandler } from './middleware/errorHandler.js';
+
+// --- Embedding Provider Imports ---
+import { EmbeddingProvider } from './services/embeddingProvider.js';
+import { GCPEmbeddingProvider } from './services/gcpEmbeddingProvider.js';
+import { MockEmbeddingProvider } from './services/mockEmbeddingProvider.js';
+// --- End Embedding Provider Imports ---
 
 dotenv.config();
 
 const PORT = process.env.PORT || 5050;
-
-// Determine the directory of the current module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Load build hash
-let BUILD_HASH = 'development';
-try {
-    // Construct path relative to this file's directory
-    const envBuildPath = path.join(__dirname, '../../.env.build'); 
-    const buildEnv = fsSync.readFileSync(envBuildPath, 'utf8');
-    BUILD_HASH = buildEnv.split('=')[1].trim();
-    logger.info(`Loaded build hash: ${BUILD_HASH}`);
-} catch (err) {
-    logger.warn('No build hash found, using development');
-}
+export var SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 
 const app = express();
 app.use(express.json());
@@ -110,12 +101,6 @@ const corsOptions = {
 // Apply CORS middleware
 app.use(cors(corsOptions));
 
-// Set build hash after CORS headers
-app.use((req: Request, res: Response, next: NextFunction) => {
-  res.setHeader('X-Build-Hash', BUILD_HASH);
-  next();
-});
-
 // --- Apply Optional Authentication and Rate Limiting Middlewares ---
 // This middleware attempts to identify the user from JWT for rate limiting purposes,
 // but does not block unauthenticated requests.
@@ -134,13 +119,34 @@ app.use(anonymousLimiterDay);
 // createDatabaseClient() now returns LoggedDatabaseClient
 const db = createDatabaseClient();
 
+// --- Embedding Provider Setup ---
+let embeddingProvider: EmbeddingProvider;
+
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const EMBEDDING_MODEL_ID = 'gemini-embedding-exp-03-07'; 
+const GEMINI_EMBEDDING_DIMENSION = 768; // Defaulting to 768, see for options: https://ai.google.dev/gemini-api/docs/models#gemini-embedding
+
+if (NODE_ENV === 'production' || process.env.USE_VERTEX_AI_LOCALLY === 'true') {
+  embeddingProvider = new GCPEmbeddingProvider(
+    EMBEDDING_MODEL_ID,
+    GEMINI_EMBEDDING_DIMENSION
+  );
+  logger.info("Using real VertexAIEmbeddingProvider.");
+} else {
+  embeddingProvider = new MockEmbeddingProvider();
+  logger.info("Using MockEmbeddingProvider for local development.");
+}
+// --- End Embedding Provider Setup ---
+
 
 let isDbReady = false;
+let isVectorIndexReady = false; // Add flag for vector index
+let vectorService: VectorService; // Global reference for health checks
 
-// Database readiness check
+// Database and Vector Index readiness check
 app.use((req: Request, res: Response, next: NextFunction): void => {
-    if (!isDbReady) {
-        logger.warn('Database not ready, returning 503');
+    if (!isDbReady || !isVectorIndexReady) { // Check both flags
+        logger.warn(`Service not ready (DB: ${isDbReady}, VectorIndex: ${isVectorIndexReady}), returning 503`);
         res.status(503).json({ 
             error: 'Service initializing, please try again in a moment'
         });
@@ -148,6 +154,40 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
     }
     next();
 });
+
+// --- Graceful Shutdown --- 
+const gracefulShutdown = async (signal: string, vectorService: VectorService) => {
+    logger.info(`Received ${signal}. Starting graceful shutdown...`);
+    
+    // Stop accepting new connections
+    server.close(async (err) => {
+        if (err) {
+            logger.error({ err }, 'Error closing HTTP server');
+            process.exit(1);
+        }
+        logger.info('HTTP server closed.');
+
+        // Perform async cleanup
+        try {
+            logger.info('Shutting down Vector Service...');
+            await vectorService.handleShutdown(); // Call vector service shutdown
+            logger.info('Vector Service shut down complete.');
+
+            logger.info('Graceful shutdown complete.');
+            process.exit(0);
+        } catch (shutdownErr) {
+            logger.error({ err: shutdownErr }, 'Error during graceful shutdown cleanup');
+            process.exit(1);
+        }
+    });
+
+    // Force shutdown after timeout
+    setTimeout(() => {
+        logger.error('Graceful shutdown timed out. Forcing exit.');
+        process.exit(1);
+    }, SHUTDOWN_TIMEOUT); // 30 second timeout
+};
+// --- End Graceful Shutdown ---
 
 await db.connect().then(async () => { // Make the callback async
     logger.info('Database client connected');
@@ -157,6 +197,23 @@ await db.connect().then(async () => { // Make the callback async
     await checkAndRunMigrations(db); // Handles migration logic and potential exit
     await processStartupEmails(db); // Handles email logic
     // --- End Startup Checks ---    
+
+    vectorService = new VectorService(db, embeddingProvider); // Pass the chosen provider
+
+    // --- Initialize Vector Index ---
+    try {
+        await vectorService.initializeIndex();
+        isVectorIndexReady = true;
+        process.on('SIGTERM', () => gracefulShutdown('SIGTERM', vectorService));
+        process.on('SIGINT', () => gracefulShutdown('SIGINT', vectorService));
+        logger.info('Vector service index initialized successfully.');
+    } catch (err) {
+        logger.error({ err }, 'Failed to initialize vector service index. Service will start but search may be unavailable.');
+        // Decide if this should be fatal. For now, let it continue but mark as not ready.
+        isVectorIndexReady = false; 
+        // Consider adding a health check status for vector index
+    }
+    // --- End Vector Index Initialization ---
 
     // Only seed if import didn't run (assuming import replaces seed)
     if (process.env.NODE_ENV !== 'production') {
@@ -168,12 +225,13 @@ await db.connect().then(async () => { // Make the callback async
     }
     // --- End Import/Seed --- 
 
-    // Inject DB instance into route modules
+    // Inject DB instance and VectorService into route modules
     setAuthDb(db);
     setFeedDb(db);
-    setPostDb(db);
-    setReplyDb(db);
-    logger.info('Database instance injected into route modules.');
+    setPostDb(db, vectorService); // Pass vectorService
+    setReplyDb(db, vectorService); // Pass vectorService
+    setSearchDbAndVectorService(db, vectorService); // Inject into search routes
+    logger.info('Database and VectorService (with chosen EmbeddingProvider) instances injected into route modules.');
 }).catch((err: Error) => {
     logger.error({ err }, 'Database connection failed');
     process.exit(1);
@@ -189,6 +247,7 @@ if (process.env.NODE_ENV === 'production') {
         'EMAIL_PORT',
         'EMAIL_USERNAME',
         'EMAIL_PASSWORD',
+        'GEMINI_API_KEY'
     );
 }
 
@@ -201,8 +260,46 @@ if (missingEnvVars.length > 0) {
 // --- End Environment Variable Checks ---
 
 
-app.get('/health', (req: Request, res: Response): void => {
+app.get('/health', (_req: Request, res: Response): void => {
     res.status(200).json({ status: 'healthy' });
+});
+
+app.get('/health/vector-index', (_req: Request, res: Response): void => {
+    try {
+        if (!vectorService) {
+            res.status(503).json({
+                status: 'unavailable',
+                error: 'Vector service not initialized',
+                ready: false
+            });
+            return;
+        }
+
+        const indexStats = {
+            ready: isVectorIndexReady,
+            indexSize: vectorService['faissIndex'] ? vectorService['faissIndex'].ntotal() : 0,
+            dimension: vectorService['embeddingDimension'],
+            maxIndexSize: 10000, // MAX_FAISS_INDEX_SIZE constant
+            pendingOperations: vectorService['pendingAddOperations'].size
+        };
+
+        const isHealthy = isVectorIndexReady && 
+                         indexStats.indexSize >= 0 && 
+                         indexStats.pendingOperations < 100; // Alert if too many pending
+
+        res.status(isHealthy ? 200 : 503).json({
+            status: isHealthy ? 'healthy' : 'degraded',
+            ...indexStats,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        logger.error({ err: error }, 'Error checking vector index health');
+        res.status(500).json({
+            status: 'error',
+            error: 'Failed to check vector index health',
+            ready: false
+        });
+    }
 });
 
 // --- Mount Routers ---
@@ -210,9 +307,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/feed', feedRoutes);
 app.use('/api/posts', postRoutes); 
 app.use('/api/replies', replyRoutes);
+app.use('/api/search', searchRoutes);
+
+// Add the error handling middleware as the last middleware
+app.use(errorHandler);
 
 // --- Start Server ---
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => { // Store server instance
     logger.info(`Server is running on port ${PORT}`);
-    logger.info(`Build hash: ${BUILD_HASH}`);
 });

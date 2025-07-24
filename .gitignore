@@ -10,6 +10,7 @@
 
 # production
 /build
+backend/dist/
 
 # misc
 .DS_Store
@@ -28,3 +29,6 @@ frontend/test-results
 .cursor/rules/_*.mdc
 backend/database-debug.log
 backend/firebase-debug.log
+backend/backend.log
+database-debug.log
+*.log
