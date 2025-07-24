@@ -742,48 +742,42 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async addVectorToShardStore(rawContentId: string, vectorEntry: VectorIndexEntry): Promise<void> {
-    const contentId = this.sanitizeKey(rawContentId); // Sanitize contentId once
+    const contentId = this.sanitizeKey(rawContentId);
     const metadataPath = 'vectorIndexMetadata';
     const storePathRoot = 'vectorIndexStore';
-    const maxShardCapacity = 10000; // Default capacity
-    
-    // Read current metadata to determine target shard (without modifying counters yet)
-    const currentMetadataSnapshot = await this.db.ref(metadataPath).once('value');
-    const currentMetadata = currentMetadataSnapshot.val() as VectorIndexMetadata | null;
-    
-    const nowISO = new Date().toISOString();
-    let targetShardKey: string;
-    let updatedMetadata: VectorIndexMetadata;
-    
-    if (currentMetadata === null) {
-      // Initialize metadata if it doesn't exist
-      console.log('Initializing new vector index metadata.');
-      targetShardKey = 'shard_0';
-      updatedMetadata = {
-        activeWriteShard: targetShardKey,
-        shardCapacity: maxShardCapacity,
-        totalVectorCount: 1,
-        shards: {
-          [targetShardKey]: { count: 1, createdAt: nowISO }
-        },
-      };
-    } else {
-      // Create a mutable copy for modifications
+    const maxShardCapacity = 10000;
+
+    const metadataRef = this.db.ref(metadataPath);
+
+    const { committed, snapshot } = await metadataRef.transaction((currentMetadata: VectorIndexMetadata | null) => {
+      const nowISO = new Date().toISOString();
+
+      if (currentMetadata === null) {
+        console.log('Initializing new vector index metadata inside transaction.');
+        return {
+          activeWriteShard: 'shard_0',
+          shardCapacity: maxShardCapacity,
+          totalVectorCount: 1,
+          shards: {
+            'shard_0': { count: 1, createdAt: nowISO }
+          },
+        };
+      }
+
       const metadataToUpdate = JSON.parse(JSON.stringify(currentMetadata));
       if (!metadataToUpdate.shards) {
         metadataToUpdate.shards = {};
       }
-      
+
       let activeShardKey = metadataToUpdate.activeWriteShard;
       let activeShardInfo = metadataToUpdate.shards[activeShardKey];
       const capacity = metadataToUpdate.shardCapacity || maxShardCapacity;
-      
-      // Check if active shard is full or needs initialization
+
       if (!activeShardInfo || activeShardInfo.count >= capacity) {
         if (activeShardInfo) {
-          console.log(`Shard ${activeShardKey} is full (${activeShardInfo.count}/${capacity}). Creating new shard.`);
+          console.log(`Shard ${activeShardKey} is full (${activeShardInfo.count}/${capacity}). Creating new shard inside transaction.`);
         } else {
-          console.warn(`Active shard ${activeShardKey} info not found in metadata. Will create it or a new one.`);
+          console.warn(`Active shard ${activeShardKey} info not found. Creating new one.`);
         }
         
         const existingShardIndices = Object.keys(metadataToUpdate.shards)
@@ -791,36 +785,43 @@ export class FirebaseClient extends DatabaseClientInterface {
           .filter(num => !isNaN(num));
         const nextShardIndex = existingShardIndices.length > 0 ? Math.max(...existingShardIndices) + 1 : 0;
         
-        targetShardKey = `shard_${nextShardIndex}`;
-        console.log(`New active shard will be: ${targetShardKey}`);
-        metadataToUpdate.activeWriteShard = targetShardKey;
-        metadataToUpdate.shards[targetShardKey] = { count: 1, createdAt: nowISO };
+        activeShardKey = `shard_${nextShardIndex}`;
+        console.log(`New active shard will be: ${activeShardKey}`);
+        metadataToUpdate.activeWriteShard = activeShardKey;
+        metadataToUpdate.shards[activeShardKey] = { count: 1, createdAt: nowISO };
       } else {
-        // Current active shard has space
-        targetShardKey = activeShardKey;
         metadataToUpdate.shards[activeShardKey].count = (metadataToUpdate.shards[activeShardKey].count || 0) + 1;
       }
-      
-      // Increment total vector count
+
       metadataToUpdate.totalVectorCount = (metadataToUpdate.totalVectorCount || 0) + 1;
       
-      updatedMetadata = metadataToUpdate;
+      return metadataToUpdate;
+    });
+
+    if (!committed || !snapshot.exists()) {
+      throw new Error('Failed to commit transaction for vector index metadata.');
     }
-    
-    // Perform atomic multi-location update for both metadata and vector data
-    // This ensures consistency - either both succeed or both fail, preventing counter drift
+
+    const finalMetadata = snapshot.val() as VectorIndexMetadata;
+    const targetShardKey = finalMetadata.activeWriteShard;
     const vectorDataPath = `${storePathRoot}/${targetShardKey}/${contentId}`;
-    const updates: Record<string, any> = {
-      [metadataPath]: updatedMetadata,
-      [vectorDataPath]: vectorEntry
-    };
-    
+
     try {
-      await this.db.ref().update(updates);
-      console.log(`Vector ${rawContentId} (ID: ${contentId}) data and metadata written atomically to shard ${targetShardKey}.`);
+      await this.db.ref(vectorDataPath).set(vectorEntry);
+      console.log(`Vector ${rawContentId} (ID: ${contentId}) data written to shard ${targetShardKey}.`);
     } catch (error) {
-      console.error(`CRITICAL: Atomic update failed for vector ${rawContentId} to shard ${targetShardKey}:`, error);
-      throw new Error(`Failed to atomically write vector data and metadata for ${rawContentId} to shard ${targetShardKey}: ${(error as Error).message}`);
+      console.error(`CRITICAL: Failed to write vector data for ${rawContentId} to shard ${targetShardKey} after successful transaction. Manual intervention may be required to ensure consistency.`, error);
+      // Attempt to roll back the metadata counter changes.
+      await metadataRef.transaction((currentMetadata: VectorIndexMetadata | null) => {
+        if (currentMetadata) {
+          currentMetadata.totalVectorCount = (currentMetadata.totalVectorCount || 1) - 1;
+          if (currentMetadata.shards[targetShardKey]) {
+            currentMetadata.shards[targetShardKey].count = (currentMetadata.shards[targetShardKey].count || 1) - 1;
+          }
+        }
+        return currentMetadata;
+      });
+      throw new Error(`Failed to write vector data for ${rawContentId}: ${(error as Error).message}`);
     }
   }
 
