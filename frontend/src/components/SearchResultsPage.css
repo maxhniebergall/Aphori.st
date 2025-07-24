@@ -1,0 +1,84 @@
+.search-results-page-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.search-results-content {
+  padding: 20px;
+  flex-grow: 1;
+  max-width: 800px; /* Or your preferred max width for content */
+  margin: 0 auto; /* Center content */
+  width: 100%;
+}
+
+.search-results-content h2 {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.loading-indicator,
+.error-message,
+.no-results-message {
+  text-align: center;
+  padding: 20px;
+  font-size: 1.1rem;
+  color: #555;
+}
+
+.error-message {
+  color: #d9534f; /* Bootstrap danger color */
+}
+
+.results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* Placeholder styles for the row - will be refined with SearchResultsPageRow */
+.search-result-row-placeholder {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 15px;
+  background-color: #fff;
+  transition: box-shadow 0.2s ease-in-out;
+}
+
+.search-result-row-placeholder:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.search-result-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.search-result-row-placeholder h4 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: #007bff; /* Link color */
+}
+
+.search-result-row-placeholder p {
+  margin-bottom: 5px;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.search-result-row-placeholder p em {
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.reply-to-quote-preview {
+  margin-top: 10px;
+  padding: 8px;
+  background-color: #f9f9f9;
+  border-left: 3px solid #ccc;
+  font-size: 0.85rem;
+}
+
+.reply-to-quote-preview p {
+  margin: 0;
+} 

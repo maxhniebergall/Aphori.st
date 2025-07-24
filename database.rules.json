@@ -125,6 +125,30 @@
               }
           }
       }
+    },
+    "vectorIndexMetadata": {
+      ".read": "false", 
+      ".write": "false",
+      ".validate": "newData.hasChildren(['activeWriteShard', 'shardCapacity', 'totalVectorCount', 'shards']) && newData.child('activeWriteShard').isString() && newData.child('shardCapacity').isNumber() && newData.child('totalVectorCount').isNumber() && newData.child('shards').isObject()",
+      "shards": {
+        "$shardId": {
+          ".validate": "newData.hasChildren(['count', 'createdAt']) && newData.child('count').isNumber() && newData.child('createdAt').isString()"
+        }
+      }
+    },
+    "vectorIndexStore": {
+      ".read": "false",
+      ".write": "false",
+      "$shardId": {
+        "$contentId": {
+          ".validate": "newData.hasChildren(['vector', 'type', 'createdAt']) && newData.child('type').isString() && (newData.child('type').val() === 'post' || newData.child('type').val() === 'reply') && newData.child('createdAt').isString()",
+          "vector": {
+            "$idx": {
+              ".validate": "newData.isNumber()"
+            }
+          }
+        }
+      }
     }
   }
 }

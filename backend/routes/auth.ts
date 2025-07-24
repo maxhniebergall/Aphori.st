@@ -7,7 +7,8 @@ import {
     User,
     UserResult,
     AuthTokenPayload,
-    TokenPayload
+    TokenPayload,
+    ApiError
 } from '../types/index.js';
 import { sendEmail } from '../mailer.js';
 import { LogContext } from '../db/loggingTypes.js';
@@ -95,25 +96,21 @@ const magicLinkLimiter = rateLimit({
  * @desc    Sends a magic link to the user's email for authentication
  * @access  Public
  */
-router.post('/send-magic-link', magicLinkLimiter, async (req, res) => {
+router.post<Record<string, never>, any, { email: string, isSignupInRequest: boolean }>('/send-magic-link', magicLinkLimiter, async (req, res) => {
     const { email, isSignupInRequest } = req.body;
 
     if (!email) {
         logger.error('Missing email in request body');
-        res.status(400).json({
-            success: false,
-            error: 'Email is required'
-        });
+        const apiError: ApiError = { error: 'Bad Request', message: 'Email is required' };
+        res.status(400).json(apiError);
         return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
         logger.error('Invalid email format: %s', email);
-        res.status(400).json({
-            success: false,
-            error: 'Invalid email format'
-        });
+        const apiError: ApiError = { error: 'Bad Request', message: 'Invalid email format' };
+        res.status(400).json(apiError);
         return;
     }
 
@@ -149,10 +146,8 @@ router.post('/send-magic-link', magicLinkLimiter, async (req, res) => {
         });
     } catch (error) {
         logger.error({ err: error }, 'Failed to send magic link');
-        res.status(500).json({
-            success: false,
-            error: 'Failed to send magic link'
-        });
+        const apiError: ApiError = { error: 'Internal Server Error', message: 'Failed to send magic link' };
+        res.status(500).json(apiError);
     }
 });
 
@@ -161,16 +156,14 @@ router.post('/send-magic-link', magicLinkLimiter, async (req, res) => {
  * @desc    Verifies the magic link token and authenticates the user
  * @access  Public
  */
-router.post('/verify-magic-link', async (req, res) => {
+router.post<Record<string, never>, any, { token: string }>('/verify-magic-link', async (req, res) => {
     const { token } = req.body;
     logger.info('Received verify-magic-link request with token: %s', token ? 'present' : 'absent');
 
     if (!token) {
         logger.warn('No token provided in request');
-        res.status(400).json({
-            success: false,
-            error: 'Token is required'
-        });
+        const apiError: ApiError = { error: 'Bad Request', message: 'Token is required' };
+        res.status(400).json(apiError);
         return;
     }
 
@@ -188,11 +181,8 @@ router.post('/verify-magic-link', async (req, res) => {
 
         if (!userResult.success) {
             logger.warn('User not found for email: %s', decoded.email);
-            res.status(401).json({
-                success: false,
-                error: 'User not found',
-                email: decoded.email
-            });
+            const apiError: ApiError = { error: 'Unauthorized', message: 'User not found', details: { email: decoded.email } };
+            res.status(401).json(apiError);
             return;
         }
 
@@ -219,10 +209,8 @@ router.post('/verify-magic-link', async (req, res) => {
         } else {
             logger.error({ error, tokenProvided: !!token }, 'Unknown error verifying magic link');
         }
-        res.status(400).json({
-            success: false,
-            error: 'Invalid or expired token'
-        });
+        const apiError: ApiError = { error: 'Bad Request', message: 'Invalid or expired token' };
+        res.status(400).json(apiError);
     }
 });
 
@@ -231,14 +219,12 @@ router.post('/verify-magic-link', async (req, res) => {
  * @desc    Verifies the authentication token
  * @access  Public
  */
-router.post('/verify-token', async (req, res) => {
+router.post<Record<string, never>, any, { token: string }>('/verify-token', async (req, res) => {
     const { token } = req.body;
 
     if (!token) {
-        res.status(400).json({
-            success: false,
-            error: 'Token is required'
-        });
+        const apiError: ApiError = { error: 'Bad Request', message: 'Token is required' };
+        res.status(400).json(apiError);
         return;
     }
 
@@ -258,10 +244,8 @@ router.post('/verify-token', async (req, res) => {
         const userResult = await getUserById(decoded.id);
 
         if (!userResult.success) {
-            res.status(400).json({
-                success: false,
-                error: 'Invalid token'
-            });
+            const apiError: ApiError = { error: 'Bad Request', message: 'Invalid token' };
+            res.status(400).json(apiError);
             return;
         }
 
@@ -274,10 +258,8 @@ router.post('/verify-token', async (req, res) => {
         });
     } catch (error) {
         logger.error({ err: error }, 'Token verification failed');
-        res.status(400).json({
-            success: false,
-            error: 'Invalid or expired token'
-        });
+        const apiError: ApiError = { error: 'Bad Request', message: 'Invalid or expired token' };
+        res.status(400).json(apiError);
     }
 });
 
@@ -286,18 +268,15 @@ router.post('/verify-token', async (req, res) => {
  * @desc    Check if a user ID is available
  * @access  Public
  */
-router.get('/check-user-id/:id', async (req: Request<{ id: string }>, res: Response) => {
+router.get<{ id: string }>('/check-user-id/:id', async (req: Request<{ id: string }>, res: Response) => {
     const { id } = req.params;
     const requestId = res.locals.requestId;
     const logContext = { requestId };
 
     if (!id || id.length < 3) {
         logger.warn({ ...logContext, providedId: id }, 'User ID check failed validation (too short)');
-        res.status(400).json({ 
-            success: false,
-            error: 'ID must be at least 3 characters long',
-            available: false
-        });
+        const apiError: ApiError = { error: 'Bad Request', message: 'ID must be at least 3 characters long' };
+        res.status(400).json(apiError);
         return;
     }
 
@@ -310,11 +289,8 @@ router.get('/check-user-id/:id', async (req: Request<{ id: string }>, res: Respo
         });
     } catch (error) {
         logger.error({ ...logContext, userId: id, err: error }, 'Error checking user ID availability');
-        res.status(500).json({ 
-            success: false,
-            error: 'Server error checking ID availability',
-            available: false
-        });
+        const apiError: ApiError = { error: 'Internal Server Error', message: 'Server error checking ID availability' };
+        res.status(500).json(apiError);
     }
 });
 
@@ -323,7 +299,7 @@ router.get('/check-user-id/:id', async (req: Request<{ id: string }>, res: Respo
  * @desc    Creates a new user account
  * @access  Public (but requires verification token usually)
  */
-router.post('/signup', async (req: Request, res: Response) => {
+router.post<Record<string, never>, any, { id: string, email: string, verificationToken?: string }>('/signup', async (req: Request, res: Response) => {
     const { id, email, verificationToken } = req.body;
     // Generate IDs for logging
     const operationId = randomUUID();
@@ -334,10 +310,8 @@ router.post('/signup', async (req: Request, res: Response) => {
 
     if (!id || !email) {
         logger.warn({ ...logContext, userId: id, emailProvided: !!email }, 'Signup failed: Missing ID or email');
-        res.status(400).json({ 
-            success: false,
-            error: 'ID and email are required'
-        });
+        const apiError: ApiError = { error: 'Bad Request', message: 'ID and email are required' };
+        res.status(400).json(apiError);
         return;
     }
 
@@ -350,19 +324,15 @@ router.post('/signup', async (req: Request, res: Response) => {
             }
             if (decoded.email !== email) {
                 logger.warn({ ...logContext, userId: id, emailInToken: decoded.email, emailInBody: email }, 'Signup failed: Email mismatch between token and request body');
-                res.status(400).json({
-                    success: false,
-                    error: 'Email does not match verification token'
-                });
+                const apiError: ApiError = { error: 'Bad Request', message: 'Email does not match verification token' };
+                res.status(400).json(apiError);
                 return;
             }
             logger.info({ ...logContext, userId: id, email }, 'Signup verification token validated successfully');
         } catch (error: any) {
             logger.error({ ...logContext, userId: id, email, err: error }, 'Signup failed: Invalid or expired verification token');
-            res.status(400).json({
-                success: false,
-                error: 'Invalid or expired verification token'
-            });
+            const apiError: ApiError = { error: 'Bad Request', message: 'Invalid or expired verification token' };
+            res.status(400).json(apiError);
             return;
         }
     } else {
@@ -390,7 +360,8 @@ router.post('/signup', async (req: Request, res: Response) => {
         // Error already logged within createUser if it was a DB error
         // Log context-specific error if needed (e.g., ID/email taken)
         logger.warn({ ...logContext, userId: id, email, creationError: result.error }, `User creation failed: ${result.error}`);
-        res.status(400).json(result);
+        const apiError: ApiError = { error: 'Bad Request', message: result.error || 'User creation failed' };
+        res.status(400).json(apiError);
         return;
     }
 

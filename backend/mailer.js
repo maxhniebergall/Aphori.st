@@ -53,6 +53,11 @@ const verifyTransporter = async () => {
             host: process.env.EMAIL_HOST,
             port: process.env.EMAIL_PORT
         });
+        // In development mode, don't crash the app if email server is not available
+        if (process.env.NODE_ENV === 'development') {
+            console.warn('Email server verification failed in development mode, continuing without email capability');
+            return;
+        }
         // Handled - By Design: Crashes app on start if transporter verification fails.
         throw error;
     }

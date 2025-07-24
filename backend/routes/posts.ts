@@ -4,17 +4,24 @@ import {
     AuthenticatedRequest,
     Post,
     PostCreationRequest,
-    FeedItem
+    FeedItem,
+    ApiError
 } from '../types/index.js';
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
-import { randomUUID } from 'crypto';
-
 import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
+import { VectorService } from '../services/vectorService.js';
+
 let db: LoggedDatabaseClient;
-export const setDb = (databaseClient: LoggedDatabaseClient) => {
+let vectorService: VectorService;
+
+export const MAX_POST_LENGTH = 5000;
+const MIN_POST_LENGTH = 100;
+
+export const setDb = (databaseClient: LoggedDatabaseClient, vs: VectorService) => {
     db = databaseClient;
+    vectorService = vs;
 };
 
 const router = Router();
@@ -45,11 +52,11 @@ function isValidPost(item: any): item is Post {
  * @desc    Creates a new top-level post (story)
  * @access  Authenticated
  */
-router.post<{}, any, { postTree: PostCreationRequest }>(
+router.post<Record<string, never>, { id: string } | ApiError, { postTree: PostCreationRequest }>(
     '/createPost',
     authenticateToken,
-    async (req: Request<{}, any, { postTree: PostCreationRequest }>, res: Response<{ id: string } | { error: string }>) => {
-        const operationId = randomUUID();
+    async (req: Request<Record<string, never>, { id: string } | ApiError, { postTree: PostCreationRequest }>, res: Response<{ id: string } | ApiError>) => {
+        const operationId = generateCondensedUuid()
         const requestId = res.locals.requestId;
         const logContext = { requestId, operationId };
 
@@ -61,22 +68,23 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
             const postContent = req.body.postTree?.content;
             if (!postContent) {
                 logger.warn(logContext, 'Missing post content in request');
-                res.status(400).json({ error: 'Post content is required' });
+                const apiError: ApiError = { error: 'Bad Request', message: 'Post content is required' };
+                res.status(400).json(apiError);
                 return;
             }
 
             const trimmedContent = postContent.trim();
-            const MAX_POST_LENGTH = 5000;
-            const MIN_POST_LENGTH = 100;
 
             if (trimmedContent.length > MAX_POST_LENGTH) {
                  logger.warn({ ...logContext, contentLength: trimmedContent.length }, 'Post content exceeds maximum length');
-                res.status(400).json({ error: `Post content exceeds the maximum length of ${MAX_POST_LENGTH} characters.` });
+                const apiError: ApiError = { error: 'Bad Request', message: `Post content exceeds the maximum length of ${MAX_POST_LENGTH} characters.` };
+                res.status(400).json(apiError);
                 return;
             }
             if (trimmedContent.length < MIN_POST_LENGTH) {
                 logger.warn({ ...logContext, contentLength: trimmedContent.length }, 'Post content below minimum length');
-                res.status(400).json({ error: `Post content must be at least ${MIN_POST_LENGTH} characters long.` });
+                const apiError: ApiError = { error: 'Bad Request', message: `Post content must be at least ${MIN_POST_LENGTH} characters long.` };
+                res.status(400).json(apiError);
                 return;
             }
 
@@ -114,10 +122,19 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
             await db.createPostTransaction(newPost, feedItem);
 
             logger.info({ ...logContext, postId: uuid }, `Successfully created new Post`);
+
+            // Add to vector index (fire and forget for now, or await if critical)
+            if (vectorService) {
+                vectorService.addVector(newPost.id, 'post', newPost.content)
+                    .then(() => logger.info({ ...logContext, postId: newPost.id }, 'Post content added to vector index.'))
+                    .catch(err => logger.error({ ...logContext, postId: newPost.id, err }, 'Error adding post content to vector index.'));
+            }
+
             res.status(201).json({ id: uuid }); // Use 201 Created status
         } catch (err) {
             logger.error({ ...logContext, err }, 'Error creating Post');
-            res.status(500).json({ error: 'Server error creating post' });
+            const apiError: ApiError = { error: 'Internal Server Error', message: 'Server error creating post' };
+            res.status(500).json(apiError);
         }
     }
 );
@@ -127,14 +144,15 @@ router.post<{}, any, { postTree: PostCreationRequest }>(
  * @desc    Retrieves a single post
  * @access  Public
  */
-router.get<{ uuid: string }, Post | { success: boolean; error: string } >('/:uuid', async (req, res) => {
+router.get<{ uuid: string }, Post | ApiError, Record<string, never>>('/:uuid', async (req, res) => {
     const { uuid } = req.params;
     const requestId = res.locals.requestId;
     const logContext = { requestId }; // Include requestId for read operations
 
     if (!uuid) {
         logger.warn(logContext, 'Missing UUID in getPost request');
-        res.status(400).json({ success: false, error: 'UUID is required' });
+        const apiError: ApiError = { error: 'Bad Request', message: 'UUID is required' };
+        res.status(400).json(apiError);
         return;
     }
     try {
@@ -143,13 +161,15 @@ router.get<{ uuid: string }, Post | { success: boolean; error: string } >('/:uui
 
         if (!postData) {
             logger.warn({ ...logContext, uuid }, 'Post not found');
-            res.status(404).json({ success: false, error: 'Post not found' });
+            const apiError: ApiError = { error: 'Not Found', message: 'Post not found' };
+            res.status(404).json(apiError);
             return;
         }
 
         if (!isValidPost(postData)) {
             logger.error({ ...logContext, uuid, postData }, 'Invalid post structure retrieved from DB');
-            res.status(500).json({ success: false, error: 'Invalid post data retrieved' });
+            const apiError: ApiError = { error: 'Internal Server Error', message: 'Invalid post data retrieved' };
+            res.status(500).json(apiError);
             return;
         }
 
@@ -173,7 +193,8 @@ router.get<{ uuid: string }, Post | { success: boolean; error: string } >('/:uui
 
     } catch (error) {
         logger.error({ ...logContext, uuid, err: error }, 'Error in getPost endpoint');
-        res.status(500).json({ success: false, error: 'Server error' });
+        const apiError: ApiError = { error: 'Internal Server Error', message: 'Server error' };
+        res.status(500).json(apiError);
     }
 });
 
