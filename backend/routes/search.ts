@@ -7,6 +7,7 @@ import {
 } from '../types/index.js';
 import { VectorService } from '../services/vectorService.js';
 import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
+import { createVectorError, createValidationError } from '../middleware/errorHandler.js';
 
 let db: LoggedDatabaseClient;
 let vectorService: VectorService;
@@ -23,10 +24,11 @@ const router = Router();
 router.use((req: Request, res: Response, next: NextFunction) => {
   if (!db || !vectorService) {
     logger.error({ requestId: res.locals.requestId }, 'Vector search dependencies not initialised');
-    res.status(500).json({
+    const error = createVectorError('VECTOR_INDEX_UNAVAILABLE', 'Vector search service is not available', res.locals.requestId);
+    res.status(503).json({
       success: false,
       results: [],
-      error: 'Vector search service unavailable',
+      ...error
     });
     return;
   }
@@ -52,7 +54,12 @@ router.get<
 
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
         logger.warn(logContext, 'Missing or invalid query parameter for vector search');
-        res.status(400).json({ success: false, results: [], error: 'Missing or invalid query parameter.' });
+        const error = createValidationError('Query parameter is required and must be a non-empty string', 'query', requestId);
+        res.status(400).json({ 
+            success: false, 
+            results: [], 
+            ...error 
+        });
         return;
     }
 
@@ -111,7 +118,12 @@ router.get<
 
     } catch (error) {
         logger.error({ ...logContext, err: error }, 'Error performing vector search');
-        res.status(500).json({ success: false, results: [], error: 'Internal server error during vector search.' });
+        const apiError = createVectorError('VECTOR_SEARCH_FAILED', 'Vector search failed due to an internal error', requestId);
+        res.status(503).json({ 
+            success: false, 
+            results: [], 
+            ...apiError 
+        });
     }
 });
 
