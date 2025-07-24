@@ -214,3 +214,10 @@ export interface VectorSearchResponse {
     }>;
     error?: string;
 }
+
+export interface ApiError {
+  error: string;
+  message: string;
+  code?: string;
+  details?: unknown;
+}
