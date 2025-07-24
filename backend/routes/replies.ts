@@ -219,7 +219,7 @@ router.get<{ parentId: string }, { success: boolean, data?: { quote: Quote, coun
  * @query   {string} [cursor] - Pagination cursor (timestamp_replyId key for zscan).
  * @returns {CursorPaginatedResponse<ReplyData>} Response with replies and pagination.
  */
-router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, CursorPaginatedResponse<ReplyData> | { success: boolean; error: string }>('/getReplies/:parentId/:quote/:sortCriteria', async (req, res) => {
+router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, CursorPaginatedResponse<ReplyData> | { success: boolean; error: string }, Record<string, never>, { limit?: string, cursor?: string, t?:string }>('/getReplies/:parentId/:quote/:sortCriteria', async (req, res) => {
     try {
         const { parentId, quote, sortCriteria } = req.params;
         const timeBucket = req.query.t as string | undefined; // Read timeBucket

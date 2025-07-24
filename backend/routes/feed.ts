@@ -3,6 +3,7 @@ import logger from '../logger.js';
 import {
     FeedItem,
     FeedItemsResponse,
+    ApiError
 } from '../types/index.js';
 import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
 let db: LoggedDatabaseClient;
@@ -29,7 +30,7 @@ function isValidFeedItem(item: any): item is FeedItem {
  * @desc    Get feed data with pagination
  * @access  Public
  */
-router.get<'/', FeedItemsResponse | { success: boolean; error: string }>('/', async (req, res): Promise<void> => {
+router.get<'/', FeedItemsResponse | ApiError, Record<string, never>, { limit?: string, cursor?: string, t?: string }>('/', async (req, res): Promise<void> => {
     const limit = parseInt(req.query.limit as string) || 3;
     // Cursor is now the Firebase push key (string) or undefined for the first page
     const cursorKey = req.query.cursor as string | undefined;
@@ -68,13 +69,9 @@ router.get<'/', FeedItemsResponse | { success: boolean; error: string }>('/', as
         res.json(responseData);
 
     } catch (error) {
-        if (error instanceof Error) {
-            logger.error({ err: error }, 'Error fetching feed items');
-            res.status(500).json({ success: false, error: 'Internal server error' });
-        } else {
-            logger.error({ error }, 'Unknown error fetching feed items');
-            res.status(500).json({ success: false, error: 'Internal server error' });
-        }
+        logger.error({ err: error }, 'Error fetching feed items');
+        const apiError: ApiError = { error: 'Internal Server Error', message: 'Internal server error' };
+        res.status(500).json(apiError);
     }
 });
 
