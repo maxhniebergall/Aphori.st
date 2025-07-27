@@ -6,7 +6,7 @@ Requirements:
 - Provide type safety for all method parameters
 */
 
-import { RedisSortedSetItem } from '../types/index.js';
+// import { RedisSortedSetItem } from '../types/index.js'; // Unused import - commented out
 
 export abstract class DatabaseClientInterface {
 
