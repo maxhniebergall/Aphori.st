@@ -13,7 +13,16 @@ export default [
         sourceType: 'module'
       },
       globals: {
-        NodeJS: true
+        NodeJS: true,
+        process: 'readonly',
+        console: 'readonly',
+        Buffer: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        global: 'readonly',
+        module: 'readonly',
+        require: 'readonly',
+        exports: 'readonly'
       }
     },
     plugins: {
@@ -29,10 +38,6 @@ export default [
         'argsIgnorePattern': '^_',
         'varsIgnorePattern': '^_'
       }]
-    },
-    env: {
-      node: true,
-      es2022: true
     }
   }
 ]; 
