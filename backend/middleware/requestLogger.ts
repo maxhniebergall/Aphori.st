@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import pinoHttp, { Options as PinoHttpOptions } from 'pino-http';
+import { pinoHttp, Options as PinoHttpOptions } from 'pino-http';
 import { Request, Response, NextFunction } from 'express';
 import { err as errSerializer } from 'pino-std-serializers';
 import logger from '../logger.js'; // Your existing pino logger instance
