@@ -30,7 +30,7 @@ function isValidFeedItem(item: any): item is FeedItem {
  * @desc    Get feed data with pagination
  * @access  Public
  */
-router.get<'/', FeedItemsResponse | ApiError, Record<string, never>, { limit?: string, cursor?: string, t?: string }>('/', async (req, res): Promise<void> => {
+router.get<'/', FeedItemsResponse | ApiError, any, { limit?: string, cursor?: string, t?: string }>('/', async (req, res): Promise<void> => {
     const limit = parseInt(req.query.limit as string) || 3;
     // Cursor is now the Firebase push key (string) or undefined for the first page
     const cursorKey = req.query.cursor as string | undefined;
