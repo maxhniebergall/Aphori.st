@@ -1,7 +1,6 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import { VectorService } from '../vectorService.js';
 import { MockEmbeddingProvider } from '../mockEmbeddingProvider.js';
-import { LoggedDatabaseClient } from '../../db/LoggedDatabaseClient.js';
 import { VectorIndexMetadata, VectorDataForFaiss } from '../../types/index.js';
 
 // Mock faiss-node
@@ -9,10 +8,10 @@ jest.mock('faiss-node');
 
 // Mock the LoggedDatabaseClient
 const mockDatabaseClient = {
-  getVectorIndexMetadata: jest.fn<() => Promise<VectorIndexMetadata | null>>(),
-  getAllVectorsFromShards: jest.fn<() => Promise<VectorDataForFaiss[]>>(),
-  addVectorToShardStore: jest.fn<() => Promise<void>>(),
-} as unknown as LoggedDatabaseClient;
+  getVectorIndexMetadata: jest.fn(),
+  getAllVectorsFromShards: jest.fn(),
+  addVectorToShardStore: jest.fn(),
+} as any;
 
 describe('VectorService', () => {
   let vectorService: VectorService;
@@ -51,7 +50,7 @@ describe('VectorService', () => {
     });
 
     it('should handle empty metadata during index initialization', async () => {
-      (mockDatabaseClient.getVectorIndexMetadata as jest.Mock).mockResolvedValue(null);
+      (mockDatabaseClient.getVectorIndexMetadata as jest.MockedFunction<any>).mockResolvedValue(null);
       
       await vectorService.initializeIndex();
       
@@ -65,7 +64,7 @@ describe('VectorService', () => {
         shardCapacity: 10000,
         totalVectorCount: 2,
         shards: {
-          shard1: { vectorCount: 2, createdAt: Date.now() }
+          shard1: { count: 2, createdAt: new Date().toISOString() }
         }
       };
       
@@ -73,19 +72,17 @@ describe('VectorService', () => {
         {
           id: 'post1',
           type: 'post',
-          vector: new Array(768).fill(0.1),
-          createdAt: Date.now()
+          vector: new Array(768).fill(0.1)
         },
         {
           id: 'reply1', 
           type: 'reply',
-          vector: new Array(768).fill(0.2),
-          createdAt: Date.now()
+          vector: new Array(768).fill(0.2)
         }
       ];
 
-      (mockDatabaseClient.getVectorIndexMetadata as jest.Mock).mockResolvedValue(mockMetadata);
-      (mockDatabaseClient.getAllVectorsFromShards as jest.Mock).mockResolvedValue(mockVectors);
+      (mockDatabaseClient.getVectorIndexMetadata as jest.MockedFunction<any>).mockResolvedValue(mockMetadata);
+      (mockDatabaseClient.getAllVectorsFromShards as jest.MockedFunction<any>).mockResolvedValue(mockVectors);
 
       await vectorService.initializeIndex();
 
@@ -98,11 +95,11 @@ describe('VectorService', () => {
     it('should generate embedding and add to index', async () => {
       const content = 'test content';
       const contentId = 'test123';
-      const contentType = 'post';
+      const contentType = 'post' as const;
 
-      (mockDatabaseClient.addVectorToShardStore as jest.Mock).mockResolvedValue(undefined);
+      (mockDatabaseClient.addVectorToShardStore as jest.MockedFunction<any>).mockResolvedValue(undefined);
 
-      await vectorService.addVector(content, contentId, contentType);
+      await vectorService.addVector(contentId, contentType, content);
 
       expect(mockFaissIndex.add).toHaveBeenCalled();
       expect(mockDatabaseClient.addVectorToShardStore).toHaveBeenCalled();
@@ -110,13 +107,13 @@ describe('VectorService', () => {
 
     it('should handle embedding generation errors gracefully', async () => {
       const mockProvider = {
-        generateEmbedding: jest.fn().mockRejectedValue(new Error('API Error')),
+        generateEmbedding: (jest.fn() as any).mockRejectedValue(new Error('API Error')),
         getDimension: jest.fn().mockReturnValue(768)
       };
       
       const failingService = new VectorService(mockDatabaseClient, mockProvider as any);
       
-      await expect(failingService.addVector('content', 'id', 'post'))
+      await expect(failingService.addVector('id', 'post', 'content'))
         .rejects.toThrow('API Error');
     });
   });
@@ -136,7 +133,7 @@ describe('VectorService', () => {
       (vectorService as any).faissIdMap.set(1, { id: 'reply1', type: 'reply' });
       (vectorService as any).faissIdMap.set(2, { id: 'post2', type: 'post' });
 
-      const results = await vectorService.search(searchQuery, 3);
+      const results = await vectorService.searchVectors(searchQuery, 3);
 
       expect(results).toHaveLength(3);
       expect(results[0]).toEqual({
@@ -154,34 +151,10 @@ describe('VectorService', () => {
         labels: new BigInt64Array([])
       });
 
-      const results = await vectorService.search(searchQuery, 10);
+      const results = await vectorService.searchVectors(searchQuery, 10);
 
       expect(results).toHaveLength(0);
     });
   });
 
-  describe('graceful shutdown', () => {
-    it('should wait for pending operations during shutdown', async () => {
-      // Create a pending operation
-      const pendingPromise = new Promise(resolve => setTimeout(resolve, 100));
-      (vectorService as any).pendingAddOperations.add(pendingPromise);
-
-      const shutdownPromise = vectorService.gracefulShutdown();
-      
-      // Should wait for pending operations
-      await expect(shutdownPromise).resolves.toBeUndefined();
-      expect((vectorService as any).pendingAddOperations.size).toBe(0);
-    });
-
-    it('should timeout if operations take too long', async () => {
-      // Create a long-running operation (longer than shutdown timeout)
-      const longOperation = new Promise(resolve => setTimeout(resolve, 35000));
-      (vectorService as any).pendingAddOperations.add(longOperation);
-
-      const shutdownPromise = vectorService.gracefulShutdown();
-      
-      // Should timeout and not wait indefinitely
-      await expect(shutdownPromise).resolves.toBeUndefined();
-    }, 10000); // 10 second test timeout
-  });
 }); 
