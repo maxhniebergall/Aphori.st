@@ -32,7 +32,7 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
         try {
             logger.debug(`Processing post ${post.id}...`);
             // Call addVector - it handles embedding and storing in the correct shard
-            await vectorService.addVector(post.content, post.id, 'post');
+            await vectorService.addVector(post.id, 'post', post.content);
             processedPosts++;
             logger.debug(`Successfully processed post ${post.id}`);
             // Add a small delay to avoid overwhelming Vertex AI or RTDB (optional)
@@ -59,7 +59,7 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
         try {
             logger.debug(`Processing reply ${reply.id}...`);
             // Call addVector for reply
-            await vectorService.addVector(reply.text, reply.id, 'reply');
+            await vectorService.addVector(reply.id, 'reply', reply.text);
             processedReplies++;
             logger.debug(`Successfully processed reply ${reply.id}`);
              // Add a small delay (optional)

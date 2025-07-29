@@ -200,12 +200,14 @@ await db.connect().then(async () => { // Make the callback async
 
     vectorService = new VectorService(db, embeddingProvider); // Pass the chosen provider
 
+    // Register signal handlers for graceful shutdown - always set regardless of initialization success
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM', vectorService));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT', vectorService));
+
     // --- Initialize Vector Index ---
     try {
         await vectorService.initializeIndex();
         isVectorIndexReady = true;
-        process.on('SIGTERM', () => gracefulShutdown('SIGTERM', vectorService));
-        process.on('SIGINT', () => gracefulShutdown('SIGINT', vectorService));
         logger.info('Vector service index initialized successfully.');
     } catch (err) {
         logger.error({ err }, 'Failed to initialize vector service index. Service will start but search may be unavailable.');

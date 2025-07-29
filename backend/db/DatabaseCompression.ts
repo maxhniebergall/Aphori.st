@@ -1,6 +1,6 @@
 import { deflate, inflate } from 'zlib';
 import { promisify } from 'util';
-import { Compressed } from '../types';
+import { Compressed } from '../types/index.js';
 
 // Promisify zlib functions
 const deflateAsync = promisify(deflate);

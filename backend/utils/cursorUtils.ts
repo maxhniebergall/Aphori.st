@@ -50,8 +50,8 @@ export function decodeCursor(encodedCursor: string): Cursor {
     }
 }
 
-// Define the structure of the decoded cursor
-interface DecodedCursor {
+// Define the structure of the decoded cursor (currently unused but kept for future implementation)
+interface _DecodedCursor {
   id: string;
   timestamp: number;
   type: 'post' | 'reply';

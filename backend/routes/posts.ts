@@ -1,7 +1,8 @@
-import { Router, Response, Request } from 'express';
+import { Router, Response } from 'express';
 import logger from '../logger.js';
 import {
     AuthenticatedRequest,
+    User,
     Post,
     PostCreationRequest,
     FeedItem,
@@ -55,13 +56,12 @@ function isValidPost(item: any): item is Post {
 router.post<Record<string, never>, { id: string } | ApiError, { postTree: PostCreationRequest }>(
     '/createPost',
     authenticateToken,
-    async (req: Request<Record<string, never>, { id: string } | ApiError, { postTree: PostCreationRequest }>, res: Response<{ id: string } | ApiError>) => {
+    async (req, res: Response<{ id: string } | ApiError>) => {
         const operationId = generateCondensedUuid()
         const requestId = res.locals.requestId;
         const logContext = { requestId, operationId };
 
-        const authenticatedReq = req as AuthenticatedRequest;
-        const user = authenticatedReq.user;
+        const user: User = (req as unknown as AuthenticatedRequest).user;
 
         try {
             // TODO: Adjust req.body access if request structure changes from { postTree: { content: ... } }

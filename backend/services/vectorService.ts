@@ -166,6 +166,7 @@ export class VectorService {
     private sanitizeEmbeddingText(text: string): string {
         return text
             .trim()
+            // eslint-disable-next-line no-control-regex
             .replace(/[\x00-\x1F\x7F]/g, '') // Control characters
             .replace(/[\u200B-\u200D\uFEFF]/g, '') // Zero-width spaces
             .replace(/\s+/g, ' ') // Normalize whitespace
