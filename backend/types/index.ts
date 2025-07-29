@@ -53,8 +53,8 @@ export interface Replies {
 }
 
 export enum SortingCriteria {
-    MOST_RECENT = 'MOST_RECENT'
-    // TODO add other sorting criteria
+    // MOST_RECENT = 'MOST_RECENT' // Currently unused, keeping for future use
+    // TODO add other sorting criteria when needed
 }
 
 // Feed Types
@@ -70,7 +70,7 @@ export interface AuthenticatedRequest extends Request {
     user: User;
 }
 
-export interface Compressed<T> {
+export interface Compressed<_T> {
     v: number;
     c: boolean;
     d: string;
