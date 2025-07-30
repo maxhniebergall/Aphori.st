@@ -2,6 +2,7 @@ import { LoggedDatabaseClient } from "./db/LoggedDatabaseClient.js";
 import logger from './logger.js';
 import { migrate } from './migrate.js';
 import { sendStartupEmails, EMAIL_VERSIONS_CONTENT } from './startupMailer.js';
+import { investigateVectorDiscrepancy } from './investigate-vectors.js';
 
 // --- Configuration ---
 const LATEST_SUPPORTED_MAIL_VERSION = "1"; // The version currently rolled out to all users
@@ -40,6 +41,15 @@ export async function checkAndRunMigrations(db: LoggedDatabaseClient): Promise<v
         await executeMigration(db);
     } else {
         logger.info("Skipping data migration based on database version check.");
+    }
+
+    // Always run vector investigation after migration check
+    try {
+        logger.info("Running vector discrepancy investigation...");
+        await investigateVectorDiscrepancy(db);
+    } catch (error: any) {
+        logger.error("Vector investigation failed:", error);
+        // Don't fail startup for investigation issues
     }
 }
 
