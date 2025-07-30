@@ -234,6 +234,13 @@ export class VectorService {
     }
 
     private async _addVectorInternal(contentId: string, type: 'post' | 'reply', text: string): Promise<void> {
+        // Check if vector already exists (idempotent behavior)
+        const exists = await (this.firebaseClient as any).vectorExists(contentId);
+        if (exists) {
+            logger.debug(`Vector for ${contentId} already exists. Skipping generation and storage.`);
+            return;
+        }
+
         if (!this.faissIndex) {
             logger.info('FAISS index is null, initializing with current dimension:', this.embeddingDimension);
             this.faissIndex = new faiss.IndexFlatL2(this.embeddingDimension);
