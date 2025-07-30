@@ -47,12 +47,18 @@ function determineIfMigrationNeeded(dbVersionInfo: any): boolean {
     if (dbVersionInfo === null || dbVersionInfo === undefined) {
         logger.info(`No 'databaseVersion' key found. Migration will be skipped.`);
         return false;
+    } else if (dbVersionInfo === "3") {
+        // Database is at version 3, need to run vector embedding backfill migration to version 4
+        logger.info(`'databaseVersion' is "3". Performing vector embedding backfill migration to version 4.`);
+        return true;
+    } else if (dbVersionInfo === "3->4") {
+        // Migration was interrupted during transition - retry from where it left off
+        logger.info(`'databaseVersion' is "3->4" (transition state). Retrying vector embedding backfill migration to version 4.`);
+        return true;
     } else if (typeof dbVersionInfo === 'object' && dbVersionInfo !== null && 
-               'migrationComplete' in dbVersionInfo && dbVersionInfo.migrationComplete === true && 
-               'current' in dbVersionInfo && dbVersionInfo.current === "3") {
-        // This condition specifically checks if version "2" migration IS complete,
-        // implying we should run the *next* migration (which is migrate.ts aiming for v3)
-        logger.info(`'databaseVersion' indicates version 3 is complete. Performing migration to version 4.`);
+               'status' in dbVersionInfo && dbVersionInfo.status === "failed_vector_migration") {
+        // Previous migration failed - retry the migration
+        logger.warn(`Previous vector migration failed. Retrying migration from version ${dbVersionInfo.fromVersion} to ${dbVersionInfo.toVersion}. Previous error: ${dbVersionInfo.error}`);
         return true;
     } else {
         logger.info(`'databaseVersion' found. Value: ${JSON.stringify(dbVersionInfo)}. Migration will be skipped.`);
