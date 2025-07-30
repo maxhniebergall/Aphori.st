@@ -741,6 +741,28 @@ export class FirebaseClient extends DatabaseClientInterface {
     return allVectors;
   }
 
+  async vectorExists(rawContentId: string): Promise<boolean> {
+    const contentId = this.sanitizeKey(rawContentId);
+    const metadata: VectorIndexMetadata | null = await this.getVectorIndexMetadata();
+    
+    if (!metadata || !metadata.shards) {
+      return false;
+    }
+    
+    // Check all shards for the contentId
+    for (const shardKey of Object.keys(metadata.shards)) {
+      const shardPath = `vectorIndexStore/${shardKey}/${contentId}`;
+      this._assertFirebaseKeyComponentSafe(shardPath, 'vectorExists', 'shardPath');
+      
+      const snapshot = await this.db.ref(shardPath).once('value');
+      if (snapshot.exists()) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
   async addVectorToShardStore(rawContentId: string, vectorEntry: VectorIndexEntry): Promise<void> {
     const contentId = this.sanitizeKey(rawContentId);
     const metadataPath = 'vectorIndexMetadata';
