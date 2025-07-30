@@ -751,9 +751,11 @@ export class FirebaseClient extends DatabaseClientInterface {
     
     // Check all shards for the contentId
     for (const shardKey of Object.keys(metadata.shards)) {
-      const shardPath = `vectorIndexStore/${shardKey}/${contentId}`;
-      this._assertFirebaseKeyComponentSafe(shardPath, 'vectorExists', 'shardPath');
+      // Assert individual path components instead of the full path
+      this._assertFirebaseKeyComponentSafe(shardKey, 'vectorExists', 'shardKey');
+      this._assertFirebaseKeyComponentSafe(contentId, 'vectorExists', 'contentId');
       
+      const shardPath = `vectorIndexStore/${shardKey}/${contentId}`;
       const snapshot = await this.db.ref(shardPath).once('value');
       if (snapshot.exists()) {
         return true;
