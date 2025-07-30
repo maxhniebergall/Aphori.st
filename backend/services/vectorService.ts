@@ -190,8 +190,8 @@ export class VectorService {
             throw new Error(`Text too short for embedding: ${sanitizedText.length} chars`);
         }
 
-        if (text.length > MAX_POST_LENGTH) {
-            throw new Error('generateEmbedding called with string longer than [' + MAX_POST_LENGTH + '] characters, was [' + text.length + ']');
+        if (text.length > MAX_POST_LENGTH*1.1) {
+            throw new Error('generateEmbedding called with string longer than [' + MAX_POST_LENGTH + '] plus 10% buffer characters, was [' + text.length + ']');
         }
         try {
             const embeddingValues = await this.embeddingProvider.generateEmbedding(sanitizedText);
