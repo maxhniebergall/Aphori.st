@@ -264,12 +264,12 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
             return;
         }
                 // Get total count (using zCard with mapped key)
-        const totalCount = await db.getReplyCountByParentQuote(parentId, hashedQuoteKey, sortCriteria) || 0;
+        const totalCount = await db.getReplyCountByParentQuote(parentId, hashedQuoteKey, sortCriteria as string) || 0;
 
         // Fetch reply IDs using zscan for cursor stability
         // FirebaseClient.zscan should handle mapping zSetKey to the index path
         // and using orderByKey().limitToFirst().startAfter(cursor)
-        const { items: replyItems, nextCursor: nextCursorRaw } = await db.getReplyIdsByParentQuote(parentId, hashedQuoteKey, sortCriteria, limit, cursor);
+        const { items: replyItems, nextCursor: nextCursorRaw } = await db.getReplyIdsByParentQuote(parentId, hashedQuoteKey, sortCriteria as string, limit, cursor);
         // zscan returns { score: number, value: string (replyId) }[]
 
 
