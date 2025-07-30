@@ -30,8 +30,8 @@ export class GCPEmbeddingProvider implements EmbeddingProvider {
     if (textToEmbed.trim().length === 0) {
       throw new Error('generateEmbedding called with empty string');
     }
-    if (textToEmbed.length > MAX_POST_LENGTH) {
-      throw new Error('generateEmbedding called with string longer than [' + MAX_POST_LENGTH + '] characters, was [' + textToEmbed.length + ']');
+    if (textToEmbed.length > MAX_POST_LENGTH*1.1) {
+      throw new Error('generateEmbedding called with string longer than [' + MAX_POST_LENGTH + '] plus 10% buffer characters, was [' + textToEmbed.length + ']');
     }
     try {
       const response = await this.genAI.models.embedContent({
