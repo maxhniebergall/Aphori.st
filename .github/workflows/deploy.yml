@@ -79,7 +79,8 @@ jobs:
                         EMAIL_USERNAME=EMAIL_USERNAME:latest,\
                         EMAIL_PASSWORD=EMAIL_PASSWORD:latest,\
                         MAGIC_LINK_SECRET=JWT_SECRET:latest,\
-                        AUTH_TOKEN_SECRET=JWT_SECRET:latest" \
+                        AUTH_TOKEN_SECRET=JWT_SECRET:latest,\
+                        GEMINI_API_KEY=GEMINI_API_KEY:latest" \
           --allow-unauthenticated
 
     - name: Deploy Frontend to Cloud Run
