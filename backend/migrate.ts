@@ -1,8 +1,7 @@
 import logger from './logger.js';
-import { FirebaseClient } from './db/FirebaseClient.js';
 import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 import { VectorService } from './services/vectorService.js';
-import { Post, Reply, VectorIndexEntry } from './types/index.js';
+import { Post, Reply } from './types/index.js';
 import dotenv from 'dotenv';
 import { GCPEmbeddingProvider } from './services/gcpEmbeddingProvider.js';
 
