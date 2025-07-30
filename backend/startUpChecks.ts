@@ -49,10 +49,10 @@ function determineIfMigrationNeeded(dbVersionInfo: any): boolean {
         return false;
     } else if (typeof dbVersionInfo === 'object' && dbVersionInfo !== null && 
                'migrationComplete' in dbVersionInfo && dbVersionInfo.migrationComplete === true && 
-               'current' in dbVersionInfo && dbVersionInfo.current === "2") {
+               'current' in dbVersionInfo && dbVersionInfo.current === "3") {
         // This condition specifically checks if version "2" migration IS complete,
         // implying we should run the *next* migration (which is migrate.ts aiming for v3)
-        logger.info(`'databaseVersion' indicates version 2 is complete. Performing migration to version 3.`);
+        logger.info(`'databaseVersion' indicates version 3 is complete. Performing migration to version 4.`);
         return true;
     } else {
         logger.info(`'databaseVersion' found. Value: ${JSON.stringify(dbVersionInfo)}. Migration will be skipped.`);
