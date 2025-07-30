@@ -107,12 +107,7 @@ export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
         // Database client is already connected when migration is called from server.ts
         logger.info("Using existing database connection for vector migration.");
 
-        // Instantiate VectorService here, requires GCP creds from env
-        const gcpProjectId = process.env.GCP_PROJECT_ID;
-        const gcpLocation = process.env.GCP_LOCATION;
-        if (!gcpProjectId || !gcpLocation) {
-           throw new Error('GCP_PROJECT_ID and GCP_LOCATION environment variables are required for VectorService in migration.');
-        }
+        // Instantiate VectorService here, requires GEMINI_API_KEY from env
         const embeddingProvider = new GCPEmbeddingProvider(
             'gemini-embedding-exp-03-07',
             768
