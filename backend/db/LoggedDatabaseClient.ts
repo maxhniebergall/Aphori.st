@@ -2,6 +2,7 @@ import type { Logger } from 'pino';   // type-only import
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 import { LogContext } from './loggingTypes.js';
 import { FirebaseClient } from './FirebaseClient.js';
+import { VectorIndexMetadata, VectorIndexEntry, VectorDataForFaiss } from '../types/index.js';
 
 export class LoggedDatabaseClient implements DatabaseClientInterface { 
     private underlyingClient: DatabaseClientInterface; 
@@ -288,6 +289,31 @@ export class LoggedDatabaseClient implements DatabaseClientInterface {
         const logPayload = this.createLogPayload('runTransaction', path, { transactionUpdate: 'function' }, context);
         this.logger.info(logPayload, 'Executing DB command: runTransaction'); // WRITE = info
         try { return this.underlyingClient.runTransaction(path, transactionUpdate); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: runTransaction'); throw e; }
+    }
+
+    // --- Vector Search Methods (FirebaseClient specific) ---
+    async getVectorIndexMetadata(context?: LogContext): Promise<VectorIndexMetadata | null> {
+        const logPayload = this.createLogPayload('getVectorIndexMetadata', null, null, context);
+        this.logger.debug(logPayload, 'Executing DB command: getVectorIndexMetadata'); // READ = debug
+        try { return (this.underlyingClient as any).getVectorIndexMetadata(); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: getVectorIndexMetadata'); throw e; }
+    }
+
+    async getAllVectorsFromShards(shardKeys: string[], faissIndexLimit: number, context?: LogContext): Promise<VectorDataForFaiss[]> {
+        const logPayload = this.createLogPayload('getAllVectorsFromShards', null, { shardKeys, faissIndexLimit }, context);
+        this.logger.debug(logPayload, 'Executing DB command: getAllVectorsFromShards'); // READ = debug
+        try { return (this.underlyingClient as any).getAllVectorsFromShards(shardKeys, faissIndexLimit); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: getAllVectorsFromShards'); throw e; }
+    }
+
+    async vectorExists(rawContentId: string, context?: LogContext): Promise<boolean> {
+        const logPayload = this.createLogPayload('vectorExists', rawContentId, null, context);
+        this.logger.debug(logPayload, 'Executing DB command: vectorExists'); // READ = debug
+        try { return (this.underlyingClient as any).vectorExists(rawContentId); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: vectorExists'); throw e; }
+    }
+
+    async addVectorToShardStore(rawContentId: string, vectorEntry: VectorIndexEntry, context?: LogContext): Promise<void> {
+        const logPayload = this.createLogPayload('addVectorToShardStore', rawContentId, { vectorEntry }, context);
+        this.logger.info(logPayload, 'Executing DB command: addVectorToShardStore'); // WRITE = info
+        try { return (this.underlyingClient as any).addVectorToShardStore(rawContentId, vectorEntry); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: addVectorToShardStore'); throw e; }
     }
 
     // Add missing Global Feed methods from interface
