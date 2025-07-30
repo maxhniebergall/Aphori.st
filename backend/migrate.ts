@@ -15,6 +15,9 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
     let processedReplies = 0;
     let failedPosts = 0;
     let failedReplies = 0;
+    const failedPostIds: string[] = [];
+    const successfulPostIds: string[] = [];
+    const skippedPostIds: string[] = [];
 
     // 1. Fetch all posts
     logger.info('Fetching all posts...');
@@ -23,23 +26,27 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
     const posts: Post[] = postsData ? Object.values(postsData) : [];
     logger.info(`Found ${posts.length} posts to process.`);
 
-    for (const post of posts) {
+    for (let i = 0; i < posts.length; i++) {
+        const post = posts[i];
         if (!post || !post.id || !post.content) {
-            logger.warn('Skipping invalid post object:', post);
+            logger.warn(`Skipping invalid post object at index ${i}:`, post);
             failedPosts++;
+            if (post?.id) skippedPostIds.push(post.id);
             continue;
         }
         try {
-            logger.debug(`Processing post ${post.id}...`);
+            logger.info(`Processing post ${i + 1}/${posts.length}: ${post.id}...`);
             // Call addVector - it handles embedding and storing in the correct shard
             await vectorService.addVector(post.id, 'post', post.content);
             processedPosts++;
-            logger.debug(`Successfully processed post ${post.id}`);
+            successfulPostIds.push(post.id);
+            logger.info(`Successfully processed post ${i + 1}/${posts.length}: ${post.id}`);
             // Add a small delay to avoid overwhelming Vertex AI or RTDB (optional)
             await new Promise(resolve => setTimeout(resolve, 50)); 
         } catch (error: any) {
-            logger.error(`Failed to process vector for post ${post.id}: ${error.message}`, { err: error });
+            logger.error(`Failed to process vector for post ${i + 1}/${posts.length}: ${post.id}: ${error.message}`, { err: error });
             failedPosts++;
+            failedPostIds.push(post.id);
         }
     }
     logger.info(`Finished processing posts. Success: ${processedPosts}, Failed: ${failedPosts}`);
@@ -72,6 +79,45 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
     logger.info(`Finished processing replies. Success: ${processedReplies}, Failed: ${failedReplies}`);
 
     logger.info(`Vector Embedding Backfill Process finished. Total Processed: Posts=${processedPosts}, Replies=${processedReplies}. Total Failed: Posts=${failedPosts}, Replies=${failedReplies}`); // Updated log message
+
+    // Verify actual vector count vs processed count
+    try {
+        const metadata = await (dbClient as any).getVectorIndexMetadata();
+        const actualVectorCount = metadata?.totalVectorCount || 0;
+        const expectedProcessedCount = processedPosts + processedReplies;
+        
+        logger.info(`Vector count verification: Expected processed=${expectedProcessedCount}, Actual stored in metadata=${actualVectorCount}`);
+        
+        if (actualVectorCount !== expectedProcessedCount) {
+            logger.warn(`DISCREPANCY DETECTED: Metadata shows ${actualVectorCount} vectors but we processed ${expectedProcessedCount} successfully. Difference: ${actualVectorCount - expectedProcessedCount}`);
+            
+            // Try to get actual vector count from shards
+            if (metadata?.shards) {
+                const shardKeys = Object.keys(metadata.shards);
+                logger.info(`Checking actual vectors in ${shardKeys.length} shards...`);
+                
+                for (const shardKey of shardKeys) {
+                    const shardPath = `vectorIndexStore/${shardKey}`;
+                    const shardData = await dbClient.getRawPath(shardPath);
+                    const actualShardCount = shardData ? Object.keys(shardData).length : 0;
+                    const metadataShardCount = metadata.shards[shardKey]?.count || 0;
+                    logger.info(`Shard ${shardKey}: metadata count=${metadataShardCount}, actual vectors=${actualShardCount}`);
+                }
+            }
+        }
+    } catch (error: any) {
+        logger.error('Error during vector count verification:', error);
+    }
+    
+    // Report which posts weren't properly ingested
+    logger.info(`MIGRATION SUMMARY:`);
+    logger.info(`- Successful posts: ${successfulPostIds.length} IDs: [${successfulPostIds.slice(0, 10).join(', ')}${successfulPostIds.length > 10 ? '...' : ''}]`);
+    if (failedPostIds.length > 0) {
+        logger.warn(`- Failed posts: ${failedPostIds.length} IDs: [${failedPostIds.join(', ')}]`);
+    }
+    if (skippedPostIds.length > 0) {
+        logger.warn(`- Skipped posts: ${skippedPostIds.length} IDs: [${skippedPostIds.join(', ')}]`);
+    }
 
     if (failedPosts > 0 || failedReplies > 0) {
         // Decide if failure is critical. For now, just log and maybe throw a warning-level error.

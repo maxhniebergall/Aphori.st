@@ -234,28 +234,36 @@ export class VectorService {
     }
 
     private async _addVectorInternal(contentId: string, type: 'post' | 'reply', text: string): Promise<void> {
+        logger.info(`[VECTOR_ADD] Starting addVector for ${type} ${contentId}`);
+        
         // Check if vector already exists (idempotent behavior)
         const exists = await (this.firebaseClient as any).vectorExists(contentId);
         if (exists) {
-            logger.debug(`Vector for ${contentId} already exists. Skipping generation and storage.`);
+            logger.info(`[VECTOR_ADD] Vector for ${contentId} already exists. Skipping generation and storage.`);
             return;
         }
+        
+        logger.info(`[VECTOR_ADD] Vector for ${contentId} does not exist, proceeding with generation...`);
 
         if (!this.faissIndex) {
             logger.info('FAISS index is null, initializing with current dimension:', this.embeddingDimension);
             this.faissIndex = new faiss.IndexFlatL2(this.embeddingDimension);
         }
 
+        logger.info(`[VECTOR_ADD] Generating embedding for ${contentId}...`);
         const vector = await this.generateEmbedding(text);
         if (!vector) {
-            logger.error(`Failed to generate embedding for ${type} ${contentId}. Skipping add.`);
+            logger.error(`[VECTOR_ADD] FAILED: Failed to generate embedding for ${type} ${contentId}. Skipping add.`);
             return;
         }
+        logger.info(`[VECTOR_ADD] Successfully generated embedding for ${contentId} (dimension: ${vector.length})`);        
 
         try {
+            logger.info(`[VECTOR_ADD] Validating vector for ${contentId}...`);
             this.validateVector(vector);
+            logger.info(`[VECTOR_ADD] Vector validation passed for ${contentId}`);
         } catch (error) {
-            logger.error(`Vector validation failed for ${type} ${contentId}: ${(error as Error).message}. Skipping add.`);
+            logger.error(`[VECTOR_ADD] FAILED: Vector validation failed for ${type} ${contentId}: ${(error as Error).message}. Skipping add.`);
             return;
         }
 
@@ -266,28 +274,32 @@ export class VectorService {
         };
 
         try {
+            logger.info(`[VECTOR_ADD] Saving vector for ${contentId} to RTDB shard store...`);
             await (this.firebaseClient as any).addVectorToShardStore(contentId, vectorEntry);
-            logger.info(`Vector for ${contentId} saved to RTDB vector store.`);
+            logger.info(`[VECTOR_ADD] Vector for ${contentId} saved to RTDB vector store.`);
         } catch (error) {
-            logger.error(`Error saving vector for ${contentId} to RTDB:`, error);
+            logger.error(`[VECTOR_ADD] FAILED: Error saving vector for ${contentId} to RTDB:`, error);
             return;
         }
 
         if (this.faissIndex.ntotal() < MAX_FAISS_INDEX_SIZE) {
             try {
+                logger.info(`[VECTOR_ADD] Adding vector for ${contentId} to FAISS index...`);
                 const currentFaissInternalIndex = this.faissIndex.ntotal();
                 this.faissIndex.add(vector);
                 this.faissIdMap.set(currentFaissInternalIndex, { id: contentId, type: type });
-                logger.info(`Vector for ${contentId} added to in-memory FAISS index (new total: ${this.faissIndex.ntotal()}).`);
+                logger.info(`[VECTOR_ADD] Vector for ${contentId} added to in-memory FAISS index (new total: ${this.faissIndex.ntotal()}).`);
             } catch (error) {
-                logger.error(`Error adding vector for ${contentId} to FAISS index:`, error);
+                logger.error(`[VECTOR_ADD] FAILED: Error adding vector for ${contentId} to FAISS index:`, error);
                 // If FAISS add fails after successful RTDB write, we have an inconsistency.
                 // For now, we log this. A more robust solution would be a reconciliation process.
-                logger.error(`CRITICAL INCONSISTENCY: Vector for ${contentId} saved to RTDB but failed to add to FAISS.`);
+                logger.error(`[VECTOR_ADD] CRITICAL INCONSISTENCY: Vector for ${contentId} saved to RTDB but failed to add to FAISS.`);
             }
         } else {
-            logger.warn(`FAISS index limit (${MAX_FAISS_INDEX_SIZE}) reached. Vector for ${contentId} not added to in-memory index, but was saved to RTDB.`);
+            logger.warn(`[VECTOR_ADD] FAISS index limit (${MAX_FAISS_INDEX_SIZE}) reached. Vector for ${contentId} not added to in-memory index, but was saved to RTDB.`);
         }
+        
+        logger.info(`[VECTOR_ADD] COMPLETED: Successfully processed vector for ${type} ${contentId}`);
     }
 
     async searchVectors(queryText: string, k: number): Promise<{ id: string, type: 'post' | 'reply', score: number }[]> {
