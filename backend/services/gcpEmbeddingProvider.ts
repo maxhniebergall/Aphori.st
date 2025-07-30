@@ -40,8 +40,9 @@ export class GCPEmbeddingProvider implements EmbeddingProvider {
         // The JS example uses a single string for 'contents', but TS types often prefer array for 'contents'.
         // Let's try with an array first. If it complains, we can revert to single string for `contents`.
         config: { // As per JS documentation and linter feedback
-          taskType: "SEMANTIC_SIMILARITY" // Use camelCase taskType inside config
-        }
+          taskType: "SEMANTIC_SIMILARITY", // Use camelCase taskType inside config
+          outputDimensionality: this.dimension,
+        },
       });
 
       // response.embeddings is ContentEmbedding[]
