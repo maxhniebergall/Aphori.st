@@ -95,12 +95,20 @@ export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
         return; // Exit if already at target version
     }
     
-    if (currentDbVersion !== '3') {
-        logger.error(`Migration script expected database version '3' to run vector backfill, but found version '${currentDbVersion}'. Halting migration.`);
-        throw new Error(`Migration prerequisite not met: Expected DB version '3', found '${currentDbVersion}'.`);
+    // Check if this is a valid state to run vector migration
+    const isValidMigrationState = (
+        currentDbVersion === '3' || // Fresh migration from version 3
+        currentDbVersion === '3->4' || // Interrupted migration
+        (typeof currentDbVersion === 'object' && currentDbVersion !== null && 
+         'status' in currentDbVersion && currentDbVersion.status === "failed_vector_migration") // Failed migration retry
+    );
+    
+    if (!isValidMigrationState) {
+        logger.error(`Migration script cannot run vector backfill from current database version: ${JSON.stringify(currentDbVersion)}. Expected version '3', '3->4', or failed migration object.`);
+        throw new Error(`Migration prerequisite not met: Invalid DB version for vector migration: ${JSON.stringify(currentDbVersion)}`);
     }
 
-    // Proceed only if currentDbVersion is '3'
+    // Proceed with vector migration from valid state
     logger.info(`Running Vector Embedding Backfill Migration (Version ${MIGRATION_VERSION_STRING})...`);
 
     try {
