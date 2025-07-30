@@ -2,7 +2,6 @@ import { LoggedDatabaseClient } from "./db/LoggedDatabaseClient.js";
 import logger from './logger.js';
 import { migrate } from './migrate.js';
 import { sendStartupEmails, EMAIL_VERSIONS_CONTENT } from './startupMailer.js';
-import { investigateVectorDiscrepancy } from './investigate-vectors.js';
 
 // --- Configuration ---
 const LATEST_SUPPORTED_MAIL_VERSION = "1"; // The version currently rolled out to all users
@@ -46,9 +45,20 @@ export async function checkAndRunMigrations(db: LoggedDatabaseClient): Promise<v
     // Always run vector investigation after migration check
     try {
         logger.info("Running vector discrepancy investigation...");
+        logger.info("Attempting to import investigation module...");
+        
+        const { investigateVectorDiscrepancy } = await import('./investigate-vectors.js');
+        logger.info("Investigation module imported successfully");
+        
         await investigateVectorDiscrepancy(db);
+        logger.info("Vector investigation completed successfully");
     } catch (error: any) {
         logger.error("Vector investigation failed:", error);
+        logger.error("Error details:", {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
         // Don't fail startup for investigation issues
     }
 }
