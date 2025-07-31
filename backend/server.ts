@@ -205,7 +205,7 @@ await db.connect().then(async () => { // Make the callback async
     process.on('SIGINT', () => gracefulShutdown('SIGINT', vectorService));
 
     // --- Initialize Vector Index ---
-    try {
+    try {   
         await vectorService.initializeIndex();
         isVectorIndexReady = true;
         logger.info('Vector service index initialized successfully.');
