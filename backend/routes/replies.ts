@@ -5,7 +5,8 @@ import {
     User,
     Quote,
     CreateReplyResponse, SortingCriteria, CursorPaginatedResponse,
-    CreateReplyRequest
+    CreateReplyRequest,
+    Reply
 } from '../types/index.js';
 import { uuidv7obj } from 'uuidv7';
 import { Uuid25 } from 'uuid25';
@@ -13,13 +14,17 @@ import { authenticateToken } from '../middleware/authMiddleware.js';
 import { getQuoteKey as generateHashedQuoteKey } from '../utils/quoteUtils.js';
 import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
 import { VectorService } from '../services/vectorService.js';
+import { DuplicateDetectionService } from '../services/duplicateDetectionService.js';
 
 let db: LoggedDatabaseClient;
 let vectorService: VectorService;
+let duplicateDetectionService: DuplicateDetectionService;
 
 export const setDb = (databaseClient: LoggedDatabaseClient, vs: VectorService) => {
     db = databaseClient;
     vectorService = vs;
+    // Initialize duplicate detection service
+    duplicateDetectionService = new DuplicateDetectionService(vs, databaseClient);
 };
 
 const router = Router();
@@ -136,11 +141,62 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
             'Initiating CreateReply action'
         );
 
+        // First, create the reply in the database
         await db.createReplyTransaction(newReply, hashedQuoteKey, logContext);
 
         logger.info({ ...logContext, replyId, parentId: actualParentId }, 'Successfully created new reply');
 
-        // Add to vector index (fire and forget for now, or await if critical)
+        // Convert to Reply interface for duplicate detection
+        const replyForDuplicateCheck: Reply = {
+            id: newReply.id,
+            text: newReply.text,
+            parentId: newReply.parentId,
+            rootPostId: newReply.rootPostId,
+            quote: newReply.quote,
+            authorId: newReply.authorId,
+            createdAt: newReply.createdAt
+        };
+
+        // Check for duplicates after reply creation but before vector indexing
+        if (duplicateDetectionService && vectorService) {
+            try {
+                const duplicateResult = await duplicateDetectionService.checkForDuplicates(replyForDuplicateCheck, logContext);
+                
+                if (duplicateResult.isDuplicate) {
+                    logger.info({ ...logContext, replyId: newReply.id }, 'Duplicate reply detected', {
+                        matchedReplyId: duplicateResult.matchedReplyId,
+                        similarityScore: duplicateResult.similarityScore
+                    });
+
+                    if (duplicateResult.duplicateGroup) {
+                        // Add to existing duplicate group
+                        await duplicateDetectionService.addToDuplicateGroup(
+                            duplicateResult.duplicateGroup.id,
+                            replyForDuplicateCheck,
+                            duplicateResult.similarityScore!,
+                            logContext
+                        );
+                    } else if (duplicateResult.matchedReplyId) {
+                        // Create new duplicate group
+                        const originalReply = await db.getReply(duplicateResult.matchedReplyId);
+                        if (originalReply) {
+                            await duplicateDetectionService.createDuplicateGroup(
+                                originalReply,
+                                replyForDuplicateCheck,
+                                duplicateResult.similarityScore!,
+                                logContext
+                            );
+                        }
+                    }
+                }
+            } catch (duplicateError) {
+                // Log error but don't fail the reply creation
+                logger.error({ ...logContext, replyId: newReply.id, err: duplicateError }, 
+                    'Error during duplicate detection, proceeding with reply creation');
+            }
+        }
+
+        // Add to vector index (fire and forget for now, or await if critical)  
         if (vectorService) {
             vectorService.addVector(newReply.id, 'reply', newReply.text)
                 .then(() => logger.info({ ...logContext, replyId: newReply.id }, 'Reply content added to vector index.'))
@@ -155,6 +211,76 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
     } catch (err) {
         logger.error({ ...logContext, err }, 'Error creating reply');
         res.status(500).json({ success: false, error: 'Server error creating reply' });
+    }
+});
+
+/**
+ * @route   GET /replies/duplicate/:groupId
+ * @desc    Get duplicate group with all related replies
+ * @access  Public (for now)
+ */
+router.get<{ groupId: string }>('/duplicate/:groupId', async (req: Request, res: Response) => {
+    const { groupId } = req.params;
+    const requestId = res.locals.requestId;
+    const logContext = { requestId };
+
+    try {
+        if (!duplicateDetectionService) {
+            logger.error(logContext, 'Duplicate detection service not initialized');
+            res.status(503).json({ success: false, error: 'Duplicate detection service unavailable' });
+            return;
+        }
+
+        const result = await duplicateDetectionService.getDuplicateGroupWithReplies(groupId);
+        
+        if (!result) {
+            logger.warn({ ...logContext, groupId }, 'Duplicate group not found');
+            res.status(404).json({ success: false, error: 'Duplicate group not found' });
+            return;
+        }
+
+        logger.info({ ...logContext, groupId }, 'Successfully retrieved duplicate group');
+        res.status(200).json({
+            success: true,
+            data: {
+                originalReply: result.originalReply,
+                duplicates: result.duplicates,
+                group: result.group
+            }
+        });
+    } catch (err) {
+        logger.error({ ...logContext, groupId, err }, 'Error retrieving duplicate group');
+        res.status(500).json({ success: false, error: 'Server error retrieving duplicate group' });
+    }
+});
+
+/**
+ * @route   POST /replies/duplicate/:groupId/vote
+ * @desc    Vote for a duplicate reply in a group
+ * @access  Authenticated
+ */
+router.post<{ groupId: string }, { success: boolean, error?: string }, { replyId: string }>('/duplicate/:groupId/vote', authenticateToken, async (req: Request, res: Response) => {
+    const { groupId } = req.params;
+    const { replyId } = req.body;
+    const user: User = (req as AuthenticatedRequest).user;
+    const requestId = res.locals.requestId;
+    const logContext = { requestId, groupId, replyId, userId: user.id };
+
+    try {
+        if (!replyId) {
+            logger.warn(logContext, 'Missing replyId in vote request');
+            res.status(400).json({ success: false, error: 'Missing replyId' });
+            return;
+        }
+
+        // Store the user's vote
+        await db.setUserDuplicateVote(user.id, groupId, replyId);
+
+        logger.info(logContext, 'Successfully recorded duplicate vote');
+        res.status(200).json({ success: true });
+    } catch (err) {
+        logger.error({ ...logContext, err }, 'Error recording duplicate vote');
+        res.status(500).json({ success: false, error: 'Server error recording vote' });
     }
 });
 
