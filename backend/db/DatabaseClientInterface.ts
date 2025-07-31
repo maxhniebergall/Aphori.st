@@ -52,6 +52,17 @@ export abstract class DatabaseClientInterface {
   abstract addReplyToRootPostRepliesIndex(_rawRootPostId: string, _rawReplyId: string): Promise<void>;
   abstract createReplyTransaction(_replyData: any, _hashedQuoteKey: string): Promise<void>;
 
+  // --- Semantic Methods: Duplicate Reply Management ---
+  abstract getDuplicateReply(_rawDuplicateReplyId: string): Promise<any | null>;
+  abstract setDuplicateReply(_rawDuplicateReplyId: string, _duplicateReplyData: any): Promise<void>;
+  abstract getDuplicateGroup(_rawGroupId: string): Promise<any | null>;
+  abstract setDuplicateGroup(_rawGroupId: string, _duplicateGroupData: any): Promise<void>;
+  abstract addReplyToDuplicateGroup(_rawGroupId: string, _rawReplyId: string): Promise<void>;
+  abstract getDuplicatesByGroup(_rawGroupId: string): Promise<string[] | null>;
+  abstract getUserDuplicateVote(_rawUserId: string, _rawGroupId: string): Promise<string | null>;
+  abstract setUserDuplicateVote(_rawUserId: string, _rawGroupId: string, _rawReplyId: string): Promise<void>;
+  abstract createDuplicateGroupTransaction(_duplicateGroupData: any, _originalReplyId: string, _duplicateReplyData: any): Promise<void>;
+
   // --- Semantic Methods: Feed Management / Indexing ---
   abstract addReplyToGlobalFeedIndex(_rawReplyId: string, _score: number, _replyTeaserData?: any): Promise<void>;
   abstract addReplyToParentQuoteIndex(_rawParentId: string, _rawHashedQuoteKey: string, _rawReplyId: string, _score: number): Promise<void>;

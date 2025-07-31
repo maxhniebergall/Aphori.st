@@ -142,6 +142,35 @@ export class RedisClient extends DatabaseClientInterface {
   runTransaction(path: string, transactionUpdate: (currentData: any) => any): Promise<{ committed: boolean; snapshot: any | null; }> {
     throw new Error('Method not implemented.');
   }
+
+  // --- Duplicate Reply Management Methods (Not implemented for Redis) ---
+  getDuplicateReply(_rawDuplicateReplyId: string): Promise<any | null> {
+    throw new Error('Duplicate reply methods not implemented for Redis client');
+  }
+  setDuplicateReply(_rawDuplicateReplyId: string, _duplicateReplyData: any): Promise<void> {
+    throw new Error('Duplicate reply methods not implemented for Redis client');
+  }
+  getDuplicateGroup(_rawGroupId: string): Promise<any | null> {
+    throw new Error('Duplicate reply methods not implemented for Redis client');
+  }
+  setDuplicateGroup(_rawGroupId: string, _duplicateGroupData: any): Promise<void> {
+    throw new Error('Duplicate reply methods not implemented for Redis client');
+  }
+  addReplyToDuplicateGroup(_rawGroupId: string, _rawReplyId: string): Promise<void> {
+    throw new Error('Duplicate reply methods not implemented for Redis client');
+  }
+  getDuplicatesByGroup(_rawGroupId: string): Promise<string[] | null> {
+    throw new Error('Duplicate reply methods not implemented for Redis client');
+  }
+  getUserDuplicateVote(_rawUserId: string, _rawGroupId: string): Promise<string | null> {
+    throw new Error('Duplicate reply methods not implemented for Redis client');
+  }
+  setUserDuplicateVote(_rawUserId: string, _rawGroupId: string, _rawReplyId: string): Promise<void> {
+    throw new Error('Duplicate reply methods not implemented for Redis client');
+  }
+  createDuplicateGroupTransaction(_duplicateGroupData: any, _originalReplyId: string, _duplicateReplyData: any): Promise<void> {
+    throw new Error('Duplicate reply methods not implemented for Redis client');
+  }
   private client: RedisClientType;
 
   constructor(config: any) {
