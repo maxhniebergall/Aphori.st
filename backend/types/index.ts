@@ -251,6 +251,12 @@ export interface VectorSearchResponse {
         score: number; // Similarity score/distance from FAISS
         data: PostData | ReplyData; // Full post or reply object, fetched using 'type'
     }>;
+    pagination?: {
+        offset: number;
+        limit: number;
+        total: number;
+        hasMore: boolean;
+    };
     error?: string;
 }
 
