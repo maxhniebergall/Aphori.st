@@ -704,6 +704,11 @@ export class FirebaseClient extends DatabaseClientInterface {
   }
 
   async getAllVectorsFromShards(shardKeys: string[], faissIndexLimit: number): Promise<VectorDataForFaiss[]> {
+    for (const shardKey of shardKeys) {
+
+      this._assertFirebaseKeyComponentSafe(shardKey, 'getAllVectorsFromShards', 'shardKey');
+      this._assertFirebaseKeyComponentSafe(shardKey, 'getAllVectorsFromShards', 'contentId');
+    }
     const allVectors: VectorDataForFaiss[] = [];
     let vectorsFetched = 0;
 
@@ -715,7 +720,6 @@ export class FirebaseClient extends DatabaseClientInterface {
 
       const shardPath = `vectorIndexStore/${shardKey}`;
       // Assuming shardKey is already safe (e.g., 'shard_0', 'shard_1')
-      this._assertFirebaseKeyComponentSafe(shardPath, 'getAllVectorsFromShards', 'shardPath');
       const snapshot = await this.db.ref(shardPath).limitToFirst(faissIndexLimit - vectorsFetched).once('value');
 
       if (snapshot.exists()) {
