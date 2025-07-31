@@ -357,7 +357,8 @@ export class VectorService {
                 id: info.id,
                 type: info.type,
                 score: searchResultScores[i] !== undefined ? searchResultScores[i] : Infinity
-            })).filter(r => r.id && Number.isFinite(r.score));
+            })).filter(r => r.id && Number.isFinite(r.score))
+            .sort((a, b) => a.score - b.score); // Sort by L2 distance ascending (lower = more similar)
 
             return combinedResults;
 
