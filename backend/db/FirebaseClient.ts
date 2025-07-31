@@ -906,4 +906,93 @@ export class FirebaseClient extends DatabaseClientInterface {
     const path = oldKey; // Use the raw key directly as the path
     await this.db.ref(path).remove();
   }
+
+  // --- Semantic Methods: Duplicate Reply Management ---
+  async getDuplicateReply(rawDuplicateReplyId: string): Promise<any | null> {
+    const duplicateReplyId = this.sanitizeKey(rawDuplicateReplyId);
+    const path = `duplicateReplies/${duplicateReplyId}`;
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async setDuplicateReply(rawDuplicateReplyId: string, duplicateReplyData: any): Promise<void> {
+    const duplicateReplyId = this.sanitizeKey(rawDuplicateReplyId);
+    const path = `duplicateReplies/${duplicateReplyId}`;
+    await this.db.ref(path).set(duplicateReplyData);
+  }
+
+  async getDuplicateGroup(rawGroupId: string): Promise<any | null> {
+    const groupId = this.sanitizeKey(rawGroupId);
+    const path = `duplicateGroups/${groupId}`;
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async setDuplicateGroup(rawGroupId: string, duplicateGroupData: any): Promise<void> {
+    const groupId = this.sanitizeKey(rawGroupId);
+    const path = `duplicateGroups/${groupId}`;
+    await this.db.ref(path).set(duplicateGroupData);
+  }
+
+  async addReplyToDuplicateGroup(rawGroupId: string, rawReplyId: string): Promise<void> {
+    const groupId = this.sanitizeKey(rawGroupId);
+    const replyId = this.sanitizeKey(rawReplyId);
+    const path = `indexes/duplicatesByGroup/${groupId}/${replyId}`;
+    await this.db.ref(path).set(true);
+  }
+
+  async getDuplicatesByGroup(rawGroupId: string): Promise<string[] | null> {
+    const groupId = this.sanitizeKey(rawGroupId);
+    const path = `indexes/duplicatesByGroup/${groupId}`;
+    const snapshot = await this.db.ref(path).once('value');
+    if (!snapshot.exists()) {
+      return null;
+    }
+    return Object.keys(snapshot.val());
+  }
+
+  async getUserDuplicateVote(rawUserId: string, rawGroupId: string): Promise<string | null> {
+    const userId = this.sanitizeKey(rawUserId);
+    const groupId = this.sanitizeKey(rawGroupId);
+    const path = `userMetadata/${userId}/duplicateVotes/${groupId}`;
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async setUserDuplicateVote(rawUserId: string, rawGroupId: string, rawReplyId: string): Promise<void> {
+    const userId = this.sanitizeKey(rawUserId);
+    const groupId = this.sanitizeKey(rawGroupId);
+    const replyId = this.sanitizeKey(rawReplyId);
+    const path = `userMetadata/${userId}/duplicateVotes/${groupId}`;
+    await this.db.ref(path).set(replyId);
+  }
+
+  async createDuplicateGroupTransaction(duplicateGroupData: any, originalReplyId: string, duplicateReplyData: any): Promise<void> {
+    // Sanitize all IDs
+    const groupId = this.sanitizeKey(duplicateGroupData.id);
+    const originalId = this.sanitizeKey(originalReplyId);
+    const duplicateId = this.sanitizeKey(duplicateReplyData.id);
+    const authorId = this.sanitizeKey(duplicateReplyData.authorId);
+
+    const updates: Record<string, any> = {};
+    
+    // Create duplicate group
+    updates[`duplicateGroups/${groupId}`] = duplicateGroupData;
+    
+    // Store duplicate reply
+    updates[`duplicateReplies/${duplicateId}`] = duplicateReplyData;
+    
+    // Add to group index
+    updates[`indexes/duplicatesByGroup/${groupId}/${duplicateId}`] = true;
+    
+    // Add to user's duplicate replies
+    updates[`userMetadata/${authorId}/duplicateReplies/${duplicateId}`] = true;
+    
+    // Increment duplicate count for original reply's post
+    const rootPostId = this.sanitizeKey(duplicateReplyData.rootPostId);
+    updates[`postMetadata/duplicateCount/${rootPostId}`] = ServerValue.increment(1);
+    
+    // Execute transaction
+    await this.db.ref().update(updates);
+  }
 }   
