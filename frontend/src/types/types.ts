@@ -188,6 +188,46 @@ export interface Reply {
   createdAt: string;
 }
 
+// Duplicate Reply Types for Deduplication Feature (Frontend)
+export interface DuplicateReply extends Reply {
+  duplicateGroupId: string; // UUID linking related duplicates
+  originalReplyId: string; // Reference to the first reply in the group
+  similarityScore: number; // Cosine similarity to original (0-1)
+  votes: DuplicateVotes; // Object tracking user votes on which duplicate is better
+  parentConnections: string[]; // Array of parent reply/post IDs for web mapping
+}
+
+export interface DuplicateVotes {
+  upvotes: string[]; // Array of user IDs who voted for this duplicate
+  downvotes: string[]; // Array of user IDs who voted against this duplicate
+  totalScore: number; // Calculated weighted score
+}
+
+export interface DuplicateGroup {
+  id: string; // Group UUID
+  originalReplyId: string; // First reply in the group
+  duplicateIds: string[]; // Array of duplicate reply IDs
+  createdAt: string; // When group was created
+  parentConnections: string[]; // All parent connections from duplicates
+  threshold: number; // Similarity threshold used for this group
+}
+
+export interface DuplicateDetectionResult {
+  isDuplicate: boolean;
+  duplicateGroup?: DuplicateGroup;
+  similarityScore?: number;
+  matchedReplyId?: string;
+}
+
+// API Response Types for Duplicate Features
+export interface DuplicateGroupResponse extends ApiResponse<DuplicateGroup> {}
+
+export interface DuplicateComparisonResponse extends ApiResponse<{
+  originalReply: Reply;
+  duplicates: DuplicateReply[];
+  group: DuplicateGroup;
+}> {}
+
 export const ACTIONS = {
   START_POST_TREE_LOAD: 'START_POST_TREE_LOAD',
   SET_INITIAL_POST_TREE_DATA: 'SET_INITIAL_POST_TREE_DATA',
