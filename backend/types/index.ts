@@ -48,6 +48,45 @@ export interface ReplyData {
     createdAt: string; // ISO 8601 Timestamp String
 }
 
+// Duplicate Reply Types for Deduplication Feature
+export interface DuplicateReply extends Reply {
+    duplicateGroupId: string; // UUID linking related duplicates
+    originalReplyId: string; // Reference to the first reply in the group
+    similarityScore: number; // Cosine similarity to original (0-1)
+    votes: DuplicateVotes; // Object tracking user votes on which duplicate is better
+    parentConnections: string[]; // Array of parent reply/post IDs for web mapping
+}
+
+export interface DuplicateReplyData extends ReplyData {
+    duplicateGroupId: string;
+    originalReplyId: string;
+    similarityScore: number;
+    votes: DuplicateVotes;
+    parentConnections: string[];
+}
+
+export interface DuplicateVotes {
+    upvotes: string[]; // Array of user IDs who voted for this duplicate
+    downvotes: string[]; // Array of user IDs who voted against this duplicate
+    totalScore: number; // Calculated weighted score
+}
+
+export interface DuplicateGroup {
+    id: string; // Group UUID
+    originalReplyId: string; // First reply in the group
+    duplicateIds: string[]; // Array of duplicate reply IDs
+    createdAt: string; // When group was created
+    parentConnections: string[]; // All parent connections from duplicates
+    threshold: number; // Similarity threshold used for this group
+}
+
+export interface DuplicateDetectionResult {
+    isDuplicate: boolean;
+    duplicateGroup?: DuplicateGroup;
+    similarityScore?: number;
+    matchedReplyId?: string;
+}
+
 export interface Replies {
     replies: Reply[]; // Keep this for now, maybe refactor later if needed
 }
