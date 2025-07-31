@@ -11,8 +11,8 @@ const SearchResultsPageRow: React.FC<SearchResultsPageRowProps> = ({ item }) => 
   const navigate = useNavigate();
 
   const targetUrl = item.type === 'post' 
-      ? `/post/${item.id}` 
-      : `/post/${(item as ReplyDisplaySearchResult).rootPostId}`; // Navigate to root post for replies
+      ? `/postTree/${item.id}` 
+      : `/postTree/${(item as ReplyDisplaySearchResult).rootPostId}`; // Navigate to root post for replies
 
   // The design doc mentions a handleClick, but using <Link> is more idiomatic for navigation.
   // If more complex logic than navigation is needed on click, a handleClick can be added
