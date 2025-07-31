@@ -1,6 +1,7 @@
 import logger from './logger.js';
 import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 import { VectorService } from './services/vectorService.js';
+import { DuplicateDetectionService } from './services/duplicateDetectionService.js';
 import { Post, Reply } from './types/index.js';
 import dotenv from 'dotenv';
 import { GCPEmbeddingProvider } from './services/gcpEmbeddingProvider.js';
@@ -127,66 +128,214 @@ async function backfillVectorEmbeddings(dbClient: LoggedDatabaseClient, vectorSe
 }
 // --- END: Vector Embedding Backfill Migration ---
 
+// --- BEGIN: Reply Deduplication Migration ---
+async function deduplicateExistingReplies(dbClient: LoggedDatabaseClient, vectorService: VectorService): Promise<void> {
+    logger.info('Starting Reply Deduplication Process...');
+    let processedReplies = 0;
+    let duplicatesFound = 0;
+    let duplicateGroupsCreated = 0;
+    let failedReplies = 0;
+    const failedReplyIds: string[] = [];
+    
+    // Local hashmap to track content -> original reply mapping
+    // Key: normalized content hash, Value: { replyId, vector, reply }
+    const contentToOriginalMap = new Map<string, { replyId: string; vector: number[]; reply: Reply }>();
+    
+    // Initialize duplicate detection service
+    const duplicateDetectionService = new DuplicateDetectionService(vectorService, dbClient);
+    
+    // Helper function to normalize and hash content for deduplication
+    function getContentHash(text: string): string {
+        // Normalize whitespace and convert to lowercase for better duplicate detection
+        const normalized = text.trim().toLowerCase().replace(/\s+/g, ' ');
+        // Use a simple hash for now - could use crypto hash if needed
+        return Buffer.from(normalized).toString('base64');
+    }
+
+    // 1. Fetch all existing replies
+    logger.info('Fetching all existing replies for deduplication...');
+    const repliesData = await dbClient.getRawPath('replies');
+    const replies: Reply[] = repliesData ? Object.values(repliesData) : [];
+    logger.info(`Found ${replies.length} replies to process for deduplication.`);
+
+    // Sort replies by creation date to prioritize older replies as originals
+    const sortedReplies = replies.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    for (let i = 0; i < sortedReplies.length; i++) {
+        const reply = sortedReplies[i];
+        if (!reply || !reply.id || !reply.text) {
+            logger.warn(`Skipping invalid reply object at index ${i}:`, reply);
+            failedReplies++;
+            if (reply?.id) failedReplyIds.push(reply.id);
+            continue;
+        }
+
+        try {
+            logger.debug(`Processing reply ${i + 1}/${sortedReplies.length}: ${reply.id}...`);
+            
+            // Check if this reply already exists in a duplicate group
+            const existingGroup = await duplicateDetectionService.findExistingDuplicateGroup(reply.id);
+            if (existingGroup) {
+                logger.debug(`Reply ${reply.id} already in duplicate group ${existingGroup.id}, skipping...`);
+                processedReplies++;
+                continue;
+            }
+
+            // Get content hash to check for duplicates
+            const contentHash = getContentHash(reply.text);
+            const existingOriginal = contentToOriginalMap.get(contentHash);
+            
+            if (!existingOriginal) {
+                // This is the first occurrence of this content - mark as original and create vector
+                logger.debug(`Reply ${reply.id} is original (first occurrence of content), creating vector...`);
+                
+                // Generate vector for this content
+                const vector = await vectorService.generateEmbedding(reply.text);
+                if (!vector) {
+                    logger.error(`Failed to generate embedding for original reply ${reply.id}, skipping...`);
+                    failedReplies++;
+                    failedReplyIds.push(reply.id);
+                    continue;
+                }
+                
+                // Store in hashmap and add to vector service
+                contentToOriginalMap.set(contentHash, { replyId: reply.id, vector, reply });
+                await vectorService.addVector(reply.id, 'reply', reply.text);
+                logger.debug(`Stored original reply ${reply.id} with content hash`);
+                
+            } else {
+                // Content already exists - this is a duplicate!
+                logger.info(`Reply ${reply.id} is a duplicate of original ${existingOriginal.replyId} (matching content)`);
+                duplicatesFound++;
+
+                // Calculate similarity score between this reply and the original
+                const currentVector = await vectorService.generateEmbedding(reply.text);
+                if (!currentVector) {
+                    logger.error(`Failed to generate embedding for duplicate reply ${reply.id}, treating as unique...`);
+                    await vectorService.addVector(reply.id, 'reply', reply.text);
+                    continue;
+                }
+                
+                // Calculate L2 distance (same as FAISS uses)
+                const distance = Math.sqrt(
+                    currentVector.reduce((sum, val, idx) => 
+                        sum + Math.pow(val - existingOriginal.vector[idx], 2), 0
+                    )
+                );
+                
+                logger.info(`Creating duplicate group for original ${existingOriginal.replyId} and duplicate ${reply.id} (distance: ${distance.toFixed(4)})`);
+                
+                // Create new duplicate group
+                const newGroup = await duplicateDetectionService.createDuplicateGroup(
+                    existingOriginal.reply, // Original (first occurrence)
+                    reply, // Duplicate (later occurrence) 
+                    distance, // L2 distance score
+                    { migrationContext: true }
+                );
+                duplicateGroupsCreated++;
+                logger.info(`Created duplicate group ${newGroup.id}`);
+            }
+
+            processedReplies++;
+            
+            // Add a small delay to avoid overwhelming the system
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+        } catch (error: any) {
+            logger.error(`Failed to process reply ${i + 1}/${sortedReplies.length}: ${reply.id}: ${error.message}`, { err: error });
+            failedReplies++;
+            failedReplyIds.push(reply.id);
+        }
+    }
+
+    logger.info(`Reply Deduplication Process finished.`);
+    logger.info(`- Processed: ${processedReplies} replies`);
+    logger.info(`- Unique Content (Originals): ${contentToOriginalMap.size} replies`);
+    logger.info(`- Duplicates Found: ${duplicatesFound} replies`);
+    logger.info(`- Duplicate Groups Created: ${duplicateGroupsCreated} groups`);
+    logger.info(`- Failed: ${failedReplies} replies`);
+
+    if (failedReplyIds.length > 0) {
+        logger.warn(`Failed to process replies: [${failedReplyIds.join(', ')}]`);
+    }
+
+    if (failedReplies > 0) {
+        logger.warn(`Reply deduplication completed with ${failedReplies} failures.`);
+    }
+}
+// --- END: Reply Deduplication Migration ---
+
 export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
-    logger.info('Starting Data Migration Script (Vector Embedding Backfill Stage)...'); // Updated log
-    const currentDbVersion = await dbClient.getDatabaseVersion() || '0'; // Get current version
+    logger.info('Starting Data Migration Script (Vector Embedding Backfill & Deduplication Stage)...');
+    const currentDbVersion = await dbClient.getDatabaseVersion() || '0';
     logger.info(`Current database version: ${currentDbVersion}`);
 
-    const TARGET_VERSION = '4'; // Define target version for vector migration
-    const MIGRATION_VERSION_STRING = '3->4';
+    const TARGET_VERSION = '5'; // Updated target version to include deduplication
+    const VECTOR_MIGRATION_VERSION = '3->4';
+    const DEDUPLICATION_MIGRATION_VERSION = '4->5';
 
     if (currentDbVersion === TARGET_VERSION) {
-        logger.info(`Database is already at version ${TARGET_VERSION}. Skipping Vector Embedding Backfill.`);
-        return; // Exit if already at target version
-    }
-    
-    // Check if this is a valid state to run vector migration
-    const isValidMigrationState = (
-        currentDbVersion === '3' || // Fresh migration from version 3
-        currentDbVersion === '3->4' || // Interrupted migration
-        (typeof currentDbVersion === 'object' && currentDbVersion !== null && 
-         'status' in currentDbVersion && currentDbVersion.status === "failed_vector_migration") // Failed migration retry
-    );
-    
-    if (!isValidMigrationState) {
-        logger.error(`Migration script cannot run vector backfill from current database version: ${JSON.stringify(currentDbVersion)}. Expected version '3', '3->4', or failed migration object.`);
-        throw new Error(`Migration prerequisite not met: Invalid DB version for vector migration: ${JSON.stringify(currentDbVersion)}`);
+        logger.info(`Database is already at version ${TARGET_VERSION}. Skipping all migrations.`);
+        return;
     }
 
-    // Proceed with vector migration from valid state
-    logger.info(`Running Vector Embedding Backfill Migration (Version ${MIGRATION_VERSION_STRING})...`);
+    // Initialize embedding provider and vector service
+    const embeddingProvider = new GCPEmbeddingProvider('gemini-embedding-exp-03-07', 768);
+    const vectorService = new VectorService(dbClient, embeddingProvider);
 
     try {
-        // Database client is already connected when migration is called from server.ts
-        logger.info("Using existing database connection for vector migration.");
+        // STEP 1: Vector Embedding Backfill (if needed)
+        const needsVectorMigration = (
+            currentDbVersion === '3' || 
+            currentDbVersion === '3->4' || 
+            (typeof currentDbVersion === 'object' && currentDbVersion !== null && 
+             'status' in currentDbVersion && currentDbVersion.status === "failed_vector_migration")
+        );
 
-        // Instantiate VectorService here, requires GEMINI_API_KEY from env
-        const embeddingProvider = new GCPEmbeddingProvider(
-            'gemini-embedding-exp-03-07',
-            768
-          );
-        const vectorService = new VectorService(dbClient, embeddingProvider);
+        if (needsVectorMigration) {
+            logger.info(`Running Vector Embedding Backfill Migration (Version ${VECTOR_MIGRATION_VERSION})...`);
+            await dbClient.setDatabaseVersion(VECTOR_MIGRATION_VERSION);
+            await backfillVectorEmbeddings(dbClient, vectorService);
+            await dbClient.setDatabaseVersion('4');
+            logger.info('Vector embedding backfill completed successfully.');
+        } else if (currentDbVersion !== '4' && currentDbVersion !== '4->5') {
+            logger.info('Vector embedding backfill already completed, skipping to deduplication...');
+        }
 
-        await dbClient.setDatabaseVersion(MIGRATION_VERSION_STRING);
-        await backfillVectorEmbeddings(dbClient, vectorService);
-        // Note: backfillVectorEmbeddings logs its own errors but doesn't throw critical errors by default
-        await dbClient.setDatabaseVersion(TARGET_VERSION);
-        logger.info(`Vector embedding backfill script completed successfully. DatabaseVersion updated to: ${TARGET_VERSION}`);
+        // STEP 2: Reply Deduplication (if needed)
+        const needsDeduplicationMigration = (
+            currentDbVersion === '4' || 
+            currentDbVersion === '4->5' || 
+            (typeof currentDbVersion === 'object' && currentDbVersion !== null && 
+             'status' in currentDbVersion && currentDbVersion.status === "failed_deduplication_migration")
+        );
+
+        if (needsDeduplicationMigration) {
+            logger.info(`Running Reply Deduplication Migration (Version ${DEDUPLICATION_MIGRATION_VERSION})...`);
+            await dbClient.setDatabaseVersion(DEDUPLICATION_MIGRATION_VERSION);
+            await deduplicateExistingReplies(dbClient, vectorService);
+            await dbClient.setDatabaseVersion(TARGET_VERSION);
+            logger.info('Reply deduplication completed successfully.');
+        }
+
+        logger.info(`All migrations completed successfully. Database updated to version: ${TARGET_VERSION}`);
 
     } catch (err: any) {
+        const currentStage = currentDbVersion.toString().includes('3') ? 'vector_migration' : 'deduplication_migration';
         const failureVersionInfo = { 
             current: `${TARGET_VERSION}_failed`, 
-            fromVersion: currentDbVersion, // Should be '3' here
+            fromVersion: currentDbVersion,
             toVersion: TARGET_VERSION, 
-            status: "failed_vector_migration", 
-            error: err.message,
+            status: `failed_${currentStage}`, 
+            error: err instanceof Error ? err.message : 'Unknown error',
             timestamp: new Date().toISOString()
         };
+        
         try {
             await dbClient.setDatabaseVersion(failureVersionInfo);
-            logger.error(`Vector migration (${MIGRATION_VERSION_STRING}) failed. DB version set to indicate failure. Error: ${err.message}`, { err });
+            logger.error(`Migration failed at ${currentStage}. DB version set to indicate failure. Error: ${failureVersionInfo.error}`, { err });
         } catch (dbVersionError: any) {
-            logger.error({ err: dbVersionError }, "CRITICAL: FAILED to set databaseVersion after vector migration script error. Manual check required.");
+            logger.error({ err: dbVersionError }, "CRITICAL: FAILED to set databaseVersion after migration script error. Manual check required.");
         }
         throw err; // Re-throw the error to indicate script failure
     } finally {

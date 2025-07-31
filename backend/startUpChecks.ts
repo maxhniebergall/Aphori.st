@@ -75,10 +75,18 @@ function determineIfMigrationNeeded(dbVersionInfo: any): boolean {
         // Migration was interrupted during transition - retry from where it left off
         logger.info(`'databaseVersion' is "3->4" (transition state). Retrying vector embedding backfill migration to version 4.`);
         return true;
+    } else if (dbVersionInfo === "4") {
+        // Database is at version 4, need to run reply deduplication migration to version 5
+        logger.info(`'databaseVersion' is "4". Performing reply deduplication migration to version 5.`);
+        return true;
+    } else if (dbVersionInfo === "4->5") {
+        // Migration was interrupted during deduplication transition - retry from where it left off
+        logger.info(`'databaseVersion' is "4->5" (transition state). Retrying reply deduplication migration to version 5.`);
+        return true;
     } else if (typeof dbVersionInfo === 'object' && dbVersionInfo !== null && 
-               'status' in dbVersionInfo && dbVersionInfo.status === "failed_vector_migration") {
+               'status' in dbVersionInfo && (dbVersionInfo.status === "failed_vector_migration" || dbVersionInfo.status === "failed_deduplication_migration")) {
         // Previous migration failed - retry the migration
-        logger.warn(`Previous vector migration failed. Retrying migration from version ${dbVersionInfo.fromVersion} to ${dbVersionInfo.toVersion}. Previous error: ${dbVersionInfo.error}`);
+        logger.warn(`Previous migration failed. Retrying migration from version ${dbVersionInfo.fromVersion} to ${dbVersionInfo.toVersion}. Previous error: ${dbVersionInfo.error}`);
         return true;
     } else {
         logger.info(`'databaseVersion' found. Value: ${JSON.stringify(dbVersionInfo)}. Migration will be skipped.`);
