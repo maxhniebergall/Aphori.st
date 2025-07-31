@@ -6,7 +6,15 @@
     "start": "node index.js",
     "test": "cd backend && NODE_OPTIONS=--experimental-vm-modules yarn jest",
     "test:backend": "cd backend && NODE_OPTIONS=--experimental-vm-modules yarn jest",
-    "test:frontend": "cd frontend && yarn test"
+    "test:frontend": "cd frontend && yarn test",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:ui": "playwright test --ui",
+    "test:duplicate": "playwright test reply-deduplication.spec.ts",
+    "test:duplicate-api": "playwright test duplicate-api.spec.ts",
+    "show-report": "playwright show-report",
+    "install-browsers": "playwright install"
   },
   "keywords": [],
   "author": "Max Hniebergall <max@hniebergall.com>",
@@ -25,6 +33,7 @@
   "repository": "https://github.com/maxhniebergall/Aphori.st.git",
   "devDependencies": {
     "eslint-config-react": "^1.1.7",
-    "eslint-config-react-app": "^7.0.1"
+    "eslint-config-react-app": "^7.0.1",
+    "@playwright/test": "^1.40.0"
   }
 }
