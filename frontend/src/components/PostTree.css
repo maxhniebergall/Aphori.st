@@ -207,6 +207,44 @@ button {
   overflow-wrap: break-word;
 }
 
+.sibling-counter-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.sibling-counter {
+  color: #666;
+}
+
+.duplicate-info-button {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.duplicate-info-button:hover {
+  background-color: #f5f5f5;
+  border-color: #999;
+  color: #333;
+}
+
+.duplicate-info-button:active {
+  background-color: #e5e5e5;
+  transform: scale(0.95);
+}
+
 /* Add styles for infinite loader and list */
 .post-list {
   flex: 1;
