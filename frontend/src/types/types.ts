@@ -79,6 +79,7 @@ export interface PostTreeNode { // this value only exists in the frontend. it co
   quoteCounts: QuoteCounts | null;
   authorId: string;
   createdAt: string;
+  duplicateGroupId?: string; // Optional field for nodes that are part of a duplicate group
 }
 
 export interface Siblings {
