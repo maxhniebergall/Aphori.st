@@ -141,12 +141,7 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
             'Initiating CreateReply action'
         );
 
-        // First, create the reply in the database
-        await db.createReplyTransaction(newReply, hashedQuoteKey, logContext);
-
-        logger.info({ ...logContext, replyId, parentId: actualParentId }, 'Successfully created new reply');
-
-        // Convert to Reply interface for duplicate detection
+        // Convert to Reply interface for duplicate detection BEFORE creating in database
         const replyForDuplicateCheck: Reply = {
             id: newReply.id,
             text: newReply.text,
@@ -157,13 +152,14 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
             createdAt: newReply.createdAt
         };
 
-        // Check for duplicates after reply creation but before vector indexing
+        // Check for duplicates BEFORE creating the reply in regular indexes
+        let isDuplicateHandled = false;
         if (duplicateDetectionService && vectorService) {
             try {
                 const duplicateResult = await duplicateDetectionService.checkForDuplicates(replyForDuplicateCheck, logContext);
                 
                 if (duplicateResult.isDuplicate) {
-                    logger.info({ ...logContext, replyId: newReply.id }, 'Duplicate reply detected', {
+                    logger.info({ ...logContext, replyId: newReply.id }, 'Duplicate reply detected, handling as duplicate', {
                         matchedReplyId: duplicateResult.matchedReplyId,
                         similarityScore: duplicateResult.similarityScore
                     });
@@ -188,12 +184,21 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
                             );
                         }
                     }
+                    
+                    isDuplicateHandled = true;
+                    logger.info({ ...logContext, replyId: newReply.id }, 'Successfully handled duplicate reply');
                 }
             } catch (duplicateError) {
-                // Log error but don't fail the reply creation
+                // Log error but don't fail the reply creation - fall back to regular reply
                 logger.error({ ...logContext, replyId: newReply.id, err: duplicateError }, 
-                    'Error during duplicate detection, proceeding with reply creation');
+                    'Error during duplicate detection, falling back to regular reply creation');
             }
+        }
+
+        // Only create as regular reply if it's NOT a duplicate
+        if (!isDuplicateHandled) {
+            await db.createReplyTransaction(newReply, hashedQuoteKey, logContext);
+            logger.info({ ...logContext, replyId, parentId: actualParentId }, 'Successfully created new regular reply');
         }
 
         // Add to vector index (fire and forget for now, or await if critical)  
@@ -407,8 +412,25 @@ router.get<{ parentId: string; quote: string; sortCriteria: SortingCriteria }, C
                 const sanitizedReplyId = replyId.replace(/^"|"$/g, '');
                 const replyData = await db.getReply(sanitizedReplyId);
                 if (replyData) {
-                    // TODO: Add validation check (isValidNewReply) if needed
-                    return replyData;
+                    // Check if this reply is part of a duplicate group
+                    let duplicateGroupId = undefined;
+                    
+                    // Check if this reply is a duplicate reply
+                    const duplicateReply = await db.getDuplicateReply(sanitizedReplyId);
+                    if (duplicateReply) {
+                        duplicateGroupId = duplicateReply.duplicateGroupId;
+                    }
+                    // Note: We don't check if this is an original reply in a group here 
+                    // to avoid expensive lookups. The carousel system works by showing
+                    // multiple similar replies as siblings, and the info button will
+                    // appear on duplicate replies that have a duplicateGroupId.
+                    
+                    // Add duplicateGroupId to reply data if found
+                    const enrichedReplyData = duplicateGroupId 
+                        ? { ...replyData, duplicateGroupId }
+                        : replyData;
+                    
+                    return enrichedReplyData;
                 } else {
                     logger.warn({ replyId: sanitizedReplyId }, '[getReplies] Reply data not found for ID from index');
                     return null;
