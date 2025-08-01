@@ -1,7 +1,7 @@
 # Future Recommendations & Enhancements
 
 ## Overview
-Long-term improvements and optimizations for the vector search system beyond the initial implementation. These recommendations are based on PR review feedback and production considerations.
+This directory contains recommendations for future enhancements across multiple systems including the vector search system and the new Themes game. These recommendations are organized by priority and implementation timeline.
 
 ## Immediate Critical Issues (URGENT)
 These code review issues must be addressed before production scaling:
