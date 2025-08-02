@@ -29,6 +29,7 @@ export interface Reply {
     id: string;
     text: string;
     parentId: string;
+    parentType: "post" | "reply"; // Type of the direct parent
     rootPostId: string;
     quote: Quote;
     authorId: string;
@@ -266,3 +267,6 @@ export interface ApiError {
   code?: string;
   details?: unknown;
 }
+
+// Games Types
+export * from './games/themes.js';
