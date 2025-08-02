@@ -109,7 +109,7 @@ export class DuplicateDetectionService {
         // Create duplicate reply data
         const duplicateReplyData: DuplicateReplyData = {
             ...duplicateReply,
-            parentType: 'reply', // Set default parent type, should be derived from original reply data
+            parentType: duplicateReply.parentType || 'reply', // Use the reply's actual parent type
             duplicateGroupId: groupId,
             originalReplyId: originalReply.id,
             similarityScore,
@@ -143,7 +143,7 @@ export class DuplicateDetectionService {
         // Create duplicate reply data
         const duplicateReplyData: DuplicateReplyData = {
             ...reply,
-            parentType: 'reply', // Set default parent type, should be derived from original reply data
+            parentType: reply.parentType || 'reply', // Use the reply's actual parent type
             duplicateGroupId: groupId,
             originalReplyId: existingGroup.originalReplyId,
             similarityScore,
@@ -169,7 +169,7 @@ export class DuplicateDetectionService {
     /**
      * Find if a reply is already part of a duplicate group
      */
-    private async findExistingDuplicateGroup(replyId: string): Promise<DuplicateGroup | undefined> {
+    public async findExistingDuplicateGroup(replyId: string): Promise<DuplicateGroup | undefined> {
         // Check if this reply is a duplicate reply
         const duplicateReply = await this.db.getDuplicateReply(replyId);
         if (duplicateReply) {

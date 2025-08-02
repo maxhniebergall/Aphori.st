@@ -3,6 +3,7 @@ import { getDatabase, Database, ServerValue } from 'firebase-admin/database';
 import { cert } from 'firebase-admin/app';
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 import { VectorIndexMetadata, VectorIndexEntry, VectorDataForFaiss } from '../types/index.js';
+import { getQuoteKey } from '../utils/quoteUtils.js';
 
 // Import the full firebase-admin package for app management (helps with types) for testing
 import admin from 'firebase-admin';
@@ -973,20 +974,61 @@ export class FirebaseClient extends DatabaseClientInterface {
     const originalId = this.sanitizeKey(originalReplyId);
     const duplicateId = this.sanitizeKey(duplicateReplyData.id);
     const authorId = this.sanitizeKey(duplicateReplyData.authorId);
+    
+    // First, get the original reply data so we can move it to duplicate storage
+    const originalReplySnapshot = await this.db.ref(`replies/${originalId}`).get();
+    if (!originalReplySnapshot.exists()) {
+      throw new Error(`Original reply ${originalReplyId} not found for duplicate group creation`);
+    }
+    const originalReplyData = originalReplySnapshot.val();
 
     const updates: Record<string, any> = {};
     
     // Create duplicate group
     updates[`duplicateGroups/${groupId}`] = duplicateGroupData;
     
-    // Store duplicate reply
+    // Move original reply to duplicate storage with duplicate metadata
+    const originalAsDuplicateReply = {
+      ...originalReplyData,
+      duplicateGroupId: groupId,
+      originalReplyId: originalReplyId, // Self-reference since this IS the original
+      similarityScore: 0, // Original has perfect similarity to itself
+      votes: { upvotes: [], downvotes: [], totalScore: 0 },
+      parentConnections: [originalReplyData.parentId]
+    };
+    updates[`duplicateReplies/${originalId}`] = originalAsDuplicateReply;
+    
+    // Store new duplicate reply
     updates[`duplicateReplies/${duplicateId}`] = duplicateReplyData;
     
-    // Add to group index
+    // Add both to group index
+    updates[`indexes/duplicatesByGroup/${groupId}/${originalId}`] = true;
     updates[`indexes/duplicatesByGroup/${groupId}/${duplicateId}`] = true;
     
-    // Add to user's duplicate replies
+    // Add to user's duplicate replies for both users
+    const originalAuthorIdSanitized = this.sanitizeKey(originalReplyData.authorId);
+    updates[`userMetadata/${originalAuthorIdSanitized}/duplicateReplies/${originalId}`] = true;
     updates[`userMetadata/${authorId}/duplicateReplies/${duplicateId}`] = true;
+    
+    // Remove original reply from regular reply storage
+    updates[`replies/${originalId}`] = null;
+    
+    // Remove original reply from indexes (we need to remove from all relevant indexes)
+    // Note: This is a simplified removal - in production we'd need to remove from:
+    // - Parent quote indexes
+    // - User reply indexes  
+    // - Global feed indexes
+    // For now, we'll remove from the most critical ones
+    const hashedQuoteKey = getQuoteKey(originalReplyData.quote);
+    const parentId = this.sanitizeKey(originalReplyData.parentId);
+    const timestamp = new Date(originalReplyData.createdAt).getTime();
+    
+    // Remove from parent quote index
+    updates[`indexes/repliesByParentQuote/${parentId}/${hashedQuoteKey}/MOST_RECENT/${timestamp}_${originalId}`] = null;
+    updates[`indexes/repliesByParentQuote/${parentId}/${hashedQuoteKey}/OLDEST_FIRST/${timestamp}_${originalId}`] = null;
+    
+    // Remove from user's regular replies
+    updates[`userMetadata/${originalAuthorIdSanitized}/replies/${originalId}`] = null;
     
     // Increment duplicate count for original reply's post
     const rootPostId = this.sanitizeKey(duplicateReplyData.rootPostId);
