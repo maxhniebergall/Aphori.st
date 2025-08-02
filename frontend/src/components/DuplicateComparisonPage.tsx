@@ -22,7 +22,7 @@ const DuplicateComparisonPage: React.FC = () => {
             setLoading(true);
             setError(null);
 
-            const response = await axios.get<DuplicateComparisonResponse>(`/api/replies/duplicate/${groupId}`);
+            const response = await axios.get<DuplicateComparisonResponse>(`${process.env.REACT_APP_API_URL}/api/replies/duplicate/${groupId}`);
             
             if (!response.data.success || !response.data.data) {
                 throw new Error(response.data.error || 'Failed to fetch duplicate group');
@@ -55,7 +55,7 @@ const DuplicateComparisonPage: React.FC = () => {
         if (!groupId) return;
 
         try {
-            const response = await axios.post(`/api/replies/duplicate/${groupId}/vote`, {
+            const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/replies/duplicate/${groupId}/vote`, {
                 replyId: replyId
             });
 
