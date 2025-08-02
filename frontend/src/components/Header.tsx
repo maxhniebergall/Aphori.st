@@ -62,6 +62,9 @@ function Header({ onLogoClick }: HeaderProps) {
                       <form action="/post">
                         <button className='post-button'> Make a Post </button>
                       </form>
+                      <form action="/games">
+                        <button className='games-button'> 🎯 Games </button>
+                      </form>
                         <button className="sign-in-button" onClick={logout}>Sign Out</button>
                     </div>
                 )}
@@ -69,6 +72,9 @@ function Header({ onLogoClick }: HeaderProps) {
                 {/* Show auth modal or sign in button if not verified */}
                 {!state?.verified && (
                     <>
+                        <form action="/games">
+                          <button className='games-button'> 🎯 Games </button>
+                        </form>
                         {isAuthModalOpen ? (
                             <AuthModal isOpen={isModalOpen} onClose={() => setAuthModalOpen(false)} onSignIn={handleSignIn} />
                         ) : (

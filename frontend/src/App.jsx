@@ -11,6 +11,8 @@ import NotFound from './components/NotFound';
 import PostPage from './components/PostPage';
 import SearchResultsPage from './components/SearchResultsPage';
 import DuplicateComparisonPage from './components/DuplicateComparisonPage';
+import { GamesLanding } from './pages/games/GamesLanding';
+import { ThemesGame } from './pages/games/themes/ThemesGame';
 import { UserProvider } from './context/UserContext';
 import axios from 'axios';
 import { setupCache, buildWebStorage } from 'axios-cache-interceptor';
@@ -82,6 +84,8 @@ function App() {
                 <Route path="/" element={<Feed />} />
                 <Route path="/search" element={<SearchResultsPage />} />
                 <Route path="/dupe/:groupId" element={<DuplicateComparisonPage />} />
+                <Route path="/games" element={<GamesLanding />} />
+                <Route path="/games/themes" element={<ThemesGame />} />
 
                 <Route 
                     path="/profile" 
