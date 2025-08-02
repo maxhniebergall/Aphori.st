@@ -40,6 +40,8 @@ import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
 import searchRoutes, { setDbAndVectorService as setSearchDbAndVectorService } from './routes/search.js';
+import gamesRoutes from './routes/games/index.js';
+import { initializeThemesServices, initializeThemesIndex } from './routes/games/themes/index.js';
 import { checkAndRunMigrations, processStartupEmails } from './startUpChecks.js';
 import { VectorService } from './services/vectorService.js'; // Import VectorService
 import { errorHandler } from './middleware/errorHandler.js';
@@ -216,6 +218,18 @@ await db.connect().then(async () => { // Make the callback async
     }
     // --- End Vector Index Initialization ---
 
+    // --- Initialize Themes Game Services ---
+    try {
+        logger.info('Initializing themes game services...');
+        initializeThemesServices(db);
+        await initializeThemesIndex();
+        logger.info('Simple themes game services initialized successfully.');
+    } catch (err) {
+        logger.error({ err }, 'Failed to initialize themes game services. Games may be unavailable.');
+        // Non-fatal - main site can continue without games
+    }
+    // --- End Themes Services Initialization ---
+
     // Only seed if import didn't run (assuming import replaces seed)
     if (process.env.NODE_ENV !== 'production') {
         logger.info('Development environment detected and import not enabled, seeding default stories...');
@@ -309,6 +323,7 @@ app.use('/api/feed', feedRoutes);
 app.use('/api/posts', postRoutes); 
 app.use('/api/replies', replyRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/games', gamesRoutes);
 
 // Add the error handling middleware as the last middleware
 app.use(errorHandler);
