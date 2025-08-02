@@ -34,3 +34,10 @@ database-debug.log
 *.log
 playwright-report
 test-results
+.venv
+
+# Large data science files
+scripts/datascience/*.npy
+scripts/datascience/word_vocab.json
+scripts/datascience/word_vocab.json.backup
+scripts/datascience/word_vocab_filtered_out.json
