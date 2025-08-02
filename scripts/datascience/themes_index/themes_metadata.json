@@ -1,0 +1,7 @@
+{
+  "num_vectors": 856670,
+  "dimension": 300,
+  "vector_dtype": "float32",
+  "format_version": "1.0",
+  "created_by": "convert_numpy_to_faiss.py"
+}
