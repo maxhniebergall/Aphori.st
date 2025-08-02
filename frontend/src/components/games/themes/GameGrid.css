@@ -1,0 +1,75 @@
+.game-grid {
+  display: grid;
+  gap: 8px;
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* 4x4 grid (16 words) */
+.game-grid.grid-4x4 {
+  max-width: 400px;
+}
+
+/* 5x5 grid (25 words) */
+.game-grid.grid-5x5 {
+  max-width: 450px;
+}
+
+/* 6x6 grid (36 words) */
+.game-grid.grid-6x6 {
+  max-width: 500px;
+}
+
+/* 7x7 grid (49 words) */
+.game-grid.grid-7x7 {
+  max-width: 520px;
+}
+
+/* 8x8 grid (64 words) */
+.game-grid.grid-8x8 {
+  max-width: 540px;
+}
+
+/* 9x9 grid (81 words) */
+.game-grid.grid-9x9 {
+  max-width: 560px;
+}
+
+/* 10x10 grid (100 words) */
+.game-grid.grid-10x10 {
+  max-width: 580px;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 640px) {
+  .game-grid {
+    gap: 6px;
+    padding: 12px;
+    max-width: 100% !important;
+  }
+}
+
+/* Very small screens */
+@media (max-width: 480px) {
+  .game-grid {
+    gap: 4px;
+    padding: 8px;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 641px) and (max-width: 1023px) {
+  .game-grid {
+    gap: 10px;
+    padding: 20px;
+  }
+}
+
+/* Desktop adjustments */
+@media (min-width: 1024px) {
+  .game-grid {
+    gap: 12px;
+    padding: 24px;
+  }
+}
