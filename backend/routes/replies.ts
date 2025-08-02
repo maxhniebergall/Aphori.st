@@ -146,6 +146,7 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
             id: newReply.id,
             text: newReply.text,
             parentId: newReply.parentId,
+            parentType: newReply.parentType,
             rootPostId: newReply.rootPostId,
             quote: newReply.quote,
             authorId: newReply.authorId,
