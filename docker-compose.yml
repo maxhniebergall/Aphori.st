@@ -22,6 +22,7 @@ services:
       - '5050:5050'
     volumes:
       - ./backend/aphorist-default-rtdb-export.json:/app/data/aphorist-default-rtdb-export.json:ro
+      - ./scripts/datascience:/app/scripts/datascience:ro
     networks:
       - main
     environment:
