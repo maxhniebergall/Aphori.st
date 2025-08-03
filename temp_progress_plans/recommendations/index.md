@@ -47,6 +47,13 @@ These code review issues must be addressed before production scaling:
 - Advanced filtering and sorting
 - Search term highlighting in results
 
+### Themes Game Advanced Features (P1)
+**File:** `puzzle_pregeneration_enhancements.md`
+- Machine learning-enhanced puzzle generation
+- Advanced quality optimization and curation workflow
+- Community feedback integration and analytics
+- Scalability enhancements for distributed generation
+
 ### Technical Infrastructure (P2)
 **File:** `infrastructure_upgrades.md`
 - Dedicated vector database migration (Vertex AI Vector Search)
