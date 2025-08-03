@@ -6,7 +6,7 @@ export interface ThemesPuzzle {
   date: string;
   puzzleNumber: number;
   gridSize: number;
-  difficulty: 'easy' | 'medium' | 'hard' | 'expert';
+  difficulty: number; // 1-10 scale
   categories: ThemeCategory[];
   words: string[];
 }
@@ -77,14 +77,14 @@ export const useThemesGame = (): UseThemesGameReturn => {
     return shuffleArray(gridWords);
   }, [shuffleArray]);
 
-  // Load puzzle from API
+  // Load puzzle from API (only today's puzzles available)
   const loadPuzzle = useCallback(async (date: string, puzzleNumber: number) => {
     setLoading(true);
     setError(null);
 
     try {
       const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${baseURL}/api/games/themes/daily/${date}`, {
+      const response = await fetch(`${baseURL}/api/games/themes/daily`, {
         credentials: 'include'
       });
       const data = await response.json();
@@ -97,7 +97,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
       const targetPuzzle = puzzles.find((p: ThemesPuzzle) => p.puzzleNumber === puzzleNumber);
 
       if (!targetPuzzle) {
-        throw new Error(`Puzzle ${puzzleNumber} not found for date ${date}`);
+        throw new Error(`Puzzle ${puzzleNumber} not found`);
       }
 
       setPuzzle(targetPuzzle);

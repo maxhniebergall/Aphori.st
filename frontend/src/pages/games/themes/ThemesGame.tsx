@@ -88,7 +88,7 @@ export const ThemesGame: React.FC = () => {
         </p>
         <div className="puzzle-info">
           <span className="puzzle-date">{new Date(puzzle.date).toLocaleDateString()}</span>
-          <span className="puzzle-difficulty">{puzzle.difficulty.toUpperCase()}</span>
+          <span className="puzzle-difficulty">DIFFICULTY {puzzle.difficulty}/10</span>
         </div>
       </div>
 
