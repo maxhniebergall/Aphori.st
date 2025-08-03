@@ -6,12 +6,16 @@
 import { LoggedDatabaseClient } from '../../db/LoggedDatabaseClient.js';
 import { ThemesVectorService, ThemesSimilarityResult } from './ThemesVectorService.js';
 import { ThemesWordDataset } from './ThemesWordDataset.js';
+import { ThemesQualityControl, QualityValidationResult } from './ThemesQualityControl.js';
 import { 
   ThemesPuzzle, 
   ThemesCategory,
   THEMES_DB_PATHS,
   THEMES_CONFIG,
-  isValidPuzzleSize 
+  isValidPuzzleSize,
+  WordQualityMetrics,
+  CategoryQualityMetrics,
+  PuzzleQualityMetrics 
 } from '../../types/games/themes.js';
 import { 
   generatePuzzleId,
@@ -38,6 +42,7 @@ export class ThemesPuzzleGenerator {
   private firebaseClient: LoggedDatabaseClient;
   private vectorService: ThemesVectorService;
   private wordDataset: ThemesWordDataset;
+  private qualityControl: ThemesQualityControl;
 
   constructor(
     firebaseClient: LoggedDatabaseClient,
@@ -47,6 +52,7 @@ export class ThemesPuzzleGenerator {
     this.firebaseClient = firebaseClient;
     this.vectorService = vectorService;
     this.wordDataset = wordDataset;
+    this.qualityControl = new ThemesQualityControl(vectorService);
   }
 
   /**
@@ -64,11 +70,11 @@ export class ThemesPuzzleGenerator {
       const categoriesNeeded = options.gridSize;
       const wordsPerCategory = options.gridSize;
 
-      // Generate categories using vector similarity
+      // Generate categories using vector similarity with quality controls
       const categories = await this.generateCategories(categoriesNeeded, wordsPerCategory, options);
       
       if (categories.length < categoriesNeeded) {
-        logger.error(`Failed to generate enough categories: ${categories.length}/${categoriesNeeded}`);
+        logger.error(`Failed to generate enough quality categories: ${categories.length}/${categoriesNeeded}`);
         return null;
       }
 
@@ -95,10 +101,17 @@ export class ThemesPuzzleGenerator {
         createdAt: Date.now()
       };
 
+      // Final puzzle quality validation
+      const puzzleValidation = await this.qualityControl.validatePuzzle(puzzle);
+      if (!puzzleValidation.valid) {
+        logger.warn(`Puzzle failed final quality validation: ${puzzleValidation.issues.join(', ')}`);
+        // Continue anyway but log the issues - in production might want to retry
+      }
+
       // Store puzzle in database
       await this.storePuzzle(puzzle);
 
-      logger.info(`Successfully generated puzzle: ${puzzle.id}`);
+      logger.info(`Successfully generated quality puzzle: ${puzzle.id} (quality score: ${puzzleValidation.score.toFixed(2)})`);
       return puzzle;
     } catch (error) {
       logger.error(`Failed to generate puzzle:`, error);
@@ -146,23 +159,29 @@ export class ThemesPuzzleGenerator {
   }
 
   /**
-   * Generate themed categories using vector similarity
+   * Generate themed categories using vector similarity with quality controls
    */
   private async generateCategories(
     categoriesNeeded: number,
     wordsPerCategory: number,
     options: PuzzleGenerationOptions
   ): Promise<ThemesCategory[]> {
-    const maxAttempts = categoriesNeeded * 3; // Try 3x more theme words than needed
+    const maxAttempts = categoriesNeeded * 5; // Increase attempts for quality filtering
     const categories: ThemesCategory[] = [];
     const usedWords = new Set<string>();
 
-    // Get candidate theme words
-    const candidateThemeWords = await this.wordDataset.getRandomWords(maxAttempts);
-    
-    logger.debug(`Got ${candidateThemeWords.length} candidate theme words`);
+    // Get candidate theme words and filter by quality
+    const candidateThemeWords = await this.wordDataset.getRandomWords(maxAttempts * 2);
+    logger.debug(`Got ${candidateThemeWords.length} candidate theme words, filtering by quality...`);
 
-    for (const themeWord of candidateThemeWords) {
+    // Filter theme words by quality
+    const qualityFilterResult = await this.qualityControl.filterWordsByQuality(candidateThemeWords, 0.7);
+    const qualityThemeWords = qualityFilterResult.accepted;
+    
+    logger.debug(`Quality filtering: ${qualityThemeWords.length}/${candidateThemeWords.length} theme words passed quality check`);
+    logger.debug(`Rejected words: ${qualityFilterResult.rejected.length} (${qualityFilterResult.rejected.slice(0, 5).map(r => r.word).join(', ')}${qualityFilterResult.rejected.length > 5 ? '...' : ''})`);
+
+    for (const themeWord of qualityThemeWords) {
       if (categories.length >= categoriesNeeded) {
         break;
       }
@@ -175,41 +194,67 @@ export class ThemesPuzzleGenerator {
         // Find similar words for this theme
         const similarWords = await this.vectorService.findSimilarWords(
           themeWord, 
-          wordsPerCategory * 2 // Get extra words for filtering
+          wordsPerCategory * 4 // Get more words for quality filtering
         );
 
-        if (similarWords.length < wordsPerCategory - 1) {
+        if (similarWords.length < wordsPerCategory * 2) {
           logger.debug(`Not enough similar words for theme: ${themeWord} (${similarWords.length})`);
           continue;
         }
 
-        // Filter out already used words
-        const availableWords = similarWords.filter(
+        // Filter out already used words and extract word strings
+        const availableWordResults = similarWords.filter(
           result => !usedWords.has(result.word) && result.word !== themeWord
         );
 
-        if (availableWords.length < wordsPerCategory - 1) {
+        if (availableWordResults.length < wordsPerCategory * 2) {
           logger.debug(`Not enough unused similar words for theme: ${themeWord}`);
           continue;
         }
 
-        // Select best words for this category
-        const selectedWords = availableWords
-          .slice(0, wordsPerCategory - 1)
-          .map(result => result.word);
+        // Extract just the words for quality filtering
+        const availableWords = availableWordResults.map(result => result.word);
+
+        // Filter category words by quality
+        const categoryWordQuality = await this.qualityControl.filterWordsByQuality(availableWords, 0.6);
+        
+        if (categoryWordQuality.accepted.length < wordsPerCategory - 1) {
+          logger.debug(`Not enough quality words for theme: ${themeWord} (${categoryWordQuality.accepted.length}/${wordsPerCategory - 1} needed)`);
+          continue;
+        }
+
+        // Select best quality words for this category
+        const selectedWords = categoryWordQuality.accepted.slice(0, wordsPerCategory - 1);
 
         // Add theme word itself
         const categoryWords = [themeWord, ...selectedWords];
 
-        // Calculate average similarity
-        const averageSimilarity = availableWords
-          .slice(0, wordsPerCategory - 1)
-          .reduce((sum, result) => sum + result.similarity, 0) / (wordsPerCategory - 1);
+        // Calculate average similarity using the original similarity results
+        const selectedWordSimilarities = selectedWords.map(word => {
+          const result = availableWordResults.find(r => r.word === word);
+          return result ? result.similarity : 0;
+        });
+        
+        const averageSimilarity = selectedWordSimilarities.reduce((sum, sim) => sum + sim, 0) / selectedWordSimilarities.length;
 
         // Check if similarity meets requirements
         const minSimilarity = options.minSimilarity || THEMES_CONFIG.MIN_CATEGORY_SIMILARITY;
         if (averageSimilarity < minSimilarity) {
           logger.debug(`Category similarity too low: ${themeWord} (${averageSimilarity.toFixed(3)})`);
+          continue;
+        }
+
+        // Create category for validation
+        const candidateCategory: ThemesCategory = {
+          themeWord: themeWord,
+          words: categoryWords,
+          similarity: averageSimilarity
+        };
+
+        // Validate category quality
+        const categoryValidation = await this.qualityControl.validateCategory(candidateCategory);
+        if (!categoryValidation.valid) {
+          logger.debug(`Category quality validation failed for ${themeWord}: ${categoryValidation.issues.join(', ')}`);
           continue;
         }
 
@@ -219,19 +264,19 @@ export class ThemesPuzzleGenerator {
           continue;
         }
 
-        // Create category
-        const category: ThemesCategory = {
-          themeWord: themeWord,
-          words: categoryWords,
-          similarity: averageSimilarity
-        };
+        // Validate cross-category diversity
+        const diversityValidation = await this.qualityControl.validateCategoryDiversity([...categories, candidateCategory]);
+        if (!diversityValidation.valid) {
+          logger.debug(`Category diversity validation failed for ${themeWord}: ${diversityValidation.conflicts.length} conflicts`);
+          continue;
+        }
 
-        categories.push(category);
+        categories.push(candidateCategory);
         
         // Mark all words as used
         categoryWords.forEach(word => usedWords.add(word));
 
-        logger.debug(`Created category: ${themeWord} (similarity: ${averageSimilarity.toFixed(3)})`);
+        logger.debug(`Created quality category: ${themeWord} (similarity: ${averageSimilarity.toFixed(3)}, quality: ${categoryValidation.score.toFixed(2)})`);
       } catch (error) {
         logger.error(`Error processing theme word ${themeWord}:`, error);
       }
@@ -248,7 +293,7 @@ export class ThemesPuzzleGenerator {
     existingCategories: ThemesCategory[],
     options: PuzzleGenerationOptions
   ): boolean {
-    const maxCrossSimilarity = options.maxCrossSimilarity || THEMES_CONFIG.MAX_CROSS_CATEGORY_SIMILARITY;
+    const _maxCrossSimilarity = options.maxCrossSimilarity || THEMES_CONFIG.MAX_CROSS_CATEGORY_SIMILARITY;
 
     for (const existingCategory of existingCategories) {
       // Check for word overlap
