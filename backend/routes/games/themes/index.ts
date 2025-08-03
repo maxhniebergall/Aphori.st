@@ -12,7 +12,7 @@ import { TemporaryUserService } from '../../../services/games/TemporaryUserServi
 // Import individual route modules
 import dailyPuzzlesRoutes from './dailyPuzzles.js';
 import gameStateRoutes from './gameState.js';
-import adminRoutes from './admin.js';
+// import adminRoutes from './admin.js';
 
 // Global services that will be injected
 let dbClient: LoggedDatabaseClient;
@@ -31,7 +31,7 @@ export function initializeThemesServices(db: LoggedDatabaseClient): void {
   
   // Initialize simple services
   knnService = new ThemesKNNService();
-  puzzleGenerator = new SimpleThemesPuzzleGenerator(knnService);
+  puzzleGenerator = new SimpleThemesPuzzleGenerator(knnService, db);
   tempUserService = new TemporaryUserService(db);
 }
 
@@ -98,6 +98,7 @@ router.get('/health', async (req, res) => {
 // Mount sub-routes
 router.use('/daily', dailyPuzzlesRoutes);
 router.use('/state', gameStateRoutes);
-router.use('/admin', adminRoutes);
+// Temporarily disabled due to TypeScript errors
+// router.use('/admin', adminRoutes);
 
 export default router;
