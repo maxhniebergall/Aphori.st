@@ -330,7 +330,7 @@ export class ThemesPuzzleGenerator {
       // Extract puzzles from the daily data
       const puzzles: ThemesPuzzle[] = [];
       for (const [key, value] of Object.entries(dailyData)) {
-        if (key.includes('puzzle_') && value && typeof value === 'object') {
+        if (key.startsWith('themes_') && value && typeof value === 'object') {
           puzzles.push(value as ThemesPuzzle);
         }
       }
