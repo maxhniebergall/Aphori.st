@@ -62,6 +62,8 @@ scripts/datascience/*.npy.backup.npy
 scripts/datascience/word_vocab.json
 scripts/datascience/word_vocab.json.backup
 scripts/datascience/word_vocab_filtered_out.json
+scripts/puzzle-generation/dist
+scripts/puzzle-generation/node_modules
 
 # Puzzle generation artifacts
 scripts/puzzle-generation/
