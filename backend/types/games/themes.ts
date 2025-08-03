@@ -93,8 +93,8 @@ export interface ThemesVectorShard {
 // Database path configuration
 export const THEMES_DB_PATHS = {
   // Daily puzzles
-  DAILY_PUZZLES: (date: string) => `games/themes/daily/${date}`,
-  PUZZLE: (date: string, puzzleId: string) => `games/themes/daily/${date}/${puzzleId}`,
+  DAILY_PUZZLES: (date: string) => `dailyPuzzles/themes/${date}`,
+  PUZZLE: (date: string, puzzleId: string) => `dailyPuzzles/themes/${date}/${puzzleId}`,
   
   // User progress
   USER_PROGRESS: (userId: string) => `userGameState/themes/${userId}`,
