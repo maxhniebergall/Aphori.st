@@ -667,13 +667,22 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // --- Semantic Methods: Low-Level Generic ---
   async getRawPath(path: string): Promise<any | null> {
-    this._assertFirebaseKeyComponentSafe(path, 'getRawPath', 'path');
+    // getRawPath accepts full Firebase paths which can contain '/' characters
+    // Only validate individual path components for forbidden chars (. # $ [ ])
+    const forbiddenPathChars = /[.#$[\]]/;
+    if (forbiddenPathChars.test(path)) {
+      console.warn(`FirebaseClient: getRawPath called with path ("${path}") containing forbidden characters . # $ [ ]. Firebase paths should not contain these characters.`);
+    }
     const snapshot = await this.db.ref(path).once('value');
     return snapshot.exists() ? snapshot.val() : null;
   }
 
   async setRawPath(path: string, value: any): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(path, 'setRawPath', 'path');
+    // setRawPath accepts full Firebase paths which can contain '/' characters
+    const forbiddenPathChars = /[.#$[\]]/;
+    if (forbiddenPathChars.test(path)) {
+      console.warn(`FirebaseClient: setRawPath called with path ("${path}") containing forbidden characters . # $ [ ]. Firebase paths should not contain these characters.`);
+    }
     await this.db.ref(path).set(value);
   }
 
