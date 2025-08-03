@@ -1,0 +1,36 @@
+{
+  "name": "themes-puzzle-generator",
+  "version": "1.0.0",
+  "description": "Offline puzzle generation for themes game using full vector index",
+  "type": "module",
+  "main": "dist/generate-puzzles.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "generate": "npm run build && node dist/generate-puzzles.js",
+    "validate": "npm run build && node dist/validate-puzzles.js",
+    "generate-week": "npm run generate -- $(date +%Y-%m-%d) $(date -d '+7 days' +%Y-%m-%d) 3 0.6",
+    "generate-test": "npm run generate -- $(date +%Y-%m-%d) $(date +%Y-%m-%d) 1 0.5 ./test-output 5 --verbose",
+    "validate-test": "npm run validate -- ./test-output --verbose",
+    "test": "npm run build && node dist/test-generation.js",
+    "dev": "npm run test"
+  },
+  "dependencies": {
+    "faiss-node": "^0.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "puzzle",
+    "games",
+    "vector",
+    "similarity",
+    "themes",
+    "offline",
+    "generation"
+  ],
+  "author": "Aphorist Development Team",
+  "license": "MIT"
+}
