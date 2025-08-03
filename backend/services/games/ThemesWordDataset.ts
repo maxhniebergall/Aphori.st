@@ -5,7 +5,8 @@
 
 import { LoggedDatabaseClient } from '../../db/LoggedDatabaseClient.js';
 import { ThemesVectorService } from './ThemesVectorService.js';
-import { THEMES_DB_PATHS } from '../../types/games/themes.js';
+import { ThemesQualityControl } from './ThemesQualityControl.js';
+import { THEMES_DB_PATHS, WordQualityMetrics } from '../../types/games/themes.js';
 import logger from '../../logger.js';
 
 export interface WordDatasetEntry {
@@ -26,10 +27,12 @@ export interface WordDatasetMetadata {
 export class ThemesWordDataset {
   private firebaseClient: LoggedDatabaseClient;
   private vectorService: ThemesVectorService;
+  private qualityControl: ThemesQualityControl;
 
   constructor(firebaseClient: LoggedDatabaseClient, vectorService: ThemesVectorService) {
     this.firebaseClient = firebaseClient;
     this.vectorService = vectorService;
+    this.qualityControl = new ThemesQualityControl(vectorService);
   }
 
   /**
@@ -105,6 +108,14 @@ export class ThemesWordDataset {
             continue;
           }
 
+          // Quality validation using quality control service
+          const qualityValidation = await this.qualityControl.validateWord(processedWord);
+          if (!qualityValidation.valid || qualityValidation.score < 0.5) {
+            logger.debug(`Word failed quality validation: ${processedWord} (score: ${qualityValidation.score.toFixed(2)})`);
+            failed++;
+            continue;
+          }
+
           // Add to vector index only if not skipping and not already loaded
           if (!skipVectorIndex) {
             const vectorSuccess = await this.vectorService.addWord(processedWord);
@@ -115,12 +126,13 @@ export class ThemesWordDataset {
             }
           }
 
-          // Store in dataset
+          // Store in dataset with quality metrics
+          const wordMetrics = qualityValidation.metrics as WordQualityMetrics;
           const wordEntry: WordDatasetEntry = {
             word: processedWord,
             validated: true,
-            frequency: this.estimateWordFrequency(processedWord),
-            difficulty: this.estimateWordDifficulty(processedWord)
+            frequency: wordMetrics.commonality,
+            difficulty: wordMetrics.difficulty
           };
 
           await this.storeWordEntry(processedWord, wordEntry);
@@ -373,6 +385,55 @@ export class ThemesWordDataset {
       return shuffled.slice(0, count);
     } catch (error) {
       logger.error('Failed to get random words:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get quality-filtered random words from dataset
+   */
+  async getQualityRandomWords(count: number, minQualityScore: number = 0.6): Promise<string[]> {
+    try {
+      const datasetPath = THEMES_DB_PATHS.WORD_DATASET;
+      const dataset = await this.firebaseClient.getRawPath(datasetPath);
+      
+      if (!dataset) {
+        logger.warn('No word dataset found');
+        return [];
+      }
+
+      // Get words with quality filtering
+      const allWords = Object.keys(dataset).filter(key => key !== 'metadata');
+      const qualityWords: string[] = [];
+
+      // Filter words by stored quality metrics or validate on-the-fly
+      for (const word of allWords) {
+        const entry = dataset[word] as WordDatasetEntry;
+        
+        // If we have stored frequency/difficulty, use simple heuristic
+        if (entry.frequency !== undefined && entry.difficulty !== undefined) {
+          const simpleQuality = (entry.frequency + (10 - entry.difficulty) / 9) / 2;
+          if (simpleQuality >= minQualityScore) {
+            qualityWords.push(word);
+          }
+        } else {
+          // Fallback to basic validation
+          if (this.validateWord(word)) {
+            qualityWords.push(word);
+          }
+        }
+
+        // Stop when we have enough candidates
+        if (qualityWords.length >= count * 2) {
+          break;
+        }
+      }
+      
+      // Shuffle and return requested count
+      const shuffled = this.shuffleArray(qualityWords);
+      return shuffled.slice(0, Math.min(count, shuffled.length));
+    } catch (error) {
+      logger.error('Failed to get quality random words:', error);
       return [];
     }
   }
