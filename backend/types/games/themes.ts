@@ -128,7 +128,6 @@ export const THEMES_CONFIG = {
   MAX_CROSS_CATEGORY_SIMILARITY: 0.4,
   VECTOR_DIMENSION: 300, // Matches binary theme index dimension
 } as const;
-
 // Type guards
 export function isTemporaryUserId(userId: string): boolean {
   return userId.startsWith('temp_');

@@ -399,15 +399,16 @@ Examples:
   npm run generate 2025-08-05 2025-08-07 7 0.5 ./test-output 10 --verbose
 
 Progressive Difficulty Algorithm:
-  Uses N = K + D algorithm where:
-  - K = puzzle size (4 for 4x4 grid)
-  - D = category difficulty (1, 2, 3, 4)
-  - N = total neighbors to find
+  Uses N = K frequency-based algorithm where:
+  - K = puzzle size (4 for 4x4, 5 for 5x5, etc.)
+  - N = K (find exactly K neighbors, no discarding)
+  - Uses closest neighbors (highest semantic similarity)
+  - Difficulty controlled by word frequency percentiles:
   
-  Category 1: N=5, use neighbors 2-5 (discard closest)
-  Category 2: N=6, use neighbors 3-6 (discard 2 closest)  
-  Category 3: N=7, use neighbors 4-7 (discard 3 closest)
-  Category 4: N=8, use neighbors 5-8 (discard 4 closest)
+  Early categories (1-2): 0.1-2 percentile (very common words)
+  Later categories: up to 50 percentile (less common words)
+  
+  Example for 4x4: Cat1=99.9%, Cat2=99.2%, Cat3=75%, Cat4=50%
 `);
 }
 
