@@ -13,6 +13,8 @@
     "generate-test": "npm run generate -- $(date +%Y-%m-%d) $(date +%Y-%m-%d) 1 0.5 ./test-output 5 --verbose",
     "validate-test": "npm run validate -- ./test-output --verbose",
     "test": "npm run build && node dist/test-generation.js",
+    "test-vectors": "npm run build && node dist/test-vector-functionality.js",
+    "test-quality": "npm run build && node dist/test-quality-controls.js",
     "dev": "npm run test"
   },
   "dependencies": {
