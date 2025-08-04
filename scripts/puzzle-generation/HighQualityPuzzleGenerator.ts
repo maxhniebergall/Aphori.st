@@ -184,8 +184,8 @@ export class HighQualityPuzzleGenerator {
         const seedWord = this.vectorLoader.getRandomSeedWord();
         if (usedWords.has(seedWord)) continue;
 
-        // Find N nearest neighbors (more than we need)
-        const allCandidates = await this.vectorLoader.findNearest(seedWord, N + 5); // Extra for filtering
+        // Find N nearest neighbors with quality controls applied
+        const allCandidates = await this.vectorLoader.findNearestWithQualityControls(seedWord, N + 5); // Extra for filtering
         
         // If no candidates found (word not in vocabulary), try a different word
         if (allCandidates.length === 0) {
