@@ -318,6 +318,12 @@ export class FullVectorLoader {
       return true; // If no frequency data, allow the word
     }
 
+    // Check if the word is actually in the frequency dataset
+    if (!this.frequencyService.hasWord(word)) {
+      console.log(`     📊 "${word}" not in frequency dataset - skipping frequency check`);
+      return true; // Skip frequency test for words not in dataset
+    }
+
     const frequencyScore = this.frequencyService.getFrequencyScore(word);
     const meetsThreshold = frequencyScore >= threshold;
     
