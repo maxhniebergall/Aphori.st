@@ -43,7 +43,7 @@ async function testQualityControls() {
     console.log(`🎯 Testing containment for "${containmentTestWord}" with existing words:`);
     
     try {
-      const containmentResults = await vectorLoader.findNearestWithQualityControls(containmentTestWord, 8, existingWords);
+      const containmentResults = await vectorLoader.findNearestWithQualityControls(containmentTestWord, 8, existingWords, 0.05);
       
       if (containmentResults.length > 0) {
         console.log(`   ✅ Found ${containmentResults.length} words with no containment issues:`);
@@ -89,7 +89,7 @@ async function testQualityControls() {
         
         console.log('\n   🔒 With Quality Controls:');
         // Test quality-controlled method
-        const qualityResults = await vectorLoader.findNearestWithQualityControls(testTheme.word, 5);
+        const qualityResults = await vectorLoader.findNearestWithQualityControls(testTheme.word, 5, existingWords, 0.05);
         
         if (qualityResults.length > 0) {
           console.log(`   ✅ Found ${qualityResults.length} quality-controlled words:`);

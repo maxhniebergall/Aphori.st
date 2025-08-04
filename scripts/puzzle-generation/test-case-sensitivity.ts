@@ -44,7 +44,7 @@ async function testCaseSensitivity() {
       console.log(`🎯 Testing "${testCase.word}" (should ${testCase.shouldReject ? 'reject' : 'accept'}):`);
       
       try {
-        const results = await vectorLoader.findNearestWithQualityControls(testCase.word, 3, existingWords);
+        const results = await vectorLoader.findNearestWithQualityControls(testCase.word, 3, existingWords, 0.05);
         
         if (testCase.shouldReject) {
           if (results.length === 0) {
