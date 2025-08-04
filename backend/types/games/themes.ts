@@ -118,66 +118,6 @@ export const THEMES_DB_PATHS = {
   WORD_DATASET_METADATA: 'themesWordDataset/metadata',
 } as const;
 
-// Quality control interfaces
-export interface WordQualityMetrics {
-  appropriateness: number; // 0-1, content appropriateness
-  commonality: number; // 0-1, how well-known the word is
-  difficulty: number; // 1-10, estimated difficulty
-  semanticClarity: number; // 0-1, how clear the meaning is
-  overallScore: number; // 0-1, weighted combination
-}
-
-export interface CategoryQualityMetrics {
-  internalCohesion: number; // 0-1, similarity within category
-  semanticClarity: number; // 0-1, how clear the theme is
-  wordQuality: number; // 0-1, average word quality
-  appropriateness: number; // 0-1, content appropriateness
-  difficulty: number; // 1-10, category difficulty
-  overallScore: number; // 0-1, weighted combination
-}
-
-export interface PuzzleQualityMetrics {
-  categoryQuality: number; // 0-1, average category quality
-  crossCategoryDiversity: number; // 0-1, how distinct categories are
-  difficultyProgression: number; // 0-1, how well difficulty scales
-  wordDiversity: number; // 0-1, lexical diversity
-  appropriateness: number; // 0-1, overall content appropriateness
-  overallScore: number; // 0-1, weighted combination
-}
-
-export interface QualityControlConfig {
-  // Word validation thresholds
-  minWordAppropriateness: number;
-  minWordCommonality: number;
-  maxWordDifficulty: number;
-  minWordSemanticClarity: number;
-  minWordOverallScore: number;
-  
-  // Category validation thresholds
-  minCategoryInternalCohesion: number;
-  minCategorySemanticClarity: number;
-  minCategoryWordQuality: number;
-  minCategoryAppropriateness: number;
-  maxCategoryDifficulty: number;
-  minCategoryOverallScore: number;
-  
-  // Puzzle validation thresholds
-  minPuzzleCategoryQuality: number;
-  minCrossCategoryDiversity: number;
-  minDifficultyProgression: number;
-  minWordDiversity: number;
-  minPuzzleAppropriateness: number;
-  minPuzzleOverallScore: number;
-  
-  // Cross-category validation
-  maxCategorySimilarity: number;
-  minCategoryDistance: number;
-  
-  // Content filtering
-  excludedWords: string[];
-  excludedTopics: string[];
-  requiredWordTypes: string[];
-}
 
 // Configuration constants
 export const THEMES_CONFIG = {
@@ -189,58 +129,6 @@ export const THEMES_CONFIG = {
   MAX_CROSS_CATEGORY_SIMILARITY: 0.4,
   VECTOR_DIMENSION: 300, // Matches binary theme index dimension
 } as const;
-
-// Quality control configuration
-export const QUALITY_CONTROL_CONFIG: QualityControlConfig = {
-  // Word validation thresholds
-  minWordAppropriateness: 0.8,
-  minWordCommonality: 0.1,
-  maxWordDifficulty: 8,
-  minWordSemanticClarity: 0.6,
-  minWordOverallScore: 0.6,
-  
-  // Category validation thresholds
-  minCategoryInternalCohesion: 0.4,
-  minCategorySemanticClarity: 0.5,
-  minCategoryWordQuality: 0.6,
-  minCategoryAppropriateness: 0.9,
-  maxCategoryDifficulty: 8,
-  minCategoryOverallScore: 0.6,
-  
-  // Puzzle validation thresholds
-  minPuzzleCategoryQuality: 0.6,
-  minCrossCategoryDiversity: 0.3,
-  minDifficultyProgression: 0.5,
-  minWordDiversity: 0.4,
-  minPuzzleAppropriateness: 0.9,
-  minPuzzleOverallScore: 0.6,
-  
-  // Cross-category validation
-  maxCategorySimilarity: 0.6,
-  minCategoryDistance: 0.3,
-  
-  // Content filtering
-  excludedWords: [
-    // Inappropriate content
-    'xxx', 'sex', 'porn', 'nude', 'naked', 'drug', 'drugs', 'cocaine', 'heroin', 'marijuana',
-    'kill', 'murder', 'death', 'dead', 'suicide', 'hate', 'racist', 'nazi', 'hitler',
-    'hell', 'damn', 'shit', 'fuck', 'bitch', 'ass', 'bastard',
-    // Sensitive topics
-    'religion', 'politics', 'war', 'bomb', 'gun', 'weapon', 'violence', 'blood',
-    // Potentially confusing
-    'a', 'an', 'the', 'and', 'or', 'but', 'if', 'of', 'to', 'in', 'on', 'at',
-    // Too abstract
-    'thing', 'stuff', 'item', 'object', 'concept', 'idea', 'notion'
-  ],
-  
-  excludedTopics: [
-    'violence', 'sexuality', 'drugs', 'politics', 'religion', 'death', 'profanity'
-  ],
-  
-  requiredWordTypes: [
-    'noun', 'adjective', 'verb' // Prefer concrete word types
-  ]
-};
 
 // Type guards
 export function isTemporaryUserId(userId: string): boolean {
