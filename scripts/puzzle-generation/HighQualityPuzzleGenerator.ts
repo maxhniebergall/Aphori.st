@@ -45,7 +45,7 @@ export interface GeneratedPuzzleOutput {
     successRate: number;
     qualityScore: number;
     difficultyProgression: {
-      puzzleSize: number;
+      puzzleSizes: number[];
       categoryDifficulties: number[];
       algorithmUsed: string;
     };
@@ -62,16 +62,20 @@ export class HighQualityPuzzleGenerator {
   constructor(private vectorLoader: FullVectorLoader) {}
 
   /**
-   * Generate multiple puzzles for a given date
+   * Generate multiple puzzles for a given date (sizes 4x4 through 10x10)
    */
-  async generateDailyPuzzles(date: string, count: number = 3): Promise<GeneratedPuzzleOutput> {
-    console.log(`🎯 Generating ${count} puzzles for ${date}...`);
+  async generateDailyPuzzles(date: string, count: number = 7): Promise<GeneratedPuzzleOutput> {
+    console.log(`🎯 Generating ${count} puzzles for ${date} (sizes 4x4 through 10x10)...`);
     
-    // Define puzzle configurations
+    // Define puzzle configurations for sizes 4x4 through 10x10
     const puzzleConfigs = [
-      { size: 4, name: '4x4 Standard' },  // Progressive difficulties 1,2,3,4
-      { size: 4, name: '4x4 Advanced' }, // Different seed words for variety
-      { size: 4, name: '4x4 Expert' }    // Different seed words for variety
+      { size: 4, name: '4x4 Standard' },   // Progressive difficulties 1,2,3,4
+      { size: 5, name: '5x5 Standard' },   // Progressive difficulties 1,2,3,4,5
+      { size: 6, name: '6x6 Standard' },   // Progressive difficulties 1,2,3,4,5,6
+      { size: 7, name: '7x7 Standard' },   // Progressive difficulties 1,2,3,4,5,6,7
+      { size: 8, name: '8x8 Standard' },   // Progressive difficulties 1,2,3,4,5,6,7,8
+      { size: 9, name: '9x9 Standard' },   // Progressive difficulties 1,2,3,4,5,6,7,8,9
+      { size: 10, name: '10x10 Standard' } // Progressive difficulties 1,2,3,4,5,6,7,8,9,10
     ];
     
     const puzzles: GeneratedPuzzle[] = [];
@@ -113,8 +117,8 @@ export class HighQualityPuzzleGenerator {
         successRate: puzzles.length / count,
         qualityScore: qualityScores.length > 0 ? qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length : 0,
         difficultyProgression: {
-          puzzleSize: 4, // Primary puzzle size
-          categoryDifficulties: [1, 2, 3, 4], // Standard progression
+          puzzleSizes: [4, 5, 6, 7, 8, 9, 10], // All generated puzzle sizes
+          categoryDifficulties: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], // Progressive difficulty up to max size
           algorithmUsed: 'N=K+D'
         }
       }
@@ -185,7 +189,7 @@ export class HighQualityPuzzleGenerator {
         if (usedWords.has(seedWord)) continue;
 
         // Find N nearest neighbors with quality controls applied
-        const allCandidates = await this.vectorLoader.findNearestWithQualityControls(seedWord, N + 5); // Extra for filtering
+        const allCandidates = await this.vectorLoader.findNearestWithQualityControls(seedWord, N + 5, usedWords); // Extra for filtering
         
         // If no candidates found (word not in vocabulary), try a different word
         if (allCandidates.length === 0) {
