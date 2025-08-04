@@ -30,6 +30,50 @@ async function testQualityControls() {
       { word: 'book', expected: 'should filter out "books", "bookmark", etc.' },
       { word: 'play', expected: 'should filter out "playing", "player", etc.' }
     ];
+
+    // Test inter-word containment
+    console.log('🔗 Testing inter-word containment control:\n');
+    
+    // Simulate existing words that might cause containment issues
+    const existingWords = new Set(['run', 'play', 'book']);
+    
+    console.log(`   Existing words: [${Array.from(existingWords).join(', ')}]\n`);
+    
+    const containmentTestWord = 'test';
+    console.log(`🎯 Testing containment for "${containmentTestWord}" with existing words:`);
+    
+    try {
+      const containmentResults = await vectorLoader.findNearestWithQualityControls(containmentTestWord, 8, existingWords);
+      
+      if (containmentResults.length > 0) {
+        console.log(`   ✅ Found ${containmentResults.length} words with no containment issues:`);
+        containmentResults.forEach((result, idx) => {
+          console.log(`      ${idx + 1}. ${result.word} (similarity: ${result.similarity.toFixed(3)})`);
+        });
+        
+        // Check if any results would have containment with existing words
+        const wouldHaveContainment = containmentResults.some(r => {
+          const wordLower = r.word.toLowerCase();
+          return Array.from(existingWords).some(existing => {
+            const existingLower = existing.toLowerCase();
+            return wordLower.includes(existingLower) || existingLower.includes(wordLower);
+          });
+        });
+        
+        if (wouldHaveContainment) {
+          console.log(`   ⚠️ Warning: Some results have containment with existing words`);
+        } else {
+          console.log(`   ✅ No containment issues found with existing words`);
+        }
+        
+      } else {
+        console.log('   ❌ No words found that pass containment controls');
+      }
+    } catch (error) {
+      console.log(`   ❌ Error: ${(error as Error).message}`);
+    }
+    
+    console.log('\n' + '─'.repeat(60) + '\n');
     
     for (const testTheme of testThemes) {
       console.log(`🎯 Testing theme: "${testTheme.word}"`);
