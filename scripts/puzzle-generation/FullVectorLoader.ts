@@ -227,11 +227,11 @@ export class FullVectorLoader {
   /**
    * Find nearest neighbors with quality controls applied
    * Filters results to include only words that:
-   * 1. Are in the top 30% most used words (based on frequency data)
+   * 1. Meet the specified frequency percentile threshold
    * 2. Do not contain the theme word as a substring
    * 3. Are not contained within any existing selected words (and vice versa)
    */
-  async findNearestWithQualityControls(themeWord: string, k: number, existingWords: Set<string> = new Set()): Promise<SearchResult[]> {
+  async findNearestWithQualityControls(themeWord: string, k: number, existingWords: Set<string> = new Set(), frequencyThreshold: number = 0.3): Promise<SearchResult[]> {
     if (!this.initialized || !this.faissIndex) {
       throw new Error('FullVectorLoader not initialized');
     }
@@ -269,7 +269,7 @@ export class FullVectorLoader {
       for (const candidate of newCandidates) {
         if (qualityResults.length >= k) break;
         
-        if (this.passesQualityControls(candidate.word, themeWord, existingWords)) {
+        if (this.passesQualityControls(candidate.word, themeWord, existingWords, frequencyThreshold)) {
           qualityResults.push(candidate);
           console.log(`   ✅ Quality word: "${candidate.word}" (similarity: ${candidate.similarity.toFixed(3)})`);
         } else {
@@ -290,9 +290,9 @@ export class FullVectorLoader {
   /**
    * Check if a word passes quality control filters
    */
-  private passesQualityControls(word: string, themeWord: string, existingWords: Set<string>): boolean {
-    // Control 1: Must be in top 30% most used words
-    if (!this.isInTop30PercentFrequency(word)) {
+  private passesQualityControls(word: string, themeWord: string, existingWords: Set<string>, frequencyThreshold: number): boolean {
+    // Control 1: Must meet the specified frequency threshold
+    if (!this.meetsFrequencyThreshold(word, frequencyThreshold)) {
       return false;
     }
 
@@ -310,25 +310,22 @@ export class FullVectorLoader {
   }
 
   /**
-   * Check if word is in top 30% most frequently used words
+   * Check if word meets the specified frequency threshold
    */
-  private isInTop30PercentFrequency(word: string): boolean {
+  private meetsFrequencyThreshold(word: string, threshold: number): boolean {
     if (!this.frequencyService) {
       console.warn(`⚠️ No frequency service available - skipping frequency check for "${word}"`);
       return true; // If no frequency data, allow the word
     }
 
     const frequencyScore = this.frequencyService.getFrequencyScore(word);
+    const meetsThreshold = frequencyScore >= threshold;
     
-    // Top 30% means frequency score >= 0.7, but this is too restrictive for semantic neighbors
-    // Use a more practical threshold of 0.3 (roughly top 70% of words with frequency data)
-    const isTop30Percent = frequencyScore >= 0.3;
-    
-    if (!isTop30Percent) {
-      console.log(`     📊 "${word}" frequency: ${frequencyScore.toFixed(3)} (below 0.3 threshold)`);
+    if (!meetsThreshold) {
+      console.log(`     📊 "${word}" frequency: ${frequencyScore.toFixed(3)} (below ${threshold.toFixed(3)} threshold)`);
     }
     
-    return isTop30Percent;
+    return meetsThreshold;
   }
 
   /**
@@ -437,7 +434,35 @@ export class FullVectorLoader {
   }
 
   /**
-   * Get a random seed word using frequency-based selection
+   * Get a random seed word with frequency filtering based on difficulty
+   * Uses frequency percentiles to control theme word difficulty
+   */
+  getRandomSeedWordWithFrequency(frequencyThreshold: number): string {
+    if (!this.frequencyService) {
+      // Fallback to original method if no frequency service
+      return this.getRandomSeedWord();
+    }
+
+    // Get words that meet the frequency threshold
+    const suitableWords: string[] = [];
+    const maxAttempts = 1000;
+    
+    for (let i = 0; i < maxAttempts; i++) {
+      const word = this.getRandomSeedWord(); // Get random word from vocabulary
+      const frequencyScore = this.frequencyService.getFrequencyScore(word);
+      
+      if (frequencyScore >= frequencyThreshold) {
+        return word; // Found a suitable word
+      }
+    }
+    
+    // Fallback: return any random word if we can't find one meeting threshold
+    console.warn(`⚠️ Could not find word meeting frequency threshold ${frequencyThreshold.toFixed(3)}, using fallback`);
+    return this.getRandomSeedWord();
+  }
+
+  /**
+   * Get a random seed word using frequency-based selection (original method)
    * Prefers words in the [0.015%, 20%] frequency range for puzzle themes
    */
   getRandomSeedWord(): string {
