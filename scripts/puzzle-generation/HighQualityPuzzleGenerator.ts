@@ -15,9 +15,10 @@ export interface GeneratedCategory {
 }
 
 export interface DifficultyMetrics {
-  totalNeighbors: number;      // N value used
-  discardedClosest: number;    // N-K neighbors discarded
-  selectedRange: string;       // Range description like "2-5"
+  totalNeighbors: number;      // N value used (now equals K for N=K algorithm)
+  frequencyThreshold?: number; // Frequency threshold used for difficulty control
+  discardedClosest?: number;   // N-K neighbors discarded (deprecated in new algorithm)
+  selectedRange: string;       // Range description like "1-4 (closest neighbors)"
 }
 
 export interface GeneratedPuzzle {
@@ -119,7 +120,7 @@ export class HighQualityPuzzleGenerator {
         difficultyProgression: {
           puzzleSizes: [4, 5, 6, 7, 8, 9, 10], // All generated puzzle sizes
           categoryDifficulties: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], // Progressive difficulty up to max size
-          algorithmUsed: 'N=K+D'
+          algorithmUsed: 'N=K with frequency-based difficulty'
         }
       }
     };
@@ -170,26 +171,32 @@ export class HighQualityPuzzleGenerator {
   }
 
   /**
-   * Generate a single category using N=K+D progressive difficulty algorithm
+   * Generate a single category using N=K frequency-based difficulty algorithm
    */
   private async generateCategory(usedWords: Set<string>, categoryIndex: number, puzzleSize: number = 4): Promise<GeneratedCategory | null> {
     const maxAttempts = 20;
     
-    // Progressive difficulty algorithm: N = K + D
-    // Where K = puzzle size (4), D = difficulty (1-based category index)
+    // New frequency-based difficulty algorithm: N = K
+    // Where K = puzzle size, difficulty controlled by frequency threshold
     const K = puzzleSize;
+    const N = K; // Find exactly K neighbors (no extra for discarding)
     const D = categoryIndex + 1; // Convert 0-based index to 1-based difficulty
-    const N = K + D; // Total neighbors to find
     
-    console.log(`🎯 Generating category ${categoryIndex + 1}: K=${K}, D=${D}, N=${N} (finding ${N} neighbors, using ${K} furthest)`);
+    // Calculate frequency threshold based on difficulty
+    const frequencyThreshold = this.calculateFrequencyThreshold(D, puzzleSize);
+    
+    console.log(`🎯 Generating category ${categoryIndex + 1}: K=${K}, N=${N} (theme word frequency threshold: ${frequencyThreshold.toFixed(3)})`);
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        const seedWord = this.vectorLoader.getRandomSeedWord();
+        // Get theme word with frequency filtering based on difficulty
+        // Frequency threshold applies only to theme word selection, not to puzzle words
+        const seedWord = this.vectorLoader.getRandomSeedWordWithFrequency(frequencyThreshold);
         if (usedWords.has(seedWord)) continue;
 
-        // Find N nearest neighbors with quality controls applied
-        const allCandidates = await this.vectorLoader.findNearestWithQualityControls(seedWord, N + 5, usedWords); // Extra for filtering
+        // Find N nearest neighbors with standard quality controls 
+        // Selected puzzle words use general quality controls (0.3 frequency threshold)
+        const allCandidates = await this.vectorLoader.findNearestWithQualityControls(seedWord, N + 5, usedWords);
         
         // If no candidates found (word not in vocabulary), try a different word
         if (allCandidates.length === 0) {
@@ -198,35 +205,29 @@ export class HighQualityPuzzleGenerator {
         
         const availableCandidates = allCandidates.filter(c => !usedWords.has(c.word));
 
-        if (availableCandidates.length >= N) {
-          // Apply progressive difficulty algorithm:
-          // 1. Take N nearest neighbors
-          // 2. Discard the N-K nearest (closest) neighbors
-          // 3. Use the remaining K neighbors (furthest of the N)
+        if (availableCandidates.length >= K) {
+          // Apply frequency-based difficulty algorithm:
+          // Take the K closest neighbors (highest similarity)
+          // Difficulty controlled by frequency threshold, not by distance
           
-          const nNearestNeighbors = availableCandidates.slice(0, N);
-          const discardClosest = N - K; // Number of closest neighbors to discard
-          const selectedCandidates = nNearestNeighbors.slice(discardClosest); // Take K furthest of N nearest
-          
-          if (selectedCandidates.length >= K) {
-            const selectedWords = selectedCandidates.slice(0, K).map(c => c.word);
+          const selectedCandidates = availableCandidates.slice(0, K);
+          const selectedWords = selectedCandidates.map(c => c.word);
 
-            console.log(`   ✅ Category ${categoryIndex + 1}: Using neighbors ranked ${discardClosest + 1}-${discardClosest + K} out of ${N}`);
-            console.log(`   🎲 Seed: "${seedWord}" → Words: [${selectedWords.join(', ')}]`);
+          console.log(`   ✅ Category ${categoryIndex + 1}: Using ${K} closest neighbors (theme freq: ${frequencyThreshold.toFixed(3)})`);
+          console.log(`   🎲 Theme: "${seedWord}" → Puzzle words: [${selectedWords.join(', ')}]`);
 
-            return {
-              id: `cat_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-              themeWord: seedWord, // Seed word is the theme, not in puzzle
-              words: selectedWords,
-              difficulty: D,
-              similarity: Math.min(...selectedCandidates.slice(0, K).map(c => c.similarity)),
-              difficultyMetrics: {
-                totalNeighbors: N,
-                discardedClosest: discardClosest,
-                selectedRange: `${discardClosest + 1}-${discardClosest + K}`
-              }
-            };
-          }
+          return {
+            id: `cat_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            themeWord: seedWord, // Seed word is the theme, not in puzzle
+            words: selectedWords,
+            difficulty: D,
+            similarity: Math.min(...selectedCandidates.map(c => c.similarity)),
+            difficultyMetrics: {
+              totalNeighbors: K,
+              frequencyThreshold: frequencyThreshold,
+              selectedRange: `1-${K} (closest neighbors)`
+            }
+          };
         }
       } catch (error) {
         console.error(`   ❌ Error in category generation attempt ${attempt + 1}:`, error);
@@ -235,6 +236,32 @@ export class HighQualityPuzzleGenerator {
 
     console.log(`   ❌ Failed to generate category ${categoryIndex + 1} with difficulty N=${N}`);
     return null;
+  }
+
+  /**
+   * Calculate frequency threshold based on category difficulty
+   * Early categories (1-2): 0.1-2 percentile = very common words (0.98-0.999 threshold)
+   * Later categories: up to 50 percentile = less common words (0.5 threshold)
+   */
+  private calculateFrequencyThreshold(difficulty: number, maxDifficulty: number): number {
+    // Map difficulty to frequency threshold:
+    // difficulty 1: 0.1% = 99.9th percentile = 0.999 threshold (most common words)
+    // difficulty 2: 2% = 98th percentile = 0.98 threshold (very common words)  
+    // difficulty maxDifficulty: 50% = 50th percentile = 0.5 threshold (moderately common words)
+    
+    const minThreshold = 0.5;   // 50th percentile (moderately common words)
+    const maxThreshold = 0.999; // 99.9th percentile (most common words)
+    
+    if (difficulty === 1) {
+      return maxThreshold; // Most common words (0.1 percentile)
+    } else if (difficulty === 2) {
+      return 0.98; // Very common words (2 percentile)
+    } else {
+      // Linear interpolation from 0.98 (difficulty 2) to 0.5 (max difficulty)
+      const ratio = (difficulty - 2) / (maxDifficulty - 2);
+      const threshold = 0.98 - (ratio * (0.98 - minThreshold));
+      return Math.max(minThreshold, threshold);
+    }
   }
 
   /**
