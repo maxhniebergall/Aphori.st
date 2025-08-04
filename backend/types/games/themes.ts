@@ -194,7 +194,7 @@ export const THEMES_CONFIG = {
 export const QUALITY_CONTROL_CONFIG: QualityControlConfig = {
   // Word validation thresholds
   minWordAppropriateness: 0.8,
-  minWordCommonality: 0.3,
+  minWordCommonality: 0.1,
   maxWordDifficulty: 8,
   minWordSemanticClarity: 0.6,
   minWordOverallScore: 0.6,
