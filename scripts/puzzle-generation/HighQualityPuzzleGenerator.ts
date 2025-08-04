@@ -59,6 +59,8 @@ export interface GenerationResult {
   attempts: number;
 }
 
+const MIN_WORD_FREQUENCY_THRESHOLD = 0.05;
+
 export class HighQualityPuzzleGenerator {
   constructor(private vectorLoader: FullVectorLoader) {}
 
@@ -196,7 +198,7 @@ export class HighQualityPuzzleGenerator {
 
         // Find N nearest neighbors with standard quality controls 
         // Selected puzzle words use general quality controls (0.3 frequency threshold)
-        const allCandidates = await this.vectorLoader.findNearestWithQualityControls(seedWord, N + 5, usedWords);
+        const allCandidates = await this.vectorLoader.findNearestWithQualityControls(seedWord, N + 5, usedWords, MIN_WORD_FREQUENCY_THRESHOLD);
         
         // If no candidates found (word not in vocabulary), try a different word
         if (allCandidates.length === 0) {
