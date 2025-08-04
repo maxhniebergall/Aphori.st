@@ -27,6 +27,7 @@ export interface FrequencyStats {
 export class WordFrequencyService {
   private frequencyMap: Map<string, WordFrequencyEntry> = new Map();
   private sortedWords: string[] = [];
+  private eligibleWordsCache: Map<number, string[]> = new Map(); // Cache for threshold -> eligible words
   private stats: FrequencyStats | null = null;
   private initialized = false;
 
@@ -303,6 +304,36 @@ export class WordFrequencyService {
     }
     
     return true;
+  }
+
+  /**
+   * Get a random word that meets the frequency threshold
+   * Uses memoized cache for efficiency across multiple calls
+   * @param frequencyThreshold Minimum frequency score (0-1)
+   * @returns Random word meeting threshold, or null if none found
+   */
+  getRandomWordAboveThreshold(frequencyThreshold: number): string | null {
+    this.ensureInitialized();
+    
+    // Check cache first
+    if (!this.eligibleWordsCache.has(frequencyThreshold)) {
+      // Filter and cache eligible words for this threshold
+      const eligibleWords = this.sortedWords.filter(word => {
+        const entry = this.frequencyMap.get(word);
+        return entry && entry.frequency >= frequencyThreshold && this.isWordSuitableForThemes(word);
+      });
+      this.eligibleWordsCache.set(frequencyThreshold, eligibleWords);
+    }
+    
+    const eligibleWords = this.eligibleWordsCache.get(frequencyThreshold)!;
+    
+    if (eligibleWords.length === 0) {
+      return null; // No words meet the threshold
+    }
+    
+    // Return a random word from cached eligible words
+    const randomIndex = Math.floor(Math.random() * eligibleWords.length);
+    return eligibleWords[randomIndex];
   }
 
   /**
