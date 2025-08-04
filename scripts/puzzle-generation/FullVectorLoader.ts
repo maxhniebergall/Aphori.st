@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import faiss from 'faiss-node';
+import { WordFrequencyService } from './WordFrequencyService.js';
 
 export interface SearchResult {
   word: string;
@@ -24,7 +25,9 @@ export class FullVectorLoader {
   private fullVocabulary: string[] = [];
   private wordToIndex: Map<string, number> = new Map();
   private indexToWord: Map<number, string> = new Map();
+  private vectorCache: Map<number, number[]> = new Map(); // Cache for vector data
   private initialized: boolean = false;
+  private frequencyService: WordFrequencyService | null = null;
 
   /**
    * Initialize the full vector loader with complete 2.9M word dataset
@@ -47,6 +50,16 @@ export class FullVectorLoader {
       const themesLoadResult = await this.loadFromThemesIndex();
       if (themesLoadResult.success) {
         this.initialized = true;
+        
+        // Initialize frequency service for better word selection
+        try {
+          this.frequencyService = new WordFrequencyService();
+          await this.frequencyService.initialize();
+          console.log(`✅ Frequency service initialized`);
+        } catch (error) {
+          console.warn('⚠️ Failed to initialize frequency service, falling back to random selection:', error);
+        }
+        
         console.log(`✅ Loaded ${themesLoadResult.loadedWords} words from themes index`);
         return themesLoadResult;
       }
@@ -55,6 +68,16 @@ export class FullVectorLoader {
       const numpyLoadResult = await this.loadFromNumpyFiles();
       if (numpyLoadResult.success) {
         this.initialized = true;
+        
+        // Initialize frequency service for better word selection
+        try {
+          this.frequencyService = new WordFrequencyService();
+          await this.frequencyService.initialize();
+          console.log(`✅ Frequency service initialized`);
+        } catch (error) {
+          console.warn('⚠️ Failed to initialize frequency service, falling back to random selection:', error);
+        }
+        
         console.log(`✅ Loaded ${numpyLoadResult.loadedWords} words from numpy files`);
         return numpyLoadResult;
       }
@@ -133,11 +156,16 @@ export class FullVectorLoader {
         const vectorStart = i * dimension;
         const vector = Array.from(vectors.subarray(vectorStart, vectorStart + dimension));
         
+        // Normalize vector for cosine similarity (since we're using IndexFlatIP)
+        const norm = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
+        const normalizedVector = norm > 0 ? vector.map(val => val / norm) : vector;
+        
         const faissIndex = this.faissIndex.ntotal();
-        this.faissIndex.add(vector);
+        this.faissIndex.add(normalizedVector);
         
         this.wordToIndex.set(word, faissIndex);
         this.indexToWord.set(faissIndex, word);
+        this.vectorCache.set(faissIndex, normalizedVector); // Cache the normalized vector
         loadedCount++;
         
         // Log progress every 50000 words
@@ -197,7 +225,116 @@ export class FullVectorLoader {
   }
 
   /**
-   * Find nearest neighbors
+   * Find nearest neighbors with quality controls applied
+   * Filters results to include only words that:
+   * 1. Are in the top 30% most used words (based on frequency data)
+   * 2. Do not contain the theme word as a substring
+   */
+  async findNearestWithQualityControls(themeWord: string, k: number): Promise<SearchResult[]> {
+    if (!this.initialized || !this.faissIndex) {
+      throw new Error('FullVectorLoader not initialized');
+    }
+
+    const maxAttempts = k * 5; // Search up to 5x more words to find k quality words
+    const batchSize = Math.max(20, k * 2); // Search in batches for efficiency
+    const qualityResults: SearchResult[] = [];
+    let searchedSoFar = 0;
+
+    console.log(`🔍 Finding ${k} quality-controlled neighbors for "${themeWord}"`);
+
+    while (qualityResults.length < k && searchedSoFar < maxAttempts) {
+      // Search for a batch of candidates
+      const candidatesNeeded = Math.min(batchSize, maxAttempts - searchedSoFar);
+      const candidates = await this.findNearest(themeWord, searchedSoFar + candidatesNeeded);
+      
+      if (candidates.length === 0) {
+        console.log(`⚠️ No more candidates found for "${themeWord}"`);
+        break;
+      }
+
+      // Get the new candidates from this batch (skip ones we've already processed)
+      const newCandidates = candidates.slice(searchedSoFar);
+      
+      // Apply quality controls to new candidates
+      for (const candidate of newCandidates) {
+        if (qualityResults.length >= k) break;
+        
+        if (this.passesQualityControls(candidate.word, themeWord)) {
+          qualityResults.push(candidate);
+          console.log(`   ✅ Quality word: "${candidate.word}" (similarity: ${candidate.similarity.toFixed(3)})`);
+        } else {
+          console.log(`   ❌ Rejected: "${candidate.word}" (failed quality controls)`);
+        }
+      }
+      
+      searchedSoFar = candidates.length;
+    }
+
+    if (qualityResults.length < k) {
+      console.log(`⚠️ Only found ${qualityResults.length}/${k} quality words for "${themeWord}"`);
+    }
+
+    return qualityResults;
+  }
+
+  /**
+   * Check if a word passes quality control filters
+   */
+  private passesQualityControls(word: string, themeWord: string): boolean {
+    // Control 1: Must be in top 30% most used words
+    if (!this.isInTop30PercentFrequency(word)) {
+      return false;
+    }
+
+    // Control 2: Must not contain the theme word as a substring
+    if (this.containsThemeWord(word, themeWord)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Check if word is in top 30% most frequently used words
+   */
+  private isInTop30PercentFrequency(word: string): boolean {
+    if (!this.frequencyService) {
+      console.warn(`⚠️ No frequency service available - skipping frequency check for "${word}"`);
+      return true; // If no frequency data, allow the word
+    }
+
+    const frequencyScore = this.frequencyService.getFrequencyScore(word);
+    
+    // Top 30% means frequency score >= 0.7, but this is too restrictive for semantic neighbors
+    // Use a more practical threshold of 0.3 (roughly top 70% of words with frequency data)
+    const isTop30Percent = frequencyScore >= 0.3;
+    
+    if (!isTop30Percent) {
+      console.log(`     📊 "${word}" frequency: ${frequencyScore.toFixed(3)} (below 0.3 threshold)`);
+    }
+    
+    return isTop30Percent;
+  }
+
+  /**
+   * Check if word contains theme word as substring
+   */
+  private containsThemeWord(word: string, themeWord: string): boolean {
+    const wordLower = word.toLowerCase();
+    const themeLower = themeWord.toLowerCase();
+    
+    // Check if theme word is contained in the candidate word
+    const contains = wordLower.includes(themeLower) || themeLower.includes(wordLower);
+    
+    if (contains) {
+      console.log(`     🔤 "${word}" contains theme word "${themeWord}"`);
+    }
+    
+    return contains;
+  }
+
+  /**
+   * Find nearest neighbors using FAISS KNN search (original method)
    */
   async findNearest(word: string, k: number): Promise<SearchResult[]> {
     if (!this.initialized || !this.faissIndex) {
@@ -212,19 +349,47 @@ export class FullVectorLoader {
     }
 
     try {
-      // For now, just return random similar words since vector reconstruction isn't implemented
-      const results: SearchResult[] = [];
-      const allWords = Array.from(this.wordToIndex.keys()).filter(w => w !== word.toLowerCase());
-      const randomWords = allWords.sort(() => Math.random() - 0.5).slice(0, k);
-      
-      for (let i = 0; i < randomWords.length; i++) {
-        results.push({
-          word: randomWords[i],
-          similarity: Math.random() * 0.4 + 0.4 // Random similarity between 0.4-0.8
-        });
+      // Get the query vector from cache
+      const queryVector = this.vectorCache.get(wordIndex);
+      if (!queryVector) {
+        console.error(`❌ Vector not found in cache for word "${word}"`);
+        return [];
       }
+
+      // Search for k+1 neighbors (to exclude the query word itself)
+      const searchK = Math.min(k + 1, this.faissIndex.ntotal());
+      const searchResult = this.faissIndex.search(queryVector, searchK);
       
-      return results.sort((a, b) => b.similarity - a.similarity);
+      const results: SearchResult[] = [];
+      
+      // Process search results - FAISS returns labels (indices) and distances
+      for (let i = 0; i < searchResult.labels.length; i++) {
+        const neighborIndex = searchResult.labels[i];
+        const similarity = searchResult.distances[i]; // IndexFlatIP returns inner product (cosine similarity for normalized vectors)
+        
+        const neighborWord = this.indexToWord.get(neighborIndex);
+        if (neighborWord && neighborWord !== word.toLowerCase()) {
+          // Clamp similarity to [0, 1] range (should already be in this range for normalized vectors)
+          const clampedSimilarity = Math.max(0, Math.min(1, similarity));
+          
+          results.push({
+            word: neighborWord,
+            similarity: clampedSimilarity
+          });
+        }
+        
+        // Stop when we have k results (excluding the query word)
+        if (results.length >= k) {
+          break;
+        }
+      }
+
+      // Sort by similarity descending (highest similarity first)
+      results.sort((a, b) => b.similarity - a.similarity);
+      
+      console.log(`🔍 Found ${results.length} neighbors for "${word}" (similarities: ${results.slice(0, 3).map(r => r.similarity.toFixed(3)).join(', ')}...)`);
+      
+      return results;
     } catch (error) {
       console.error(`❌ Failed to find neighbors for "${word}":`, error);
       return [];
@@ -232,13 +397,31 @@ export class FullVectorLoader {
   }
 
   /**
-   * Get a random seed word
+   * Get a random seed word using frequency-based selection
+   * Prefers words in the [0.015%, 20%] frequency range for puzzle themes
    */
   getRandomSeedWord(): string {
     if (!this.initialized) {
       throw new Error('FullVectorLoader not initialized');
     }
 
+    // Try to use frequency-based selection for theme words (0.015%-20% range)
+    if (this.frequencyService) {
+      try {
+        const themeWords = this.frequencyService.getThemeWords(50);
+        
+        // Filter to only words that exist in our vector vocabulary
+        const availableWords = themeWords.filter(word => this.wordToIndex.has(word));
+        
+        if (availableWords.length > 0) {
+          return availableWords[Math.floor(Math.random() * availableWords.length)];
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to get frequency-based theme word, falling back to random:', error);
+      }
+    }
+
+    // Fallback to random selection from vocabulary
     const words = Array.from(this.wordToIndex.keys());
     if (words.length === 0) {
       throw new Error('No words found in vocabulary');
@@ -247,24 +430,6 @@ export class FullVectorLoader {
     return words[Math.floor(Math.random() * words.length)];
   }
 
-  /**
-   * Get vector by FAISS index (helper method)
-   */
-  private getVectorByIndex(faissIndex: number): number[] | null {
-    if (!this.faissIndex || faissIndex >= this.faissIndex.ntotal()) {
-      return null;
-    }
-
-    try {
-      // FAISS doesn't provide direct vector access, so we'll reconstruct from searches
-      // This is a limitation - in practice, you'd cache vectors or use a different approach
-      console.warn('⚠️ Vector reconstruction not implemented - using approximate method');
-      return null;
-    } catch (error) {
-      console.error('❌ Failed to get vector by index:', error);
-      return null;
-    }
-  }
 
 
   /**
