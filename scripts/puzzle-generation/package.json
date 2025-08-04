@@ -15,6 +15,7 @@
     "test": "npm run build && node dist/test-generation.js",
     "test-vectors": "npm run build && node dist/test-vector-functionality.js",
     "test-quality": "npm run build && node dist/test-quality-controls.js",
+    "test-case": "npm run build && node dist/test-case-sensitivity.js",
     "dev": "npm run test"
   },
   "dependencies": {
