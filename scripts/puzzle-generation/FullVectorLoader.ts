@@ -231,7 +231,7 @@ export class FullVectorLoader {
    * 2. Do not contain the theme word as a substring
    * 3. Are not contained within any existing selected words (and vice versa)
    */
-  async findNearestWithQualityControls(themeWord: string, k: number, existingWords: Set<string> = new Set(), frequencyThreshold: number = 0.3): Promise<SearchResult[]> {
+  async findNearestWithQualityControls(themeWord: string, k: number, existingWords: Set<string> = new Set(), frequencyThreshold: number): Promise<SearchResult[]> {
     if (!this.initialized || !this.faissIndex) {
       throw new Error('FullVectorLoader not initialized');
     }
@@ -449,21 +449,21 @@ export class FullVectorLoader {
       return this.getRandomSeedWord();
     }
 
-    // Get words that meet the frequency threshold
-    const suitableWords: string[] = [];
-    const maxAttempts = 1000;
+    // Get a word from the frequency service that meets the threshold
+    const word = this.frequencyService.getRandomWordAboveThreshold(frequencyThreshold);
     
-    for (let i = 0; i < maxAttempts; i++) {
-      const word = this.getRandomSeedWord(); // Get random word from vocabulary
-      const frequencyScore = this.frequencyService.getFrequencyScore(word);
-      
-      if (frequencyScore >= frequencyThreshold) {
-        return word; // Found a suitable word
+    if (word) {
+      // Verify the word exists in our vector vocabulary
+      if (this.fullVocabulary.includes(word)) {
+        return word;
       }
+      // If not in vocabulary, log and fall back
+      console.warn(`⚠️ Word "${word}" from frequency service not in vector vocabulary, using fallback`);
+    } else {
+      console.warn(`⚠️ No words found meeting frequency threshold ${frequencyThreshold.toFixed(3)}, using fallback`);
     }
     
-    // Fallback: return any random word if we can't find one meeting threshold
-    console.warn(`⚠️ Could not find word meeting frequency threshold ${frequencyThreshold.toFixed(3)}, using fallback`);
+    // Fallback to original method
     return this.getRandomSeedWord();
   }
 
