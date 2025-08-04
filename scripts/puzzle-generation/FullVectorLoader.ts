@@ -229,10 +229,20 @@ export class FullVectorLoader {
    * Filters results to include only words that:
    * 1. Are in the top 30% most used words (based on frequency data)
    * 2. Do not contain the theme word as a substring
+   * 3. Are not contained within any existing selected words (and vice versa)
    */
-  async findNearestWithQualityControls(themeWord: string, k: number): Promise<SearchResult[]> {
+  async findNearestWithQualityControls(themeWord: string, k: number, existingWords: Set<string> = new Set()): Promise<SearchResult[]> {
     if (!this.initialized || !this.faissIndex) {
       throw new Error('FullVectorLoader not initialized');
+    }
+
+    // First check if the theme word itself is a case-insensitive duplicate of existing words
+    const themeWordLower = themeWord.toLowerCase();
+    for (const existingWord of existingWords) {
+      if (themeWordLower === existingWord.toLowerCase()) {
+        console.log(`🔍 Theme word "${themeWord}" is case-insensitive duplicate of existing word "${existingWord}"`);
+        return []; // Return empty results - can't use this theme word
+      }
     }
 
     const maxAttempts = k * 5; // Search up to 5x more words to find k quality words
@@ -259,7 +269,7 @@ export class FullVectorLoader {
       for (const candidate of newCandidates) {
         if (qualityResults.length >= k) break;
         
-        if (this.passesQualityControls(candidate.word, themeWord)) {
+        if (this.passesQualityControls(candidate.word, themeWord, existingWords)) {
           qualityResults.push(candidate);
           console.log(`   ✅ Quality word: "${candidate.word}" (similarity: ${candidate.similarity.toFixed(3)})`);
         } else {
@@ -280,7 +290,7 @@ export class FullVectorLoader {
   /**
    * Check if a word passes quality control filters
    */
-  private passesQualityControls(word: string, themeWord: string): boolean {
+  private passesQualityControls(word: string, themeWord: string, existingWords: Set<string>): boolean {
     // Control 1: Must be in top 30% most used words
     if (!this.isInTop30PercentFrequency(word)) {
       return false;
@@ -288,6 +298,11 @@ export class FullVectorLoader {
 
     // Control 2: Must not contain the theme word as a substring
     if (this.containsThemeWord(word, themeWord)) {
+      return false;
+    }
+
+    // Control 3: Must not be contained within any existing words (and vice versa)
+    if (this.hasWordContainment(word, existingWords)) {
       return false;
     }
 
@@ -331,6 +346,31 @@ export class FullVectorLoader {
     }
     
     return contains;
+  }
+
+  /**
+   * Check if word is contained within any existing words or vice versa
+   */
+  private hasWordContainment(word: string, existingWords: Set<string>): boolean {
+    const wordLower = word.toLowerCase();
+    
+    for (const existingWord of existingWords) {
+      const existingLower = existingWord.toLowerCase();
+      
+      // Check for exact match (case-insensitive) - this is a duplicate word
+      if (wordLower === existingLower) {
+        console.log(`     🔗 "${word}" is duplicate of existing word "${existingWord}" (case-insensitive)`);
+        return true;
+      }
+      
+      // Check if candidate word contains existing word or vice versa (substring containment)
+      if (wordLower.includes(existingLower) || existingLower.includes(wordLower)) {
+        console.log(`     🔗 "${word}" has containment with existing word "${existingWord}"`);
+        return true;
+      }
+    }
+    
+    return false;
   }
 
   /**
