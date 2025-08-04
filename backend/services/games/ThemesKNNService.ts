@@ -98,7 +98,7 @@ export class ThemesKNNService {
       const foundWord = this.words[wordIndex];
       
       // Skip the query word itself
-      if (foundWord !== word.toLowerCase() && similarity > 0.3) {
+      if (foundWord !== word.toLowerCase()) {
         results.push({ word: foundWord, similarity });
       }
     }
