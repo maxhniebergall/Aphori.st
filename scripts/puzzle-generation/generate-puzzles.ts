@@ -8,7 +8,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { FullVectorLoader } from './FullVectorLoader.js';
-import { HighQualityPuzzleGenerator, GeneratedPuzzleOutput } from './HighQualityPuzzleGenerator.js';
+import { HighQualityPuzzleGenerator, GeneratedPuzzleOutput, GeneratedPuzzle } from './HighQualityPuzzleGenerator.js';
 
 export interface GenerationConfig {
   startDate: string;
@@ -117,39 +117,58 @@ class PuzzleGenerationScript {
   }
 
   /**
-   * Add puzzles to the combined Firebase data structure
+   * Add puzzles to the combined Firebase data structure (organized by size)
    */
   private addToFirebaseData(firebaseData: Record<string, any>, date: string, output: GeneratedPuzzleOutput): void {
-    // Add daily puzzles
-    firebaseData[`dailyPuzzles/themes/${date}`] = output.puzzles.reduce((acc, puzzle) => {
-      acc[puzzle.id] = {
-        id: puzzle.id,
-        date: puzzle.date,
-        puzzleNumber: puzzle.puzzleNumber,
-        gridSize: puzzle.gridSize,
-        difficulty: puzzle.difficulty,
-        words: puzzle.words,
-        categories: puzzle.categories.map(cat => ({
-          id: cat.id,
-          themeWord: cat.themeWord,
-          words: cat.words,
-          difficulty: cat.difficulty,
-          similarity: cat.similarity
-        })),
-        createdAt: puzzle.metadata.generatedAt,
-        metadata: {
-          avgSimilarity: puzzle.metadata.avgSimilarity,
-          qualityScore: puzzle.metadata.qualityScore,
-          generatedBy: 'offline_generator_v1.0',
-          version: '1.0.0'
-        }
-      };
+    // Group puzzles by size
+    const puzzlesBySize = output.puzzles.reduce((acc, puzzle) => {
+      const size = puzzle.gridSize;
+      if (!acc[size]) {
+        acc[size] = [];
+      }
+      acc[size].push(puzzle);
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<number, GeneratedPuzzle[]>);
+
+    // Add daily puzzles organized by size
+    Object.entries(puzzlesBySize).forEach(([size, puzzles]) => {
+      firebaseData[`dailyPuzzles/themes/${date}/${size}x${size}`] = puzzles.reduce((acc, puzzle) => {
+        acc[puzzle.id] = {
+          id: puzzle.id,
+          date: puzzle.date,
+          puzzleNumber: puzzle.puzzleNumber,
+          gridSize: puzzle.gridSize,
+          difficulty: puzzle.difficulty,
+          words: puzzle.words,
+          categories: puzzle.categories.map((cat: any) => ({
+            id: cat.id,
+            themeWord: cat.themeWord,
+            words: cat.words,
+            difficulty: cat.difficulty,
+            similarity: cat.similarity
+          })),
+          createdAt: puzzle.metadata.generatedAt,
+          metadata: {
+            avgSimilarity: puzzle.metadata.avgSimilarity,
+            qualityScore: puzzle.metadata.qualityScore,
+            generatedBy: 'offline_generator_v1.0',
+            version: '1.0.0'
+          }
+        };
+        return acc;
+      }, {} as Record<string, any>);
+    });
     
-    // Add puzzle index
+    // Add puzzle index with size breakdown
+    const sizeCounts = Object.entries(puzzlesBySize).reduce((acc, [size, puzzles]) => {
+      acc[`${size}x${size}`] = puzzles.length;
+      return acc;
+    }, {} as Record<string, number>);
+
     firebaseData[`puzzleIndex/themes/${date}`] = {
-      count: output.puzzles.length,
+      totalCount: output.puzzles.length,
+      sizeCounts: sizeCounts,
+      availableSizes: Object.keys(puzzlesBySize).map(size => `${size}x${size}`),
       lastUpdated: output.metadata.generatedAt,
       status: 'generated',
       puzzleIds: output.puzzles.map(p => p.id),
@@ -294,7 +313,7 @@ async function main() {
   const config: GenerationConfig = {
     startDate: args[0] || '2025-08-05',
     endDate: args[1] || '2025-08-11',
-    puzzlesPerDay: parseInt(args[2]) || 3,
+    puzzlesPerDay: parseInt(args[2]) || 7, // Default 7 puzzles (sizes 4x4 through 10x10)
     qualityThreshold: parseFloat(args[3]) || 0.5,
     outputDir: args[4] || './generated-puzzles',
     maxAttemptsPerDay: parseInt(args[5]) || 5,
@@ -360,7 +379,7 @@ Usage:
 Arguments:
   startDate        Start date (YYYY-MM-DD) [default: 2025-08-05]
   endDate          End date (YYYY-MM-DD) [default: 2025-08-11]
-  puzzlesPerDay    Number of puzzles per day [default: 3]
+  puzzlesPerDay    Number of puzzles per day [default: 7] - Generates sizes 4x4 through 10x10
   qualityThreshold Minimum quality score (0-1) [default: 0.5]
   outputDir        Output directory [default: ./generated-puzzles]
   maxAttempts      Max attempts per day [default: 5]
@@ -370,14 +389,14 @@ Options:
   --help, -h       Show this help message
 
 Examples:
-  # Generate puzzles for next week
-  npm run generate 2025-08-05 2025-08-11 3 0.6
+  # Generate all puzzle sizes (4x4 through 10x10) for next week
+  npm run generate 2025-08-05 2025-08-11
+
+  # Generate puzzles for entire August with high quality
+  npm run generate 2025-08-01 2025-08-31 7 0.6
 
   # Generate with verbose output
-  npm run generate 2025-08-05 2025-08-07 1 0.5 ./test-output 10 --verbose
-
-  # Generate high-quality puzzles
-  npm run generate 2025-08-05 2025-08-05 3 0.8
+  npm run generate 2025-08-05 2025-08-07 7 0.5 ./test-output 10 --verbose
 
 Progressive Difficulty Algorithm:
   Uses N = K + D algorithm where:
