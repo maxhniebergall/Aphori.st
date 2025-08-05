@@ -14,7 +14,7 @@ const logger = {
 export interface WordFrequencyEntry {
   word: string;
   count: number;
-  frequency: number; // Normalized frequency score (0-1)
+  frequency: number; // Raw frequency count (same as count)
 }
 
 export interface FrequencyStats {
@@ -113,15 +113,10 @@ export class WordFrequencyService {
 
       logger.info(`Found ${entries.length} suitable words from ${dataLines.length} total entries`);
 
-      // Calculate normalized frequency scores (log scale to handle extreme ranges)
-      const logMin = Math.log(minCount);
-      const logMax = Math.log(maxCount);
-      const logRange = logMax - logMin;
-
+      // Use raw frequency counts directly (no normalization)
       for (const entry of entries) {
-        // Use log scale for better distribution
-        const logCount = Math.log(entry.count);
-        entry.frequency = (logCount - logMin) / logRange;
+        // Keep the raw count as the frequency score
+        entry.frequency = entry.count;
         this.frequencyMap.set(entry.word, entry);
       }
 
@@ -238,7 +233,7 @@ export class WordFrequencyService {
    * These are moderately common words suitable for puzzle themes
    */
   getThemeWords(count: number): string[] {
-    return this.getFrequencyWeightedWords(count, 0.00015, 0.20);
+    return this.getWordsInFrequencyRange(0.00015, 0.20, count);
   }
 
   /**
@@ -246,7 +241,7 @@ export class WordFrequencyService {
    * These include theme words plus some more common/rare words for variety
    */
   getCategoryWords(count: number): string[] {
-    return this.getFrequencyWeightedWords(count, 0.00015, 0.30);
+    return this.getWordsInFrequencyRange(0.00015, 0.30, count);
   }
 
   /**
@@ -254,7 +249,7 @@ export class WordFrequencyService {
    * For when you need a wider variety of words including more common/rare options
    */
   getPuzzleWords(count: number): string[] {
-    return this.getFrequencyWeightedWords(count, 0.00001, 0.40);
+    return this.getWordsInFrequencyRange(0.00001, 0.40, count);
   }
 
   // Legacy method names for backward compatibility (deprecated)
@@ -304,6 +299,28 @@ export class WordFrequencyService {
     }
     
     return true;
+  }
+
+  /**
+   * Get count of words that meet the frequency threshold
+   * @param frequencyThreshold Minimum frequency score (0-1)
+   * @returns Number of words meeting the threshold
+   */
+  getWordCountAboveThreshold(frequencyThreshold: number): number {
+    this.ensureInitialized();
+    
+    // Check cache first
+    if (!this.eligibleWordsCache.has(frequencyThreshold)) {
+      // Filter and cache eligible words for this threshold
+      const eligibleWords = this.sortedWords.filter(word => {
+        const entry = this.frequencyMap.get(word);
+        return entry && entry.frequency >= frequencyThreshold && this.isWordSuitableForThemes(word);
+      });
+      this.eligibleWordsCache.set(frequencyThreshold, eligibleWords);
+    }
+    
+    const eligibleWords = this.eligibleWordsCache.get(frequencyThreshold)!;
+    return eligibleWords.length;
   }
 
   /**
