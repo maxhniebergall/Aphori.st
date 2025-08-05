@@ -21,6 +21,12 @@ const SearchResultsPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [paginationLoading, setPaginationLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewportHeight, setViewportHeight] = useState<number>(0);
+
+  // Set viewport height safely on client side
+  useEffect(() => {
+    setViewportHeight(window.innerHeight);
+  }, []);
 
   // Function to fetch search results with pagination
   const fetchSearchResultsPage = useCallback(async (searchQuery: string, offset = 0, append = false) => {
@@ -125,7 +131,7 @@ const SearchResultsPage: React.FC = () => {
               data={results}
               endReached={loadMoreResults}
               itemContent={renderItem}
-              increaseViewportBy={window.innerHeight * 0.5}
+              increaseViewportBy={viewportHeight * 0.5}
               components={{
                 Footer: () => {
                   return pagination.hasMore ? (
