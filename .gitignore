@@ -66,6 +66,7 @@ scripts/puzzle-generation/dist
 scripts/puzzle-generation/node_modules
 scripts/puzzle-generation/test-real-fixed
 scripts/puzzle-generation/today-output
+scripts/datascience/themes_quality_venv
 
 # Puzzle generation artifacts
 scripts/puzzle-generation/
