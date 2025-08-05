@@ -6,6 +6,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { getThemesServices } from './index.js';
 import { optionalAuthMiddleware } from '../../../middleware/optionalAuthMiddleware.js';
+
+// Interface for requests that have been processed by handleTempUser middleware
+interface TempUserRequest extends Request {
+  effectiveUserId: string;
+  userType: 'logged_in' | 'temporary';
+  user?: any; // From optionalAuthMiddleware
+}
 import { 
   generateAttemptId,
   getCurrentDateString 
@@ -69,7 +76,7 @@ router.use(handleTempUser);
  * GET /api/games/themes/state/progress
  * Get user's game progress
  */
-router.get('/progress', async (req: any, res: Response) => {
+router.get('/progress', async (req: TempUserRequest, res: Response) => {
   try {
     const { dbClient } = getThemesServices();
     const userId = req.effectiveUserId;
