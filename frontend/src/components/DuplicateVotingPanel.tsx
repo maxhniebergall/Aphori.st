@@ -6,11 +6,13 @@ interface DuplicateVotingPanelProps {
     replyId: string;
     votes: DuplicateVotes;
     onVote: () => void;
+    currentUserId?: string;
 }
 
 const DuplicateVotingPanel: React.FC<DuplicateVotingPanelProps> = ({
     votes,
-    onVote
+    onVote,
+    currentUserId
 }) => {
     const totalVotes = votes.upvotes.length + votes.downvotes.length;
     const upvotePercentage = totalVotes > 0 ? (votes.upvotes.length / totalVotes) * 100 : 0;
@@ -38,7 +40,7 @@ const DuplicateVotingPanel: React.FC<DuplicateVotingPanelProps> = ({
             <button 
                 className="vote-button"
                 onClick={onVote}
-                disabled={false} // For now, allow multiple votes. In production, check if user already voted
+                disabled={false}
             >
                 Vote for This Reply
             </button>

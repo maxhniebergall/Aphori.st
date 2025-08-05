@@ -8,13 +8,15 @@ interface DuplicateComparisonViewProps {
     duplicates: DuplicateReply[];
     group: DuplicateGroup;
     onVote: (replyId: string) => void;
+    currentUserId?: string;
 }
 
 const DuplicateComparisonView: React.FC<DuplicateComparisonViewProps> = ({
     originalReply,
     duplicates,
     group,
-    onVote
+    onVote,
+    currentUserId
 }) => {
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleString();
@@ -80,6 +82,7 @@ const DuplicateComparisonView: React.FC<DuplicateComparisonViewProps> = ({
                             replyId={duplicate.id}
                             votes={duplicate.votes}
                             onVote={() => onVote(duplicate.id)}
+                            currentUserId={currentUserId}
                         />
                     </div>
                 ))}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { DuplicateGroup, DuplicateReply, Reply, DuplicateComparisonResponse } from '../types/types';
+import { useUser } from '../context/UserContext';
 import Header from './Header';
 import DuplicateComparisonView from './DuplicateComparisonView';
 import './DuplicateComparisonPage.css';
@@ -9,6 +10,7 @@ import './DuplicateComparisonPage.css';
 const DuplicateComparisonPage: React.FC = () => {
     const { groupId } = useParams<{ groupId: string }>();
     const navigate = useNavigate();
+    const { state: userState } = useUser();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [duplicateData, setDuplicateData] = useState<{
@@ -149,6 +151,7 @@ const DuplicateComparisonPage: React.FC = () => {
                     duplicates={duplicateData.duplicates}
                     group={duplicateData.group}
                     onVote={handleVote}
+                    currentUserId={userState.user?.id}
                 />
             </div>
         </div>
