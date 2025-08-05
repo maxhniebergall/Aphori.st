@@ -136,7 +136,10 @@ class TypeScriptPuzzleGenerator:
             )
             
             if result.returncode == 0:
-                return json.loads(result.stdout.strip())
+                try:
+                    return json.loads(result.stdout.strip())
+                except json.JSONDecodeError as e:
+                    return {'initialized': False, 'error': f'Invalid JSON response: {e}'}
             else:
                 return {'initialized': False, 'error': result.stderr}
                 
