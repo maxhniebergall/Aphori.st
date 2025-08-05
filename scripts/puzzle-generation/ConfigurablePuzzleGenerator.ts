@@ -27,6 +27,9 @@ export interface InvestigationResult extends GenerationResult {
 }
 
 export class ConfigurablePuzzleGenerator extends HighQualityPuzzleGenerator {
+  private static readonly DEFAULT_MAX_ATTEMPTS = 100;
+  private static readonly DEFAULT_QUALITY_THRESHOLD = 0.5;
+  
   private config: GenerationConfig;
 
   constructor(vectorLoader: FullVectorLoader, config: GenerationConfig = { algorithm: 'N=K' }) {
@@ -48,8 +51,8 @@ export class ConfigurablePuzzleGenerator extends HighQualityPuzzleGenerator {
     
     console.log(`🔬 Generating puzzle with config: ${JSON.stringify(activeConfig)}`);
     
-    const maxAttempts = activeConfig.maxAttempts || 100;
-    const qualityThreshold = activeConfig.qualityThreshold || 0.5;
+    const maxAttempts = activeConfig.maxAttempts || ConfigurablePuzzleGenerator.DEFAULT_MAX_ATTEMPTS;
+    const qualityThreshold = activeConfig.qualityThreshold || ConfigurablePuzzleGenerator.DEFAULT_QUALITY_THRESHOLD;
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const categories: GeneratedCategory[] = [];
