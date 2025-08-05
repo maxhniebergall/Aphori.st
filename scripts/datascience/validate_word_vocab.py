@@ -110,8 +110,9 @@ def main():
     if len(sys.argv) > 1:
         vocab_file = sys.argv[1]
     else:
-        # Default to the expected location
-        vocab_file = "/Users/mh/workplace/Aphori.st/scripts/datascience/word_vocab.json"
+        # Default to the expected location relative to this script
+        script_dir = Path(__file__).parent
+        vocab_file = script_dir / "word_vocab.json"
     
     print(f"Filtering vocabulary file: {vocab_file}")
     print("=" * 60)
