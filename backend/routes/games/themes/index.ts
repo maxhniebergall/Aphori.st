@@ -5,8 +5,6 @@
 
 import { Router } from 'express';
 import { LoggedDatabaseClient } from '../../../db/LoggedDatabaseClient.js';
-import { ThemesKNNService } from '../../../services/games/ThemesKNNService.js';
-import { SimpleThemesPuzzleGenerator } from '../../../services/games/SimpleThemesPuzzleGenerator.js';
 import { TemporaryUserService } from '../../../services/games/TemporaryUserService.js';
 
 // Import individual route modules
@@ -16,8 +14,6 @@ import gameStateRoutes from './gameState.js';
 
 // Global services that will be injected
 let dbClient: LoggedDatabaseClient;
-let knnService: ThemesKNNService;
-let puzzleGenerator: SimpleThemesPuzzleGenerator;
 let tempUserService: TemporaryUserService;
 
 const router = Router();
@@ -30,35 +26,28 @@ export function initializeThemesServices(db: LoggedDatabaseClient): void {
   dbClient = db;
   
   // Initialize simple services
-  knnService = new ThemesKNNService();
-  puzzleGenerator = new SimpleThemesPuzzleGenerator(knnService, db);
   tempUserService = new TemporaryUserService(db);
 }
 
 /**
  * Initialize themes index
- * Should be called after services are initialized
+ * Vector services removed - themes now use pregenerated puzzles only
  */
 export async function initializeThemesIndex(): Promise<void> {
-  if (!knnService) {
-    throw new Error('Themes services not initialized');
-  }
-  
-  await knnService.initialize();
+  // No initialization needed for pregenerated puzzles
+  return Promise.resolve();
 }
 
 /**
  * Get themes services for use in route handlers
  */
 export function getThemesServices() {
-  if (!dbClient || !knnService || !puzzleGenerator || !tempUserService) {
+  if (!dbClient || !tempUserService) {
     throw new Error('Themes services not initialized');
   }
   
   return {
     dbClient,
-    knnService,
-    puzzleGenerator,
     tempUserService
   };
 }
@@ -67,18 +56,13 @@ export function getThemesServices() {
 router.get('/health', async (req, res) => {
   try {
     const services = getThemesServices();
-    const knnStats = services.knnService.getStats();
     const tempUserStats = await services.tempUserService.getTempUserStats();
     
     res.json({
       success: true,
       status: 'healthy',
+      message: 'Themes service ready (using pregenerated puzzles)',
       services: {
-        knn: {
-          totalWords: knnStats.totalWords,
-          dimension: knnStats.dimension,
-          initialized: knnStats.initialized
-        },
         tempUsers: {
           total: tempUserStats.total,
           active: tempUserStats.active,

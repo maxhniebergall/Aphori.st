@@ -117,7 +117,7 @@ router.get('/progress', async (req: TempUserRequest, res: Response) => {
  * POST /api/games/themes/state/attempt
  * Submit a puzzle attempt
  */
-router.post('/attempt', async (req: any, res: Response) => {
+router.post('/attempt', async (req: TempUserRequest, res: Response) => {
   try {
     const { puzzleId, selectedWords } = req.body;
 
@@ -129,7 +129,7 @@ router.post('/attempt', async (req: any, res: Response) => {
       return;
     }
 
-    const { dbClient, puzzleGenerator } = getThemesServices();
+    const { dbClient } = getThemesServices();
     const userId = req.effectiveUserId;
     const userType = req.userType;
     
@@ -147,7 +147,8 @@ router.post('/attempt', async (req: any, res: Response) => {
     const currentDate = getCurrentDateString();
 
     // Get the puzzle to validate the attempt
-    const puzzle = await puzzleGenerator.getPuzzle(puzzleDate, puzzleId);
+    const puzzlePath = `games/themes/daily/${puzzleDate}/${puzzleId}`;
+    const puzzle = await dbClient.getRawPath(puzzlePath);
     if (!puzzle) {
       res.status(404).json({
         success: false,
