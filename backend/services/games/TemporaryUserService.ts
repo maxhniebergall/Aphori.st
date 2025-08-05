@@ -115,7 +115,7 @@ export class TemporaryUserService {
    * Migrate temporary user progress to permanent user account
    * Called when a temporary user creates a permanent account
    */
-  async migrateTempUserToPermament(tempId: string, permanentUserId: string): Promise<boolean> {
+  async migrateTempUserToPermanent(tempId: string, permanentUserId: string): Promise<boolean> {
     try {
       // Get temporary user's game state
       const tempProgressPath = THEMES_DB_PATHS.TEMP_USER_PROGRESS(tempId);
