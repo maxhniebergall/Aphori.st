@@ -44,7 +44,6 @@ import gamesRoutes from './routes/games/index.js';
 import { initializeThemesServices, initializeThemesIndex } from './routes/games/themes/index.js';
 import { checkAndRunMigrations, processStartupEmails } from './startUpChecks.js';
 import { VectorService } from './services/vectorService.js'; // Import VectorService
-import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 // --- Embedding Provider Imports ---
