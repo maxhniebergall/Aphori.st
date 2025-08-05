@@ -4,6 +4,7 @@
  */
 
 import { FullVectorLoader, SearchResult } from './FullVectorLoader.js';
+import { UsedThemeWords } from './UsedThemeWords.js';
 
 export interface GeneratedCategory {
   id: string;
@@ -60,9 +61,14 @@ export interface GenerationResult {
 }
 
 const MIN_WORD_FREQUENCY_THRESHOLD = 0.05;
+const MIN_SIMILARITY_THRESHOLD = 0.62;
 
 export class HighQualityPuzzleGenerator {
-  constructor(private vectorLoader: FullVectorLoader) {}
+  private usedThemeWords: UsedThemeWords;
+
+  constructor(private vectorLoader: FullVectorLoader) {
+    this.usedThemeWords = new UsedThemeWords();
+  }
 
   /**
    * Generate multiple puzzles for a given date (sizes 4x4 through 10x10)
@@ -142,7 +148,7 @@ export class HighQualityPuzzleGenerator {
       for (let catIndex = 0; catIndex < puzzleSize; catIndex++) {
         const category = await this.generateCategory(usedWords, catIndex, puzzleSize);
         
-        if (category && this.validateCategory(category)) {
+        if (category && this.validateCategory(category, puzzleSize)) {
           categories.push(category);
           category.words.forEach(word => usedWords.add(word));
         } else {
@@ -194,7 +200,7 @@ export class HighQualityPuzzleGenerator {
         // Get theme word with frequency filtering based on difficulty
         // Frequency threshold applies only to theme word selection, not to puzzle words
         const seedWord = this.vectorLoader.getRandomSeedWordWithFrequency(frequencyThreshold);
-        if (usedWords.has(seedWord)) continue;
+        if (usedWords.has(seedWord) || this.usedThemeWords.isWordUsed(seedWord)) continue;
 
         // Find N nearest neighbors with standard quality controls 
         // Selected puzzle words use general quality controls (0.3 frequency threshold)
@@ -212,18 +218,58 @@ export class HighQualityPuzzleGenerator {
           // Take the K closest neighbors (highest similarity)
           // Difficulty controlled by frequency threshold, not by distance
           
-          const selectedCandidates = availableCandidates.slice(0, K);
+          // Select words one by one, checking for intra-category containment
+          const selectedCandidates = [];
+          const categoryWords = new Set<string>();
+          
+          for (const candidate of availableCandidates) {
+            // Check if this word has containment with already selected words in this category
+            const hasIntraContainment = Array.from(categoryWords).some(selectedWord => {
+              const candidateLower = candidate.word.toLowerCase();
+              const selectedLower = selectedWord.toLowerCase();
+              return candidateLower.includes(selectedLower) || selectedLower.includes(candidateLower);
+            });
+            
+            if (!hasIntraContainment) {
+              selectedCandidates.push(candidate);
+              categoryWords.add(candidate.word);
+              
+              if (selectedCandidates.length === K) {
+                break; // Got enough words
+              }
+            }
+          }
+          
+          // If we couldn't find K words without containment, try a different theme word
+          if (selectedCandidates.length < K) {
+            console.log(`   ⚠️ Could only find ${selectedCandidates.length}/${K} words without intra-category containment, trying different theme`);
+            continue;
+          }
+          
           const selectedWords = selectedCandidates.map(c => c.word);
+          const minSimilarity = Math.min(...selectedCandidates.map(c => c.similarity));
 
-          console.log(`   ✅ Category ${categoryIndex + 1}: Using ${K} closest neighbors (theme freq: ${frequencyThreshold.toFixed(3)})`);
+          // Check if similarity meets minimum threshold
+          if (minSimilarity < MIN_SIMILARITY_THRESHOLD) {
+            console.log(`   ❌ Category ${categoryIndex + 1}: Similarity ${minSimilarity.toFixed(3)} below threshold ${MIN_SIMILARITY_THRESHOLD}, trying different theme word`);
+            
+            // Mark this theme word as rejected due to low similarity
+            this.usedThemeWords.markWordAsUsed(seedWord, undefined, `generation_${Date.now()}`, minSimilarity, true);
+            continue; // Try a different theme word
+          }
+
+          console.log(`   ✅ Category ${categoryIndex + 1}: Using ${K} closest neighbors (theme freq: ${frequencyThreshold.toFixed(3)}, similarity: ${minSimilarity.toFixed(3)})`);
           console.log(`   🎲 Theme: "${seedWord}" → Puzzle words: [${selectedWords.join(', ')}]`);
+
+          // Mark theme word as successfully used
+          this.usedThemeWords.markWordAsUsed(seedWord, undefined, `generation_${Date.now()}`, minSimilarity, false);
 
           return {
             id: `cat_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
             themeWord: seedWord, // Seed word is the theme, not in puzzle
             words: selectedWords,
             difficulty: D,
-            similarity: Math.min(...selectedCandidates.map(c => c.similarity)),
+            similarity: minSimilarity,
             difficultyMetrics: {
               totalNeighbors: K,
               frequencyThreshold: frequencyThreshold,
@@ -242,26 +288,32 @@ export class HighQualityPuzzleGenerator {
 
   /**
    * Calculate frequency threshold based on category difficulty
-   * Early categories (1-2): 0.1-2 percentile = very common words (0.98-0.999 threshold)
-   * Later categories: up to 50 percentile = less common words (0.5 threshold)
+   * Uses raw frequency counts from the corpus:
+   * - Difficulty 1: >= 1M occurrences (most common words like "the", "and")
+   * - Difficulty 2: >= 100K occurrences (very common words like "house", "water")
+   * - Difficulty 3: >= 10K occurrences (common words)
+   * - Higher difficulties: >= 1K occurrences (moderately common words)
    */
   private calculateFrequencyThreshold(difficulty: number, maxDifficulty: number): number {
-    // Map difficulty to frequency threshold:
-    // difficulty 1: 0.1% = 99.9th percentile = 0.999 threshold (most common words)
-    // difficulty 2: 2% = 98th percentile = 0.98 threshold (very common words)  
-    // difficulty maxDifficulty: 50% = 50th percentile = 0.5 threshold (moderately common words)
+    // Map difficulty to raw frequency count thresholds:
+    // difficulty 1: Most common words (>= 1,000,000 occurrences)
+    // difficulty 2: Very common words (>= 100,000 occurrences)  
+    // difficulty 3: Common words (>= 10,000 occurrences)
+    // difficulty maxDifficulty: Moderately common words (>= 1,000 occurrences)
     
-    const minThreshold = 0.5;   // 50th percentile (moderately common words)
-    const maxThreshold = 0.999; // 99.9th percentile (most common words)
+    const minThreshold = 1000;     // Moderately common words
+    const maxThreshold = 1000000;  // Most common words
     
     if (difficulty === 1) {
-      return maxThreshold; // Most common words (0.1 percentile)
+      return maxThreshold; // Most common words (>= 1M occurrences)
     } else if (difficulty === 2) {
-      return 0.98; // Very common words (2 percentile)
+      return 100000; // Very common words (>= 100K occurrences)
+    } else if (difficulty === 3) {
+      return 10000; // Common words (>= 10K occurrences)
     } else {
-      // Linear interpolation from 0.98 (difficulty 2) to 0.5 (max difficulty)
-      const ratio = (difficulty - 2) / (maxDifficulty - 2);
-      const threshold = 0.98 - (ratio * (0.98 - minThreshold));
+      // Linear interpolation from 10,000 (difficulty 3) to 1,000 (max difficulty)
+      const ratio = Math.max(0, (difficulty - 3) / Math.max(1, maxDifficulty - 3));
+      const threshold = 10000 - (ratio * (10000 - minThreshold));
       return Math.max(minThreshold, threshold);
     }
   }
@@ -269,9 +321,10 @@ export class HighQualityPuzzleGenerator {
   /**
    * Validate a generated category
    */
-  private validateCategory(category: GeneratedCategory): boolean {
-    // Check word count
-    if (category.words.length !== 4) {
+  private validateCategory(category: GeneratedCategory, expectedWordCount?: number): boolean {
+    // Check word count - should match the puzzle size (K words per category)
+    const expectedCount = expectedWordCount || category.words.length;
+    if (category.words.length !== expectedCount) {
       return false;
     }
 
@@ -282,7 +335,7 @@ export class HighQualityPuzzleGenerator {
     }
 
     // Check minimum similarity threshold
-    if (category.similarity < 0.3) {
+    if (category.similarity < MIN_SIMILARITY_THRESHOLD) {
       return false;
     }
 
