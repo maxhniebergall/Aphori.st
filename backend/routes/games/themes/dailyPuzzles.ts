@@ -20,8 +20,23 @@ const router = Router();
 router.get('/', async (req: Request, res: Response) => {
   try {
     const today = getCurrentDateString();
-    const { puzzleGenerator } = getThemesServices();
-    const puzzles = await puzzleGenerator.getDailyPuzzles(today);
+    const { dbClient } = getThemesServices();
+    
+    // Fetch pregenerated puzzles directly from database
+    const dailyPath = `games/themes/daily/${today}`;
+    const dailyData = await dbClient.getRawPath(dailyPath);
+    
+    const puzzles = [];
+    if (dailyData) {
+      // Extract puzzles from the daily data
+      for (const [key, value] of Object.entries(dailyData)) {
+        if (key.includes('puzzle_') && value && typeof value === 'object') {
+          puzzles.push(value);
+        }
+      }
+      // Sort by puzzle number
+      puzzles.sort((a: any, b: any) => a.puzzleNumber - b.puzzleNumber);
+    }
 
     res.json({
       success: true,
