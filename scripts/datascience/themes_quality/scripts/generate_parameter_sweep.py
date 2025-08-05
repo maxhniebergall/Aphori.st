@@ -99,18 +99,21 @@ class ParameterSweepGenerator:
     async def generate_puzzle_with_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Generate puzzle using appropriate generator (TypeScript or Python)"""
         if self.use_typescript:
-            # Use TypeScript generator via bridge
+            # Use TypeScript generator via bridge (synchronous call)
             result = self.ts_generator.generate_puzzle(config)
             return result
         else:
             # Use Python fallback generator
-            result = await self.generator.generateConfigurablePuzzle(
-                date="2024-08-05", 
-                puzzleNumber=1, 
-                puzzleSize=config.get('puzzleSize', 4),
-                overrideConfig=config
-            )
-            return result
+            if self.generator:
+                result = await self.generator.generateConfigurablePuzzle(
+                    date="2024-08-05", 
+                    puzzleNumber=1, 
+                    puzzleSize=config.get('puzzleSize', 4),
+                    overrideConfig=config
+                )
+                return result
+            else:
+                return {'success': False, 'error': 'No generator available'}
     
     async def run_algorithm_comparison_sweep(self):
         """Test N=K vs N=K+D algorithm comparison"""
@@ -240,12 +243,8 @@ class ParameterSweepGenerator:
                         'minSimilarityThreshold': sim_threshold
                     }
                     
-                    result = await self.generator.generateConfigurablePuzzle(
-                        date="2024-08-05", 
-                        puzzleNumber=sample + 1, 
-                        puzzleSize=4,
-                        overrideConfig=config
-                    )
+                    config.update({'puzzleSize': 4, 'maxAttempts': 20})
+                    result = await self.generate_puzzle_with_config(config)
                     
                     generation_time = time.time() - start_time
                     
@@ -315,11 +314,13 @@ class ParameterSweepGenerator:
                 try:
                     start_time = time.time()
                     
-                    result = await self.generator.generateSinglePuzzle(
-                        date="2024-08-05", 
-                        puzzleNumber=sample + 1, 
-                        puzzleSize=4
-                    )
+                    config = {
+                        'algorithm': 'N=K',
+                        'minSimilarityThreshold': threshold,
+                        'puzzleSize': 4,
+                        'maxAttempts': 20
+                    }
+                    result = await self.generate_puzzle_with_config(config)
                     
                     generation_time = time.time() - start_time
                     
@@ -375,11 +376,12 @@ class ParameterSweepGenerator:
                 try:
                     start_time = time.time()
                     
-                    result = await self.generator.generateSinglePuzzle(
-                        date="2024-08-05", 
-                        puzzleNumber=sample + 1, 
-                        puzzleSize=size
-                    )
+                    config = {
+                        'algorithm': 'N=K',
+                        'puzzleSize': size,
+                        'maxAttempts': 20
+                    }
+                    result = await self.generate_puzzle_with_config(config)
                     
                     generation_time = time.time() - start_time
                     

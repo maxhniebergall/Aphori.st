@@ -22,14 +22,27 @@ class TypeScriptPuzzleGenerator:
     def initialize(self) -> Dict[str, Any]:
         """Initialize TypeScript puzzle generation system"""
         try:
-            # First copy bridge script to puzzle-generation directory if needed
+            # First copy bridge script to puzzle-generation directory with corrected imports
             source_bridge = '/Users/mh/workplace/Aphori.st/scripts/datascience/themes_quality/scripts/puzzle_generation_bridge.js'
             target_bridge = os.path.join(self.bridge_path, self.bridge_script)
             
             if not os.path.exists(target_bridge):
-                import shutil
-                shutil.copy2(source_bridge, target_bridge)
-                print(f"📋 Copied bridge script to {target_bridge}")
+                # Read source and fix import paths
+                with open(source_bridge, 'r') as f:
+                    bridge_content = f.read()
+                
+                # Fix import paths for when running from puzzle-generation directory
+                fixed_content = bridge_content.replace(
+                    "from './dist/ConfigurablePuzzleGenerator.js'",
+                    "from './dist/ConfigurablePuzzleGenerator.js'"
+                ).replace(
+                    "from './dist/FullVectorLoader.js'",
+                    "from './dist/FullVectorLoader.js'"
+                )
+                
+                with open(target_bridge, 'w') as f:
+                    f.write(fixed_content)
+                print(f"📋 Created bridge script at {target_bridge}")
             
             # Initialize the bridge
             result = subprocess.run(
