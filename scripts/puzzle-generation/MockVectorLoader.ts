@@ -184,6 +184,33 @@ export class MockVectorLoader {
     return goodSeedWords[Math.floor(Math.random() * goodSeedWords.length)];
   }
 
+  /**
+   * Get a random seed word with frequency filtering (mock implementation)
+   */
+  getRandomSeedWordWithFrequency(frequencyThreshold: number, maxAttempts: number = 50): string {
+    // For mock, just return a random seed word
+    return this.getRandomSeedWord();
+  }
+
+  /**
+   * Find nearest neighbors with quality controls (mock implementation)
+   */
+  async findNearestWithQualityControls(
+    word: string, 
+    k: number, 
+    existingWords: Set<string>, 
+    frequencyThreshold: number
+  ): Promise<SearchResult[]> {
+    // Get candidates using the existing findNearest method
+    const candidates = await this.findNearest(word, k * 2);
+    
+    // Filter out existing words
+    const filtered = candidates.filter(candidate => !existingWords.has(candidate.word));
+    
+    // Return up to k results
+    return filtered.slice(0, k);
+  }
+
 
   /**
    * Get stats for mock loader
