@@ -40,7 +40,7 @@ const DuplicateComparisonView: React.FC<DuplicateComparisonViewProps> = ({
                     <div className="reply-content">
                         <div className="quoted-text">
                             <h4>Quoted text:</h4>
-                            <blockquote>{originalReply.quote.text}</blockquote>
+                            <blockquote>{originalReply.quote?.text || 'No quoted text'}</blockquote>
                         </div>
                         
                         <div className="reply-text">
@@ -67,7 +67,7 @@ const DuplicateComparisonView: React.FC<DuplicateComparisonViewProps> = ({
                         <div className="reply-content">
                             <div className="quoted-text">
                                 <h4>Quoted text:</h4>
-                                <blockquote>{duplicate.quote.text}</blockquote>
+                                <blockquote>{duplicate.quote?.text || 'No quoted text'}</blockquote>
                             </div>
                             
                             <div className="reply-text">
