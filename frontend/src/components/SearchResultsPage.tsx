@@ -19,6 +19,7 @@ const SearchResultsPage: React.FC = () => {
     hasMore: false
   });
   const [loading, setLoading] = useState<boolean>(false);
+  const [paginationLoading, setPaginationLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Function to fetch search results with pagination
@@ -37,6 +38,8 @@ const SearchResultsPage: React.FC = () => {
     setError(null);
     if (!append) {
       setLoading(true);
+    } else {
+      setPaginationLoading(true);
     }
 
     try {
@@ -57,6 +60,8 @@ const SearchResultsPage: React.FC = () => {
     } finally {
       if (!append) {
         setLoading(false);
+      } else {
+        setPaginationLoading(false);
       }
     }
   }, []);
@@ -81,11 +86,11 @@ const SearchResultsPage: React.FC = () => {
 
   // Function to load more results for infinite scroll
   const loadMoreResults = useCallback(async () => {
-    if (!query || !pagination.hasMore || loading) return;
+    if (!query || !pagination.hasMore || loading || paginationLoading) return;
     
     const nextOffset = pagination.offset + pagination.limit;
     await fetchSearchResultsPage(query, nextOffset, true);
-  }, [query, pagination.hasMore, pagination.offset, pagination.limit, loading, fetchSearchResultsPage]);
+  }, [query, pagination.hasMore, pagination.offset, pagination.limit, loading, paginationLoading, fetchSearchResultsPage]);
 
   const handleLogoClick = () => {
     // Navigate to home or feed page, consistent with Header
