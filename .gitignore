@@ -41,3 +41,8 @@ scripts/datascience/*.npy
 scripts/datascience/word_vocab.json
 scripts/datascience/word_vocab.json.backup
 scripts/datascience/word_vocab_filtered_out.json
+
+# Large binary files - should be managed by DVC
+scripts/datascience/themes_index/themes_vectors.bin
+scripts/datascience/themes_index/themes_metadata.json
+scripts/datascience/themes_index/themes_vocabulary.json
