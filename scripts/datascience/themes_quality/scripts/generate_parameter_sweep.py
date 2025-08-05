@@ -30,9 +30,13 @@ try:
     
     # Test if Node.js bridge is available
     try:
+        # Dynamically resolve path to puzzle-generation directory
+        script_dir = Path(__file__).parent
+        puzzle_gen_dir = script_dir.parents[2] / 'puzzle-generation'
+        
         result = subprocess.run(
             ['node', 'puzzle_generation_bridge.js', 'stats', 'only'], 
-            cwd='/Users/mh/workplace/Aphori.st/scripts/puzzle-generation',
+            cwd=str(puzzle_gen_dir),
             capture_output=True, 
             text=True, 
             timeout=5
@@ -89,10 +93,13 @@ class ParameterSweepGenerator:
             print("⚠️ TypeScript components not available, using Python fallback")
             self.use_typescript = False
         
-        # Initialize Python fallback generator
+        # Always initialize Python fallback generator to ensure self.generator is never None
+        self.generator = PythonGenerator(self.vector_loader)
+        
         if not self.use_typescript:
-            self.generator = PythonGenerator(self.vector_loader)
             print("✅ Python puzzle generator initialized (mock mode)")
+        else:
+            print("✅ Python puzzle generator initialized as fallback")
         
         print(f"📋 Using {'TypeScript' if self.use_typescript else 'Python'} puzzle generation")
     
