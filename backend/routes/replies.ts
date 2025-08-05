@@ -165,29 +165,35 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
                         similarityScore: duplicateResult.similarityScore
                     });
 
-                    if (duplicateResult.duplicateGroup) {
-                        // Add to existing duplicate group
-                        await duplicateDetectionService.addToDuplicateGroup(
-                            duplicateResult.duplicateGroup.id,
-                            replyForDuplicateCheck,
-                            duplicateResult.similarityScore!,
-                            logContext
-                        );
-                    } else if (duplicateResult.matchedReplyId) {
-                        // Create new duplicate group
-                        const originalReply = await db.getReply(duplicateResult.matchedReplyId);
-                        if (originalReply) {
-                            await duplicateDetectionService.createDuplicateGroup(
-                                originalReply,
+                    try {
+                        if (duplicateResult.duplicateGroup) {
+                            // Add to existing duplicate group
+                            await duplicateDetectionService.addToDuplicateGroup(
+                                duplicateResult.duplicateGroup.id,
                                 replyForDuplicateCheck,
                                 duplicateResult.similarityScore!,
                                 logContext
                             );
+                        } else if (duplicateResult.matchedReplyId) {
+                            // Create new duplicate group
+                            const originalReply = await db.getReply(duplicateResult.matchedReplyId);
+                            if (originalReply) {
+                                await duplicateDetectionService.createDuplicateGroup(
+                                    originalReply,
+                                    replyForDuplicateCheck,
+                                    duplicateResult.similarityScore!,
+                                    logContext
+                                );
+                            }
                         }
+                        
+                        isDuplicateHandled = true;
+                        logger.info({ ...logContext, replyId: newReply.id }, 'Successfully handled duplicate reply');
+                    } catch (duplicateHandlingError) {
+                        logger.error({ ...logContext, replyId: newReply.id, err: duplicateHandlingError }, 
+                            'Error handling duplicate reply, falling back to regular reply creation');
+                        // isDuplicateHandled remains false, so reply will be processed normally
                     }
-                    
-                    isDuplicateHandled = true;
-                    logger.info({ ...logContext, replyId: newReply.id }, 'Successfully handled duplicate reply');
                 }
             } catch (duplicateError) {
                 // Log error but don't fail the reply creation - fall back to regular reply
@@ -276,6 +282,25 @@ router.post<{ groupId: string }, { success: boolean, error?: string }, { replyId
         if (!replyId) {
             logger.warn(logContext, 'Missing replyId in vote request');
             res.status(400).json({ success: false, error: 'Missing replyId' });
+            return;
+        }
+
+        // Fetch the duplicate group to validate the replyId belongs to it
+        const duplicateGroup = await db.getDuplicateGroup(groupId);
+        if (!duplicateGroup) {
+            logger.warn(logContext, 'Duplicate group not found');
+            res.status(404).json({ success: false, error: 'Duplicate group not found' });
+            return;
+        }
+
+        // Check if replyId matches originalReplyId or is in duplicateReplyIds
+        const isValidReplyId = duplicateGroup.originalReplyId === replyId || 
+                              duplicateGroup.duplicateReplyIds.includes(replyId);
+        
+        if (!isValidReplyId) {
+            logger.warn({ ...logContext, originalReplyId: duplicateGroup.originalReplyId, duplicateReplyIds: duplicateGroup.duplicateReplyIds }, 
+                'Invalid replyId for duplicate group');
+            res.status(400).json({ success: false, error: 'Reply does not belong to the specified duplicate group' });
             return;
         }
 
