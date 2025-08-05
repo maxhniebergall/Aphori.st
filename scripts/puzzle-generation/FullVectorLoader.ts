@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import faiss from 'faiss-node';
 import { WordFrequencyService } from './WordFrequencyService.js';
+import { UsedThemeWords } from './UsedThemeWords.js';
 
 export interface SearchResult {
   word: string;
@@ -28,6 +29,7 @@ export class FullVectorLoader {
   private vectorCache: Map<number, number[]> = new Map(); // Cache for vector data
   private initialized: boolean = false;
   private frequencyService: WordFrequencyService | null = null;
+  private usedThemeWords!: UsedThemeWords; // Initialized in initialize() method
 
   /**
    * Initialize the full vector loader with complete 2.9M word dataset
@@ -44,6 +46,9 @@ export class FullVectorLoader {
     }
 
     console.log('🚀 Loading full 2.9M word vector index...');
+    
+    // Initialize used theme words tracker
+    this.usedThemeWords = new UsedThemeWords();
     
     try {
       // First try to load from themes_index (filtered index)
@@ -442,29 +447,61 @@ export class FullVectorLoader {
   /**
    * Get a random seed word with frequency filtering based on difficulty
    * Uses frequency percentiles to control theme word difficulty
+   * Ensures theme words are not reused across puzzle generations
    */
-  getRandomSeedWordWithFrequency(frequencyThreshold: number): string {
+  getRandomSeedWordWithFrequency(frequencyThreshold: number, maxAttempts: number = 50): string {
     if (!this.frequencyService) {
       // Fallback to original method if no frequency service
-      return this.getRandomSeedWord();
+      return this.getRandomSeedWordWithoutReuse();
     }
 
-    // Get a word from the frequency service that meets the threshold
-    const word = this.frequencyService.getRandomWordAboveThreshold(frequencyThreshold);
-    
-    if (word) {
-      // Verify the word exists in our vector vocabulary
-      if (this.fullVocabulary.includes(word)) {
-        return word;
+    // Try to find an unused word that meets the frequency threshold
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const word = this.frequencyService.getRandomWordAboveThreshold(frequencyThreshold);
+      
+      if (word) {
+        // Check if word has been used before
+        if (this.usedThemeWords.isWordUsed(word)) {
+          continue; // Try another word
+        }
+        
+        // Verify the word exists in our vector vocabulary
+        if (this.fullVocabulary.includes(word)) {
+          // Mark as used before returning
+          this.usedThemeWords.markWordAsUsed(word);
+          return word;
+        }
       }
-      // If not in vocabulary, log and fall back
-      console.warn(`⚠️ Word "${word}" from frequency service not in vector vocabulary, using fallback`);
-    } else {
-      console.warn(`⚠️ No words found meeting frequency threshold ${frequencyThreshold.toFixed(3)}, using fallback`);
     }
     
-    // Fallback to original method
-    return this.getRandomSeedWord();
+    console.warn(`⚠️ Could not find unused word meeting frequency threshold ${frequencyThreshold.toFixed(3)} after ${maxAttempts} attempts, using fallback`);
+    
+    // Fallback to original method with reuse checking
+    return this.getRandomSeedWordWithoutReuse();
+  }
+
+  /**
+   * Get a random seed word without reuse checking (fallback method)
+   * Prefers words in the [0.015%, 20%] frequency range for puzzle themes
+   */
+  getRandomSeedWordWithoutReuse(maxAttempts: number = 100): string {
+    // Try to find an unused word using the original method
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const word = this.getRandomSeedWord();
+      
+      if (!this.usedThemeWords.isWordUsed(word)) {
+        // Mark as used before returning
+        this.usedThemeWords.markWordAsUsed(word);
+        return word;
+      }
+    }
+    
+    console.warn(`⚠️ Could not find unused theme word after ${maxAttempts} attempts, allowing reuse`);
+    
+    // If we can't find an unused word after many attempts, allow reuse
+    const word = this.getRandomSeedWord();
+    this.usedThemeWords.markWordAsUsed(word);
+    return word;
   }
 
   /**
@@ -516,5 +553,35 @@ export class FullVectorLoader {
       loadedVectors: this.faissIndex?.ntotal() || 0,
       memoryUsage: `~${Math.round((this.faissIndex?.ntotal() || 0) * 300 * 4 / 1024 / 1024)}MB`
     };
+  }
+
+  /**
+   * Get statistics about used theme words
+   */
+  getUsedThemeWordsStats() {
+    if (!this.usedThemeWords) {
+      return { totalUsed: 0 };
+    }
+    return this.usedThemeWords.getStats();
+  }
+
+  /**
+   * Check if a specific theme word has been used
+   */
+  isThemeWordUsed(word: string): boolean {
+    if (!this.usedThemeWords) {
+      return false;
+    }
+    return this.usedThemeWords.isWordUsed(word);
+  }
+
+  /**
+   * Get all used theme words (for debugging/inspection)
+   */
+  getAllUsedThemeWords() {
+    if (!this.usedThemeWords) {
+      return [];
+    }
+    return this.usedThemeWords.getAllUsedWords();
   }
 }
