@@ -1,1 +1,3 @@
 .gcp/
+themes_quality_venv/
+scripts/__pycache__/
