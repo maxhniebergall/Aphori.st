@@ -9,21 +9,21 @@ with real vector data instead of mock implementations.
 import subprocess
 import json
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 class TypeScriptPuzzleGenerator:
     """Python wrapper for TypeScript puzzle generation via Node.js bridge"""
     
     def __init__(self):
         self.initialized = False
-        self.bridge_path = '/Users/mh/workplace/Aphori.st/scripts/puzzle-generation'
+        self.bridge_path = os.environ.get('TYPESCRIPT_BRIDGE_PATH', '/Users/mh/workplace/Aphori.st/scripts/puzzle-generation')
         self.bridge_script = 'puzzle_generation_bridge.js'
         
     def initialize(self) -> Dict[str, Any]:
         """Initialize TypeScript puzzle generation system"""
         try:
             # First copy bridge script to puzzle-generation directory with corrected imports
-            source_bridge = '/Users/mh/workplace/Aphori.st/scripts/datascience/themes_quality/scripts/puzzle_generation_bridge.js'
+            source_bridge = os.environ.get('TYPESCRIPT_BRIDGE_SOURCE', '/Users/mh/workplace/Aphori.st/scripts/datascience/themes_quality/scripts/puzzle_generation_bridge.js')
             target_bridge = os.path.join(self.bridge_path, self.bridge_script)
             
             if not os.path.exists(target_bridge):
