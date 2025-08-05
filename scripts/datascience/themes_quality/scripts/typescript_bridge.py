@@ -33,10 +33,10 @@ class TypeScriptPuzzleGenerator:
                 
                 # Fix import paths for when running from puzzle-generation directory
                 fixed_content = bridge_content.replace(
-                    "from './dist/ConfigurablePuzzleGenerator.js'",
+                    "from '../../backend/dist/ConfigurablePuzzleGenerator.js'",
                     "from './dist/ConfigurablePuzzleGenerator.js'"
                 ).replace(
-                    "from './dist/FullVectorLoader.js'",
+                    "from '../../backend/dist/FullVectorLoader.js'",
                     "from './dist/FullVectorLoader.js'"
                 )
                 
@@ -54,23 +54,10 @@ class TypeScriptPuzzleGenerator:
             )
             
             if result.returncode == 0:
-                # Extract JSON from mixed output (last line should be JSON)
-                lines = result.stdout.strip().split('\n')
-                json_line = lines[-1]  # Last line should be the JSON response
+                init_result = self._extract_json_from_output(result.stdout)
                 
-                try:
-                    init_result = json.loads(json_line)
-                except json.JSONDecodeError:
-                    # If that fails, try to find JSON in the output
-                    for line in reversed(lines):
-                        if line.startswith('{') and line.endswith('}'):
-                            try:
-                                init_result = json.loads(line)
-                                break
-                            except json.JSONDecodeError:
-                                continue
-                    else:
-                        return {'success': False, 'error': f'No valid JSON found in output: {result.stdout}'}
+                if not init_result.get('success') and 'No valid JSON found' in init_result.get('error', ''):
+                    return init_result
                 
                 if init_result.get('success'):
                     self.initialized = True
@@ -85,6 +72,24 @@ class TypeScriptPuzzleGenerator:
                 
         except Exception as e:
             return {'success': False, 'error': f'Failed to initialize TypeScript bridge: {e}'}
+    
+    def _extract_json_from_output(self, stdout: str) -> Dict[str, Any]:
+        """Extract and parse JSON from command output, handling mixed output scenarios"""
+        lines = stdout.strip().split('\n')
+        json_line = lines[-1]  # Last line should be the JSON response
+        
+        try:
+            return json.loads(json_line)
+        except json.JSONDecodeError:
+            # If that fails, try to find JSON in the output
+            for line in reversed(lines):
+                if line.startswith('{') and line.endswith('}'):
+                    try:
+                        return json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+            # No valid JSON found
+            return {'success': False, 'error': f'No valid JSON found in output: {stdout}'}
     
     def generate_puzzle(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a puzzle using TypeScript components"""
@@ -107,26 +112,7 @@ class TypeScriptPuzzleGenerator:
             )
             
             if result.returncode == 0:
-                # Extract JSON from mixed output (last line should be JSON)
-                lines = result.stdout.strip().split('\n')
-                json_line = lines[-1]  # Last line should be the JSON response
-                
-                try:
-                    puzzle_result = json.loads(json_line)
-                    return puzzle_result
-                except json.JSONDecodeError:
-                    # If that fails, try to find JSON in the output
-                    for line in reversed(lines):
-                        if line.startswith('{') and line.endswith('}'):
-                            try:
-                                puzzle_result = json.loads(line)
-                                return puzzle_result
-                            except json.JSONDecodeError:
-                                continue
-                    return {
-                        'success': False, 
-                        'error': f'No valid JSON found in output: {result.stdout}'
-                    }
+                return self._extract_json_from_output(result.stdout)
             else:
                 return {
                     'success': False,
