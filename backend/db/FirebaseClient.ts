@@ -985,7 +985,7 @@ export class FirebaseClient extends DatabaseClientInterface {
     const authorId = this.sanitizeKey(duplicateReplyData.authorId);
     
     // First, get the original reply data so we can move it to duplicate storage
-    const originalReplySnapshot = await this.db.ref(`replies/${originalId}`).get();
+    const originalReplySnapshot = await this.db.ref(`replies/${originalId}`).once('value');
     if (!originalReplySnapshot.exists()) {
       throw new Error(`Original reply ${originalReplyId} not found for duplicate group creation`);
     }
