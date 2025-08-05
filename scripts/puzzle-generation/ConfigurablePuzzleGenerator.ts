@@ -172,11 +172,11 @@ export class ConfigurablePuzzleGenerator extends HighQualityPuzzleGenerator {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         // Get theme word with frequency filtering
-        const seedWord = (this as any).vectorLoader.getRandomSeedWordWithFrequency(frequencyThreshold);
+        const seedWord = this.getRandomSeedWordWithFrequencyPublic(frequencyThreshold);
         if (usedWords.has(seedWord) || (this as any).usedThemeWords.isWordUsed(seedWord)) continue;
 
         // Find N nearest neighbors with configurable quality controls
-        const allCandidates = await (this as any).vectorLoader.findNearestWithQualityControls(
+        const allCandidates = await this.findNearestWithQualityControlsPublic(
           seedWord, 
           N + 5, // Extra buffer for quality filtering
           usedWords, 
@@ -316,7 +316,6 @@ export class ConfigurablePuzzleGenerator extends HighQualityPuzzleGenerator {
 
   // Public wrappers for private methods (for investigation access)
   public validateCategoryPublic(category: GeneratedCategory, expectedWordCount?: number): boolean {
-    // Access private method via (this as any) for investigation
     return (this as any).validateCategory(category, expectedWordCount);
   }
 
@@ -330,5 +329,23 @@ export class ConfigurablePuzzleGenerator extends HighQualityPuzzleGenerator {
 
   public calculateFrequencyThresholdPublic(difficulty: number, maxDifficulty: number): number {
     return (this as any).calculateFrequencyThreshold(difficulty, maxDifficulty);
+  }
+
+  public getRandomSeedWordWithFrequencyPublic(frequencyThreshold: number): string {
+    return (this as any).vectorLoader.getRandomSeedWordWithFrequency(frequencyThreshold);
+  }
+
+  public async findNearestWithQualityControlsPublic(
+    seedWord: string, 
+    count: number, 
+    usedWords: Set<string>, 
+    minWordFrequencyThreshold: number
+  ): Promise<SearchResult[]> {
+    return await (this as any).vectorLoader.findNearestWithQualityControls(
+      seedWord, 
+      count, 
+      usedWords, 
+      minWordFrequencyThreshold
+    );
   }
 }
