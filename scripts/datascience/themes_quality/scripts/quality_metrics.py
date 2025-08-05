@@ -11,13 +11,15 @@ and cluster validation techniques:
 """
 
 import sys
+import os
 import numpy as np
-from typing import List, Dict, Tuple, Set, Optional
-from collections import defaultdict
+from typing import List, Dict, Optional
 import math
 
-# Add puzzle generation to path
-sys.path.append('../../puzzle-generation')
+# Add puzzle generation to path using absolute path
+script_dir = os.path.dirname(os.path.abspath(__file__))
+puzzle_generation_path = os.path.join(script_dir, '../../puzzle-generation')
+sys.path.append(puzzle_generation_path)
 
 try:
     from python_vector_loader import PythonVectorLoader
@@ -462,7 +464,7 @@ class QualityMetrics:
         
         # Intracategory coherence (average across categories)
         coherence_scores = []
-        for i, cat in enumerate(categories):
+        for _, cat in enumerate(categories):
             words = cat.get('words', [])
             theme = cat.get('themeWord')
             if words:

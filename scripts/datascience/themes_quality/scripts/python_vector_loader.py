@@ -24,7 +24,6 @@ class PythonVectorLoader:
             possible_paths = [
                 script_dir.parent.parent.parent.parent / "datascience" / "themes_index",  # Normal case
                 script_dir.parent.parent.parent / "datascience" / "themes_index",        # When run from notebooks
-                Path("/Users/mh/workplace/Aphori.st/scripts/datascience/themes_index")   # Absolute fallback
             ]
             
             themes_index_dir = None
@@ -34,7 +33,11 @@ class PythonVectorLoader:
                     break
             
             if themes_index_dir is None:
-                themes_index_dir = possible_paths[0]  # Default to first path
+                raise FileNotFoundError(
+                    f"Could not find themes_index directory. Searched in:\n" +
+                    "\n".join(f"  - {path}" for path in possible_paths) +
+                    "\n\nPlease ensure the themes_index directory exists with themes_metadata.json file."
+                )
         
         self.themes_index_dir = Path(themes_index_dir)
         self.vectors = None
