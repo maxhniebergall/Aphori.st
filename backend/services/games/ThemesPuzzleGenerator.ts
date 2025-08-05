@@ -4,8 +4,6 @@
  */
 
 import { LoggedDatabaseClient } from '../../db/LoggedDatabaseClient.js';
-import { ThemesVectorService, ThemesSimilarityResult } from './ThemesVectorService.js';
-import { ThemesWordDataset } from './ThemesWordDataset.js';
 import { 
   ThemesPuzzle, 
   ThemesCategory,
@@ -27,26 +25,12 @@ export interface PuzzleGenerationOptions {
   maxCrossSimilarity?: number; // Maximum similarity between categories
 }
 
-export interface CategoryCandidate {
-  themeWord: string;
-  similarWords: ThemesSimilarityResult[];
-  averageSimilarity: number;
-  categoryWords: string[];
-}
 
 export class ThemesPuzzleGenerator {
   private firebaseClient: LoggedDatabaseClient;
-  private vectorService: ThemesVectorService;
-  private wordDataset: ThemesWordDataset;
 
-  constructor(
-    firebaseClient: LoggedDatabaseClient,
-    vectorService: ThemesVectorService,
-    wordDataset: ThemesWordDataset
-  ) {
+  constructor(firebaseClient: LoggedDatabaseClient) {
     this.firebaseClient = firebaseClient;
-    this.vectorService = vectorService;
-    this.wordDataset = wordDataset;
   }
 
   /**
@@ -146,98 +130,16 @@ export class ThemesPuzzleGenerator {
   }
 
   /**
-   * Generate themed categories using vector similarity
+   * Generate themed categories using pregenerated puzzles
+   * Vector-based generation is no longer supported - use pregenerated puzzles instead
    */
   private async generateCategories(
     categoriesNeeded: number,
     wordsPerCategory: number,
     options: PuzzleGenerationOptions
   ): Promise<ThemesCategory[]> {
-    const maxAttempts = categoriesNeeded * 3; // Try 3x more theme words than needed
-    const categories: ThemesCategory[] = [];
-    const usedWords = new Set<string>();
-
-    // Get candidate theme words
-    const candidateThemeWords = await this.wordDataset.getRandomWords(maxAttempts);
-    
-    logger.debug(`Got ${candidateThemeWords.length} candidate theme words`);
-
-    for (const themeWord of candidateThemeWords) {
-      if (categories.length >= categoriesNeeded) {
-        break;
-      }
-
-      if (usedWords.has(themeWord)) {
-        continue;
-      }
-
-      try {
-        // Find similar words for this theme
-        const similarWords = await this.vectorService.findSimilarWords(
-          themeWord, 
-          wordsPerCategory * 2 // Get extra words for filtering
-        );
-
-        if (similarWords.length < wordsPerCategory - 1) {
-          logger.debug(`Not enough similar words for theme: ${themeWord} (${similarWords.length})`);
-          continue;
-        }
-
-        // Filter out already used words
-        const availableWords = similarWords.filter(
-          result => !usedWords.has(result.word) && result.word !== themeWord
-        );
-
-        if (availableWords.length < wordsPerCategory - 1) {
-          logger.debug(`Not enough unused similar words for theme: ${themeWord}`);
-          continue;
-        }
-
-        // Select best words for this category
-        const selectedWords = availableWords
-          .slice(0, wordsPerCategory - 1)
-          .map(result => result.word);
-
-        // Add theme word itself
-        const categoryWords = [themeWord, ...selectedWords];
-
-        // Calculate average similarity
-        const averageSimilarity = availableWords
-          .slice(0, wordsPerCategory - 1)
-          .reduce((sum, result) => sum + result.similarity, 0) / (wordsPerCategory - 1);
-
-        // Check if similarity meets requirements
-        const minSimilarity = options.minSimilarity || THEMES_CONFIG.MIN_CATEGORY_SIMILARITY;
-        if (averageSimilarity < minSimilarity) {
-          logger.debug(`Category similarity too low: ${themeWord} (${averageSimilarity.toFixed(3)})`);
-          continue;
-        }
-
-        // Check for conflicts with existing categories
-        if (this.hasConflictWithExistingCategories(categoryWords, categories, options)) {
-          logger.debug(`Category conflicts with existing: ${themeWord}`);
-          continue;
-        }
-
-        // Create category
-        const category: ThemesCategory = {
-          themeWord: themeWord,
-          words: categoryWords,
-          similarity: averageSimilarity
-        };
-
-        categories.push(category);
-        
-        // Mark all words as used
-        categoryWords.forEach(word => usedWords.add(word));
-
-        logger.debug(`Created category: ${themeWord} (similarity: ${averageSimilarity.toFixed(3)})`);
-      } catch (error) {
-        logger.error(`Error processing theme word ${themeWord}:`, error);
-      }
-    }
-
-    return categories;
+    logger.error('Dynamic puzzle generation is no longer supported. Use pregenerated puzzles instead.');
+    throw new Error('Dynamic puzzle generation has been disabled. The themes game now uses pregenerated puzzles only.');
   }
 
   /**
