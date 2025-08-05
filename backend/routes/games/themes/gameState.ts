@@ -268,7 +268,8 @@ router.post('/attempt', async (req: any, res: Response) => {
  * GET /api/games/themes/state/shareable/:date
  * Get shareable results for a specific date
  */
-router.get('/shareable/:date', async (req: any, res) => {
+// TODO: Implement shareable results generation with emoji-based representation
+router.get('/shareable/:date', async (req: TempUserRequest, res: Response) => {
   try {
     const { date } = req.params;
     const userId = req.effectiveUserId;
