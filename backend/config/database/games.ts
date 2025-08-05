@@ -127,7 +127,7 @@ export interface ThemesGameTransaction {
  */
 export function validateDatabasePath(path: string): boolean {
   // Only allow alphanumeric, hyphens, underscores, and forward slashes
-  const validPathRegex = /^[a-zA-Z0-9\-_\/]+$/;
+  const validPathRegex = /^[a-zA-Z0-9\-_/]+$/;
   return validPathRegex.test(path);
 }
 
@@ -137,7 +137,7 @@ export function validateDatabasePath(path: string): boolean {
 export function sanitizeUserInput(input: string): string {
   return input
     .trim()
-    .replace(/[<>\"'&]/g, '') // Remove potentially dangerous characters
+    .replace(/[<>"'&]/g, '') // Remove potentially dangerous characters
     .substring(0, 1000); // Limit length
 }
 
