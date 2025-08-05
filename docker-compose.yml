@@ -35,6 +35,7 @@ services:
       - EMAIL_PASSWORD=test
       - EMAIL_FROM=noreply@localhost
       - RTDB_EXPORT_PATH=/app/data/aphorist-default-rtdb-export.json
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       - redis
       - mailhog
