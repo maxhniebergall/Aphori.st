@@ -6,10 +6,10 @@
   },
   "parameter_sweeps": {
     "frequency_thresholds": [1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000],
-    "similarity_thresholds": [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.62, 0.65, 0.7, 0.75, 0.8],
+    "similarity_thresholds": [0.3, 0.6, 0.8],
     "puzzle_sizes": [4],
     "algorithms": ["N=K", "N=K+D"],
-    "samples_per_configuration": 50
+    "samples_per_configuration": 2
   },
   "quality_assessment": {
     "metrics": [
