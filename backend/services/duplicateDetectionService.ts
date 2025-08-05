@@ -194,7 +194,24 @@ export class DuplicateDetectionService {
         // Check if this reply is an original reply in any group
         // This is a more expensive operation, but necessary for completeness
         // In a production system, we might want to maintain a reverse index
-        // For now, we'll assume most replies won't be originals of groups
+        try {
+            const allGroups = await this.db.getRawPath('duplicateGroups');
+            if (allGroups) {
+                for (const [_groupId, groupData] of Object.entries(allGroups)) {
+                    const group = groupData as DuplicateGroup;
+                    if (group.originalReplyId === replyId) {
+                        return group;
+                    }
+                }
+            }
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            logger.warn('Error checking for original reply in duplicate groups', { 
+                replyId, 
+                error: errorMessage 
+            });
+        }
+
         return undefined;
     }
 
