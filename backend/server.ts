@@ -42,7 +42,6 @@ import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
 import searchRoutes, { setDbAndVectorService as setSearchDbAndVectorService } from './routes/search.js';
 import { checkAndRunMigrations, processStartupEmails } from './startUpChecks.js';
 import { VectorService } from './services/vectorService.js'; // Import VectorService
-import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 // --- Embedding Provider Imports ---
