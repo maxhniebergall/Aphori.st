@@ -1,0 +1,6 @@
+[core]
+    remote = storage
+    autostage = true
+['remote "storage"']
+    url = gs://aphorist-themes-quality-dvc
+    credentialpath = ../.gcp/themes-quality-dvc-service-account.json
