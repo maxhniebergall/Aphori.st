@@ -20,15 +20,33 @@ import math
 sys.path.append('../../puzzle-generation')
 
 try:
-    from FullVectorLoader import FullVectorLoader, SearchResult
+    from python_vector_loader import PythonVectorLoader
+    VECTORS_AVAILABLE = True
 except ImportError:
-    print("Warning: Could not import FullVectorLoader. Some metrics may not work.")
+    print("Warning: Could not import PythonVectorLoader. Using string-based metrics only.")
+    PythonVectorLoader = None
+    VECTORS_AVAILABLE = False
 
 class QualityMetrics:
     """Calculates quality metrics using linear algebra and cluster validation concepts"""
     
     def __init__(self, vector_loader: 'FullVectorLoader' = None):
         self.vector_loader = vector_loader
+        self.python_vector_loader = None
+        
+        # Auto-initialize PythonVectorLoader if available and no other loader provided
+        if vector_loader is None and VECTORS_AVAILABLE:
+            try:
+                self.python_vector_loader = PythonVectorLoader()
+                init_result = self.python_vector_loader.initialize()
+                if init_result['success']:
+                    print(f"✅ Auto-initialized PythonVectorLoader: {init_result['loadedWords']} words")
+                else:
+                    print(f"⚠️ PythonVectorLoader initialization failed: {init_result.get('error', 'Unknown error')}")
+                    self.python_vector_loader = None
+            except Exception as e:
+                print(f"⚠️ Could not auto-initialize PythonVectorLoader: {e}")
+                self.python_vector_loader = None
         
     def cosine_similarity(self, vector_a: np.ndarray, vector_b: np.ndarray) -> float:
         """
@@ -52,6 +70,14 @@ class QualityMetrics:
     
     def get_word_vector(self, word: str) -> Optional[np.ndarray]:
         """Get normalized vector for a word from the vector loader"""
+        # Try PythonVectorLoader first if available
+        if self.python_vector_loader:
+            try:
+                return self.python_vector_loader.get_word_vector(word)
+            except Exception as e:
+                print(f"Warning: Could not get vector for word '{word}' from PythonVectorLoader: {e}")
+        
+        # Fall back to FullVectorLoader if available
         if not self.vector_loader:
             return None
             
@@ -84,7 +110,7 @@ class QualityMetrics:
         if len(category_words) < 2:
             return 1.0  # Single word is perfectly distinct
         
-        if not self.vector_loader:
+        if not self.vector_loader and not self.python_vector_loader:
             return self._string_based_distinctiveness(category_words)
         
         # Get vectors for all words
@@ -140,7 +166,7 @@ class QualityMetrics:
         if len(puzzle_categories) < 2:
             return 1.0  # Single category is perfectly separated
         
-        if not self.vector_loader:
+        if not self.vector_loader and not self.python_vector_loader:
             return self._string_based_discoherence(puzzle_categories)
         
         # Get vectors for all categories and calculate centroids
@@ -220,7 +246,7 @@ class QualityMetrics:
         if len(category_words) < 2:
             return 1.0  # Single word is perfectly coherent
         
-        if not self.vector_loader:
+        if not self.vector_loader and not self.python_vector_loader:
             return self._string_based_coherence(category_words)
         
         # Get vectors for category words
@@ -500,10 +526,18 @@ def test_quality_metrics():
         ]
     }
     
-    # Test without vector loader (string-based metrics)
-    print("\n📊 Testing with string-based metrics (no vector loader):")
+    # Test with automatic vector loader initialization
+    print("\n📊 Testing with quality metrics (auto-detecting vector availability):")
     metrics_calculator = QualityMetrics()
     metrics = metrics_calculator.calculate_all_metrics(sample_puzzle)
+    
+    # Report which vector system is being used
+    if metrics_calculator.python_vector_loader:
+        print("🔍 Using PythonVectorLoader for real semantic similarity")
+    elif metrics_calculator.vector_loader:
+        print("🔍 Using FullVectorLoader for semantic similarity")
+    else:
+        print("🔍 Using string-based fallback metrics (no vector loader available)")
     
     for metric, value in metrics.items():
         print(f"   {metric}: {value:.3f}")
