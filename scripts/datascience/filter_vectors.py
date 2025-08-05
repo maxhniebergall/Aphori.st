@@ -7,6 +7,7 @@ vectors from the word_vectors.npy file, keeping only vectors for valid words.
 
 import json
 import numpy as np
+import os
 import sys
 from pathlib import Path
 
@@ -84,10 +85,11 @@ def main():
         filtered_out_file = sys.argv[2]
         output_file = sys.argv[3] if len(sys.argv) > 3 else None
     else:
-        # Default paths
-        base_dir = "/Users/mh/workplace/Aphori.st"
-        vectors_file = f"{base_dir}/word_vectors.npy"
-        filtered_out_file = f"{base_dir}/scripts/datascience/word_vocab_filtered_out.json"
+        # Default paths - use relative paths from script location
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.join(script_dir, '..', '..')
+        vectors_file = os.path.join(project_root, "word_vectors.npy")
+        filtered_out_file = os.path.join(script_dir, "word_vocab_filtered_out.json")
         output_file = None
     
     print(f"Filtering vectors based on vocabulary filtering results")
