@@ -4,6 +4,7 @@ import { VectorService } from './services/vectorService.js';
 import { Post, Reply } from './types/index.js';
 import dotenv from 'dotenv';
 import { GCPEmbeddingProvider } from './services/gcpEmbeddingProvider.js';
+import { createHash } from 'crypto';
 
 // Load environment variables for GCP config needed by VectorService
 dotenv.config();
