@@ -49,9 +49,9 @@ export class WordFrequencyService {
       
       // Look for CSV file in multiple possible locations
       const possiblePaths = [
-        path.resolve(process.cwd(), 'scripts/datascience/data/unigram_freq.csv'), // From project root
-        path.resolve(process.cwd(), '..', 'scripts/datascience/data/unigram_freq.csv'), // From scripts/puzzle-generation dir
-        path.resolve(process.cwd(), '..', '..', 'scripts/datascience/data/unigram_freq.csv'), // From nested script dir
+        path.resolve(process.cwd(), 'scripts/datascience/themes_quality/data/unigram_freq.csv'), // From project root
+        path.resolve(process.cwd(), '..', 'scripts/datascience/themes_quality/data/unigram_freq.csv'), // From scripts/puzzle-generation dir
+        path.resolve(process.cwd(), '..', '..', 'scripts/datascience/themes_quality/data/unigram_freq.csv'), // From nested script dir
       ];
       
       let csvPath: string | null = null;

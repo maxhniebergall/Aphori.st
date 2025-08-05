@@ -52,3 +52,4 @@ scripts/datascience/themes_index/
 scripts/datascience/themes_index/themes_vectors.bin
 scripts/datascience/themes_index/themes_metadata.json
 scripts/datascience/themes_index/themes_vocabulary.json
+scripts/datascience/themes_quality/data/unigram_freq.csv
