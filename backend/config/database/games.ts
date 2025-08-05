@@ -3,6 +3,7 @@
  */
 
 import { THEMES_DB_PATHS, THEMES_CONFIG } from '../../types/games/themes.js';
+import DOMPurify from 'isomorphic-dompurify';
 
 /**
  * Generate a unique temporary user ID
@@ -133,12 +134,37 @@ export function validateDatabasePath(path: string): boolean {
 
 /**
  * Sanitize user input for database storage
+ * Uses DOMPurify to remove XSS vectors and other potentially dangerous content
  */
 export function sanitizeUserInput(input: string): string {
-  return input
-    .trim()
-    .replace(/[<>"'&]/g, '') // Remove potentially dangerous characters
-    .substring(0, 1000); // Limit length
+  if (typeof input !== 'string') {
+    return '';
+  }
+  
+  // First trim the input
+  let sanitized = input.trim();
+  
+  // Use DOMPurify to sanitize HTML/XSS vectors
+  // Configure to be very restrictive - strip all HTML tags and scripts
+  sanitized = DOMPurify.sanitize(sanitized, {
+    ALLOWED_TAGS: [], // No HTML tags allowed
+    ALLOWED_ATTR: [], // No attributes allowed
+    KEEP_CONTENT: true, // Keep text content when removing tags
+    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button'],
+    FORBID_ATTR: ['onclick', 'onload', 'onerror', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit']
+  });
+  
+  // Additional character filtering for database safety
+  // Remove/replace dangerous characters that could cause issues in database queries
+  sanitized = sanitized
+    .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+    .replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '') // Keep only printable ASCII and Unicode characters
+    .replace(/\\/g, '') // Remove backslashes to prevent escape sequence issues
+    .replace(/[`${}]/g, '') // Remove template literal and object notation characters
+    .normalize('NFKC'); // Unicode normalization to prevent homograph attacks
+  
+  // Final length limitation
+  return sanitized.substring(0, 1000);
 }
 
 export { THEMES_DB_PATHS, THEMES_CONFIG };
