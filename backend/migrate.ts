@@ -5,6 +5,7 @@ import { DuplicateDetectionService } from './services/duplicateDetectionService.
 import { Post, Reply } from './types/index.js';
 import dotenv from 'dotenv';
 import { GCPEmbeddingProvider } from './services/gcpEmbeddingProvider.js';
+import { createHash } from 'crypto';
 
 // Load environment variables for GCP config needed by VectorService
 dotenv.config();
@@ -148,8 +149,8 @@ async function deduplicateExistingReplies(dbClient: LoggedDatabaseClient, vector
     function getContentHash(text: string): string {
         // Normalize whitespace and convert to lowercase for better duplicate detection
         const normalized = text.trim().toLowerCase().replace(/\s+/g, ' ');
-        // Use a simple hash for now - could use crypto hash if needed
-        return Buffer.from(normalized).toString('base64');
+        // Use SHA-256 for collision-resistant hashing
+        return createHash('sha256').update(normalized).digest('hex');
     }
 
     // 1. Fetch all existing replies
