@@ -322,7 +322,7 @@ export async function migrate(dbClient: LoggedDatabaseClient): Promise<void> {
         logger.info(`All migrations completed successfully. Database updated to version: ${TARGET_VERSION}`);
 
     } catch (err: any) {
-        const currentStage = currentDbVersion.toString().includes('3') ? 'vector_migration' : 'deduplication_migration';
+        const currentStage = currentDbVersion === VECTOR_MIGRATION_VERSION ? 'vector_migration' : 'deduplication_migration';
         const failureVersionInfo = { 
             current: `${TARGET_VERSION}_failed`, 
             fromVersion: currentDbVersion,
