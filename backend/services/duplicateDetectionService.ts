@@ -22,7 +22,21 @@ export class DuplicateDetectionService {
     constructor(vectorService: VectorService, db: LoggedDatabaseClient, similarityThreshold?: number) {
         this.vectorService = vectorService;
         this.db = db;
-        this.similarityThreshold = similarityThreshold || DEFAULT_SIMILARITY_THRESHOLD;
+        
+        // Validate similarity threshold if provided
+        if (similarityThreshold !== undefined) {
+            if (similarityThreshold < MIN_SIMILARITY_FOR_DUPLICATE || similarityThreshold > 1.0) {
+                logger.warn('Invalid similarity threshold provided, using default', { 
+                    provided: similarityThreshold, 
+                    default: DEFAULT_SIMILARITY_THRESHOLD 
+                });
+                this.similarityThreshold = DEFAULT_SIMILARITY_THRESHOLD;
+            } else {
+                this.similarityThreshold = similarityThreshold;
+            }
+        } else {
+            this.similarityThreshold = DEFAULT_SIMILARITY_THRESHOLD;
+        }
     }
 
     /**
