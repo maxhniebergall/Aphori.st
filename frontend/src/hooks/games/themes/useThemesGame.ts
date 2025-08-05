@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { GridWord } from '../../../components/games/themes/GameGrid';
 
 export interface ThemesPuzzle {
@@ -47,6 +47,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
   const [puzzle, setPuzzle] = useState<ThemesPuzzle | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const shakeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const [gameState, setGameState] = useState<GameState>({
     selectedWords: [],
@@ -56,6 +57,15 @@ export const useThemesGame = (): UseThemesGameReturn => {
     shakingWords: [],
     gridWords: []
   });
+
+  // Cleanup shake timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (shakeTimeoutRef.current) {
+        clearTimeout(shakeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Shuffle array utility
   const shuffleArray = useCallback(<T,>(array: T[]): T[] => {
@@ -200,8 +210,13 @@ export const useThemesGame = (): UseThemesGameReturn => {
           newState.shakingWords = prev.selectedWords;
           newState.selectedWords = [];
           
+          // Clear any existing shake timeout
+          if (shakeTimeoutRef.current) {
+            clearTimeout(shakeTimeoutRef.current);
+          }
+          
           // Clear shake animation after delay
-          setTimeout(() => {
+          shakeTimeoutRef.current = setTimeout(() => {
             setGameState(current => ({
               ...current,
               shakingWords: []
