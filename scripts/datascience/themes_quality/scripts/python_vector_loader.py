@@ -18,8 +18,23 @@ class PythonVectorLoader:
     
     def __init__(self, themes_index_dir: str = None):
         if themes_index_dir is None:
-            # Default path relative to this script
-            themes_index_dir = Path(__file__).parent.parent.parent.parent / "datascience" / "themes_index"
+            # Default path - find themes_index directory
+            script_dir = Path(__file__).parent
+            # Look for themes_index in common locations
+            possible_paths = [
+                script_dir.parent.parent.parent.parent / "datascience" / "themes_index",  # Normal case
+                script_dir.parent.parent.parent / "datascience" / "themes_index",        # When run from notebooks
+                Path("/Users/mh/workplace/Aphori.st/scripts/datascience/themes_index")   # Absolute fallback
+            ]
+            
+            themes_index_dir = None
+            for path in possible_paths:
+                if path.exists() and (path / "themes_metadata.json").exists():
+                    themes_index_dir = path
+                    break
+            
+            if themes_index_dir is None:
+                themes_index_dir = possible_paths[0]  # Default to first path
         
         self.themes_index_dir = Path(themes_index_dir)
         self.vectors = None
