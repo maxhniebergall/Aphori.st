@@ -1033,11 +1033,10 @@ export class FirebaseClient extends DatabaseClientInterface {
     const timestamp = new Date(originalReplyData.createdAt).getTime();
     
     // Remove from parent quote index
-    updates[`indexes/repliesByParentQuote/${parentId}/${hashedQuoteKey}/MOST_RECENT/${timestamp}_${originalId}`] = null;
-    updates[`indexes/repliesByParentQuote/${parentId}/${hashedQuoteKey}/OLDEST_FIRST/${timestamp}_${originalId}`] = null;
+    updates[`indexes/repliesByParentQuoteTimestamp/${parentId}/${hashedQuoteKey}/${timestamp}_${originalId}`] = null;
     
     // Remove from user's regular replies
-    updates[`userMetadata/${originalAuthorIdSanitized}/replies/${originalId}`] = null;
+    updates[`userMetadata/userReplies/${originalAuthorIdSanitized}/${originalId}`] = null;
     
     // Increment duplicate count for original reply's post
     const rootPostId = this.sanitizeKey(duplicateReplyData.rootPostId);
