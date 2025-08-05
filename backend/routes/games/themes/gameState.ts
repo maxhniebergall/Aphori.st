@@ -3,7 +3,7 @@
  * Handles user progress, attempts, and temporary users
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { getThemesServices } from './index.js';
 import { optionalAuthMiddleware } from '../../../middleware/optionalAuthMiddleware.js';
 import { 
@@ -27,7 +27,7 @@ router.use(optionalAuthMiddleware);
  * Middleware to handle temporary users
  * Creates or validates temporary user from cookies
  */
-async function handleTempUser(req: any, res: any, next: any) {
+async function handleTempUser(req: Request, res: Response, next: NextFunction) {
   try {
     const { tempUserService } = getThemesServices();
     
