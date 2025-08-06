@@ -6,7 +6,6 @@
 import { Router, Request, Response } from 'express';
 import { getThemesServices } from './index.js';
 import { getCurrentDateString } from '../../../config/database/games.js';
-import { isValidDate } from '../../../types/games/themes.js';
 import logger from '../../../logger.js';
 
 const router = Router();
