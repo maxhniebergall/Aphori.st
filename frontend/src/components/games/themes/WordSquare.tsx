@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import './WordSquare.css';
 
 interface WordSquareProps {
@@ -16,6 +16,8 @@ export const WordSquare: React.FC<WordSquareProps> = ({
   onClick,
   disabled = false
 }) => {
+  const upperCaseWord = useMemo(() => word.toUpperCase(), [word]);
+
   const handleClick = () => {
     if (!disabled) {
       onClick();
@@ -39,7 +41,7 @@ export const WordSquare: React.FC<WordSquareProps> = ({
       aria-pressed={isSelected}
       aria-label={`Word: ${word}`}
     >
-      <span className="word-text">{word.toUpperCase()}</span>
+      <span className="word-text">{upperCaseWord}</span>
     </div>
   );
 };
