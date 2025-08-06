@@ -9,7 +9,6 @@ import json
 import numpy as np
 import os
 import sys
-from pathlib import Path
 
 def filter_vectors(vectors_file, filtered_out_file, output_file=None):
     """
@@ -92,7 +91,7 @@ def main():
         filtered_out_file = os.path.join(script_dir, "word_vocab_filtered_out.json")
         output_file = None
     
-    print(f"Filtering vectors based on vocabulary filtering results")
+    print("Filtering vectors based on vocabulary filtering results")
     print("=" * 60)
     print(f"Vectors file: {vectors_file}")
     print(f"Filtered-out file: {filtered_out_file}")
