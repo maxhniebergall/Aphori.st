@@ -27,7 +27,8 @@ export const GameGrid: React.FC<GameGridProps> = ({
 }) => {
   return (
     <div 
-      className={`game-grid grid-${gridSize}x${gridSize}`}
+      className="game-grid"
+      data-grid-size={`${gridSize}x${gridSize}`}
       style={{
         gridTemplateColumns: `repeat(${gridSize}, 1fr)`
       }}
