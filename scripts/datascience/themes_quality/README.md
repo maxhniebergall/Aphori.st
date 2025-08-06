@@ -4,7 +4,7 @@ This directory contains the datascience investigation into word quality under di
 
 ## Structure
 
-```
+```text
 themes_quality/
 ├── README.md                          # This file
 ├── notebooks/                         # Jupyter notebooks for analysis
@@ -24,7 +24,7 @@ themes_quality/
 │   └── investigation_config.json     # Investigation parameters
 └── reports/                          # Generated reports and documentation
     └── findings/                     # Investigation findings
-```
+```text
 
 ## Quick Start
 
@@ -88,7 +88,7 @@ dvc exp run -P parameter_sweeps.algorithms='["N=K+D"]'
 
 # View experiment results
 dvc exp show --include-params parameter_sweeps.algorithms
-```
+```text
 
 ### Collaboration
 ```bash
@@ -100,7 +100,7 @@ git pull
 dvc push
 git add . && git commit -m "Add new experiment results"
 git push
-```
+```text
 
 ## Investigation Focus
 
