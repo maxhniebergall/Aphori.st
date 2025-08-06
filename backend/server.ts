@@ -292,10 +292,10 @@ app.get('/health/vector-index', (_req: Request, res: Response): void => {
 
         const indexStats = {
             ready: isVectorIndexReady,
-            indexSize: vectorService['faissIndex'] ? vectorService['faissIndex'].ntotal() : 0,
-            dimension: vectorService['embeddingDimension'],
+            indexSize: vectorService.getFaissIndex() ? vectorService.getFaissIndex()!.ntotal() : 0,
+            dimension: vectorService.getEmbeddingDimension(),
             maxIndexSize: 10000, // MAX_FAISS_INDEX_SIZE constant
-            pendingOperations: vectorService['pendingAddOperations'].size
+            pendingOperations: vectorService.getPendingOperationsCount()
         };
 
         const isHealthy = isVectorIndexReady && 
