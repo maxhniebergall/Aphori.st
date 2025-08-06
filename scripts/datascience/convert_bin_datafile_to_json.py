@@ -1,15 +1,17 @@
 import numpy as np
 import json
+import os
 
 # --- Configuration ---
-# Path to the local binary file
-MODEL_FILE = '/Users/mh/Downloads/GoogleNews-vectors-negative300.bin'
+# Path to the local binary file (relative to this script's directory)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_FILE = os.path.join(SCRIPT_DIR, 'GoogleNews-vectors-negative300.bin')
 
 
 # --- Output file names ---
-# For Python/FAISS/NumPy
-NUMPY_VECTORS_FILE = 'word_vectors.npy'
-VOCAB_FILE = 'word_vocab.json'
+# For Python/FAISS/NumPy (relative to script directory)
+NUMPY_VECTORS_FILE = os.path.join(SCRIPT_DIR, 'word_vectors.npy')
+VOCAB_FILE = os.path.join(SCRIPT_DIR, 'word_vocab.json')
 
 
 
