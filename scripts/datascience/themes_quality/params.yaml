@@ -36,4 +36,3 @@ logging:
   detailed_metrics: true
   performance_profiling: true
   quality_scoring: true
-
