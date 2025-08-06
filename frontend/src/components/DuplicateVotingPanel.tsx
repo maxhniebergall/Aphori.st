@@ -3,7 +3,6 @@ import { DuplicateVotes } from '../types/types';
 import './DuplicateVotingPanel.css';
 
 interface DuplicateVotingPanelProps {
-    replyId: string;
     votes: DuplicateVotes;
     onVote: () => void;
     currentUserId?: string;

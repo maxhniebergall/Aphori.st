@@ -79,7 +79,6 @@ const DuplicateComparisonView: React.FC<DuplicateComparisonViewProps> = ({
                         </div>
 
                         <DuplicateVotingPanel
-                            replyId={duplicate.id}
                             votes={duplicate.votes}
                             onVote={() => onVote(duplicate.id)}
                             currentUserId={currentUserId}

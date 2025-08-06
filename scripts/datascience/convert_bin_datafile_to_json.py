@@ -1,6 +1,5 @@
 import numpy as np
 import json
-import os
 
 # --- Configuration ---
 # Path to the local binary file (relative to this script's directory)
