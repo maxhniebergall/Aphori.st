@@ -1,0 +1,100 @@
+# Comments Requiring Careful Review
+
+## Security and Cryptography
+1. **File: backend/migrate.ts (lines 148-153)**
+   - Issue: Content hashing using Base64 instead of proper cryptographic hash
+   - Impact: Potential memory issues and poor collision resistance
+   - Recommendation: Use crypto.createHash('sha256') instead of Base64 encoding
+   - Reviewer: CodeRabbit
+   - Status: NEEDS REVIEW
+
+## Architecture and Performance
+2. **File: backend/routes/search.ts (lines 68-74)**
+   - Issue: K_NEIGHBORS calculation strategy may cause inconsistent pagination
+   - Impact: Vector search results could vary across pages
+   - Recommendation: Consider cursor-based pagination or fixed larger set approach
+   - Reviewer: CodeRabbit
+   - Status: NEEDS REVIEW
+
+3. **File: backend/routes/games/themes/admin.ts (lines 161-190)**
+   - Issue: Stats endpoint aggregation could be expensive if called frequently
+   - Impact: Performance degradation under load
+   - Recommendation: Implement caching with TTL (suggested 1 minute)
+   - Reviewer: CodeRabbit
+   - Status: NEEDS REVIEW
+
+4. **File: backend/services/games/ThemesKNNService.ts (lines 145-151)**
+   - Issue: Overly complex dimension calculation in getStats
+   - Impact: Code maintainability
+   - Recommendation: Simplify using firstVector approach
+   - Reviewer: CodeRabbit
+   - Status: NEEDS REVIEW
+
+## Configuration and Environment
+5. **File: scripts/datascience/convert_bin_datafile_to_json.py (line 9)**
+   - Issue: Hardcoded file path reduces portability
+   - Impact: Script won't work in different environments
+   - Recommendation: Use command-line arguments or environment variables
+   - Reviewer: CodeRabbit
+   - Status: NEEDS REVIEW
+
+6. **File: backend/services/games/SimpleThemesWordDataset.ts (lines 40-66)**
+   - Issue: Hardcoded file path and missing JSON validation
+   - Impact: Environment portability and data validation issues
+   - Recommendation: Make path configurable and add JSON schema validation
+   - Reviewer: CodeRabbit
+   - Status: NEEDS REVIEW
+
+## Component Performance and Patterns
+7. **File: frontend/src/components/games/themes/GameGrid.tsx (lines 20-47)**
+   - Issue: Component could re-render frequently without memoization
+   - Impact: Performance during gameplay
+   - Recommendation: Use React.memo and useCallback for handlers
+   - Reviewer: CodeRabbit
+   - Status: NEEDS REVIEW
+
+8. **File: frontend/src/components/games/themes/WordSquare.tsx (line 42)**
+   - Issue: toUpperCase() transformation happens on every render
+   - Impact: Performance optimization opportunity
+   - Recommendation: Use useMemo or handle transformation in parent
+   - Reviewer: CodeRabbit
+   - Status: NEEDS REVIEW
+
+## Data Management and Migration
+9. **File: backend/migrate.ts (migrationContext parameter)**
+   - Issue: migrationContext: true parameter appears unused in createDuplicateGroup
+   - Impact: Code clarity and maintenance
+   - Recommendation: Remove or document the parameter's purpose
+   - Reviewer: CodeRabbit
+   - Status: NEEDS REVIEW
+
+## CSS and Styling Architecture
+10. **File: frontend/src/components/games/themes/GameGrid.css (lines 9-42)**
+    - Issue: CSS duplication and \!important usage
+    - Impact: Maintainability and CSS specificity issues
+    - Recommendation: Use CSS custom properties and data attributes
+    - Reviewer: CodeRabbit
+    - Status: NEEDS REVIEW
+
+11. **File: frontend/src/components/DuplicateVotingPanel.css (lines 23-29, 44-46)**
+    - Issue: Hardcoded color values and inconsistent transition durations
+    - Impact: Theme consistency and user experience
+    - Recommendation: Implement CSS variables and standardize transitions
+    - Reviewer: CodeRabbit
+    - Status: NEEDS REVIEW
+
+## Testing and Quality
+12. **File: backend/test-themes.ts (lines 48-52)**
+    - Issue: Hardcoded test parameters reduce flexibility
+    - Impact: Testing coverage and configurability
+    - Recommendation: Use environment variables for test configuration
+    - Reviewer: CodeRabbit
+    - Status: NEEDS REVIEW
+
+13. **File: backend/test-quality-controls.ts (lines 170-171)**
+    - Issue: Private property access using bracket notation
+    - Impact: Tight coupling to implementation details
+    - Recommendation: Add public method to expose configuration for testing
+    - Reviewer: CodeRabbit
+    - Status: NEEDS REVIEW
+EOF < /dev/null
