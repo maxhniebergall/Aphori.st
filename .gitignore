@@ -57,3 +57,4 @@ scripts/datascience/themes_quality/data/unigram_freq.csv
 # GCP service account credentials
 .gcp/
 *.json
+scripts/datascience/__pycache__
