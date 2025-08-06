@@ -10,6 +10,18 @@ import {
 
 const API_BASE_URL = process.env.REACT_APP_API_URL + "/api"; // Assuming your API is served from /api
 
+export interface SearchPagination {
+    offset: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+}
+
+export interface SearchResult {
+    items: DisplaySearchResultItem[];
+    pagination: SearchPagination;
+}
+
 /**
  * Transforms a RawSearchResultItem from the backend into a DisplaySearchResultItem for the frontend.
  * @param rawItem - The raw search result item from the backend.
@@ -57,28 +69,56 @@ const transformSearchResult = (rawItem: RawSearchResultItem): DisplaySearchResul
 };
 
 /**
- * Fetches search results from the backend vector search API.
+ * Fetches search results from the backend vector search API with pagination support.
  * @param query - The search query string.
- * @returns A promise that resolves to an array of DisplaySearchResultItem.
+ * @param options - Pagination options (offset, limit).
+ * @returns A promise that resolves to a SearchResult with items and pagination info.
  * @throws Will throw an error if the API call fails or returns an unsuccessful response.
  */
-export const fetchSearchResults = async (query: string): Promise<DisplaySearchResultItem[]> => {
+export const fetchSearchResults = async (
+    query: string, 
+    options: { offset?: number; limit?: number } = {}
+): Promise<SearchResult> => {
     if (!query || query.trim() === '') {
-        return []; // Return empty for empty query as per typical search behavior
+        return {
+            items: [],
+            pagination: {
+                offset: 0,
+                limit: 10,
+                total: 0,
+                hasMore: false
+            }
+        }; // Return empty for empty query as per typical search behavior
     }
+
+    const { offset = 0, limit = 10 } = options;
 
     try {
         const response = await axios.get<VectorSearchApiResponse>(
             `${API_BASE_URL}/search/vector`,
             {
-                params: { query: query },
+                params: { 
+                    query: query,
+                    offset: offset.toString(),
+                    limit: limit.toString()
+                },
             }
         );
 
         if (response.data && response.data.success) {
-            return response.data.results
+            const transformedItems = response.data.results
                 .map(transformSearchResult)
                 .filter(item => item !== null) as DisplaySearchResultItem[];
+
+            return {
+                items: transformedItems,
+                pagination: response.data.pagination || {
+                    offset,
+                    limit,
+                    total: transformedItems.length,
+                    hasMore: false
+                }
+            };
         } else {
             const errorMessage = response.data?.error || 'Failed to fetch search results.';
             console.error('Search API Error:', errorMessage, response.data);
@@ -95,4 +135,12 @@ export const fetchSearchResults = async (query: string): Promise<DisplaySearchRe
         }
         throw new Error('An unexpected error occurred while trying to search.');
     }
+};
+
+/**
+ * Legacy function for backward compatibility - fetches first page of results
+ */
+export const fetchSearchResultsLegacy = async (query: string): Promise<DisplaySearchResultItem[]> => {
+    const result = await fetchSearchResults(query, { offset: 0, limit: 10 });
+    return result.items;
 }; 

@@ -3,6 +3,7 @@ import { getDatabase, Database, ServerValue } from 'firebase-admin/database';
 import { cert } from 'firebase-admin/app';
 import { DatabaseClientInterface } from './DatabaseClientInterface.js';
 import { VectorIndexMetadata, VectorIndexEntry, VectorDataForFaiss } from '../types/index.js';
+import { getQuoteKey } from '../utils/quoteUtils.js';
 
 // Import the full firebase-admin package for app management (helps with types) for testing
 import admin from 'firebase-admin';
@@ -667,13 +668,22 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // --- Semantic Methods: Low-Level Generic ---
   async getRawPath(path: string): Promise<any | null> {
-    this._assertFirebaseKeyComponentSafe(path, 'getRawPath', 'path');
+    // getRawPath accepts full Firebase paths which can contain '/' characters
+    // Only validate individual path components for forbidden chars (. # $ [ ])
+    const forbiddenPathChars = /[.#$[\]]/;
+    if (forbiddenPathChars.test(path)) {
+      console.warn(`FirebaseClient: getRawPath called with path ("${path}") containing forbidden characters . # $ [ ]. Firebase paths should not contain these characters.`);
+    }
     const snapshot = await this.db.ref(path).once('value');
     return snapshot.exists() ? snapshot.val() : null;
   }
 
   async setRawPath(path: string, value: any): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(path, 'setRawPath', 'path');
+    // setRawPath accepts full Firebase paths which can contain '/' characters
+    const forbiddenPathChars = /[.#$[\]]/;
+    if (forbiddenPathChars.test(path)) {
+      console.warn(`FirebaseClient: setRawPath called with path ("${path}") containing forbidden characters . # $ [ ]. Firebase paths should not contain these characters.`);
+    }
     await this.db.ref(path).set(value);
   }
 
@@ -905,5 +915,134 @@ export class FirebaseClient extends DatabaseClientInterface {
     this._assertFirebaseKeyComponentSafe(oldKey, 'deleteOldEmailToIdKey', 'oldKey (raw root key)'); 
     const path = oldKey; // Use the raw key directly as the path
     await this.db.ref(path).remove();
+  }
+
+  // --- Semantic Methods: Duplicate Reply Management ---
+  async getDuplicateReply(rawDuplicateReplyId: string): Promise<any | null> {
+    const duplicateReplyId = this.sanitizeKey(rawDuplicateReplyId);
+    const path = `duplicateReplies/${duplicateReplyId}`;
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async setDuplicateReply(rawDuplicateReplyId: string, duplicateReplyData: any): Promise<void> {
+    const duplicateReplyId = this.sanitizeKey(rawDuplicateReplyId);
+    const path = `duplicateReplies/${duplicateReplyId}`;
+    await this.db.ref(path).set(duplicateReplyData);
+  }
+
+  async getDuplicateGroup(rawGroupId: string): Promise<any | null> {
+    const groupId = this.sanitizeKey(rawGroupId);
+    const path = `duplicateGroups/${groupId}`;
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async setDuplicateGroup(rawGroupId: string, duplicateGroupData: any): Promise<void> {
+    const groupId = this.sanitizeKey(rawGroupId);
+    const path = `duplicateGroups/${groupId}`;
+    await this.db.ref(path).set(duplicateGroupData);
+  }
+
+  async addReplyToDuplicateGroup(rawGroupId: string, rawReplyId: string): Promise<void> {
+    const groupId = this.sanitizeKey(rawGroupId);
+    const replyId = this.sanitizeKey(rawReplyId);
+    const path = `indexes/duplicatesByGroup/${groupId}/${replyId}`;
+    await this.db.ref(path).set(true);
+  }
+
+  async getDuplicatesByGroup(rawGroupId: string): Promise<string[] | null> {
+    const groupId = this.sanitizeKey(rawGroupId);
+    const path = `indexes/duplicatesByGroup/${groupId}`;
+    const snapshot = await this.db.ref(path).once('value');
+    if (!snapshot.exists()) {
+      return null;
+    }
+    return Object.keys(snapshot.val());
+  }
+
+  async getUserDuplicateVote(rawUserId: string, rawGroupId: string): Promise<string | null> {
+    const userId = this.sanitizeKey(rawUserId);
+    const groupId = this.sanitizeKey(rawGroupId);
+    const path = `userMetadata/${userId}/duplicateVotes/${groupId}`;
+    const snapshot = await this.db.ref(path).once('value');
+    return snapshot.exists() ? snapshot.val() : null;
+  }
+
+  async setUserDuplicateVote(rawUserId: string, rawGroupId: string, rawReplyId: string): Promise<void> {
+    const userId = this.sanitizeKey(rawUserId);
+    const groupId = this.sanitizeKey(rawGroupId);
+    const replyId = this.sanitizeKey(rawReplyId);
+    const path = `userMetadata/${userId}/duplicateVotes/${groupId}`;
+    await this.db.ref(path).set(replyId);
+  }
+
+  async createDuplicateGroupTransaction(duplicateGroupData: any, originalReplyId: string, duplicateReplyData: any): Promise<void> {
+    // Sanitize all IDs
+    const groupId = this.sanitizeKey(duplicateGroupData.id);
+    const originalId = this.sanitizeKey(originalReplyId);
+    const duplicateId = this.sanitizeKey(duplicateReplyData.id);
+    const authorId = this.sanitizeKey(duplicateReplyData.authorId);
+    
+    // First, get the original reply data so we can move it to duplicate storage
+    const originalReplySnapshot = await this.db.ref(`replies/${originalId}`).once('value');
+    if (!originalReplySnapshot.exists()) {
+      throw new Error(`Original reply ${originalReplyId} not found for duplicate group creation`);
+    }
+    const originalReplyData = originalReplySnapshot.val();
+
+    const updates: Record<string, any> = {};
+    
+    // Create duplicate group
+    updates[`duplicateGroups/${groupId}`] = duplicateGroupData;
+    
+    // Move original reply to duplicate storage with duplicate metadata
+    const originalAsDuplicateReply = {
+      ...originalReplyData,
+      duplicateGroupId: groupId,
+      originalReplyId: originalReplyId, // Self-reference since this IS the original
+      similarityScore: 0, // Original has perfect similarity to itself
+      votes: { upvotes: [], downvotes: [], totalScore: 0 },
+      parentConnections: [originalReplyData.parentId]
+    };
+    updates[`duplicateReplies/${originalId}`] = originalAsDuplicateReply;
+    
+    // Store new duplicate reply
+    updates[`duplicateReplies/${duplicateId}`] = duplicateReplyData;
+    
+    // Add both to group index
+    updates[`indexes/duplicatesByGroup/${groupId}/${originalId}`] = true;
+    updates[`indexes/duplicatesByGroup/${groupId}/${duplicateId}`] = true;
+    
+    // Add to user's duplicate replies for both users
+    const originalAuthorIdSanitized = this.sanitizeKey(originalReplyData.authorId);
+    updates[`userMetadata/${originalAuthorIdSanitized}/duplicateReplies/${originalId}`] = true;
+    updates[`userMetadata/${authorId}/duplicateReplies/${duplicateId}`] = true;
+    
+    // Remove original reply from regular reply storage
+    updates[`replies/${originalId}`] = null;
+    
+    // Remove original reply from indexes (we need to remove from all relevant indexes)
+    // Note: This is a simplified removal - in production we'd need to remove from:
+    // - Parent quote indexes
+    // - User reply indexes  
+    // - Global feed indexes
+    // For now, we'll remove from the most critical ones
+    const hashedQuoteKey = getQuoteKey(originalReplyData.quote);
+    const parentId = this.sanitizeKey(originalReplyData.parentId);
+    const timestamp = new Date(originalReplyData.createdAt).getTime();
+    
+    // Remove from parent quote index
+    updates[`indexes/repliesByParentQuoteTimestamp/${parentId}/${hashedQuoteKey}/${timestamp}_${originalId}`] = null;
+    
+    // Remove from user's regular replies
+    updates[`userMetadata/userReplies/${originalAuthorIdSanitized}/${originalId}`] = null;
+    
+    // Increment duplicate count for original reply's post
+    const rootPostId = this.sanitizeKey(duplicateReplyData.rootPostId);
+    updates[`postMetadata/duplicateCount/${rootPostId}`] = ServerValue.increment(1);
+    
+    // Execute transaction
+    await this.db.ref().update(updates);
   }
 }   

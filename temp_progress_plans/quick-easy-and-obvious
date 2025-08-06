@@ -1,0 +1,79 @@
+# Quick, Easy, and Obvious Fixes
+
+## Documentation and Markdown Issues
+1. **File: .claude/agents/documentation-sync-analyzer.md (lines 13,19,25,31,37)**
+   - Issue: Replace bold text headers with proper ATX headings
+   - Change: Replace **1. Code Change Analysis** with ## 1. Code Change Analysis
+   - Status: PENDING
+
+2. **File: .claude/agents/playwright-feature-tester.md (lines 2-6)**
+   - Issue: Fix YAML front-matter formatting
+   - Change: Quote description string and convert tools to YAML array format
+   - Status: PENDING
+
+## Import Cleanup
+3. **File: backend/routes/games/themes/dailyPuzzles.ts (line 9)**
+   - Issue: Remove unused import `isValidDate`
+   - Change: Delete unused import line
+   - Status: PENDING
+
+4. **File: scripts/datascience/convert_bin_datafile_to_json.py (lines 1-6)**
+   - Issue: Remove unused imports (gensim.downloader, os, time)
+   - Change: Delete unused import lines
+   - Status: PENDING
+
+5. **File: scripts/datascience/filter_vectors.py (line 11)**
+   - Issue: Remove unused import `pathlib.Path`
+   - Change: Delete unused import line
+   - Status: PENDING
+
+6. **File: scripts/datascience/validate_word_vocab.py (line 15)**
+   - Issue: Remove unused import `pathlib.Path`
+   - Change: Delete unused import line
+   - Status: PENDING
+
+## String Formatting Fixes
+7. **File: scripts/datascience/filter_vectors.py (line 93)**
+   - Issue: Remove unnecessary f-string prefix
+   - Change: Change f"Filtering vectors..." to "Filtering vectors..."
+   - Status: PENDING
+
+8. **File: scripts/datascience/convert_numpy_to_faiss.py (line 127)**
+   - Issue: Remove unnecessary f-string prefix
+   - Change: Change f"Binary index created..." to "Binary index created..."
+   - Status: PENDING
+
+## File Format Issues
+9. **File: scripts/datascience/themes_quality/dvc.yaml (line 13)**
+   - Issue: Add missing newline at end of file
+   - Change: Add newline after "- logging"
+   - Status: PENDING
+
+10. **File: scripts/datascience/themes_quality/params.yaml (line 38)**
+    - Issue: Add missing newline at end of file
+    - Change: Add newline after quality_scoring configuration
+    - Status: PENDING
+
+## DVC File Cleanup
+11. **Multiple .dvc files with redundant hash field**
+    - Files: parameter_sweep_*.dvc, investigation_report_*.dvc, themes_vectors.bin.dvc
+    - Issue: Remove redundant `hash: md5` entries
+    - Change: Delete the non-standard hash field lines
+    - Status: PENDING
+
+## Code Style Improvements
+12. **File: scripts/datascience/convert_numpy_to_faiss.py (lines 26-41)**
+    - Issue: Simplify return statement in is_word_suitable_for_themes
+    - Change: Replace if/return True/return False with direct return statement
+    - Status: PENDING
+
+13. **File: frontend/src/components/DuplicateVotingPanel.tsx (lines 11-14)**
+    - Issue: Unused replyId prop in component interface
+    - Change: Either use the prop or remove from interface
+    - Status: PENDING
+
+14. **File: scripts/datascience/themes_quality/README.md (lines 7-27)**
+    - Issue: Add language identifier to fenced code block
+    - Change: Add 'text' language identifier to directory tree block
+    - Status: PENDING
+EOF < /dev/null

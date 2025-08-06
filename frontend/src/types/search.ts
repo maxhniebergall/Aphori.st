@@ -38,6 +38,12 @@ export interface RawSearchResultItem {
 export interface VectorSearchApiResponse {
   success: boolean;
   results: RawSearchResultItem[];
+  pagination?: {
+    offset: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+  };
   error?: string;
 }
 

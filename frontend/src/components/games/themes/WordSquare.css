@@ -1,0 +1,88 @@
+.word-square {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  background-color: #f6f7f8;
+  border: 2px solid #d3d6da;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  position: relative;
+  min-height: 60px;
+}
+
+.word-square:hover {
+  background-color: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+.word-square:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.word-square.selected {
+  background-color: #5a67d8;
+  border-color: #4c51bf;
+  color: white;
+}
+
+.word-square.selected:hover {
+  background-color: #4c51bf;
+  border-color: #434190;
+}
+
+.word-square.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.word-text {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-align: center;
+  line-height: 1.2;
+  padding: 4px;
+}
+
+/* Shake animation for invalid selections */
+.word-square.shaking {
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-4px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(4px);
+  }
+}
+
+/* Responsive sizing */
+@media (min-width: 640px) {
+  .word-square {
+    min-height: 80px;
+  }
+  
+  .word-text {
+    font-size: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .word-square {
+    min-height: 100px;
+  }
+  
+  .word-text {
+    font-size: 18px;
+  }
+}
