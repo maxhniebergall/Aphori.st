@@ -1,8 +1,5 @@
-import gensim.downloader
 import numpy as np
 import json
-import os
-import time
 
 # --- Configuration ---
 # Path to the local binary file

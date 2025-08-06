@@ -12,7 +12,6 @@ This script will overwrite the original file with only valid words.
 import json
 import re
 import sys
-from pathlib import Path
 
 def is_valid_word(token):
     """

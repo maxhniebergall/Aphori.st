@@ -35,10 +35,8 @@ def is_word_suitable_for_themes(word):
         return False
     
     # Only letters (no numbers, punctuation, or special characters)
-    if not cleaned.isalpha():
-        return False
+    return cleaned.isalpha()
     
-    return True
 
 def save_binary_index(words, vectors, output_dir):
     """Save words and vectors in a simple binary format for Node.js"""
@@ -124,7 +122,7 @@ def main():
         filtered_words, filtered_vectors, output_dir
     )
     
-    print(f"Binary index created successfully:")
+    print("Binary index created successfully:")
     print(f"  Vocabulary: {vocab_file}")
     print(f"  Vectors: {vectors_file}")
     print(f"  Metadata: {metadata_file}")
