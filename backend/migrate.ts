@@ -149,8 +149,8 @@ async function deduplicateExistingReplies(dbClient: LoggedDatabaseClient, vector
     function getContentHash(text: string): string {
         // Normalize whitespace and convert to lowercase for better duplicate detection
         const normalized = text.trim().toLowerCase().replace(/\s+/g, ' ');
-        // Use SHA-256 for collision-resistant hashing
-        return createHash('sha256').update(normalized).digest('hex');
+        // Use SHA-256 for collision-resistant hashing with explicit UTF-8 encoding
+        return createHash('sha256').update(normalized, 'utf8').digest('hex');
     }
 
     // 1. Fetch all existing replies
