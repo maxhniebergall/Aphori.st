@@ -124,17 +124,58 @@ export class FullVectorLoader {
    */
   private async loadFromThemesIndex(): Promise<VectorLoadResult> {
     try {
-      const indexDir = path.resolve(process.cwd(), '../datascience/themes_index');
-      const vocabPath = path.join(indexDir, 'themes_vocabulary.json');
-      const vectorsPath = path.join(indexDir, 'themes_vectors.bin');
-      const metadataPath = path.join(indexDir, 'themes_metadata.json');
+      // Try multiple possible data directories
+      const possibleBasePaths = [
+        path.resolve(process.cwd(), '../datascience/themes_quality/data'),
+        path.resolve(process.cwd(), '../datascience/themes_index'),
+        path.resolve(process.cwd(), '../../datascience/themes_quality/data'),
+        path.resolve(process.cwd(), 'scripts/datascience/themes_quality/data'),
+      ];
       
-      if (!fs.existsSync(vocabPath) || !fs.existsSync(vectorsPath) || !fs.existsSync(metadataPath)) {
+      let dataPath: string | null = null;
+      let vocabPath: string | null = null;
+      let vectorsPath: string | null = null;
+      let metadataPath: string | null = null;
+      let isLemmatized = false;
+      
+      // Try lemmatized versions first, then fallback to original
+      for (const basePath of possibleBasePaths) {
+        // Try lemmatized versions first
+        const lemmatizedVocabPath = path.join(basePath, 'themes_vocabulary_lemmatized.json');
+        const lemmatizedVectorsPath = path.join(basePath, 'themes_vectors_lemmatized.bin');
+        const lemmatizedMetadataPath = path.join(basePath, 'themes_metadata_lemmatized.json');
+        
+        if (fs.existsSync(lemmatizedVocabPath) && fs.existsSync(lemmatizedVectorsPath) && fs.existsSync(lemmatizedMetadataPath)) {
+          dataPath = basePath;
+          vocabPath = lemmatizedVocabPath;
+          vectorsPath = lemmatizedVectorsPath;
+          metadataPath = lemmatizedMetadataPath;
+          isLemmatized = true;
+          break;
+        }
+        
+        // Try original versions
+        const originalVocabPath = path.join(basePath, 'themes_vocabulary.json');
+        const originalVectorsPath = path.join(basePath, 'themes_vectors.bin');
+        const originalMetadataPath = path.join(basePath, 'themes_metadata.json');
+        
+        if (fs.existsSync(originalVocabPath) && fs.existsSync(originalVectorsPath) && fs.existsSync(originalMetadataPath)) {
+          dataPath = basePath;
+          vocabPath = originalVocabPath;
+          vectorsPath = originalVectorsPath;
+          metadataPath = originalMetadataPath;
+          isLemmatized = false;
+          break;
+        }
+      }
+      
+      if (!dataPath || !vocabPath || !vectorsPath || !metadataPath) {
         console.log('⚠️ Themes index files not found, falling back to numpy files');
         return { totalWords: 0, loadedWords: 0, dimension: 0, success: false };
       }
 
-      console.log('📂 Loading vectors from themes binary index...');
+      console.log(`📂 Loading vectors from themes binary index ${isLemmatized ? '(lemmatized)' : '(original)'}...`);
+      console.log(`   Data path: ${dataPath}`);
       
       // Load metadata
       const metadataData = fs.readFileSync(metadataPath, 'utf8');
