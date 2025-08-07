@@ -41,7 +41,6 @@
 }
 
 .word-text {
-  font-size: clamp(10px, 3vw, 14px);
   font-weight: 600;
   letter-spacing: 0.3px;
   text-align: center;
@@ -77,7 +76,6 @@
   }
   
   .word-text {
-    font-size: clamp(11px, 4vw, 13px);
     letter-spacing: 0.1px;
     padding: 1px;
     line-height: 1.0;
@@ -89,9 +87,6 @@
     min-height: 70px;
   }
   
-  .word-text {
-    font-size: clamp(12px, 2.5vw, 16px);
-  }
 }
 
 @media (min-width: 1024px) {
@@ -99,9 +94,6 @@
     min-height: 60px;
   }
   
-  .word-text {
-    font-size: clamp(12px, 2vw, 15px);
-  }
 }
 
 @media (min-width: 1024px) and (max-height: 800px) {
@@ -109,7 +101,4 @@
     min-height: 55px;
   }
   
-  .word-text {
-    font-size: clamp(11px, 1.8vw, 14px);
-  }
 }
