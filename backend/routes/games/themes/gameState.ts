@@ -147,7 +147,7 @@ router.post('/attempt', async (req: TempUserRequest, res: Response) => {
     const currentDate = getCurrentDateString();
 
     // Get the puzzle to validate the attempt
-    const puzzlePath = `games/themes/daily/${puzzleDate}/${puzzleId}`;
+    const puzzlePath = `dailyPuzzles/themes/${puzzleDate}/4x4/${puzzleId}`;
     const puzzle = await dbClient.getRawPath(puzzlePath);
     if (!puzzle) {
       res.status(404).json({
