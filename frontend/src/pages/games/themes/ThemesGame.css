@@ -132,6 +132,30 @@
   margin-bottom: 24px;
 }
 
+.completion-actions,
+.game-over-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.share-button {
+  padding: 12px 20px;
+  background-color: #059669;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.share-button:hover {
+  background-color: #047857;
+}
+
 /* Revealed categories */
 .revealed-categories {
   margin-top: 24px;
