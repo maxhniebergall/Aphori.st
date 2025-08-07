@@ -1,0 +1,5 @@
+outs:
+- md5: 331ce3aa5418212bab4712b52d48f2c2
+  size: 322416008
+  hash: md5
+  path: themes_vectors_lemmatized.bin
