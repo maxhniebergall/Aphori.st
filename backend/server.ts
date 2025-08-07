@@ -102,6 +102,25 @@ const corsOptions = {
 // Apply CORS middleware
 app.use(cors(corsOptions));
 
+// Simple cookie parsing middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const cookieHeader = req.headers.cookie;
+  req.cookies = {};
+  
+  if (cookieHeader) {
+    cookieHeader.split(';').forEach(cookie => {
+      const parts = cookie.trim().split('=');
+      if (parts.length === 2) {
+        const name = parts[0].trim();
+        const value = decodeURIComponent(parts[1].trim());
+        req.cookies![name] = value;
+      }
+    });
+  }
+  
+  next();
+});
+
 // --- Apply Optional Authentication and Rate Limiting Middlewares ---
 // This middleware attempts to identify the user from JWT for rate limiting purposes,
 // but does not block unauthenticated requests.
