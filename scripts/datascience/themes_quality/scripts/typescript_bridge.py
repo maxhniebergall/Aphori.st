@@ -50,7 +50,7 @@ class TypeScriptPuzzleGenerator:
                 cwd=self.bridge_path,
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=180
             )
             
             if result.returncode == 0:
@@ -108,7 +108,7 @@ class TypeScriptPuzzleGenerator:
                 cwd=self.bridge_path,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=120
             )
             
             if result.returncode == 0:
@@ -132,7 +132,7 @@ class TypeScriptPuzzleGenerator:
                 cwd=self.bridge_path,
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=30
             )
             
             if result.returncode == 0:
