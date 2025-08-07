@@ -22,20 +22,29 @@ router.get('/', async (req: Request, res: Response) => {
     const { dbClient } = getThemesServices();
     
     // Fetch pregenerated puzzles directly from database
-    const dailyPath = `games/themes/daily/${today}`;
+    const dailyPath = `dailyPuzzles/themes/${today}`;
+    logger.info(`Fetching puzzles from path: ${dailyPath}`);
     const dailyData = await dbClient.getRawPath(dailyPath);
     
+    logger.info(`Raw dailyData keys: ${dailyData ? Object.keys(dailyData).join(', ') : 'null'}`);
+    if (dailyData && dailyData['4x4']) {
+      logger.info(`4x4 data keys: ${Object.keys(dailyData['4x4']).join(', ')}`);
+    }
+    
     const puzzles = [];
-    if (dailyData) {
-      // Extract puzzles from the daily data
-      for (const [key, value] of Object.entries(dailyData)) {
-        if (key.includes('puzzle_') && value && typeof value === 'object') {
+    if (dailyData && dailyData['4x4']) {
+      // Extract puzzles from the 4x4 grid data
+      for (const [key, value] of Object.entries(dailyData['4x4'])) {
+        if (key.startsWith('themes_') && value && typeof value === 'object') {
+          logger.info(`Adding puzzle: ${key}`);
           puzzles.push(value);
         }
       }
       // Sort by puzzle number
       puzzles.sort((a: any, b: any) => a.puzzleNumber - b.puzzleNumber);
     }
+    
+    logger.info(`Final puzzle count: ${puzzles.length}`);
 
     res.json({
       success: true,
