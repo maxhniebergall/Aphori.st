@@ -18,6 +18,21 @@ export const WordSquare: React.FC<WordSquareProps> = ({
 }) => {
   const upperCaseWord = useMemo(() => word.toUpperCase(), [word]);
 
+  // Calculate dynamic font size based on word length
+  const dynamicFontSize = useMemo(() => {
+    const baseSize = 22; // Base font size in px (increased from 14)
+    const minSize = 12;  // Minimum font size (increased from 8)
+    const maxSize = 28;  // Maximum font size (increased from 18)
+    
+    // Scale down font size based on word length
+    // Shorter words get larger text, longer words get smaller text
+    const lengthFactor = Math.max(0.5, 1 - (word.length - 3) * 0.06);
+    const calculatedSize = Math.round(baseSize * lengthFactor);
+    
+    // Clamp to min/max bounds
+    return Math.max(minSize, Math.min(maxSize, calculatedSize));
+  }, [word]);
+
   const handleClick = () => {
     if (!disabled) {
       onClick();
@@ -41,7 +56,12 @@ export const WordSquare: React.FC<WordSquareProps> = ({
       aria-pressed={isSelected}
       aria-label={`Word: ${word}`}
     >
-      <span className="word-text">{upperCaseWord}</span>
+      <span 
+        className="word-text" 
+        style={{ fontSize: `${dynamicFontSize}px` }}
+      >
+        {upperCaseWord}
+      </span>
     </div>
   );
 };
