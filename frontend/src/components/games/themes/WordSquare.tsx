@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import './WordSquare.css';
 
 interface WordSquareProps {
@@ -7,6 +8,9 @@ interface WordSquareProps {
   isShaking: boolean;
   onClick: () => void;
   disabled?: boolean;
+  isCompleted?: boolean;
+  difficulty?: 1 | 2 | 3 | 4;
+  isAnimating?: boolean;
 }
 
 export const WordSquare: React.FC<WordSquareProps> = ({
@@ -14,7 +18,10 @@ export const WordSquare: React.FC<WordSquareProps> = ({
   isSelected,
   isShaking,
   onClick,
-  disabled = false
+  disabled = false,
+  isCompleted = false,
+  difficulty,
+  isAnimating = false
 }) => {
   const upperCaseWord = useMemo(() => word.toUpperCase(), [word]);
   
@@ -115,22 +122,71 @@ export const WordSquare: React.FC<WordSquareProps> = ({
     }
   };
 
+  // Animation variants
+  const variants = {
+    default: {
+      backgroundColor: '#f6f7f8',
+      borderColor: '#d3d6da',
+      scale: 1,
+      transition: { duration: 0.2 }
+    },
+    selected: {
+      backgroundColor: '#5a67d8',
+      borderColor: '#4c51bf',
+      scale: 1,
+      transition: { duration: 0.2 }
+    },
+    completed: {
+      scale: 1,
+      transition: { duration: 0.3, type: 'spring', stiffness: 300 }
+    }
+  };
+
+  // Get color based on difficulty
+  const getCompletedColor = () => {
+    switch (difficulty) {
+      case 1: return { backgroundColor: 'var(--difficulty-1-color)', borderColor: 'var(--difficulty-1-border)' };
+      case 2: return { backgroundColor: 'var(--difficulty-2-color)', borderColor: 'var(--difficulty-2-border)' };
+      case 3: return { backgroundColor: 'var(--difficulty-3-color)', borderColor: 'var(--difficulty-3-border)' };
+      case 4: return { backgroundColor: 'var(--difficulty-4-color)', borderColor: 'var(--difficulty-4-border)' };
+      default: return { backgroundColor: '#f6f7f8', borderColor: '#d3d6da' };
+    }
+  };
+
+  const currentVariant = isCompleted ? 'completed' : isSelected ? 'selected' : 'default';
+  const completedColors = isCompleted ? getCompletedColor() : {};
+
   return (
-    <div
-      className={`word-square ${isSelected ? 'selected' : ''} ${isShaking ? 'shaking' : ''} ${disabled ? 'disabled' : ''}`}
+    <motion.div
+      layoutId={`word-${word}`}
+      className={`word-square ${isSelected ? 'selected' : ''} ${isShaking ? 'shaking' : ''} ${disabled ? 'disabled' : ''} ${isCompleted ? 'completed' : ''} ${isAnimating ? 'animating' : ''}`}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       tabIndex={disabled ? -1 : 0}
       role="button"
       aria-pressed={isSelected}
       aria-label={`Word: ${word}`}
+      variants={variants}
+      initial="default"
+      animate={currentVariant}
+      style={{
+        ...completedColors
+      }}
+      layout
+      transition={{
+        layout: { duration: 0.6, type: 'spring', stiffness: 200, damping: 25 }
+      }}
     >
-      <span 
+      <motion.span 
         className="word-text" 
         style={{ fontSize: `${dynamicFontSize}px` }}
+        animate={{
+          color: isCompleted ? '#ffffff' : isSelected ? '#ffffff' : '#000000'
+        }}
+        transition={{ duration: 0.3 }}
       >
         {upperCaseWord}
-      </span>
-    </div>
+      </motion.span>
+    </motion.div>
   );
 };

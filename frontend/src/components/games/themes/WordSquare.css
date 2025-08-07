@@ -1,3 +1,14 @@
+:root {
+  --difficulty-1-color: #9f7aea;
+  --difficulty-1-border: #805ad5;
+  --difficulty-2-color: #48bb78;
+  --difficulty-2-border: #38a169;
+  --difficulty-3-color: #ecc94b;
+  --difficulty-3-border: #d69e2e;
+  --difficulty-4-color: #f56565;
+  --difficulty-4-border: #e53e3e;
+}
+
 .word-square {
   display: flex;
   align-items: center;
@@ -14,6 +25,7 @@
   overflow: hidden;
   min-width: 0;
   width: 100%;
+  will-change: transform, background-color, border-color;
 }
 
 .word-square:hover {
@@ -41,6 +53,19 @@
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+.word-square.completed {
+  color: white;
+  font-weight: 600;
+}
+
+.word-square.completed:hover {
+  opacity: 0.9;
+}
+
+.word-square.animating {
+  z-index: 10;
 }
 
 .word-text {
