@@ -20,7 +20,10 @@
     "dev": "npm run test"
   },
   "dependencies": {
-    "faiss-node": "^0.5.1"
+    "dictionary-en-us": "^2.2.1",
+    "faiss-node": "^0.5.1",
+    "nspell": "^2.1.5",
+    "wink-lemmatizer": "^3.0.4"
   },
   "devDependencies": {
     "@types/node": "^18.19.0",
