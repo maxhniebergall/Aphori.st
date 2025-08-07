@@ -47,12 +47,19 @@ export class WordFrequencyService {
       const fs = await import('fs');
       const path = await import('path');
       
-      // Look for CSV file in multiple possible locations
-      const possiblePaths = [
-        path.resolve(process.cwd(), 'scripts/datascience/themes_quality/data/unigram_freq.csv'), // From project root
-        path.resolve(process.cwd(), '..', 'scripts/datascience/themes_quality/data/unigram_freq.csv'), // From scripts/puzzle-generation dir
-        path.resolve(process.cwd(), '..', '..', 'scripts/datascience/themes_quality/data/unigram_freq.csv'), // From nested script dir
+      // Look for CSV file in multiple possible locations (prefer lemmatized version)
+      const possibleBasePaths = [
+        path.resolve(process.cwd(), 'scripts/datascience/themes_quality/data'),
+        path.resolve(process.cwd(), '..', 'scripts/datascience/themes_quality/data'),
+        path.resolve(process.cwd(), '..', '..', 'scripts/datascience/themes_quality/data'),
       ];
+      
+      // Try lemmatized version first, fallback to original
+      const possiblePaths: string[] = [];
+      for (const basePath of possibleBasePaths) {
+        possiblePaths.push(path.join(basePath, 'unigram_freq_lemmatized.csv')); // Preferred lemmatized version
+        possiblePaths.push(path.join(basePath, 'unigram_freq.csv')); // Fallback original
+      }
       
       let csvPath: string | null = null;
       for (const testPath of possiblePaths) {
@@ -67,7 +74,8 @@ export class WordFrequencyService {
         throw new Error(`Frequency data file not found. Tried:\n  - ${pathsStr}`);
       }
       
-      logger.debug(`Found frequency data at: ${csvPath}`);
+      const isLemmatized = csvPath.includes('lemmatized');
+      logger.info(`Found frequency data at: ${csvPath} ${isLemmatized ? '(lemmatized)' : '(original)'}`);
 
       const csvContent = fs.readFileSync(csvPath, 'utf8');
       const lines = csvContent.split('\n');
@@ -79,7 +87,7 @@ export class WordFrequencyService {
       let maxCount = 0;
       let minCount = Number.MAX_SAFE_INTEGER;
 
-      // Parse CSV data
+      // Parse CSV data (lemmatized data is already processed, no need for real-time lemmatization)
       for (let i = 0; i < dataLines.length; i++) {
         const line = dataLines[i];
         try {
@@ -89,7 +97,8 @@ export class WordFrequencyService {
           const count = parseInt(countStr, 10);
           if (isNaN(count) || count <= 0) continue;
           
-          // Filter for appropriate words for themes game
+          // For lemmatized data, words are already processed and filtered
+          // For original data, apply filtering
           const cleanWord = word.toLowerCase().trim();
           if (!this.isWordSuitableForThemes(cleanWord)) continue;
           
@@ -111,7 +120,12 @@ export class WordFrequencyService {
         throw new Error('No suitable words found in frequency dataset');
       }
 
-      logger.info(`Found ${entries.length} suitable words from ${dataLines.length} total entries`);
+      const originalWordCount = dataLines.length;
+      const suitableWordCount = entries.length;
+      logger.info(`Found ${suitableWordCount} suitable theme words from ${originalWordCount} total entries`);
+      if (isLemmatized) {
+        logger.info(`📝 Using pre-lemmatized dataset (canonical word forms)`);
+      }
 
       // Use raw frequency counts directly (no normalization)
       for (const entry of entries) {
