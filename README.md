@@ -2,7 +2,7 @@
 
 Copyright Max Hniebergall 2024
 - The contents of this repo are made available for informational purposes only
-- You must request written permission to execute, reproduce, extend, etc. as available protections exist under Canadian copyright law.
+- You must request written permission to execute, reproduce, extend, etc. to the full extent that protections exist under Canadian copyright law.
 - Permission is likely to be granted for the purpose of local development for non commercial educational or hobby purposes for the benefit of the project (Aphori.st)
 
 This repo is production ready.
