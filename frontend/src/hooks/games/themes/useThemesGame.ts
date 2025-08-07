@@ -6,7 +6,7 @@ export interface ThemesPuzzle {
   date: string;
   puzzleNumber: number;
   gridSize: number;
-  difficulty: 'easy' | 'medium' | 'hard' | 'expert';
+  difficulty: number;
   categories: ThemeCategory[];
   words: string[];
 }
@@ -94,7 +94,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
 
     try {
       const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${baseURL}/api/games/themes/daily/${date}`, {
+      const response = await fetch(`${baseURL}/api/games/themes/daily`, {
         credentials: 'include'
       });
       const data = await response.json();
