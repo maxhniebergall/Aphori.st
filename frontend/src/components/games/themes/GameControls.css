@@ -1,10 +1,11 @@
 .game-controls {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 16px;
-  max-width: 500px;
+  gap: 8px;
+  padding: 8px;
+  max-width: 420px;
   margin: 0 auto;
+  flex-shrink: 0;
 }
 
 .game-stats {
@@ -93,7 +94,54 @@
 /* Mobile responsive adjustments */
 @media (max-width: 640px) {
   .game-controls {
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  .game-stats {
+    font-size: 11px;
+  }
+  
+  .feedback-text {
+    font-size: 13px;
+  }
+  
+  .selection-feedback {
+    min-height: 20px;
+  }
+  
+  .control-buttons {
+    gap: 6px;
+  }
+  
+  .randomize-button,
+  .submit-button {
+    padding: 10px 16px;
+    font-size: 13px;
+    min-width: 100px;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 641px) and (max-width: 1023px) {
+  .game-controls {
     padding: 12px;
+  }
+}
+
+/* Desktop adjustments */
+@media (min-width: 1024px) {
+  .game-controls {
+    gap: 6px;
+    padding: 6px;
+  }
+}
+
+/* Laptop with shorter screens */
+@media (min-width: 1024px) and (max-height: 800px) {
+  .game-controls {
+    gap: 4px;
+    padding: 4px;
   }
   
   .game-stats {
@@ -104,23 +152,10 @@
     font-size: 14px;
   }
   
-  .control-buttons {
-    flex-direction: column;
-    gap: 8px;
-  }
-  
   .randomize-button,
   .submit-button {
-    padding: 14px 20px;
+    padding: 8px 16px;
     font-size: 14px;
-    min-width: unset;
-    width: 100%;
-  }
-}
-
-/* Tablet adjustments */
-@media (min-width: 641px) and (max-width: 1023px) {
-  .game-controls {
-    padding: 18px;
+    min-width: 100px;
   }
 }

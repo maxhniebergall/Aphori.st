@@ -28,7 +28,7 @@ export const GamesLanding: React.FC = () => {
             <span className="feature">4x4 to 10x10 Grids</span>
           </div>
           <Link 
-            to={`/games/themes?date=${currentDate}&puzzle=1`}
+            to={`/games/themes`}
             className="play-button"
           >
             Play Today's Puzzle

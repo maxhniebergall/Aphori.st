@@ -1,14 +1,13 @@
 import React, { useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { GameGrid } from '../../../components/games/themes/GameGrid';
 import { GameControls } from '../../../components/games/themes/GameControls';
 import { useThemesGame } from '../../../hooks/games/themes/useThemesGame';
 import './ThemesGame.css';
 
 export const ThemesGame: React.FC = () => {
-  const [searchParams] = useSearchParams();
-  const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
-  const puzzleNumber = parseInt(searchParams.get('puzzle') || '1', 10);
+  // Always use today's date and start with puzzle 1
+  const date = new Date().toISOString().split('T')[0];
+  const puzzleNumber = 1;
   const {
     gameState,
     puzzle,
@@ -84,11 +83,11 @@ export const ThemesGame: React.FC = () => {
       <div className="game-header">
         <h1>Themes</h1>
         <p className="game-description">
-          Find groups of four words that share a common theme.
+          Find groups of four words that share a common theme. test
         </p>
         <div className="puzzle-info">
           <span className="puzzle-date">{new Date(puzzle.date).toLocaleDateString()}</span>
-          <span className="puzzle-difficulty">{puzzle.difficulty.toUpperCase()}</span>
+          <span className="puzzle-difficulty">LEVEL {puzzle.difficulty}</span>
         </div>
       </div>
 
