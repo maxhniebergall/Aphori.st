@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { GameGrid } from '../../../components/games/themes/GameGrid';
 import { GameControls } from '../../../components/games/themes/GameControls';
+import { ShareModal } from '../../../components/games/themes/ShareModal';
 import { useThemesGame } from '../../../hooks/games/themes/useThemesGame';
 import './ThemesGame.css';
 
@@ -8,6 +9,8 @@ export const ThemesGame: React.FC = () => {
   // Always use today's date and start with puzzle 1
   const date = new Date().toISOString().split('T')[0];
   const puzzleNumber = 1;
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  
   const {
     gameState,
     puzzle,
@@ -98,9 +101,14 @@ export const ThemesGame: React.FC = () => {
           <div className="completion-stats">
             <span>Completed in {gameState.attempts} attempts</span>
           </div>
-          <button onClick={resetGame} className="play-again-button">
-            Play Again
-          </button>
+          <div className="completion-actions">
+            <button onClick={() => setShareModalOpen(true)} className="share-button">
+              📤 Share Results
+            </button>
+            <button onClick={resetGame} className="play-again-button">
+              Play Again
+            </button>
+          </div>
         </div>
       ) : gameState.attempts >= 4 ? (
         <div className="game-over">
@@ -114,9 +122,14 @@ export const ThemesGame: React.FC = () => {
               </div>
             ))}
           </div>
-          <button onClick={resetGame} className="try-again-button">
-            Try Again
-          </button>
+          <div className="game-over-actions">
+            <button onClick={() => setShareModalOpen(true)} className="share-button">
+              📤 Share Results
+            </button>
+            <button onClick={resetGame} className="try-again-button">
+              Try Again
+            </button>
+          </div>
         </div>
       ) : (
         <>
@@ -159,6 +172,12 @@ export const ThemesGame: React.FC = () => {
           })}
         </div>
       )}
+
+      <ShareModal 
+        isOpen={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        date={date}
+      />
     </div>
   );
 };
