@@ -16,33 +16,36 @@ import time
 class PythonVectorLoader:
     """Loads and provides access to word vectors from binary files"""
     
-    def __init__(self, themes_index_dir: str = None):
-        if themes_index_dir is None:
-            # Default path - find themes_index directory
+    def __init__(self, data_dir: str = None):
+        if data_dir is None:
+            # Default path - find data directory with themes files
             script_dir = Path(__file__).parent
-            # Look for themes_index in common locations
+            # Look for data directory in common locations
             possible_paths = [
-                script_dir.parent.parent / "themes_index",  # From scripts/: ../datascience/themes_index
-                script_dir.parent.parent.parent / "themes_index",  # From notebooks/: ../../themes_index  
-                Path("/Users/mh/workplace/Aphori.st/scripts/datascience/themes_index"),  # Absolute path
-                script_dir.parent.parent.parent.parent / "datascience" / "themes_index",  # Original path
-                script_dir.parent.parent.parent / "datascience" / "themes_index",        # Alternative
+                script_dir.parent / "data",  # From scripts/: ../data
+                script_dir.parent.parent / "data",  # From notebooks/: ../../data  
+                Path("/Users/mh/workplace/Aphori.st/scripts/datascience/themes_quality/data"),  # Absolute path
+                script_dir.parent.parent.parent / "datascience" / "themes_quality" / "data",  # Original path
             ]
             
-            themes_index_dir = None
+            data_dir = None
             for path in possible_paths:
-                if path.exists() and (path / "themes_metadata.json").exists():
-                    themes_index_dir = path
+                # Check for either lemmatized or original metadata files
+                if path.exists() and (
+                    (path / "themes_metadata_lemmatized.json").exists() or 
+                    (path / "themes_metadata.json").exists()
+                ):
+                    data_dir = path
                     break
             
-            if themes_index_dir is None:
+            if data_dir is None:
                 raise FileNotFoundError(
-                    f"Could not find themes_index directory. Searched in:\n" +
+                    f"Could not find data directory with themes files. Searched in:\n" +
                     "\n".join(f"  - {path}" for path in possible_paths) +
-                    "\n\nPlease ensure the themes_index directory exists with themes_metadata.json file."
+                    "\n\nPlease ensure the data directory exists with themes_metadata.json or themes_metadata_lemmatized.json file."
                 )
         
-        self.themes_index_dir = Path(themes_index_dir)
+        self.data_dir = Path(data_dir)
         self.vectors = None
         self.vocabulary = []
         self.word_to_index = {}
@@ -64,20 +67,33 @@ class PythonVectorLoader:
         start_time = time.time()
         
         try:
-            # Load metadata
-            metadata_path = self.themes_index_dir / "themes_metadata.json"
-            if not metadata_path.exists():
-                return {'success': False, 'error': f'Metadata file not found: {metadata_path}'}
+            # Load metadata - prioritize lemmatized version
+            lemmatized_metadata_path = self.data_dir / "themes_metadata_lemmatized.json"
+            metadata_path = self.data_dir / "themes_metadata.json"
+            
+            if lemmatized_metadata_path.exists():
+                metadata_path = lemmatized_metadata_path
+                is_lemmatized = True
+                print("📝 Using lemmatized metadata")
+            elif metadata_path.exists():
+                is_lemmatized = False
+                print("📝 Using original metadata")
+            else:
+                return {'success': False, 'error': f'Metadata file not found: tried {lemmatized_metadata_path} and {metadata_path}'}
             
             with open(metadata_path, 'r') as f:
                 self.metadata = json.load(f)
             
-            print(f"📊 Loading {self.metadata['num_vectors']} vectors, dimension {self.metadata['dimension']}")
+            print(f"📊 Loading {self.metadata['num_vectors']} vectors, dimension {self.metadata['dimension']} {'(lemmatized)' if is_lemmatized else '(original)'}")
             
-            # Load vocabulary
-            vocab_path = self.themes_index_dir / "themes_vocabulary.json"
-            if not vocab_path.exists():
-                return {'success': False, 'error': f'Vocabulary file not found: {vocab_path}'}
+            # Load vocabulary - prioritize lemmatized version
+            lemmatized_vocab_path = self.data_dir / "themes_vocabulary_lemmatized.json"
+            vocab_path = self.data_dir / "themes_vocabulary.json"
+            
+            if lemmatized_vocab_path.exists():
+                vocab_path = lemmatized_vocab_path
+            elif not vocab_path.exists():
+                return {'success': False, 'error': f'Vocabulary file not found: tried {lemmatized_vocab_path} and {vocab_path}'}
             
             with open(vocab_path, 'r') as f:
                 self.vocabulary = json.load(f)
@@ -87,16 +103,14 @@ class PythonVectorLoader:
             
             print(f"📝 Loaded vocabulary: {len(self.vocabulary)} words")
             
-            # Load vectors from binary file
-            # Try themes_index location first, then data directory
-            vectors_path = self.themes_index_dir / "themes_vectors.bin"
-            if not vectors_path.exists():
-                # Check in data directory (DVC managed)
-                data_vectors_path = self.themes_index_dir.parent / "themes_quality" / "data" / "themes_vectors.bin"
-                if data_vectors_path.exists():
-                    vectors_path = data_vectors_path
-            if not vectors_path.exists():
-                return {'success': False, 'error': f'Vectors file not found: {vectors_path}'}
+            # Load vectors from binary file - prioritize lemmatized version
+            lemmatized_vectors_path = self.data_dir / "themes_vectors_lemmatized.bin"
+            vectors_path = self.data_dir / "themes_vectors.bin"
+            
+            if lemmatized_vectors_path.exists():
+                vectors_path = lemmatized_vectors_path
+            elif not vectors_path.exists():
+                return {'success': False, 'error': f'Vectors file not found: tried {lemmatized_vectors_path} and {vectors_path}'}
             
             # Read binary vector data
             with open(vectors_path, 'rb') as f:
