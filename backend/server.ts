@@ -221,7 +221,7 @@ await db.connect().then(async () => { // Make the callback async
     // --- Initialize Themes Game Services ---
     try {
         logger.info('Initializing themes game services...');
-        initializeThemesServices(db);
+        initializeThemesServices();
         await initializeThemesIndex();
         logger.info('Simple themes game services initialized successfully.');
     } catch (err) {

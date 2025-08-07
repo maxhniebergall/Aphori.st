@@ -5,6 +5,7 @@
 
 import { Router } from 'express';
 import { LoggedDatabaseClient } from '../../../db/LoggedDatabaseClient.js';
+import { createThemesDatabaseClient } from '../../../db/index.js';
 import { TemporaryUserService } from '../../../services/games/TemporaryUserService.js';
 
 // Import individual route modules
@@ -20,13 +21,14 @@ const router = Router();
 
 /**
  * Initialize themes services
- * This function should be called from the main server with initialized dependencies
+ * Creates separate database connection to aphorist-themes Firebase RTDB
  */
-export function initializeThemesServices(db: LoggedDatabaseClient): void {
-  dbClient = db;
+export function initializeThemesServices(): void {
+  // Create themes-specific database client
+  dbClient = createThemesDatabaseClient();
   
-  // Initialize simple services
-  tempUserService = new TemporaryUserService(db);
+  // Initialize simple services with themes database
+  tempUserService = new TemporaryUserService(dbClient);
 }
 
 /**
