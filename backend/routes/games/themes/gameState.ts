@@ -269,22 +269,34 @@ router.post('/attempt', async (req: TempUserRequest, res: Response) => {
  * GET /api/games/themes/state/shareable/:date
  * Get shareable results for a specific date
  */
-// TODO: Implement shareable results generation with emoji-based representation
 router.get('/shareable/:date', async (req: TempUserRequest, res: Response) => {
   try {
     const { date } = req.params;
     const userId = req.effectiveUserId;
+    const { dbClient } = getThemesServices();
 
-    // TODO: Implement shareable results generation
-    // This would create an emoji-based representation of the user's attempts
+    // Get user's attempts for the date
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, date);
+    const attempts = await dbClient.getRawPath(attemptsPath) || {};
+    
+    // Get puzzles for the date to understand the categories and their difficulties
+    const puzzlesPath = `dailyPuzzles/themes/${date}/4x4`;
+    const puzzlesData = await dbClient.getRawPath(puzzlesPath) || {};
+    
+    if (!puzzlesData || Object.keys(puzzlesData).length === 0) {
+      res.status(404).json({
+        success: false,
+        error: 'No puzzles found for this date'
+      });
+      return;
+    }
+
+    // Generate shareable content
+    const shareableContent = generateShareableContent(attempts, puzzlesData, date);
     
     res.json({
       success: true,
-      data: {
-        message: 'Shareable results coming soon!',
-        date,
-        userId
-      }
+      data: shareableContent
     });
   } catch (error) {
     logger.error('Error getting shareable results:', error);
@@ -294,5 +306,95 @@ router.get('/shareable/:date', async (req: TempUserRequest, res: Response) => {
     });
   }
 });
+
+/**
+ * Generate shareable content with emoji representation
+ */
+function generateShareableContent(attempts: any, puzzlesData: any, date: string) {
+  // Difficulty to emoji mapping (yellow, green, blue, purple based on standard Connections colors)
+  const difficultyEmojis = {
+    1: '🟨', // Yellow - Easiest
+    2: '🟩', // Green - Medium-Easy  
+    3: '🟦', // Blue - Medium-Hard
+    4: '🟪'  // Purple - Hardest
+  };
+
+  const puzzles = Object.values(puzzlesData) as any[];
+  
+  // Process each puzzle and only include completed ones
+  const shareableResults = puzzles.map(puzzle => {
+    const puzzleAttempts = Object.values(attempts).filter(
+      (attempt: any) => attempt.puzzleId === puzzle.id
+    ) as any[];
+
+    // Sort attempts by timestamp to get the correct order
+    puzzleAttempts.sort((a, b) => a.timestamp - b.timestamp);
+
+    const isCompleted = puzzleAttempts.some((attempt: any) => attempt.completedPuzzle);
+    
+    // Only generate emoji rows for completed puzzles
+    let emojiRows: string[] = [];
+    if (isCompleted) {
+      // Create a map to track the order categories were solved
+      const categoryOrder: any[] = [];
+      
+      // Go through attempts in order and track when each category was solved
+      for (const attempt of puzzleAttempts) {
+        if (attempt.result === 'correct') {
+          // Find which category this attempt solved
+          const solvedCategory = puzzle.categories.find((cat: any) => {
+            const categoryWordSet = new Set(cat.words);
+            const selectedWordSet = new Set(attempt.selectedWords);
+            return categoryWordSet.size === selectedWordSet.size && 
+                   [...categoryWordSet].every(word => selectedWordSet.has(word));
+          });
+          
+          if (solvedCategory && !categoryOrder.find(c => c.id === solvedCategory.id)) {
+            categoryOrder.push(solvedCategory);
+          }
+        }
+      }
+      
+      // Generate emoji rows in the order categories were solved
+      emojiRows = categoryOrder.map(category => {
+        const emoji = difficultyEmojis[category.difficulty as keyof typeof difficultyEmojis];
+        return `${emoji}${emoji}${emoji}${emoji}`;
+      });
+    }
+
+    return {
+      puzzleNumber: puzzle.puzzleNumber,
+      attempts: puzzleAttempts.length,
+      completed: isCompleted,
+      emojiRows
+    };
+  }).filter(result => result.completed); // Only include completed puzzles
+
+  // Create shareable text - only show completed puzzles
+  const completedCount = shareableResults.length;
+  const totalCompletedPuzzles = puzzles.length; // Total available puzzles
+  
+  const shareableText = [
+    `Themes ${date}`,
+    `${completedCount}/${totalCompletedPuzzles} puzzles completed`,
+    '',
+    ...shareableResults.flatMap(puzzle => [
+      `Puzzle ${puzzle.puzzleNumber}:`,
+      ...puzzle.emojiRows,
+      ''
+    ])
+  ].join('\n').trim();
+
+  return {
+    date,
+    shareableText,
+    puzzleResults: shareableResults,
+    summary: {
+      completedPuzzles: completedCount,
+      totalPuzzles: totalCompletedPuzzles,
+      totalAttempts: shareableResults.reduce((sum, p) => sum + p.attempts, 0)
+    }
+  };
+}
 
 export default router;
