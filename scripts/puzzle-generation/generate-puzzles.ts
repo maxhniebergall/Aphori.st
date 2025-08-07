@@ -130,9 +130,28 @@ class PuzzleGenerationScript {
       return acc;
     }, {} as Record<number, GeneratedPuzzle[]>);
 
+    // Ensure nested structure exists
+    if (!firebaseData.dailyPuzzles) {
+      firebaseData.dailyPuzzles = {};
+    }
+    if (!firebaseData.dailyPuzzles.themes) {
+      firebaseData.dailyPuzzles.themes = {};
+    }
+    if (!firebaseData.dailyPuzzles.themes[date]) {
+      firebaseData.dailyPuzzles.themes[date] = {};
+    }
+
+    if (!firebaseData.puzzleIndex) {
+      firebaseData.puzzleIndex = {};
+    }
+    if (!firebaseData.puzzleIndex.themes) {
+      firebaseData.puzzleIndex.themes = {};
+    }
+
     // Add daily puzzles organized by size
     Object.entries(puzzlesBySize).forEach(([size, puzzles]) => {
-      firebaseData[`dailyPuzzles/themes/${date}/${size}x${size}`] = puzzles.reduce((acc, puzzle) => {
+      const sizeKey = `${size}x${size}`;
+      firebaseData.dailyPuzzles.themes[date][sizeKey] = puzzles.reduce((acc, puzzle) => {
         acc[puzzle.id] = {
           id: puzzle.id,
           date: puzzle.date,
@@ -165,7 +184,7 @@ class PuzzleGenerationScript {
       return acc;
     }, {} as Record<string, number>);
 
-    firebaseData[`puzzleIndex/themes/${date}`] = {
+    firebaseData.puzzleIndex.themes[date] = {
       totalCount: output.puzzles.length,
       sizeCounts: sizeCounts,
       availableSizes: Object.keys(puzzlesBySize).map(size => `${size}x${size}`),
