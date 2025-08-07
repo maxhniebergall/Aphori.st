@@ -22,8 +22,11 @@ class PythonVectorLoader:
             script_dir = Path(__file__).parent
             # Look for themes_index in common locations
             possible_paths = [
-                script_dir.parent.parent.parent.parent / "datascience" / "themes_index",  # Normal case
-                script_dir.parent.parent.parent / "datascience" / "themes_index",        # When run from notebooks
+                script_dir.parent.parent / "themes_index",  # From scripts/: ../datascience/themes_index
+                script_dir.parent.parent.parent / "themes_index",  # From notebooks/: ../../themes_index  
+                Path("/Users/mh/workplace/Aphori.st/scripts/datascience/themes_index"),  # Absolute path
+                script_dir.parent.parent.parent.parent / "datascience" / "themes_index",  # Original path
+                script_dir.parent.parent.parent / "datascience" / "themes_index",        # Alternative
             ]
             
             themes_index_dir = None
@@ -85,7 +88,13 @@ class PythonVectorLoader:
             print(f"📝 Loaded vocabulary: {len(self.vocabulary)} words")
             
             # Load vectors from binary file
+            # Try themes_index location first, then data directory
             vectors_path = self.themes_index_dir / "themes_vectors.bin"
+            if not vectors_path.exists():
+                # Check in data directory (DVC managed)
+                data_vectors_path = self.themes_index_dir.parent / "themes_quality" / "data" / "themes_vectors.bin"
+                if data_vectors_path.exists():
+                    vectors_path = data_vectors_path
             if not vectors_path.exists():
                 return {'success': False, 'error': f'Vectors file not found: {vectors_path}'}
             

@@ -58,7 +58,7 @@ except ImportError as e:
 class ParameterSweepGenerator:
     """Generates puzzles across parameter ranges for analysis"""
     
-    def __init__(self, config_path: str = '../config/investigation_config.json'):
+    def __init__(self, config_path: str = 'config/investigation_config.json'):
         self.config = self.load_config(config_path)
         self.vector_loader = None
         self.generator = None
@@ -66,8 +66,19 @@ class ParameterSweepGenerator:
         
     def load_config(self, config_path: str) -> Dict:
         """Load investigation configuration"""
-        with open(config_path, 'r') as f:
-            return json.load(f)
+        # Try different possible paths for config
+        possible_config_paths = [
+            config_path,
+            Path(__file__).parent.parent / config_path,  # From scripts/: ../config/...
+            Path.cwd() / config_path,  # From notebook execution directory
+        ]
+        
+        for path in possible_config_paths:
+            if Path(path).exists():
+                with open(path, 'r') as f:
+                    return json.load(f)
+        
+        raise FileNotFoundError(f"Config file not found. Searched: {[str(p) for p in possible_config_paths]}")
     
     async def initialize(self):
         """Initialize puzzle generation components"""
