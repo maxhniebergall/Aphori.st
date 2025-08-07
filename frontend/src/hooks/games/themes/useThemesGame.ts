@@ -26,6 +26,7 @@ export interface GameState {
   isComplete: boolean;
   shakingWords: string[];
   gridWords: GridWord[];
+  animatingWords: string[];
 }
 
 export interface UseThemesGameReturn {
@@ -55,7 +56,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
     attempts: 0,
     isComplete: false,
     shakingWords: [],
-    gridWords: []
+    gridWords: [],
+    animatingWords: []
   });
 
   // Cleanup shake timeout on unmount
@@ -78,12 +80,18 @@ export const useThemesGame = (): UseThemesGameReturn => {
   }, []);
 
   // Initialize grid words from puzzle
-  const initializeGridWords = useCallback((puzzle: ThemesPuzzle): GridWord[] => {
-    const gridWords: GridWord[] = puzzle.words.map((word, index) => ({
-      word,
-      id: `word-${index}`,
-      categoryId: puzzle.categories.find(cat => cat.words.includes(word))?.id
-    }));
+  const initializeGridWords = useCallback((puzzle: ThemesPuzzle, completedCategories: string[] = []): GridWord[] => {
+    const gridWords: GridWord[] = puzzle.words.map((word, index) => {
+      const category = puzzle.categories.find(cat => cat.words.includes(word));
+      const isCompleted = category ? completedCategories.includes(category.id) : false;
+      return {
+        word,
+        id: `word-${index}`,
+        categoryId: category?.id,
+        isCompleted,
+        difficulty: isCompleted ? (category?.difficulty as 1 | 2 | 3 | 4) : undefined
+      };
+    });
     return shuffleArray(gridWords);
   }, [shuffleArray]);
 
@@ -117,7 +125,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
         attempts: 0,
         isComplete: false,
         shakingWords: [],
-        gridWords: initializeGridWords(targetPuzzle)
+        gridWords: initializeGridWords(targetPuzzle),
+        animatingWords: []
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -198,6 +207,29 @@ export const useThemesGame = (): UseThemesGameReturn => {
           
           if (correctCategory && !prev.completedCategories.includes(correctCategory.id)) {
             newState.completedCategories = [...prev.completedCategories, correctCategory.id];
+            
+            // Start animation for completed category words
+            newState.animatingWords = correctCategory.words;
+            
+            // Update gridWords to mark completed words
+            newState.gridWords = prev.gridWords.map(gridWord => {
+              if (correctCategory.words.includes(gridWord.word)) {
+                return {
+                  ...gridWord,
+                  isCompleted: true,
+                  difficulty: correctCategory.difficulty as 1 | 2 | 3 | 4
+                };
+              }
+              return gridWord;
+            });
+            
+            // Clear animation state after animation duration
+            setTimeout(() => {
+              setGameState(current => ({
+                ...current,
+                animatingWords: []
+              }));
+            }, 1000);
           }
           newState.selectedWords = [];
           
@@ -253,7 +285,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
       attempts: 0,
       isComplete: false,
       shakingWords: [],
-      gridWords: initializeGridWords(puzzle)
+      gridWords: initializeGridWords(puzzle),
+      animatingWords: []
     });
   }, [puzzle, initializeGridWords]);
 
