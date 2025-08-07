@@ -4,7 +4,7 @@ parameter_sweeps:
   similarity_thresholds: [0.3, 0.6, 0.8]
   puzzle_sizes: [4]
   algorithms: ["N=K", "N=K+D"]
-  samples_per_configuration: 2
+  samples_per_configuration: 20
 
 # Quality assessment metrics
 quality_assessment:
