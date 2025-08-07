@@ -12,7 +12,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 14px;
+  font-size: clamp(12px, 2.5vw, 16px);
   color: #6b7280;
 }
 
@@ -33,7 +33,7 @@
 }
 
 .feedback-text {
-  font-size: 16px;
+  font-size: clamp(14px, 3vw, 18px);
   font-weight: 500;
 }
 
@@ -56,11 +56,11 @@
   padding: 12px 24px;
   border: none;
   border-radius: 8px;
-  font-size: 16px;
+  font-size: clamp(14px, 2.8vw, 18px);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 120px;
+  min-width: clamp(100px, 20vw, 140px);
 }
 
 .randomize-button {
@@ -98,14 +98,6 @@
     gap: 8px;
   }
   
-  .game-stats {
-    font-size: 11px;
-  }
-  
-  .feedback-text {
-    font-size: 13px;
-  }
-  
   .selection-feedback {
     min-height: 20px;
   }
@@ -117,8 +109,6 @@
   .randomize-button,
   .submit-button {
     padding: 10px 16px;
-    font-size: 13px;
-    min-width: 100px;
   }
 }
 
@@ -144,18 +134,8 @@
     padding: 4px;
   }
   
-  .game-stats {
-    font-size: 12px;
-  }
-  
-  .feedback-text {
-    font-size: 14px;
-  }
-  
   .randomize-button,
   .submit-button {
     padding: 8px 16px;
-    font-size: 14px;
-    min-width: 100px;
   }
 }
