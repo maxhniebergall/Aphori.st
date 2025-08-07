@@ -8,6 +8,7 @@ import path from 'path';
 import faiss from 'faiss-node';
 import { WordFrequencyService } from './WordFrequencyService.js';
 import { UsedThemeWords } from './UsedThemeWords.js';
+import { SpellCheckService } from './SpellCheckService.js';
 
 export interface SearchResult {
   word: string;
@@ -30,6 +31,7 @@ export class FullVectorLoader {
   private initialized: boolean = false;
   private frequencyService: WordFrequencyService | null = null;
   private usedThemeWords!: UsedThemeWords; // Initialized in initialize() method
+  private spellCheckService: SpellCheckService | null = null;
 
   /**
    * Initialize the full vector loader with complete 2.9M word dataset
@@ -64,6 +66,15 @@ export class FullVectorLoader {
         } catch (error) {
           console.warn('⚠️ Failed to initialize frequency service, falling back to random selection:', error);
         }
+
+        // Initialize spell check service for quality controls
+        try {
+          this.spellCheckService = new SpellCheckService();
+          await this.spellCheckService.initialize();
+          console.log(`✅ Spell check service initialized`);
+        } catch (error) {
+          console.warn('⚠️ Failed to initialize spell check service, falling back to substring checking:', error);
+        }
         
         console.log(`✅ Loaded ${themesLoadResult.loadedWords} words from themes index`);
         return themesLoadResult;
@@ -81,6 +92,15 @@ export class FullVectorLoader {
           console.log(`✅ Frequency service initialized`);
         } catch (error) {
           console.warn('⚠️ Failed to initialize frequency service, falling back to random selection:', error);
+        }
+
+        // Initialize spell check service for quality controls
+        try {
+          this.spellCheckService = new SpellCheckService();
+          await this.spellCheckService.initialize();
+          console.log(`✅ Spell check service initialized`);
+        } catch (error) {
+          console.warn('⚠️ Failed to initialize spell check service, falling back to substring checking:', error);
         }
         
         console.log(`✅ Loaded ${numpyLoadResult.loadedWords} words from numpy files`);
@@ -233,20 +253,41 @@ export class FullVectorLoader {
    * Find nearest neighbors with quality controls applied
    * Filters results to include only words that:
    * 1. Meet the specified frequency percentile threshold
-   * 2. Do not contain the theme word as a substring
-   * 3. Are not contained within any existing selected words (and vice versa)
+   * 2. Do not have the same canonical form (base word) as the theme word (using spell-checker + lemmatizer)
+   * 3. Do not have the same canonical form (base word) as any existing selected words (using spell-checker + lemmatizer)
    */
   async findNearestWithQualityControls(themeWord: string, k: number, existingWords: Set<string> = new Set(), frequencyThreshold: number): Promise<SearchResult[]> {
     if (!this.initialized || !this.faissIndex) {
       throw new Error('FullVectorLoader not initialized');
     }
 
-    // First check if the theme word itself is a case-insensitive duplicate of existing words
-    const themeWordLower = themeWord.toLowerCase();
-    for (const existingWord of existingWords) {
-      if (themeWordLower === existingWord.toLowerCase()) {
-        console.log(`🔍 Theme word "${themeWord}" is case-insensitive duplicate of existing word "${existingWord}"`);
-        return []; // Return empty results - can't use this theme word
+    // First check if the theme word has the same canonical form as existing words
+    if (this.spellCheckService) {
+      try {
+        const matchResult = this.spellCheckService.hasMatchingCanonicalForm(themeWord, existingWords);
+        if (matchResult.hasMatch) {
+          console.log(`🔍 Theme word "${themeWord}" has same canonical form as existing word "${matchResult.matchingWord}" (both: "${matchResult.canonicalForm}")`);
+          return []; // Return empty results - can't use this theme word
+        }
+      } catch (error) {
+        console.warn(`⚠️ Canonical form check error for theme word "${themeWord}", using fallback check:`, error);
+        // Fallback to case-insensitive check
+        const themeWordLower = themeWord.toLowerCase();
+        for (const existingWord of existingWords) {
+          if (themeWordLower === existingWord.toLowerCase()) {
+            console.log(`🔍 Theme word "${themeWord}" is case-insensitive duplicate of existing word "${existingWord}" (fallback)`);
+            return [];
+          }
+        }
+      }
+    } else {
+      // Fallback to case-insensitive check if spell checker not available
+      const themeWordLower = themeWord.toLowerCase();
+      for (const existingWord of existingWords) {
+        if (themeWordLower === existingWord.toLowerCase()) {
+          console.log(`🔍 Theme word "${themeWord}" is case-insensitive duplicate of existing word "${existingWord}" (no spell checker)`);
+          return [];
+        }
       }
     }
 
@@ -301,13 +342,13 @@ export class FullVectorLoader {
       return false;
     }
 
-    // Control 2: Must not contain the theme word as a substring
-    if (this.containsThemeWord(word, themeWord)) {
+    // Control 2: Must not have the same canonical form as the theme word
+    if (this.hasSameCanonicalForm(word, themeWord)) {
       return false;
     }
 
-    // Control 3: Must not be contained within any existing words (and vice versa)
-    if (this.hasWordContainment(word, existingWords)) {
+    // Control 3: Must not have the same canonical form as any existing words
+    if (this.hasMatchingCanonicalFormInSet(word, existingWords)) {
       return false;
     }
 
@@ -340,45 +381,96 @@ export class FullVectorLoader {
   }
 
   /**
-   * Check if word contains theme word as substring
+   * Check if word has the same canonical form as theme word using spell checker + lemmatizer
    */
-  private containsThemeWord(word: string, themeWord: string): boolean {
-    const wordLower = word.toLowerCase();
-    const themeLower = themeWord.toLowerCase();
-    
-    // Check if theme word is contained in the candidate word
-    const contains = wordLower.includes(themeLower) || themeLower.includes(wordLower);
-    
-    if (contains) {
-      console.log(`     🔤 "${word}" contains theme word "${themeWord}"`);
+  private hasSameCanonicalForm(word: string, themeWord: string): boolean {
+    if (!this.spellCheckService) {
+      // Fallback to substring checking if spell checker not available
+      console.warn(`     ⚠️ Spell checker not available, falling back to substring check for "${word}" vs "${themeWord}"`);
+      const wordLower = word.toLowerCase();
+      const themeLower = themeWord.toLowerCase();
+      const contains = wordLower.includes(themeLower) || themeLower.includes(wordLower);
+      
+      if (contains) {
+        console.log(`     🔤 "${word}" contains theme word "${themeWord}" (substring fallback)`);
+      }
+      
+      return contains;
     }
-    
-    return contains;
+
+    try {
+      const hasSameCanonical = this.spellCheckService.haveSameCanonicalForm(word, themeWord);
+      
+      if (hasSameCanonical) {
+        const canonicalForm = this.spellCheckService.getCanonicalForm(word);
+        console.log(`     🔤 "${word}" has same canonical form as theme word "${themeWord}" (both: "${canonicalForm}")`);
+      }
+      
+      return hasSameCanonical;
+    } catch (error) {
+      console.warn(`     ⚠️ Spell check error for "${word}" vs "${themeWord}", falling back to substring: ${error}`);
+      // Fallback to substring checking
+      const wordLower = word.toLowerCase();
+      const themeLower = themeWord.toLowerCase();
+      return wordLower.includes(themeLower) || themeLower.includes(wordLower);
+    }
   }
 
   /**
-   * Check if word is contained within any existing words or vice versa
+   * Check if word has the same canonical form as any existing words using spell checker + lemmatizer
    */
-  private hasWordContainment(word: string, existingWords: Set<string>): boolean {
-    const wordLower = word.toLowerCase();
-    
-    for (const existingWord of existingWords) {
-      const existingLower = existingWord.toLowerCase();
+  private hasMatchingCanonicalFormInSet(word: string, existingWords: Set<string>): boolean {
+    if (!this.spellCheckService) {
+      // Fallback to substring checking if spell checker not available
+      console.warn(`     ⚠️ Spell checker not available, falling back to substring check for "${word}"`);
+      const wordLower = word.toLowerCase();
       
-      // Check for exact match (case-insensitive) - this is a duplicate word
-      if (wordLower === existingLower) {
-        console.log(`     🔗 "${word}" is duplicate of existing word "${existingWord}" (case-insensitive)`);
-        return true;
+      for (const existingWord of existingWords) {
+        const existingLower = existingWord.toLowerCase();
+        
+        // Check for exact match (case-insensitive) - this is a duplicate word
+        if (wordLower === existingLower) {
+          console.log(`     🔗 "${word}" is duplicate of existing word "${existingWord}" (case-insensitive)`);
+          return true;
+        }
+        
+        // Check if candidate word contains existing word or vice versa (substring containment)
+        if (wordLower.includes(existingLower) || existingLower.includes(wordLower)) {
+          console.log(`     🔗 "${word}" has containment with existing word "${existingWord}" (substring fallback)`);
+          return true;
+        }
       }
       
-      // Check if candidate word contains existing word or vice versa (substring containment)
-      if (wordLower.includes(existingLower) || existingLower.includes(wordLower)) {
-        console.log(`     🔗 "${word}" has containment with existing word "${existingWord}"`);
-        return true;
-      }
+      return false;
     }
-    
-    return false;
+
+    try {
+      const matchResult = this.spellCheckService.hasMatchingCanonicalForm(word, existingWords);
+      
+      if (matchResult.hasMatch) {
+        console.log(`     🔗 "${word}" has same canonical form as existing word "${matchResult.matchingWord}" (both: "${matchResult.canonicalForm}")`);
+      }
+      
+      return matchResult.hasMatch;
+    } catch (error) {
+      console.warn(`     ⚠️ Spell check error for "${word}" vs existing words, falling back to substring: ${error}`);
+      // Fallback to substring checking
+      const wordLower = word.toLowerCase();
+      
+      for (const existingWord of existingWords) {
+        const existingLower = existingWord.toLowerCase();
+        
+        if (wordLower === existingLower) {
+          return true;
+        }
+        
+        if (wordLower.includes(existingLower) || existingLower.includes(wordLower)) {
+          return true;
+        }
+      }
+      
+      return false;
+    }
   }
 
   /**
