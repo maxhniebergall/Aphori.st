@@ -30,7 +30,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
       className="game-grid"
       data-grid-size={`${gridSize}x${gridSize}`}
       style={{
-        gridTemplateColumns: `repeat(${gridSize}, 1fr)`
+        gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`
       }}
     >
       {words.map((gridWord) => (
