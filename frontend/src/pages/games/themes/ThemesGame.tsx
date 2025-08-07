@@ -126,6 +126,8 @@ export const ThemesGame: React.FC = () => {
             shakingWords={gameState.shakingWords}
             onWordClick={selectWord}
             gridSize={puzzle.gridSize}
+            _completedCategories={gameState.completedCategories}
+            animatingWords={gameState.animatingWords}
           />
 
           <GameControls
