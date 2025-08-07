@@ -25,6 +25,8 @@ services:
       - ./scripts/datascience:/app/scripts/datascience:ro
     networks:
       - main
+    env_file:
+      - ./backend/.env
     environment:
       - DB_TYPE=firebase
       - FIREBASE_DATABASE_EMULATOR_HOST=host.docker.internal:9000
