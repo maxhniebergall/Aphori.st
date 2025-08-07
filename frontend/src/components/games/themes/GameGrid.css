@@ -1,59 +1,32 @@
 .game-grid {
-  --grid-gap: 8px;
-  --grid-padding: 16px;
-  --grid-max-width: 500px;
+  --grid-gap: 6px;
+  --grid-padding: 8px;
   --mobile-max-width: 100%;
   
   display: grid;
   gap: var(--grid-gap);
-  max-width: var(--grid-max-width);
   margin: 0 auto;
   padding: var(--grid-padding);
 }
 
-/* Grid size variants using data attributes */
-.game-grid[data-grid-size="4x4"] {
-  --grid-max-width: 400px;
-}
-
-.game-grid[data-grid-size="5x5"] {
-  --grid-max-width: 450px;
-}
-
-.game-grid[data-grid-size="6x6"] {
-  --grid-max-width: 500px;
-}
-
-.game-grid[data-grid-size="7x7"] {
-  --grid-max-width: 520px;
-}
-
-.game-grid[data-grid-size="8x8"] {
-  --grid-max-width: 540px;
-}
-
-.game-grid[data-grid-size="9x9"] {
-  --grid-max-width: 560px;
-}
-
-.game-grid[data-grid-size="10x10"] {
-  --grid-max-width: 580px;
-}
+/* Grid size variants using data attributes - removed max-width constraints */
 
 /* Responsive adjustments using custom properties */
 @media (max-width: 480px) {
   .game-grid {
-    --grid-gap: 4px;
+    --grid-gap: 2px;
     --grid-padding: 8px;
-    --grid-max-width: var(--mobile-max-width);
+    width: calc(100vw - 24px);
+    box-sizing: border-box;
   }
 }
 
 @media (min-width: 481px) and (max-width: 640px) {
   .game-grid {
-    --grid-gap: 6px;
+    --grid-gap: 3px;
     --grid-padding: 12px;
-    --grid-max-width: var(--mobile-max-width);
+    width: calc(100vw - 32px);
+    box-sizing: border-box;
   }
 }
 
@@ -66,7 +39,14 @@
 
 @media (min-width: 1024px) {
   .game-grid {
-    --grid-gap: 12px;
-    --grid-padding: 24px;
+    --grid-gap: 8px;
+    --grid-padding: 16px;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 800px) {
+  .game-grid {
+    --grid-gap: 6px;
+    --grid-padding: 8px;
   }
 }
