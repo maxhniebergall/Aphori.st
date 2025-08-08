@@ -8,6 +8,7 @@ and cluster validation techniques:
 - intercategory_discoherence (using Davies-Bouldin and Calinski-Harabasz concepts)
 - intracategory_coherence (using within-cluster compactness)
 - difficulty_progression
+- textual_similarity_penalty (penalty for textually similar words)
 """
 
 import sys
@@ -32,7 +33,7 @@ except ImportError:
 class QualityMetrics:
     """Calculates quality metrics using linear algebra and cluster validation concepts"""
     
-    def __init__(self, vector_loader: 'FullVectorLoader' = None):
+    def __init__(self, vector_loader = None):
         self.vector_loader = vector_loader
         self.python_vector_loader = None
         
@@ -437,6 +438,69 @@ class QualityMetrics:
         union = len(set1 | set2)
         
         return intersection / union if union > 0 else 0.0
+
+    def _longest_common_substring_ratio(self, word1: str, word2: str) -> float:
+        """Calculate similarity based on longest common substring"""
+        word1, word2 = word1.lower(), word2.lower()
+        m, n = len(word1), len(word2)
+        
+        if m == 0 or n == 0:
+            return 0.0
+        
+        # Create DP table for LCS length
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+        max_length = 0
+        
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if word1[i-1] == word2[j-1]:
+                    dp[i][j] = dp[i-1][j-1] + 1
+                    max_length = max(max_length, dp[i][j])
+                else:
+                    dp[i][j] = 0
+        
+        # Return ratio of longest common substring to average word length
+        avg_length = (m + n) / 2
+        return max_length / avg_length if avg_length > 0 else 0.0
+
+    def calculate_textual_similarity_penalty(self, words: List[str]) -> float:
+        """
+        Calculate a penalty score based on textual similarity between words.
+        Higher penalty (closer to 1.0) means words are more textually similar.
+        Lower penalty (closer to 0.0) means words are more textually distinct.
+        
+        This combines multiple similarity measures:
+        - Character overlap (Jaccard similarity on character sets)
+        - Edit distance similarity (Levenshtein distance)
+        - Longest common substring ratio
+        
+        Returns: 0.0 to 1.0, where 1.0 = maximum textual similarity penalty
+        """
+        if len(words) < 2:
+            return 0.0  # No penalty for single word
+        
+        similarities = []
+        
+        for i in range(len(words)):
+            for j in range(i + 1, len(words)):
+                word1, word2 = words[i], words[j]
+                
+                # Calculate multiple similarity measures
+                char_overlap = self._character_overlap_similarity(word1, word2)
+                edit_distance_sim = self._edit_distance_similarity(word1, word2)
+                lcs_ratio = self._longest_common_substring_ratio(word1, word2)
+                
+                # Weighted combination - emphasizing character overlap and LCS
+                combined_similarity = (
+                    char_overlap * 0.4 +
+                    edit_distance_sim * 0.3 +
+                    lcs_ratio * 0.3
+                )
+                
+                similarities.append(combined_similarity)
+        
+        # Return average similarity as penalty score
+        return np.mean(similarities) if similarities else 0.0
     
     def calculate_all_metrics(self, puzzle: Dict) -> Dict[str, float]:
         """Calculate all quality metrics for a puzzle"""
@@ -478,21 +542,37 @@ class QualityMetrics:
         # Difficulty progression
         metrics['difficulty_progression'] = self.calculate_difficulty_progression(categories)
         
+        # Textual similarity penalty (average across all categories)
+        textual_similarity_penalties = []
+        for words in category_words:
+            if words and len(words) >= 2:  # Only calculate for categories with multiple words
+                penalty = self.calculate_textual_similarity_penalty(words)
+                textual_similarity_penalties.append(penalty)
+        
+        metrics['textual_similarity_penalty'] = (
+            np.mean(textual_similarity_penalties) if textual_similarity_penalties else 0.0
+        )
+        
         # Additional metrics for context
         metrics['generation_success_rate'] = 1.0  # Will be calculated at puzzle level
         
         # Overall quality score (weighted combination)
+        # Note: textual_similarity_penalty is subtracted since higher penalty = lower quality
         weights = {
-            'intracategory_word_distinctiveness': 0.25,
-            'intercategory_discoherence': 0.25,
-            'intracategory_coherence': 0.35,
-            'difficulty_progression': 0.15
+            'intracategory_word_distinctiveness': 0.20,
+            'intercategory_discoherence': 0.20,
+            'intracategory_coherence': 0.30,
+            'difficulty_progression': 0.10,
+            'textual_similarity_penalty': -0.20  # Negative weight since it's a penalty
         }
         
         overall_score = sum(
             metrics.get(metric, 0.0) * weight 
             for metric, weight in weights.items()
         )
+        
+        # Ensure overall score stays within [0, 1] range
+        overall_score = max(0.0, min(1.0, overall_score))
         
         metrics['overall_quality_score'] = overall_score
         
@@ -549,6 +629,7 @@ def test_quality_metrics():
     print("   - intercategory_discoherence: How well-separated categories are from each other")
     print("   - intracategory_coherence: How well words relate within categories and to themes")
     print("   - difficulty_progression: Whether difficulty increases appropriately")
+    print("   - textual_similarity_penalty: Penalty for textually similar words (higher = worse quality)")
     print("   - overall_quality_score: Weighted combination of all metrics")
     
     return metrics
