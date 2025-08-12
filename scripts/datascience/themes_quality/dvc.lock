@@ -17,12 +17,12 @@ stages:
       size: 23230
     - path: scripts/quality_metrics.py
       hash: md5
-      md5: a0929182beb7f868c49a0ad667dbd20c
-      size: 22187
+      md5: 674ac0860605bba9ae47a1aeab176e28
+      size: 32958
     - path: scripts/typescript_bridge.py
       hash: md5
-      md5: 4ab66cc1dc616c9117dcbb906dab45a8
-      size: 8300
+      md5: 12ebf24708f883b692c1537ee130f122
+      size: 12797
     params:
       params.yaml:
         data_collection:
@@ -58,3 +58,158 @@ stages:
           - N=K
           - N=K+D
           samples_per_configuration: 20
+  generate_vocabulary:
+    cmd: python pipeline/vocabulary_generator.py
+    deps:
+    - path: config/pipeline_config.yaml
+      hash: md5
+      md5: 32de9f4fe978c53c0454b5ef5a3069e7
+      size: 4111
+    - path: pipeline/vocabulary_generator.py
+      hash: md5
+      md5: 88c90091dd3dd2d2c56f737645f2f085
+      size: 9202
+    params:
+      params.yaml:
+        processing:
+          parallel_workers: 6
+          batch_size: 1000
+          timeout_seconds: 300
+        vocabulary:
+          source: nltk_words
+          frequency_threshold: 5000
+          min_word_length: 2
+          max_word_length: 15
+          exclude_proper_nouns: true
+    outs:
+    - path: data/filtered_vocabulary.json
+      hash: md5
+      md5: 83ad696c9c4d7ab70cac386a98cbc698
+      size: 194991
+  categorize_words:
+    cmd: python pipeline/word_categorizer.py
+    deps:
+    - path: config/pipeline_config.yaml
+      hash: md5
+      md5: 32de9f4fe978c53c0454b5ef5a3069e7
+      size: 4111
+    - path: data/filtered_vocabulary.json
+      hash: md5
+      md5: 83ad696c9c4d7ab70cac386a98cbc698
+      size: 194991
+    - path: pipeline/word_categorizer.py
+      hash: md5
+      md5: f373713d1e3bda9aa6d6b7d2486d1b3d
+      size: 20003
+    params:
+      params.yaml:
+        categories:
+          enabled_categories:
+          - person
+          - person_type
+          - location
+          - location_type
+          - organization
+          - organization_type
+          - event
+          - event_type
+          - product
+          - product_type
+          - creature
+          - skill
+          - category
+          confidence_thresholds:
+            person: 0.3
+            person_type: 0.4
+            location: 0.3
+            location_type: 0.4
+            organization: 0.3
+            organization_type: 0.4
+            event: 0.3
+            event_type: 0.4
+            product: 0.3
+            product_type: 0.4
+            creature: 0.3
+            skill: 0.4
+            category: 0.4
+        processing:
+          parallel_workers: 6
+          batch_size: 1000
+          timeout_seconds: 300
+        scoring:
+          dictionary_weight: 0.3
+          embeddings_weight: 0.6
+          llm_weight: 0.1
+          min_confidence_threshold: 0.2
+          multi_category_threshold: 0.5
+          max_categories_per_word: 3
+    outs:
+    - path: data/categorized_words.json
+      hash: md5
+      md5: 70bed53c7274f9ec9c40763d73309387
+      size: 3789829
+  export_vocabularies:
+    cmd: python pipeline/vocabulary_exporter.py
+    deps:
+    - path: config/pipeline_config.yaml
+      hash: md5
+      md5: 32de9f4fe978c53c0454b5ef5a3069e7
+      size: 4111
+    - path: data/categorized_words.json
+      hash: md5
+      md5: 70bed53c7274f9ec9c40763d73309387
+      size: 3789829
+    - path: pipeline/vocabulary_exporter.py
+      hash: md5
+      md5: 3ab3fc7624936b9aca90074e4e14b03f
+      size: 12968
+    params:
+      params.yaml:
+        categories:
+          enabled_categories:
+          - person
+          - person_type
+          - location
+          - location_type
+          - organization
+          - organization_type
+          - event
+          - event_type
+          - product
+          - product_type
+          - creature
+          - skill
+          - category
+          confidence_thresholds:
+            person: 0.3
+            person_type: 0.4
+            location: 0.3
+            location_type: 0.4
+            organization: 0.3
+            organization_type: 0.4
+            event: 0.3
+            event_type: 0.4
+            product: 0.3
+            product_type: 0.4
+            creature: 0.3
+            skill: 0.4
+            category: 0.4
+        output:
+          format: json
+          include_metadata: true
+          include_confidence_scores: true
+          sort_by_confidence: true
+        paths:
+          input_vocab: data/filtered_vocabulary.json
+          output_dir: data/vocabs
+          temp_dir: data/temp
+    outs:
+    - path: data/export_metadata.json
+      hash: md5
+      md5: 5793d1679f19f5b48d0c753e1fa62acc
+      size: 12124
+    - path: data/vocabs/
+      hash: md5
+      md5: d7151c0d82b615ecf975cff4d2f96705.dir
+      size: 3503169
+      nfiles: 13

@@ -1,0 +1,134 @@
+# NLP Pipeline Configuration for Vocabulary Generation and Categorization
+
+# Core Processing Parameters
+processing:
+  parallel_workers: 6
+  batch_size: 1000
+  timeout_seconds: 300
+
+# Vocabulary Generation Settings
+vocabulary:
+  source: "nltk_words_with_unigram_frequencies"
+  frequency_threshold: 5000  # Top 5,000 most frequent words
+  min_word_length: 2
+  max_word_length: 15
+  exclude_proper_nouns: true
+
+# Word Categorization System (13 categories)
+categories:
+  person:
+    description: "Words likely to be person names or personal identifiers"
+    prototype_words: ["john", "mary", "smith", "johnson", "williams"]
+    confidence_threshold: 0.3
+    
+  person_type:
+    description: "Job types, roles, or professions held by a person"
+    prototype_words: ["doctor", "teacher", "engineer", "manager", "artist"]
+    confidence_threshold: 0.4
+    
+  location:
+    description: "Natural and human-made landmarks, structures, geographical features, geopolitical entities"
+    prototype_words: ["paris", "mountain", "river", "building", "country"]
+    confidence_threshold: 0.3
+    
+  location_type:
+    description: "Categories of location types"
+    prototype_words: ["city", "state", "continent", "landmark", "facility"]
+    confidence_threshold: 0.4
+    
+  organization:
+    description: "Companies, political groups, musical bands, sport clubs, government bodies, public organizations"
+    prototype_words: ["company", "university", "government", "team", "band"]
+    confidence_threshold: 0.3
+    
+  organization_type:
+    description: "Categories of organizations"
+    prototype_words: ["corporation", "institution", "agency", "club", "association"]
+    confidence_threshold: 0.4
+    
+  event:
+    description: "Historical, social, and naturally occurring events"
+    prototype_words: ["war", "festival", "earthquake", "wedding", "conference"]
+    confidence_threshold: 0.3
+    
+  event_type:
+    description: "Categories of events"
+    prototype_words: ["celebration", "disaster", "meeting", "competition", "ceremony"]
+    confidence_threshold: 0.4
+    
+  product:
+    description: "Physical objects of various types"
+    prototype_words: ["car", "book", "phone", "furniture", "clothing"]
+    confidence_threshold: 0.3
+    
+  product_type:
+    description: "Categories of products"
+    prototype_words: ["vehicle", "device", "tool", "appliance", "material"]
+    confidence_threshold: 0.4
+    
+  creature:
+    description: "Living creatures (real or fictional), species, or common names"
+    prototype_words: ["dog", "bird", "fish", "insect", "mammal"]
+    confidence_threshold: 0.3
+    
+  skill:
+    description: "Capabilities, skills, or expertise"
+    prototype_words: ["programming", "writing", "speaking", "leadership", "creativity"]
+    confidence_threshold: 0.4
+    
+  category:
+    description: "Words describing types of things (e.g., biology family/genus)"
+    prototype_words: ["type", "kind", "class", "group", "family"]
+    confidence_threshold: 0.4
+
+# Scoring Algorithm Configuration
+scoring:
+  # Dictionary Cross-Reference (Strategy 1)
+  dictionary:
+    weight: 0.3
+    require_definition: true
+    min_definition_words: 3
+    
+  # Word Embeddings with spaCy (Strategy 2) 
+  embeddings:
+    weight: 0.6
+    model: "en_core_web_md"
+    similarity_method: "cosine"
+    prototype_aggregation: "mean"
+    
+  # LLM Analysis (Strategy 3) - Future implementation
+  llm:
+    weight: 0.1
+    enabled: false
+    model: "gpt-3.5-turbo"
+    
+  # Combined Scoring
+  min_confidence_threshold: 0.2
+  multi_category_threshold: 0.5
+  max_categories_per_word: 3
+
+# Output Configuration
+output:
+  format: "json"
+  include_metadata: true
+  include_confidence_scores: true
+  include_alternative_categories: true
+  sort_by_confidence: true
+  
+# Data Paths
+paths:
+  input_vocab: "data/filtered_vocabulary.json"
+  unigram_freq: "data/unigram_freq.csv"
+  output_dir: "data/vocabs"
+  temp_dir: "data/temp"
+  
+# Logging and Validation
+logging:
+  level: "INFO"
+  include_progress: true
+  log_failed_words: true
+  
+validation:
+  min_words_per_category: 10
+  max_words_per_category: 2000
+  category_overlap_threshold: 0.8
