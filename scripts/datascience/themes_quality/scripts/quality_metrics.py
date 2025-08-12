@@ -35,21 +35,22 @@ class QualityMetrics:
     
     def __init__(self, vector_loader = None):
         self.vector_loader = vector_loader
-        self.python_vector_loader = None
         
-        # Auto-initialize PythonVectorLoader if available and no other loader provided
-        if vector_loader is None and VECTORS_AVAILABLE:
-            try:
-                self.python_vector_loader = PythonVectorLoader()
-                init_result = self.python_vector_loader.initialize()
-                if init_result['success']:
-                    print(f"✅ Auto-initialized PythonVectorLoader: {init_result['loadedWords']} words")
-                else:
-                    print(f"⚠️ PythonVectorLoader initialization failed: {init_result.get('error', 'Unknown error')}")
-                    self.python_vector_loader = None
-            except Exception as e:
-                print(f"⚠️ Could not auto-initialize PythonVectorLoader: {e}")
+        # Set python_vector_loader based on provided vector_loader
+        if vector_loader is not None:
+            # Check if this is a PythonVectorLoader instance
+            if hasattr(vector_loader, 'get_word_vector') and hasattr(vector_loader, 'vocabulary'):
+                self.python_vector_loader = vector_loader
+                print(f"✅ QualityMetrics using provided PythonVectorLoader with {len(vector_loader.vocabulary)} words")
+            else:
+                # It's some other type of vector loader
                 self.python_vector_loader = None
+                print("ℹ️  QualityMetrics using provided vector loader (non-PythonVectorLoader)")
+        else:
+            # Don't auto-initialize PythonVectorLoader - rely on external vector services for efficiency
+            self.python_vector_loader = None
+            if VECTORS_AVAILABLE:
+                print("ℹ️  Skipping PythonVectorLoader auto-init in QualityMetrics - using external vector services")
         
     def cosine_similarity(self, vector_a: np.ndarray, vector_b: np.ndarray) -> float:
         """
@@ -98,6 +99,109 @@ class QualityMetrics:
         except Exception as e:
             print(f"Warning: Could not get vector for word '{word}': {e}")
             return None
+    
+    def _get_theme_vector(self, theme: str) -> Optional[np.ndarray]:
+        """Get vector representation for theme, including semantic composition for multi-word themes"""
+        if not theme:
+            return None
+        
+        theme_lower = theme.lower().strip()
+        
+        if theme_lower.startswith('similar to '):
+            return self._compose_similar_to_vector(theme)
+        elif theme_lower.startswith('type of '):
+            return self._compose_type_of_vector(theme)
+        else:
+            # Single word theme - use direct vector
+            return self.get_word_vector(theme_lower)
+    
+    def _compose_similar_to_vector(self, theme: str) -> Optional[np.ndarray]:
+        """Compose vector for 'similar to X' themes using semantic composition"""
+        core_word = theme.lower().replace('similar to ', '').strip()
+        
+        # Get base word vector
+        core_vector = self.get_word_vector(core_word)
+        if core_vector is None:
+            return None
+        
+        # Get "similar" concept vector
+        similar_vector = self.get_word_vector('similar')
+        if similar_vector is None:
+            # Fallback: slight modification of core vector
+            return core_vector * 0.9 + np.random.normal(0, 0.01, core_vector.shape)
+        
+        # Semantic composition: weighted combination
+        # This creates a vector that's "like animal but more similar/related"
+        composed = 0.6 * core_vector + 0.4 * similar_vector
+        
+        # Normalize to unit vector (important for cosine similarity)
+        norm = np.linalg.norm(composed)
+        if norm > 0:
+            composed = composed / norm
+        
+        return composed
+
+    def _compose_type_of_vector(self, theme: str) -> Optional[np.ndarray]:
+        """Compose vector for 'type of X' themes using semantic composition"""
+        core_word = theme.lower().replace('type of ', '').strip()
+        
+        # Get base word vector  
+        core_vector = self.get_word_vector(core_word)
+        if core_vector is None:
+            return None
+        
+        # Get "type" concept vector
+        type_vector = self.get_word_vector('type')
+        if type_vector is None:
+            # Fallback: different modification of core vector
+            return core_vector * 1.1 + np.random.normal(0, 0.02, core_vector.shape)
+        
+        # Semantic composition: different weighting than "similar to"  
+        # This creates a vector that's "like animal but more categorical/taxonomic"
+        composed = 0.6 * core_vector + 0.4 * type_vector
+        
+        # Normalize to unit vector
+        norm = np.linalg.norm(composed)
+        if norm > 0:
+            composed = composed / norm
+        
+        return composed
+    
+    def _cosine_similarity(self, vector_a: np.ndarray, vector_b: np.ndarray) -> float:
+        """Helper method for cosine similarity (alias for existing method)"""
+        return self.cosine_similarity(vector_a, vector_b)
+    
+    def validate_theme_vector_differentiation(self, theme_variants) -> Dict[str, Dict[str, float]]:
+        """Validate that theme variants produce different vectors"""
+        validation_results = {}
+        
+        for variant in theme_variants:
+            original_vec = self._get_theme_vector(variant.original_theme)
+            similar_vec = self._get_theme_vector(variant.similar_to_theme) 
+            type_vec = self._get_theme_vector(variant.type_of_theme)
+            
+            if original_vec is not None and similar_vec is not None:
+                orig_sim_similarity = self._cosine_similarity(original_vec, similar_vec)
+            else:
+                orig_sim_similarity = 0.0
+                
+            if original_vec is not None and type_vec is not None:
+                orig_type_similarity = self._cosine_similarity(original_vec, type_vec)
+            else:
+                orig_type_similarity = 0.0
+                
+            if similar_vec is not None and type_vec is not None:
+                sim_type_similarity = self._cosine_similarity(similar_vec, type_vec)
+            else:
+                sim_type_similarity = 0.0
+            
+            validation_results[variant.original_theme] = {
+                'original_vs_similar': orig_sim_similarity,
+                'original_vs_type': orig_type_similarity,
+                'similar_vs_type': sim_type_similarity
+            }
+        
+        return validation_results
     
     def calculate_intracategory_word_distinctiveness(self, category_words: List[str]) -> float:
         """
@@ -242,7 +346,8 @@ class QualityMetrics:
         Measure category coherence using within-cluster compactness analysis.
         
         Calculates how tightly clustered words are within the category,
-        with bonus weighting for coherence to theme word.
+        with bonus weighting for coherence to theme word. Handles multi-word themes
+        by extracting the core theme word or using the full phrase.
         
         Returns: 0.0 to 1.0, where 1.0 = words are maximally coherent
         """
@@ -283,7 +388,7 @@ class QualityMetrics:
         # Theme coherence bonus
         theme_bonus = 0.0
         if theme_word:
-            theme_vector = self.get_word_vector(theme_word)
+            theme_vector = self._get_theme_vector(theme_word)
             if theme_vector is not None:
                 # Calculate how close category centroid is to theme
                 theme_distance = self.euclidean_distance(centroid, theme_vector)
@@ -575,6 +680,64 @@ class QualityMetrics:
         overall_score = max(0.0, min(1.0, overall_score))
         
         metrics['overall_quality_score'] = overall_score
+        
+        return metrics
+    
+    def calculate_theme_format_comparison_metrics(self, puzzle: Dict) -> Dict[str, float]:
+        """
+        Calculate additional metrics specific to comparing theme formats.
+        Useful for comparing single-word vs multi-word theme performance.
+        """
+        metrics = {}
+        
+        if 'categories' not in puzzle:
+            return metrics
+        
+        categories = puzzle['categories']
+        
+        # Analyze theme format distribution
+        theme_formats = {
+            'single_word': 0,
+            'similar_to': 0,  
+            'type_of': 0,
+            'other_multiword': 0
+        }
+        
+        theme_lengths = []
+        theme_complexity_scores = []
+        
+        for cat in categories:
+            theme = cat.get('themeWord', '').lower().strip()
+            theme_lengths.append(len(theme.split()))
+            
+            if ' ' not in theme:
+                theme_formats['single_word'] += 1
+                complexity = 0.0  # Simple single word
+            elif theme.startswith('similar to '):
+                theme_formats['similar_to'] += 1
+                complexity = 0.5  # Medium complexity
+            elif theme.startswith('type of '):
+                theme_formats['type_of'] += 1  
+                complexity = 0.5  # Medium complexity
+            else:
+                theme_formats['other_multiword'] += 1
+                complexity = 1.0  # High complexity
+            
+            theme_complexity_scores.append(complexity)
+        
+        # Calculate theme format metrics
+        total_categories = len(categories)
+        if total_categories > 0:
+            metrics['single_word_theme_ratio'] = theme_formats['single_word'] / total_categories
+            metrics['similar_to_theme_ratio'] = theme_formats['similar_to'] / total_categories
+            metrics['type_of_theme_ratio'] = theme_formats['type_of'] / total_categories
+            metrics['other_multiword_theme_ratio'] = theme_formats['other_multiword'] / total_categories
+            metrics['avg_theme_word_count'] = np.mean(theme_lengths) if theme_lengths else 0.0
+            metrics['avg_theme_complexity'] = np.mean(theme_complexity_scores) if theme_complexity_scores else 0.0
+        
+        # Theme consistency metric (do all categories use same theme format?)
+        unique_formats = sum(1 for count in theme_formats.values() if count > 0)
+        metrics['theme_format_consistency'] = 1.0 if unique_formats == 1 else 0.0
         
         return metrics
 
