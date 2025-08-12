@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## In General
+Never mention things that we didn't do. If you removed some code, you don't need to leave a comment mentioning what was there before. 
+
 ## Development Commands
 
 ### Docker Development Environment

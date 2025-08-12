@@ -58,3 +58,4 @@ scripts/datascience/themes_quality/data/unigram_freq.csv
 .gcp/
 *.json
 scripts/datascience/__pycache__
+scripts/datascience/themes_quality/pipeline/__pycache__
