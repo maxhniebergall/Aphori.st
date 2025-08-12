@@ -1,87 +1,95 @@
-# Future Recommendations & Enhancements
+# Multi-word Themes Experiment - Future Recommendations
 
 ## Overview
-This directory contains recommendations for future enhancements across multiple systems. All critical code quality issues have been successfully resolved (August 6, 2025). These recommendations are organized by priority and implementation timeline.
-
-## Status Update (August 6, 2025)
-✅ **All Critical Issues Resolved** - 8/8 approved code quality fixes successfully implemented
-✅ **Zero Breaking Changes** - All improvements maintain backward compatibility  
-✅ **Performance Enhanced** - React memoization and CSS optimizations added
-✅ **Architecture Improved** - Better encapsulation and maintainability
-
-## Current Recommendations
-
-### New Opportunities (Post-Fix)
-**File:** `post-merge-enhancements.md`
-- K_NEIGHBORS pagination implementation (GitHub Issue #42)
-- CSS architecture expansion across codebase
-- Performance monitoring system development  
-- Advanced theme system with light/dark modes
-
-## Previous Recommendations (Reference)
-
-### Code Quality & Maintainability (P0)
-**File:** `code_quality_improvements.md`
-- Additional type system strengthening beyond critical fixes
-- Enhanced error handling patterns
-- Code documentation improvements
-- Automated code quality checks
-
-### Production Monitoring (P0)
-**File:** `monitoring_enhancements.md`
-- Vector index health monitoring
-- Search performance metrics
-- Error rate tracking
-- Capacity planning dashboards
-
-## Medium-Term Enhancements
-
-### Performance & Scalability (P1)
-**File:** `performance_optimizations.md`
-- FAISS index scaling beyond 10,000 vectors
-- Vector database migration strategies
-- Embedding generation batch processing
-- Search result caching mechanisms
-
-### User Experience Enhancements (P1)
-**File:** `ux_improvements.md`
-- Search result pagination
-- Real-time search suggestions
-- Advanced filtering and sorting
-- Search term highlighting in results
-
-### Themes Game Advanced Features (P1)
-**File:** `puzzle_pregeneration_enhancements.md`
-- Machine learning-enhanced puzzle generation
-- Advanced quality optimization and curation workflow
-- Community feedback integration and analytics
-- Scalability enhancements for distributed generation
-
-### Technical Infrastructure (P2)
-**File:** `infrastructure_upgrades.md`
-- Dedicated vector database migration (Vertex AI Vector Search)
-- Microservice architecture considerations  
-- Monitoring and observability improvements
-- Backup and disaster recovery for vector data
-
-### Developer Experience (P2)
-**File:** `developer_tools.md`
-- Vector search debugging tools
-- Embedding quality analysis tools
-- Search relevance testing framework
-- Performance monitoring dashboards
+After fixing the critical P0-P1 issues, these recommendations will enhance the experiment system's capabilities, performance, and maintainability.
 
 ## Priority Levels
-- **P0**: Critical for production stability (implement within 1 month)
-- **P1**: Important for user experience (implement within 3-6 months)
-- **P2**: Nice-to-have improvements (implement within 6-12 months)
-- **P3**: Long-term architectural changes (1+ year timeline)
+- **High Priority**: Should be implemented soon after core fixes
+- **Medium Priority**: Valuable improvements for future iterations  
+- **Low Priority**: Nice-to-have enhancements
+
+## Recommendation Categories
+
+### Performance & Scalability
+- [Experiment Performance Optimizations](./experiment_performance_optimizations.md) - **High Priority**
+  - Parallel puzzle generation
+  - Vector computation caching
+  - Memory usage optimization
+
+### Data & Analysis
+- [Enhanced Statistical Analysis](./enhanced_statistical_analysis.md) - **High Priority**
+  - Advanced effect size calculations
+  - Multi-factor ANOVA
+  - Confidence intervals and power analysis
+
+- [Data Pipeline Improvements](./data_pipeline_improvements.md) - **Medium Priority**
+  - Automated data validation
+  - Result versioning and tracking
+  - Export to common analysis formats
+
+### Monitoring & Observability  
+- [Experiment Monitoring](./experiment_monitoring.md) - **Medium Priority**
+  - Real-time progress tracking
+  - Quality metric dashboards
+  - Alert system for failures
+
+### Code Quality & Maintenance
+- [Code Architecture Improvements](./code_architecture_improvements.md) - **Medium Priority**
+  - Better separation of concerns
+  - Plugin system for new theme types
+  - Configuration validation
+
+### Future Experiment Types
+- [Advanced Theme Experiments](./advanced_theme_experiments.md) - **Low Priority**
+  - Semantic relationship exploration
+  - Cross-lingual theme analysis
+  - Dynamic theme difficulty adjustment
+
+### Integration & Tooling
+- [Development Tooling](./development_tooling.md) - **Low Priority**
+  - Interactive experiment designer
+  - Result visualization tools
+  - Automated report generation
 
 ## Implementation Timeline
-These recommendations should be considered after:
-1. **URGENT:** Critical code review fixes are implemented (immediate priority)
-2. Production hardening is complete (1-2 weeks)
-3. Core system is stable in production (4-6 weeks)
 
-## Next Steps
-Start with P0 items immediately after production deployment, then move to P1 items based on user feedback and system performance data.
+### Phase 1 (After Core Fixes): High Priority Items
+1. **Experiment Performance Optimizations** (1-2 days)
+2. **Enhanced Statistical Analysis** (2-3 days)
+
+### Phase 2 (1-2 weeks later): Medium Priority Items  
+3. **Data Pipeline Improvements** (3-4 days)
+4. **Experiment Monitoring** (2-3 days)
+5. **Code Architecture Improvements** (3-5 days)
+
+### Phase 3 (Future iterations): Low Priority Items
+6. **Advanced Theme Experiments** (1-2 weeks)
+7. **Development Tooling** (1-2 weeks)
+
+## Success Metrics
+
+### Performance Improvements
+- Experiment runtime reduced by >50%
+- Memory usage optimized for large-scale experiments
+- Support for 100+ theme variants in single experiment
+
+### Analysis Quality
+- Statistical power analysis showing adequate sample sizes
+- Effect size calculations with confidence intervals
+- Automated significance testing with multiple comparison corrections
+
+### Developer Experience
+- Setup time for new experiments <5 minutes
+- Clear error messages and debugging tools
+- Automated validation prevents common mistakes
+
+## Dependencies
+
+Most recommendations are independent and can be implemented in any order within their priority level. However:
+
+- **Enhanced Statistical Analysis** depends on reliable quality scores (requires core fixes)
+- **Experiment Monitoring** works best after performance optimizations
+- **Advanced Theme Experiments** builds on the monitoring and data pipeline improvements
+
+---
+*Note: Implement core fixes (P0-P1) before starting these recommendations*
