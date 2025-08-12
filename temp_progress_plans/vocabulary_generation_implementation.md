@@ -11,8 +11,8 @@ Implement the first stage of the NLP pipeline: generating a filtered vocabulary 
 - Handle potential corpus download requirements
 
 ### 2. Frequency Analysis Implementation
-- Implement word frequency calculation logic
-- Use frequency data to rank words
+- Load word frequency data from `data/unigram_freq.csv`
+- Use existing frequency data to rank words
 - Handle edge cases (capitalization, punctuation, etc.)
 
 ### 3. Top 5K Filtering
@@ -31,7 +31,7 @@ Implement the first stage of the NLP pipeline: generating a filtered vocabulary 
 ```python
 # Key functions to implement:
 - load_nltk_words()          # Load NLTK words corpus
-- calculate_frequencies()    # Analyze word frequencies  
+- get_word_frequencies()     # Load frequencies from unigram_freq.csv
 - filter_top_words()        # Extract top 5,000 words
 - export_vocabulary()       # Save to JSON format
 - validate_output()         # Quality checks

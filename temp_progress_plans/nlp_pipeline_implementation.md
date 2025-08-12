@@ -49,7 +49,8 @@ Implementation of a new modular NLP pipeline for puzzle generation using DVC (Da
 
 ### Pipeline Stages
 
-1. **Vocabulary Creation** using NLTK `words` dataset
+1. **Vocabulary Creation** using NLTK `words` dataset and unigram frequency data
+   - Load word frequencies from `data/unigram_freq.csv`
    - Filter to top 5,000 words by frequency
    - Export filtered vocabulary for categorization
 
@@ -93,7 +94,7 @@ Implementation follows the three strategies outlined in appendix:
 
 ### Data Flow
 ```
-NLTK Words Dataset (full corpus)
+NLTK Words Dataset (full corpus) + Unigram Frequency Data
         ↓
 [Filter by Frequency - Top 5,000]
         ↓
