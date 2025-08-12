@@ -1,6 +1,6 @@
-# Git commit the working tree
+# Git/dvc commit the working tree
 
-There are unstaged (and possibly staged changes). The changes in the working tree might reflect multiple logical tasks. Use `git status` to assess the changes. Split them into logical groups, and `git add` and `git commit -m` them. Give each commit a concise commit message. Do not use any other git commands.
+There are unstaged (and possibly staged changes). The changes in the working tree might reflect multiple logical tasks. Use `git status` to assess the changes. Split them into logical groups, and `git add` and `git commit -m` them or `dvc add` and `dvc commit`. Give each commit a concise commit message. Do not use any other git commands.
 
 ## DVC/Git Strategy
 
