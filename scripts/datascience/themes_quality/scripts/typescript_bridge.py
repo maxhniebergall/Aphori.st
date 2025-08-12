@@ -9,18 +9,55 @@ with real vector data instead of mock implementations.
 import subprocess
 import json
 import os
+import atexit
+import signal
 from typing import Dict, Any
 
 class TypeScriptPuzzleGenerator:
-    """Python wrapper for TypeScript puzzle generation via Node.js bridge"""
+    """Python wrapper for TypeScript puzzle generation via persistent Node.js bridge"""
     
     def __init__(self):
         self.initialized = False
         self.bridge_path = os.environ.get('TYPESCRIPT_BRIDGE_PATH', '/Users/mh/workplace/Aphori.st/scripts/puzzle-generation')
         self.bridge_script = 'puzzle_generation_bridge.js'
+        self.persistent_process = None
+        self._setup_cleanup()
+    
+    def _setup_cleanup(self):
+        """Setup cleanup handlers for persistent process"""
+        atexit.register(self._cleanup)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
+    
+    def _signal_handler(self, signum, frame):
+        """Handle system signals by cleaning up"""
+        self._cleanup()
         
+    def _cleanup(self):
+        """Cleanup persistent process"""
+        if self.persistent_process and self.persistent_process.poll() is None:
+            try:
+                # Send quit command
+                self.persistent_process.stdin.write('quit\n')
+                self.persistent_process.stdin.flush()
+                self.persistent_process.wait(timeout=5)
+            except:
+                try:
+                    self.persistent_process.terminate()
+                    self.persistent_process.wait(timeout=5)
+                except:
+                    try:
+                        self.persistent_process.kill()
+                    except:
+                        pass
+            finally:
+                self.persistent_process = None
+                
     def initialize(self) -> Dict[str, Any]:
-        """Initialize TypeScript puzzle generation system"""
+        """Initialize TypeScript puzzle generation system with persistent server"""
+        if self.initialized and self.persistent_process and self.persistent_process.poll() is None:
+            return {'success': True, 'message': 'Already initialized'}
+            
         try:
             # First copy bridge script to puzzle-generation directory with corrected imports
             source_bridge = os.environ.get('TYPESCRIPT_BRIDGE_SOURCE', '/Users/mh/workplace/Aphori.st/scripts/datascience/themes_quality/scripts/puzzle_generation_bridge.js')
@@ -44,31 +81,46 @@ class TypeScriptPuzzleGenerator:
                     f.write(fixed_content)
                 print(f"📋 Created bridge script at {target_bridge}")
             
-            # Initialize the bridge
-            result = subprocess.run(
-                ['node', self.bridge_script, 'init'],
+            # Start persistent server process
+            self.persistent_process = subprocess.Popen(
+                ['node', self.bridge_script, 'server'],
                 cwd=self.bridge_path,
-                capture_output=True,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=180
+                bufsize=1  # Line buffered
             )
             
-            if result.returncode == 0:
-                init_result = self._extract_json_from_output(result.stdout)
-                
-                if not init_result.get('success') and 'No valid JSON found' in init_result.get('error', ''):
-                    return init_result
-                
-                if init_result.get('success'):
-                    self.initialized = True
-                    return init_result
-                else:
-                    return {'success': False, 'error': init_result.get('error', 'Unknown initialization error')}
-            else:
-                return {
-                    'success': False, 
-                    'error': f'Bridge initialization failed: {result.stderr}'
-                }
+            # Wait for server to be ready by reading stderr until we see "Bridge server ready"
+            server_ready = False
+            init_words = None
+            while True:
+                line = self.persistent_process.stderr.readline()
+                if not line:
+                    break
+                if "Bridge server ready:" in line:
+                    # Extract word count from the line
+                    import re
+                    match = re.search(r'(\d+) words loaded', line)
+                    if match:
+                        init_words = int(match.group(1))
+                    server_ready = True
+                    break
+                elif "initialization failed" in line.lower():
+                    self._cleanup()
+                    return {'success': False, 'error': f'Server initialization failed: {line.strip()}'}
+            
+            if not server_ready:
+                self._cleanup()
+                return {'success': False, 'error': 'Server did not start properly'}
+            
+            self.initialized = True
+            return {
+                'success': True,
+                'loadedWords': init_words or 0,
+                'message': 'Persistent server initialized'
+            }
                 
         except Exception as e:
             return {'success': False, 'error': f'Failed to initialize TypeScript bridge: {e}'}
@@ -92,37 +144,83 @@ class TypeScriptPuzzleGenerator:
             return {'success': False, 'error': f'No valid JSON found in output: {stdout}'}
     
     def generate_puzzle(self, config: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate a puzzle using TypeScript components"""
+        """Generate a puzzle using persistent TypeScript server"""
+        # Only reinitialize if the bridge was never initialized or process has definitely died
         if not self.initialized:
+            print("🔄 TypeScript bridge not initialized, initializing...")
             init_result = self.initialize()
             if not init_result.get('success'):
-                return {'success': False, 'error': 'Bridge not initialized'}
+                return {'success': False, 'error': 'Bridge initialization failed'}
+        elif self.persistent_process and self.persistent_process.poll() is not None:
+            print("⚠️ TypeScript bridge process died, reinitializing...")
+            self._cleanup()
+            self.initialized = False
+            init_result = self.initialize()
+            if not init_result.get('success'):
+                return {'success': False, 'error': 'Bridge reinitialization failed'}
         
         try:
-            # Prepare config for Node.js
+            # Send config as JSON to persistent server via stdin
             config_json = json.dumps(config)
+            self.persistent_process.stdin.write(config_json + '\n')
+            self.persistent_process.stdin.flush()
             
-            # Call the bridge
-            result = subprocess.run(
-                ['node', self.bridge_script, 'generate', config_json],
-                cwd=self.bridge_path,
-                capture_output=True,
-                text=True,
-                timeout=120
-            )
+            # Read response from stdout - may need to skip non-JSON lines
+            max_lines_to_read = 200  # Increased limit for puzzle generation verbosity
+            lines_read = 0
             
-            if result.returncode == 0:
-                return self._extract_json_from_output(result.stdout)
-            else:
-                return {
-                    'success': False,
-                    'error': f'Puzzle generation failed: {result.stderr}'
-                }
+            json_buffer = ""
+            collecting_json = False
+            
+            while lines_read < max_lines_to_read:
+                response_line = self.persistent_process.stdout.readline()
+                if not response_line:
+                    break
                 
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'error': 'Puzzle generation timed out'}
+                response_line = response_line.strip()
+                lines_read += 1
+                
+                # Skip empty lines
+                if not response_line:
+                    continue
+                
+                # Start collecting JSON if line starts with {
+                if response_line.startswith('{') and not collecting_json:
+                    collecting_json = True
+                    json_buffer = response_line
+                    
+                    # Check if it's a complete JSON object
+                    if response_line.endswith('}'):
+                        try:
+                            return json.loads(json_buffer)
+                        except json.JSONDecodeError:
+                            collecting_json = False
+                            json_buffer = ""
+                    continue
+                
+                # Continue collecting JSON if we're in the middle
+                if collecting_json:
+                    json_buffer += response_line
+                    
+                    # Check if we've completed the JSON object
+                    if response_line.endswith('}'):
+                        try:
+                            return json.loads(json_buffer)
+                        except json.JSONDecodeError:
+                            collecting_json = False
+                            json_buffer = ""
+                    continue
+                
+                # Skip non-JSON lines if we're not collecting
+                if not collecting_json:
+                    continue
+            
+            return {'success': False, 'error': f'No valid JSON response found in {max_lines_to_read} lines'}
+                
         except Exception as e:
-            return {'success': False, 'error': f'Failed to generate puzzle: {e}'}
+            # Server communication failed - don't immediately reinitialize, just return error
+            print(f"⚠️ TypeScript bridge communication error (server may be busy): {e}")
+            return {'success': False, 'error': f'Server communication failed: {e}'}
     
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics from TypeScript components"""
