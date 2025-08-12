@@ -12,3 +12,42 @@ stages:
       - data_collection
       - logging
 
+  # NLP Pipeline Stages
+  generate_vocabulary:
+    cmd: python pipeline/vocabulary_generator.py
+    deps:
+      - pipeline/vocabulary_generator.py
+      - config/pipeline_config.yaml
+    outs:
+      - data/filtered_vocabulary.json
+    params:
+      - vocabulary
+      - processing
+    
+  categorize_words:
+    cmd: python pipeline/word_categorizer.py
+    deps:
+      - pipeline/word_categorizer.py
+      - data/filtered_vocabulary.json
+      - config/pipeline_config.yaml
+    outs:
+      - data/categorized_words.json
+    params:
+      - categories
+      - scoring
+      - processing
+      
+  export_vocabularies:
+    cmd: python pipeline/vocabulary_exporter.py
+    deps:
+      - pipeline/vocabulary_exporter.py
+      - data/categorized_words.json
+      - config/pipeline_config.yaml
+    outs:
+      - data/vocabs/
+      - data/export_metadata.json
+    params:
+      - categories
+      - output
+      - paths
+
