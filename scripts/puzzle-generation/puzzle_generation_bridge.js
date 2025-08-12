@@ -8,6 +8,7 @@
 
 import { ConfigurablePuzzleGenerator } from './dist/ConfigurablePuzzleGenerator.js';
 import { FullVectorLoader } from './dist/FullVectorLoader.js';
+import readline from 'readline';
 
 class PuzzleGenerationBridge {
     constructor() {
@@ -21,7 +22,7 @@ class PuzzleGenerationBridge {
             return { success: true, message: 'Already initialized' };
         }
 
-        if (!quiet) console.log('🔄 Initializing puzzle generation bridge...');
+        if (!quiet) console.error('🔄 Initializing puzzle generation bridge...');
         
         try {
             // Initialize vector loader
@@ -36,7 +37,7 @@ class PuzzleGenerationBridge {
             this.generator = new ConfigurablePuzzleGenerator(this.vectorLoader);
             
             this.initialized = true;
-            if (!quiet) console.log(`✅ Puzzle generation bridge initialized: ${vectorResult.loadedWords} words loaded`);
+            if (!quiet) console.error(`✅ Puzzle generation bridge initialized: ${vectorResult.loadedWords} words loaded`);
             
             return { 
                 success: true, 
@@ -128,7 +129,7 @@ async function main() {
         console.log(JSON.stringify(result));
         
     } else if (command === 'generate') {
-        await bridge.initialize();
+        await bridge.initialize(true); // Initialize quietly for batch operations
         
         // Parse config from command line arguments or stdin
         let config = {};
@@ -143,6 +144,37 @@ async function main() {
         
         const result = await bridge.generatePuzzle(config);
         console.log(JSON.stringify(result));
+        
+    } else if (command === 'server') {
+        // Server mode: initialize once, then process multiple requests via stdin
+        console.error('🚀 Starting bridge server mode...');
+        const initResult = await bridge.initialize();
+        if (!initResult.success) {
+            console.error('❌ Server initialization failed');
+            process.exit(1);
+        }
+        console.error(`✅ Bridge server ready: ${initResult.loadedWords} words loaded`);
+        
+        // Process requests from stdin
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+        
+        rl.on('line', async (line) => {
+            if (line.trim() === 'quit' || line.trim() === 'exit') {
+                console.error('👋 Bridge server shutting down');
+                process.exit(0);
+            }
+            
+            try {
+                const config = JSON.parse(line);
+                const result = await bridge.generatePuzzle(config);
+                console.log(JSON.stringify(result));
+            } catch (e) {
+                console.log(JSON.stringify({ success: false, error: `Invalid request: ${e.message}` }));
+            }
+        });
         
     } else if (command === 'stats') {
         if (args[1] !== 'only') {
@@ -184,6 +216,7 @@ async function main() {
         console.log('Usage:');
         console.log('  node puzzle_generation_bridge.js init');
         console.log('  node puzzle_generation_bridge.js generate \'{"algorithm":"N=K","puzzleSize":4}\'');
+        console.log('  node puzzle_generation_bridge.js server    # Server mode for batch operations');
         console.log('  node puzzle_generation_bridge.js stats [only]');
         console.log('  node puzzle_generation_bridge.js test');
         process.exit(1);
