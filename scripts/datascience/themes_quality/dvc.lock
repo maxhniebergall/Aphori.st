@@ -1,0 +1,60 @@
+schema: '2.0'
+stages:
+  generate_parameter_sweep:
+    cmd: python scripts/generate_parameter_sweep.py
+    deps:
+    - path: config/investigation_config.json
+      hash: md5
+      md5: f34ae883e1bd032ba8457e480f6c6c0a
+      size: 1540
+    - path: scripts/configurable_generator.py
+      hash: md5
+      md5: a623f726d58128182849916dc184c08a
+      size: 9682
+    - path: scripts/generate_parameter_sweep.py
+      hash: md5
+      md5: 88f66ee9c153a871e6b1fb0bde8d07df
+      size: 23230
+    - path: scripts/quality_metrics.py
+      hash: md5
+      md5: a0929182beb7f868c49a0ad667dbd20c
+      size: 22187
+    - path: scripts/typescript_bridge.py
+      hash: md5
+      md5: 4ab66cc1dc616c9117dcbb906dab45a8
+      size: 8300
+    params:
+      params.yaml:
+        data_collection:
+          batch_size: 10
+          parallel_workers: 4
+          timeout_seconds: 300
+        logging:
+          level: INFO
+          detailed_metrics: true
+          performance_profiling: true
+          quality_scoring: true
+        parameter_sweeps:
+          frequency_thresholds:
+          - 1000
+          - 5000
+          - 10000
+          - 25000
+          - 50000
+          - 100000
+          - 250000
+          - 500000
+          - 1000000
+          - 2500000
+          - 5000000
+          - 10000000
+          similarity_thresholds:
+          - 0.3
+          - 0.6
+          - 0.8
+          puzzle_sizes:
+          - 4
+          algorithms:
+          - N=K
+          - N=K+D
+          samples_per_configuration: 20

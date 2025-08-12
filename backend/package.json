@@ -17,6 +17,7 @@
   "description": "",
   "dependencies": {
     "@google/genai": "^0.13.0",
+    "@types/dompurify": "^3.2.0",
     "compression": "^1.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -24,6 +25,7 @@
     "express-rate-limit": "^7.5.0",
     "faiss-node": "^0.5.1",
     "firebase-admin": "^11.x.x",
+    "isomorphic-dompurify": "^2.26.0",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.9.16",
     "pino": "^9.6.0",

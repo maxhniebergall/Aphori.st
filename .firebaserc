@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "aphorist"
+    "default": "aphorist",
+    "themes": "aphorist-themes"
   }
 }

@@ -1,0 +1,5 @@
+outs:
+- md5: c6a61fdcaf2b61ee6843931355588d23
+  size: 4956252
+  hash: md5
+  path: unigram_freq.csv

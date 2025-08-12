@@ -40,9 +40,10 @@ import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
 import searchRoutes, { setDbAndVectorService as setSearchDbAndVectorService } from './routes/search.js';
+import gamesRoutes from './routes/games/index.js';
+import { initializeThemesServices, initializeThemesIndex } from './routes/games/themes/index.js';
 import { checkAndRunMigrations, processStartupEmails } from './startUpChecks.js';
 import { VectorService } from './services/vectorService.js'; // Import VectorService
-import { LoggedDatabaseClient } from './db/LoggedDatabaseClient.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 // --- Embedding Provider Imports ---
@@ -100,6 +101,25 @@ const corsOptions = {
 
 // Apply CORS middleware
 app.use(cors(corsOptions));
+
+// Simple cookie parsing middleware
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const cookieHeader = req.headers.cookie;
+  req.cookies = {};
+  
+  if (cookieHeader) {
+    cookieHeader.split(';').forEach(cookie => {
+      const parts = cookie.trim().split('=');
+      if (parts.length === 2) {
+        const name = parts[0].trim();
+        const value = decodeURIComponent(parts[1].trim());
+        req.cookies![name] = value;
+      }
+    });
+  }
+  
+  next();
+});
 
 // --- Apply Optional Authentication and Rate Limiting Middlewares ---
 // This middleware attempts to identify the user from JWT for rate limiting purposes,
@@ -205,7 +225,7 @@ await db.connect().then(async () => { // Make the callback async
     process.on('SIGINT', () => gracefulShutdown('SIGINT', vectorService));
 
     // --- Initialize Vector Index ---
-    try {
+    try {   
         await vectorService.initializeIndex();
         isVectorIndexReady = true;
         logger.info('Vector service index initialized successfully.');
@@ -216,6 +236,18 @@ await db.connect().then(async () => { // Make the callback async
         // Consider adding a health check status for vector index
     }
     // --- End Vector Index Initialization ---
+
+    // --- Initialize Themes Game Services ---
+    try {
+        logger.info('Initializing themes game services...');
+        initializeThemesServices();
+        await initializeThemesIndex();
+        logger.info('Simple themes game services initialized successfully.');
+    } catch (err) {
+        logger.error({ err }, 'Failed to initialize themes game services. Games may be unavailable.');
+        // Non-fatal - main site can continue without games
+    }
+    // --- End Themes Services Initialization ---
 
     // Only seed if import didn't run (assuming import replaces seed)
     if (process.env.NODE_ENV !== 'production') {
@@ -279,10 +311,10 @@ app.get('/health/vector-index', (_req: Request, res: Response): void => {
 
         const indexStats = {
             ready: isVectorIndexReady,
-            indexSize: vectorService['faissIndex'] ? vectorService['faissIndex'].ntotal() : 0,
-            dimension: vectorService['embeddingDimension'],
+            indexSize: vectorService.getFaissIndex() ? vectorService.getFaissIndex()!.ntotal() : 0,
+            dimension: vectorService.getEmbeddingDimension(),
             maxIndexSize: 10000, // MAX_FAISS_INDEX_SIZE constant
-            pendingOperations: vectorService['pendingAddOperations'].size
+            pendingOperations: vectorService.getPendingOperationsCount()
         };
 
         const isHealthy = isVectorIndexReady && 
@@ -310,6 +342,7 @@ app.use('/api/feed', feedRoutes);
 app.use('/api/posts', postRoutes); 
 app.use('/api/replies', replyRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/games', gamesRoutes);
 
 // Add the error handling middleware as the last middleware
 app.use(errorHandler);

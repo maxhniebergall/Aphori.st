@@ -357,7 +357,8 @@ export class VectorService {
                 id: info.id,
                 type: info.type,
                 score: searchResultScores[i] !== undefined ? searchResultScores[i] : Infinity
-            })).filter(r => r.id && Number.isFinite(r.score));
+            })).filter(r => r.id && Number.isFinite(r.score))
+            .sort((a, b) => a.score - b.score); // Sort by L2 distance ascending (lower = more similar)
 
             return combinedResults;
 
@@ -397,5 +398,31 @@ export class VectorService {
              // Clear the set just in case, though operations should have removed themselves
              this.pendingAddOperations.clear();
         }
+    }
+
+    // --- Public Configuration Access for Testing ---
+    
+    /**
+     * Get the current FAISS index for inspection
+     * @returns The FAISS index instance or null if not initialized
+     */
+    public getFaissIndex(): faiss.IndexFlatL2 | faiss.IndexFlatIP | null {
+        return this.faissIndex;
+    }
+    
+    /**
+     * Get the embedding dimension
+     * @returns The dimension of the embedding vectors
+     */
+    public getEmbeddingDimension(): number {
+        return this.embeddingDimension;
+    }
+    
+    /**
+     * Get the count of pending add operations
+     * @returns The number of pending add operations
+     */
+    public getPendingOperationsCount(): number {
+        return this.pendingAddOperations.size;
     }
 } 

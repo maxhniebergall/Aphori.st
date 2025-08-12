@@ -8,6 +8,7 @@
  */
 
 import React, { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useReplyContext } from '../context/ReplyContext';
 import { useUser } from '../context/UserContext';
 import { PostTreeNode } from '../types/types';
@@ -39,6 +40,7 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
   // Get context functions
   const { setReplyTarget, setReplyContent, setIsReplyOpen, setReplyQuote, setReplyError } = useReplyContext();
   const { state: userState } = useUser();
+  const navigate = useNavigate();
 
   // Ensure currentIndex and totalSiblings are valid numbers
   const validCurrentIndex = Number.isFinite(currentIndex) ? currentIndex : 0;
@@ -107,6 +109,13 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
     setIsReplyOpen(true);
   }, [nodeData, setReplyTarget, setReplyContent, setIsReplyOpen, setReplyQuote, setReplyError, userState]);
 
+  // Handler for duplicate info button click
+  const handleDuplicateInfoClick = useCallback(() => {
+    if (nodeData.duplicateGroupId) {
+      navigate(`/dupe/${nodeData.duplicateGroupId}`);
+    }
+  }, [nodeData.duplicateGroupId, navigate]);
+
   return (
     <div className="post-tree-node-footer">
       <div className="footer-left">
@@ -127,7 +136,19 @@ const NodeFooter: React.FC<NodeFooterProps> = ({
       <div className="footer-right"></div>
       {hasSiblings && !isReplyTarget && (
         <div className="sibling-indicator">
-          {validCurrentIndex + 1} / {validTotalSiblings}
+          <div className="sibling-counter-row">
+            <span className="sibling-counter">{validCurrentIndex + 1} / {validTotalSiblings}</span>
+            {nodeData.duplicateGroupId && (
+              <button 
+                className="duplicate-info-button" 
+                onClick={handleDuplicateInfoClick}
+                title="View duplicate comparison"
+                aria-label="View duplicate comparison"
+              >
+                <InfoIconSVG />
+              </button>
+            )}
+          </div>
           <div className="swipe-hint">
             { validCurrentIndex > 0 && (
               <span className="swipe-hint-previous" onClick={() => { 
@@ -189,4 +210,23 @@ function upvoteSVG() {
       </text>
     </g>
   </svg>;
+}
+
+function InfoIconSVG() {
+  return (
+    <svg 
+      width="16" 
+      height="16" 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M12,16 L12,12"/>
+      <path d="M12,8 L12.01,8"/>
+    </svg>
+  );
 }

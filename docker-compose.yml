@@ -22,8 +22,11 @@ services:
       - '5050:5050'
     volumes:
       - ./backend/aphorist-default-rtdb-export.json:/app/data/aphorist-default-rtdb-export.json:ro
+      - ./scripts/datascience:/app/scripts/datascience:ro
     networks:
       - main
+    env_file:
+      - ./backend/.env
     environment:
       - DB_TYPE=firebase
       - FIREBASE_DATABASE_EMULATOR_HOST=host.docker.internal:9000
@@ -35,6 +38,7 @@ services:
       - EMAIL_PASSWORD=test
       - EMAIL_FROM=noreply@localhost
       - RTDB_EXPORT_PATH=/app/data/aphorist-default-rtdb-export.json
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     depends_on:
       - redis
       - mailhog

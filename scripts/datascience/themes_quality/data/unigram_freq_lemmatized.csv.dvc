@@ -1,0 +1,5 @@
+outs:
+- md5: 7f50a4257bd54f6da653d7e3da9e9465
+  size: 2083660
+  hash: md5
+  path: unigram_freq_lemmatized.csv

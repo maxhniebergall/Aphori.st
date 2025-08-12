@@ -1,0 +1,5 @@
+outs:
+- md5: 0057523c15907dfe46ab51aac78b3b9a
+  size: 148
+  hash: md5
+  path: themes_metadata.json

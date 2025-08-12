@@ -327,4 +327,59 @@ export class LoggedDatabaseClient implements DatabaseClientInterface {
         this.logger.debug(logPayload, 'Executing DB command: getGlobalFeedItemsPage'); // READ = debug
         try { return await this.underlyingClient.getGlobalFeedItemsPage(limit, cursorKey); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: getGlobalFeedItemsPage'); throw e; }
     }
+
+    // --- Duplicate Reply Management Methods ---
+    async getDuplicateReply(rawDuplicateReplyId: string, context?: LogContext): Promise<any | null> {
+        const logPayload = this.createLogPayload('getDuplicateReply', rawDuplicateReplyId, {}, context);
+        this.logger.debug(logPayload, 'Executing DB command: getDuplicateReply'); // READ = debug
+        try { return await this.underlyingClient.getDuplicateReply(rawDuplicateReplyId); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: getDuplicateReply'); throw e; }
+    }
+
+    async setDuplicateReply(rawDuplicateReplyId: string, duplicateReplyData: any, context?: LogContext): Promise<void> {
+        const logPayload = this.createLogPayload('setDuplicateReply', rawDuplicateReplyId, { duplicateReplyData }, context);
+        this.logger.info(logPayload, 'Executing DB command: setDuplicateReply'); // WRITE = info
+        try { return await this.underlyingClient.setDuplicateReply(rawDuplicateReplyId, duplicateReplyData); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: setDuplicateReply'); throw e; }
+    }
+
+    async getDuplicateGroup(rawGroupId: string, context?: LogContext): Promise<any | null> {
+        const logPayload = this.createLogPayload('getDuplicateGroup', rawGroupId, {}, context);
+        this.logger.debug(logPayload, 'Executing DB command: getDuplicateGroup'); // READ = debug
+        try { return await this.underlyingClient.getDuplicateGroup(rawGroupId); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: getDuplicateGroup'); throw e; }
+    }
+
+    async setDuplicateGroup(rawGroupId: string, duplicateGroupData: any, context?: LogContext): Promise<void> {
+        const logPayload = this.createLogPayload('setDuplicateGroup', rawGroupId, { duplicateGroupData }, context);
+        this.logger.info(logPayload, 'Executing DB command: setDuplicateGroup'); // WRITE = info
+        try { return await this.underlyingClient.setDuplicateGroup(rawGroupId, duplicateGroupData); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: setDuplicateGroup'); throw e; }
+    }
+
+    async addReplyToDuplicateGroup(rawGroupId: string, rawReplyId: string, context?: LogContext): Promise<void> {
+        const logPayload = this.createLogPayload('addReplyToDuplicateGroup', rawGroupId, { rawReplyId }, context);
+        this.logger.info(logPayload, 'Executing DB command: addReplyToDuplicateGroup'); // WRITE = info
+        try { return await this.underlyingClient.addReplyToDuplicateGroup(rawGroupId, rawReplyId); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: addReplyToDuplicateGroup'); throw e; }
+    }
+
+    async getDuplicatesByGroup(rawGroupId: string, context?: LogContext): Promise<string[] | null> {
+        const logPayload = this.createLogPayload('getDuplicatesByGroup', rawGroupId, {}, context);
+        this.logger.debug(logPayload, 'Executing DB command: getDuplicatesByGroup'); // READ = debug
+        try { return await this.underlyingClient.getDuplicatesByGroup(rawGroupId); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: getDuplicatesByGroup'); throw e; }
+    }
+
+    async getUserDuplicateVote(rawUserId: string, rawGroupId: string, context?: LogContext): Promise<string | null> {
+        const logPayload = this.createLogPayload('getUserDuplicateVote', rawUserId, { rawGroupId }, context);
+        this.logger.debug(logPayload, 'Executing DB command: getUserDuplicateVote'); // READ = debug
+        try { return await this.underlyingClient.getUserDuplicateVote(rawUserId, rawGroupId); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: getUserDuplicateVote'); throw e; }
+    }
+
+    async setUserDuplicateVote(rawUserId: string, rawGroupId: string, rawReplyId: string, context?: LogContext): Promise<void> {
+        const logPayload = this.createLogPayload('setUserDuplicateVote', rawUserId, { rawGroupId, rawReplyId }, context);
+        this.logger.info(logPayload, 'Executing DB command: setUserDuplicateVote'); // WRITE = info
+        try { return await this.underlyingClient.setUserDuplicateVote(rawUserId, rawGroupId, rawReplyId); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: setUserDuplicateVote'); throw e; }
+    }
+
+    async createDuplicateGroupTransaction(duplicateGroupData: any, originalReplyId: string, duplicateReplyData: any, context?: LogContext): Promise<void> {
+        const logPayload = this.createLogPayload('createDuplicateGroupTransaction', null, { duplicateGroupData, originalReplyId, duplicateReplyData }, context);
+        this.logger.info(logPayload, 'Executing DB command: createDuplicateGroupTransaction'); // WRITE = info
+        try { return await this.underlyingClient.createDuplicateGroupTransaction(duplicateGroupData, originalReplyId, duplicateReplyData); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: createDuplicateGroupTransaction'); throw e; }
+    }
 } 

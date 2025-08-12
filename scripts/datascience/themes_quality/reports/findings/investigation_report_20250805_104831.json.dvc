@@ -1,0 +1,5 @@
+outs:
+- md5: 9fa4866828cfc90d0d93441ffcc5bed9
+  size: 1987
+  hash: md5
+  path: investigation_report_20250805_104831.json
