@@ -29,15 +29,17 @@ _global_nlp = None
 _global_categories_config = None
 _global_scoring_config = None
 _global_category_embeddings = None
+_global_dvc_params = None
 
-def _init_worker(model_name: str, categories_config: Dict, scoring_config: Dict):
+def _init_worker(model_name: str, categories_config: Dict, scoring_config: Dict, dvc_params: Dict = None):
     """Initialize spaCy model and configuration in worker process."""
-    global _global_nlp, _global_categories_config, _global_scoring_config, _global_category_embeddings
+    global _global_nlp, _global_categories_config, _global_scoring_config, _global_category_embeddings, _global_dvc_params
     
     # Load spaCy model in each worker
     _global_nlp = spacy.load(model_name)
     _global_categories_config = categories_config
     _global_scoring_config = scoring_config
+    _global_dvc_params = dvc_params
     
     # Compute category embeddings in each worker
     _global_category_embeddings = {}
@@ -124,9 +126,19 @@ def _categorize_single_word(word: str) -> Dict:
         
         word_results['category_scores'][category_name] = scores
         
-        # Check if word meets threshold for this category
+        # Check if word meets thresholds for this category
         confidence_threshold = category_config['confidence_threshold']
-        if combined_score >= confidence_threshold:
+        
+        # Check embedding threshold if available from DVC params
+        embedding_threshold = 0.0  # Default
+        if _global_dvc_params and 'categories' in _global_dvc_params:
+            embedding_thresholds = _global_dvc_params['categories'].get('embedding_thresholds', {})
+            embedding_threshold = embedding_thresholds.get(category_name, 0.0)
+        
+        meets_combined_threshold = combined_score >= confidence_threshold
+        meets_embedding_threshold = embedding_score >= embedding_threshold
+        
+        if meets_combined_threshold and meets_embedding_threshold:
             word_results['assigned_categories'].append({
                 'category': category_name,
                 'confidence': combined_score
@@ -156,6 +168,24 @@ class WordCategorizer:
         self.scoring_config = self.config['scoring']
         self.processing_config = self.config['processing']
         
+        # Load DVC params for threshold overrides
+        self.dvc_params = self._load_dvc_params()
+        
+        # Override confidence thresholds from DVC params if available
+        if self.dvc_params and 'categories' in self.dvc_params:
+            dvc_confidence_thresholds = self.dvc_params['categories'].get('confidence_thresholds', {})
+            for category_name, threshold in dvc_confidence_thresholds.items():
+                if category_name in self.categories_config:
+                    self.categories_config[category_name]['confidence_threshold'] = threshold
+        
+        # Override processing config from DVC params if available  
+        if self.dvc_params and 'processing' in self.dvc_params:
+            self.processing_config.update(self.dvc_params['processing'])
+        
+        # Override scoring config from DVC params if available
+        if self.dvc_params and 'scoring' in self.dvc_params:
+            self.scoring_config.update(self.dvc_params['scoring'])
+        
         # Load spaCy model
         self.nlp = self._load_spacy_model()
         
@@ -173,6 +203,18 @@ class WordCategorizer:
         except yaml.YAMLError as e:
             logger.error(f"Error parsing configuration file: {e}")
             sys.exit(1)
+    
+    def _load_dvc_params(self) -> Dict:
+        """Load DVC parameters for threshold overrides."""
+        try:
+            with open("params.yaml", 'r') as f:
+                return yaml.safe_load(f)
+        except FileNotFoundError:
+            logger.warning("DVC params.yaml not found, using default thresholds")
+            return {}
+        except yaml.YAMLError as e:
+            logger.warning(f"Error parsing params.yaml: {e}, using default thresholds")
+            return {}
     
     def _load_spacy_model(self):
         """Load spaCy model with embeddings."""
@@ -333,8 +375,17 @@ class WordCategorizer:
             
             word_results['category_scores'][category_name] = scores
             
-            # Check if word meets threshold for this category
-            if scores['combined_score'] >= confidence_threshold:
+            # Check if word meets thresholds for this category
+            # Get embedding threshold from DVC params if available
+            embedding_threshold = 0.0  # Default
+            if self.dvc_params and 'categories' in self.dvc_params:
+                embedding_thresholds = self.dvc_params['categories'].get('embedding_thresholds', {})
+                embedding_threshold = embedding_thresholds.get(category_name, 0.0)
+            
+            meets_combined_threshold = scores['combined_score'] >= confidence_threshold
+            meets_embedding_threshold = scores['embedding_score'] >= embedding_threshold
+            
+            if meets_combined_threshold and meets_embedding_threshold:
                 word_results['assigned_categories'].append({
                     'category': category_name,
                     'confidence': scores['combined_score']
@@ -399,7 +450,7 @@ class WordCategorizer:
         
         with Pool(processes=num_workers, 
                  initializer=_init_worker, 
-                 initargs=(model_name, self.categories_config, self.scoring_config)) as pool:
+                 initargs=(model_name, self.categories_config, self.scoring_config, self.dvc_params)) as pool:
             batch_results_list = pool.map(_process_word_batch, word_batches)
             
         # Flatten results from all batches
