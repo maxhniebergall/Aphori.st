@@ -116,3 +116,32 @@ git push
 - Generation success rates
 - Performance benchmarks
 - Quality control effectiveness
+
+## DVC Pipeline Architecture
+
+This project implements a modular NLP word categorization pipeline using DVC for reproducible machine learning workflows.
+
+### Pipeline Overview
+
+The DVC pipeline consists of multiple stages that process vocabulary data through various categorization algorithms:
+
+1. **Vocabulary Generation**: Creates base vocabulary from source data
+2. **Word Categorization**: Assigns semantic categories to words using NLP models
+3. **Category Scoring**: Evaluates categorization quality and coherence
+4. **Export Processing**: Generates final categorized vocabulary outputs
+
+### Configuration
+
+Pipeline behavior is controlled through configuration files:
+
+- `params.yaml`: Main pipeline parameters and hyperparameters
+- `config/pipeline_config.yaml`: Detailed categorization rules and thresholds
+- `dvc.yaml`: Pipeline stage definitions and dependencies
+
+### Parallel Processing
+
+The pipeline is optimized for parallel processing with configurable worker counts (default: 6 workers) to efficiently handle large vocabulary datasets.
+
+### Implementation Details
+
+See `@temp_progress_plans/dvc_pipeline_setup.md` for detailed implementation steps and architecture decisions made during the DVC pipeline setup process.

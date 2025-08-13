@@ -19,6 +19,8 @@ import numpy as np
 
 import spacy
 from spacy.tokens import Doc
+import nltk
+from nltk.corpus import wordnet
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -89,16 +91,19 @@ def _categorize_single_word(word: str) -> Dict:
     doc = _global_nlp(word)
     word_embedding = doc.vector if doc.has_vector else None
     
-    # Check dictionary definition
+    # Check dictionary definition using NLTK WordNet
     token = doc[0]
-    has_definition = (
+    basic_checks = (
         token.is_alpha and 
         not token.is_stop and 
         not token.is_space and 
         not token.is_punct and
         len(word) >= 2  # min_word_length
     )
-    dictionary_score = 1.0 if has_definition else 0.0
+    
+    # Check if word exists in NLTK WordNet
+    nltk_definition = bool(wordnet.synsets(word.lower())) if basic_checks else False
+    dictionary_score = 1.0 if nltk_definition else 0.0
     
     # Compute scores for each category
     for category_name, category_config in _global_categories_config.items():
@@ -113,9 +118,11 @@ def _categorize_single_word(word: str) -> Dict:
                 embedding_score = np.dot(word_embedding, category_embedding) / (norm_word * norm_category)
                 embedding_score = float(embedding_score)
         
-        # Combine scores
+        # Combine scores with category-specific dictionary weight
         embedding_weight = _global_scoring_config['embeddings']['weight']
-        dictionary_weight = _global_scoring_config['dictionary']['weight']
+        
+        # Get category-specific dictionary weight, fallback to global
+        dictionary_weight = category_config.get('dictionary_weight', _global_scoring_config['dictionary']['weight'])
         combined_score = embedding_score * embedding_weight + dictionary_score * dictionary_weight
         
         scores = {
@@ -311,13 +318,13 @@ class WordCategorizer:
     def check_dictionary_definition(self, word: str) -> bool:
         """
         Check if word has a valid dictionary definition.
-        Uses spaCy's lexical attributes as a proxy for dictionary validity.
+        Uses NLTK WordNet to check for actual dictionary presence.
         """
         doc = self.nlp(word)
         token = doc[0]
         
-        # Word should be in vocabulary and not be a stop word, space, or punctuation
-        has_definition = (
+        # Basic validation checks
+        basic_checks = (
             token.is_alpha and 
             not token.is_stop and 
             not token.is_space and 
@@ -325,7 +332,11 @@ class WordCategorizer:
             len(word) >= self.config['vocabulary']['min_word_length']
         )
         
-        return has_definition
+        if not basic_checks:
+            return False
+            
+        # Check if word exists in NLTK WordNet
+        return bool(wordnet.synsets(word.lower()))
     
     def compute_dictionary_score(self, word: str) -> float:
         """Compute dictionary-based score for the word."""
@@ -343,9 +354,12 @@ class WordCategorizer:
         embedding_score = self.compute_embedding_similarity(word, category_name)
         dictionary_score = self.compute_dictionary_score(word)
         
-        # Combine scores using weights
+        # Combine scores using weights with category-specific dictionary weight
         embedding_weight = self.scoring_config['embeddings']['weight']
-        dictionary_weight = self.scoring_config['dictionary']['weight']
+        
+        # Get category-specific dictionary weight, fallback to global
+        category_config = self.categories_config[category_name]
+        dictionary_weight = category_config.get('dictionary_weight', self.scoring_config['dictionary']['weight'])
         
         combined_score = (
             embedding_score * embedding_weight + 
