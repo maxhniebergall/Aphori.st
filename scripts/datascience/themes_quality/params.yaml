@@ -58,7 +58,7 @@ categories:
     event_type: 0.25
     product: 0.2
     product_type: 0.4
-    creature: 0.3
+    creature: 0.61982528567314
     skill: 0.25
     category: 0.2
   embedding_thresholds:
@@ -72,7 +72,7 @@ categories:
     event_type: 0.15
     product: 0.1
     product_type: 0.3
-    creature: 0.3
+    creature: 0.366375476121902
     skill: 0.15
     category: 0.1
 

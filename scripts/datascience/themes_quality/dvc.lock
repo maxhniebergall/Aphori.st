@@ -99,8 +99,8 @@ stages:
       size: 194991
     - path: pipeline/word_categorizer.py
       hash: md5
-      md5: 68f0dd7df4f3a77e845a4b87a221f75e
-      size: 23405
+      md5: 7ffcd45a8c15b04fd17f4d944328bbc1
+      size: 25694
     params:
       params.yaml:
         categories:
@@ -129,7 +129,7 @@ stages:
             event_type: 0.25
             product: 0.2
             product_type: 0.4
-            creature: 0.3
+            creature: 0.61982528567314
             skill: 0.25
             category: 0.2
           embedding_thresholds:
@@ -143,7 +143,7 @@ stages:
             event_type: 0.15
             product: 0.1
             product_type: 0.3
-            creature: 0.3
+            creature: 0.366375476121902
             skill: 0.15
             category: 0.1
         processing:
@@ -160,8 +160,8 @@ stages:
     outs:
     - path: data/categorized_words.json
       hash: md5
-      md5: cadd81f07d48c19c2b3dbb9beb9341d9
-      size: 216750
+      md5: 034362ceacb40c167f7c01778884c517
+      size: 3784522
   export_vocabularies:
     cmd: python pipeline/vocabulary_exporter.py
     deps:
@@ -171,8 +171,8 @@ stages:
       size: 14181
     - path: data/categorized_words.json
       hash: md5
-      md5: cadd81f07d48c19c2b3dbb9beb9341d9
-      size: 216750
+      md5: 034362ceacb40c167f7c01778884c517
+      size: 3784522
     - path: pipeline/vocabulary_exporter.py
       hash: md5
       md5: 3ab3fc7624936b9aca90074e4e14b03f
@@ -205,7 +205,7 @@ stages:
             event_type: 0.25
             product: 0.2
             product_type: 0.4
-            creature: 0.3
+            creature: 0.61982528567314
             skill: 0.25
             category: 0.2
           embedding_thresholds:
@@ -219,7 +219,7 @@ stages:
             event_type: 0.15
             product: 0.1
             product_type: 0.3
-            creature: 0.3
+            creature: 0.366375476121902
             skill: 0.15
             category: 0.1
         output:
@@ -234,10 +234,10 @@ stages:
     outs:
     - path: data/export_metadata.json
       hash: md5
-      md5: c6ba075742a9b5cd7675c94efc621d73
-      size: 53548
+      md5: 6c5121425a465ae1ff86f59239d65c0a
+      size: 53595
     - path: data/vocabs/
       hash: md5
-      md5: 81accd6de4b88fc47749ab4048ea0bb7.dir
-      size: 195421
+      md5: 4779967338bb1915aeb94ebcd7b417bb.dir
+      size: 3494579
       nfiles: 13
