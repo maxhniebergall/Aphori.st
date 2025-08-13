@@ -63,8 +63,8 @@ stages:
     deps:
     - path: config/pipeline_config.yaml
       hash: md5
-      md5: 3eb84fe88573d91127e57d423fc1cdf2
-      size: 13378
+      md5: 65f5bfbd08f749fc216d2230855ffab0
+      size: 13821
     - path: pipeline/vocabulary_generator.py
       hash: md5
       md5: 88c90091dd3dd2d2c56f737645f2f085
@@ -91,8 +91,8 @@ stages:
     deps:
     - path: config/pipeline_config.yaml
       hash: md5
-      md5: 3eb84fe88573d91127e57d423fc1cdf2
-      size: 13378
+      md5: 65f5bfbd08f749fc216d2230855ffab0
+      size: 13821
     - path: data/filtered_vocabulary.json
       hash: md5
       md5: 83ad696c9c4d7ab70cac386a98cbc698
@@ -160,19 +160,19 @@ stages:
     outs:
     - path: data/categorized_words.json
       hash: md5
-      md5: dc84fdc025218b09f66af541761d3ca1
-      size: 3277184
+      md5: 2e06fa6f2d1e246613c227a83a9af2ff
+      size: 3285522
   export_vocabularies:
     cmd: python pipeline/vocabulary_exporter.py
     deps:
     - path: config/pipeline_config.yaml
       hash: md5
-      md5: 3eb84fe88573d91127e57d423fc1cdf2
-      size: 13378
+      md5: 65f5bfbd08f749fc216d2230855ffab0
+      size: 13821
     - path: data/categorized_words.json
       hash: md5
-      md5: dc84fdc025218b09f66af541761d3ca1
-      size: 3277184
+      md5: 2e06fa6f2d1e246613c227a83a9af2ff
+      size: 3285522
     - path: pipeline/vocabulary_exporter.py
       hash: md5
       md5: 3ab3fc7624936b9aca90074e4e14b03f
@@ -234,10 +234,10 @@ stages:
     outs:
     - path: data/export_metadata.json
       hash: md5
-      md5: d8a57d32850ff77c230d034e7c66bbcc
-      size: 50823
+      md5: ddd2b9bca1dc90f7583534a18b87aaa9
+      size: 52679
     - path: data/vocabs/
       hash: md5
-      md5: bedd3ef36c7d4f1446f1a3de07c9e013.dir
-      size: 3025195
+      md5: c72c044bb7b103928e8449482edc779b.dir
+      size: 3032713
       nfiles: 13
