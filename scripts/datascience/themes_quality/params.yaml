@@ -48,7 +48,7 @@ vocabulary:
 categories:
   enabled_categories: ["person", "person_type", "location", "location_type", "organization", "organization_type", "event", "event_type", "product", "product_type", "creature", "skill", "category"]
   confidence_thresholds:
-    person: 0.3
+    person: 0.67
     person_type: 0.4
     location: 0.3
     location_type: 0.4
@@ -61,6 +61,20 @@ categories:
     creature: 0.3
     skill: 0.4
     category: 0.4
+  embedding_thresholds:
+    person: 0.62
+    person_type: 0.3
+    location: 0.3
+    location_type: 0.3
+    organization: 0.3
+    organization_type: 0.3
+    event: 0.3
+    event_type: 0.3
+    product: 0.3
+    product_type: 0.3
+    creature: 0.3
+    skill: 0.3
+    category: 0.3
 
 scoring:
   dictionary_weight: 0.3
