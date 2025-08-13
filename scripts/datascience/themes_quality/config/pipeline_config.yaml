@@ -20,66 +20,80 @@ categories:
     description: "Words likely to be person names or personal identifiers"
     prototype_words: ["john", "mary", "smith", "johnson", "williams", "david", "sarah", "brown", "miller", "davis", "wilson", "moore", "taylor", "anderson", "thomas", "jackson", "white", "harris", "martin", "thompson", "garcia", "martinez", "robinson", "clark", "rodriguez", "june", "mark", "james", "michael", "paul", "robert", "george", "hill", "william", "peter", "mr", "richard", "jack", "royal", "lee", "charles", "ford", "scott", "jones", "jim", "harry", "ray", "kelly", "andrew", "joseph", "daniel", "ann", "henry", "elizabeth", "ben", "dean", "biography", "jean", "allen", "potter", "simon", "patrick", "alexander", "anne", "lawrence", "matthew", "anthony", "morgan", "douglas", "russell", "roger", "pat", "nelson", "arthur", "ian", "walker", "terry", "stewart", "donald", "craig", "nancy", "carter", "albert", "jimmy", "graham", "margaret", "samuel", "wright", "barry", "warren", "dennis", "francis", "parker", "cooper", "vincent", "duke", "walter", "mrs", "roy", "alice", "reed", "sharon", "bishop", "murphy", "julie", "janet", "helen", "catherine", "mason", "victor", "oliver", "stuart", "jeremy", "colin", "ruth", "butler", "genesis", "joan", "friday", "monday", "sunday", "tuesday", "thursday", "wednesday", "mike", "tom", "chris", "joe", "dave", "frank", "eric", "tim", "kevin", "tony", "matt", "jason", "bruce", "nick", "alex", "jay", "rob", "andy", "christopher", "jon", "wayne", "ron", "sean", "phil", "ross", "rick", "carl", "amy", "robin", "brad", "luke", "pete", "chad", "josh", "jamie", "lewis", "hamilton", "franklin", "baker", "philip", "morris", "benjamin", "gregory", "howard", "barbara", "larry", "harvard", "herald", "fisher", "stanley", "hughes", "harvey", "glenn", "marshall", "collins", "mitchell", "murray", "neil", "turner", "arnold", "steve", "jeff", "gary", "ken", "greg", "gordon", "keith", "jonathan", "jerry", "fred", "karen", "todd", "doug", "dale", "jeffrey", "austin", "steven", "rachel", "perry", "emily", "sara", "ave", "sierra", "kent", "warner", "jessica", "melissa", "michelle", "kimberly", "laura", "donna", "lisa", "carol", "sandra", "ruth", "sharon", "betty", "helen", "dorothy", "maria", "patricia", "deborah", "linda", "susan", "karen", "cynthia", "angela", "brenda", "emma", "olivia", "ava", "sophia", "isabella", "mia", "charlotte", "abigail", "harper", "evelyn", "amelia", "ella", "madison", "scarlett", "victoria", "aria", "grace", "chloe", "camila", "penelope", "riley", "layla", "lillian", "nora", "zoe", "mila", "aubrey", "hannah", "lily", "addison", "eleanor", "natalie", "luna", "savannah", "brooklyn", "leah", "zara", "stella", "hazel", "ellie", "paisley", "audrey", "skylar", "violet", "claire", "bella", "aurora", "lucy", "anna", "samantha", "caroline", "genesis", "aaliyah", "kennedy", "kinsley", "allison", "maya", "sarah", "madelyn", "adeline", "alexa", "ariana", "elena", "gabriella", "naomi", "alice", "sadie", "sophie", "eliana", "norah", "quinn", "eva", "liam", "noah", "oliver", "william", "elijah", "henry", "lucas", "benjamin", "theodore", "mateo", "levi", "sebastian", "daniel", "jack", "owen", "samuel", "matthew", "carter", "wyatt", "luke", "jayden", "asher", "gabriel", "julian", "anthony", "jaxon", "lincoln", "joshua", "christopher", "andrew", "theodore", "caleb", "ryan", "walker", "nathan", "smith", "johnson", "williams", "brown", "jones", "garcia", "miller", "davis", "rodriguez", "martinez", "hernandez", "lopez", "gonzalez", "wilson", "anderson", "thomas", "taylor", "moore", "jackson", "martin", "lee", "perez", "thompson", "white", "harris", "sanchez", "clark", "ramirez", "lewis", "robinson", "walker", "young", "allen", "king", "wright", "scott", "torres", "nguyen", "hill", "flores", "green", "adams", "nelson", "baker", "hall", "rivera", "campbell", "mitchell", "carter", "roberts", "gomez", "phillips", "evans", "turner", "diaz", "parker", "cruz", "edwards", "collins", "reyes", "stewart", "morris", "morales", "murphy", "cook", "rogers", "gutierrez", "ortiz", "morgan", "cooper", "peterson", "bailey", "reed", "kelly", "howard", "ramos", "kim", "cox", "ward", "richardson", "watson", "brooks", "chavez", "wood", "james", "bennett", "gray", "mendoza", "ruiz", "hughes", "price", "alvarez", "castillo", "sanders", "patel", "myers", "long", "ross", "foster", "jimenez", "powell", "jenkins", "perry", "russell", "sullivan", "bell", "coleman", "butler", "henderson", "barnes", "gonzales", "fisher", "vasquez", "simmons", "romero", "jordan", "patterson", "alexander", "hamilton", "graham", "reynolds", "griffin", "wallace", "moreno", "west", "cole", "hayes", "bryant", "herrera", "gibson", "ellis", "tran", "medina", "aguilar", "stevens", "murray", "ford", "castro", "marshall", "owen", "harrison", "fernandez", "mcdonald", "woods", "washington", "kennedy", "wells", "vargas", "henry", "chen", "freeman", "webb", "tucker", "guzman", "burns", "crawford", "olson", "simpson", "porter", "hunter", "gordon", "mendez", "silva", "shaw", "snyder", "mason", "dixon", "munoz", "hunt", "hicks", "holmes", "palmer", "wagner", "black", "robertson", "boyd", "rose", "stone", "salazar", "fox", "warren", "mills", "meyer", "rice", "schmidt", "garza", "daniels", "ferguson", "nichols", "stephens", "soto", "weaver", "ryan", "gardner", "payne", "grant", "dunn", "kelley", "spencer", "hawkins", "arnold", "pierce", "vazquez", "hansen", "peters", "santos", "hart", "bradley", "knight", "elliott", "cunningham", "duncan", "armstrong", "hudson", "carroll", "lane", "riley", "andrews", "alonso", "gilbert", "reynolds", "brown", "burke", "hanson", "day", "fernandez", "gibson", "daniels", "berry", "stone", "ferguson", "gray", "woods", "watson", "cole", "bennett", "torres", "powell", "sullivan", "russell", "robertson", "hamilton", "graham", "wallace", "woods", "cole", "west", "jordan", "owens", "reynolds", "fisher", "ellis", "harrison", "gibson", "mcdonald", "cruz", "marshall", "ortiz", "gomez", "murphy", "freeman", "wells", "webb", "simpson", "stevens", "tucker", "porter", "hunter", "hicks", "crawford", "henry", "boyd", "mason", "morales", "kennedy", "warren", "dixon", "ramos", "reyes", "burns", "gordon", "shaw", "holmes", "rice", "robertson", "hunt", "black", "daniels", "palmer", "mills", "nichols", "grant", "knight", "ferguson", "rose", "stone", "hawkins", "dunn", "perkins", "hudson", "spencer", "gardner", "stephens", "payne", "pierce", "berry", "matthews", "arnold", "wagner", "willis", "ray", "watkins", "olson", "carroll", "duncan", "snyder", "hart", "cunningham", "bradley", "lane", "andrews", "ruiz", "harper", "fox", "riley", "armstrong", "carpenter", "weaver", "greene", "lawrence", "elliott", "chavez", "sims", "austin", "peters", "kelley", "franklin", "lawson"]
     confidence_threshold: 0.3
+    dictionary_weight: -0.3
     
   person_type:
     description: "Job types, roles, or professions held by a person"
     prototype_words: ["doctor", "teacher", "engineer", "manager", "artist", "lawyer", "nurse", "scientist", "professor", "consultant", "designer", "architect", "chef", "musician", "writer", "photographer", "therapist", "accountant", "salesperson", "technician", "mechanic", "electrician", "plumber", "carpenter", "librarian"]
     confidence_threshold: 0.4
+    dictionary_weight: 0.5
     
   location:
     description: "Natural and human-made landmarks, structures, geographical features, geopolitical entities"
     prototype_words: ["paris", "mountain", "river", "building", "country", "london", "beach", "forest", "desert", "island", "valley", "lake", "ocean", "bridge", "tower", "castle", "cathedral", "museum", "park", "stadium", "airport", "hospital", "school", "library", "restaurant"]
     confidence_threshold: 0.3
+    dictionary_weight: -0.1
+    
     
   location_type:
     description: "Categories of location types"
     prototype_words: ["city", "state", "continent", "landmark", "facility", "town", "village", "province", "region", "district", "neighborhood", "suburb", "county", "territory", "zone", "area", "sector", "quarter", "campus", "complex", "center", "plaza", "square", "avenue", "street"]
     confidence_threshold: 0.4
+    dictionary_weight: 0.6
     
   organization:
     description: "Companies, political groups, musical bands, sport clubs, government bodies, public organizations"
     prototype_words: ["company", "university", "government", "team", "band", "corporation", "school", "hospital", "church", "foundation", "institute", "committee", "council", "department", "ministry", "agency", "bureau", "office", "firm", "group", "society", "union", "league", "federation", "alliance"]
     confidence_threshold: 0.3
+    dictionary_weight: -0.2
     
   organization_type:
     description: "Categories of organizations"
     prototype_words: ["corporation", "institution", "agency", "club", "association", "foundation", "committee", "council", "department", "division", "bureau", "office", "ministry", "federation", "union", "league", "society", "organization", "company", "firm", "enterprise", "establishment", "authority", "board", "commission"]
     confidence_threshold: 0.4
+    dictionary_weight: 0.5
     
   event:
     description: "Historical, social, and naturally occurring events"
     prototype_words: ["war", "festival", "earthquake", "wedding", "conference", "concert", "exhibition", "tournament", "ceremony", "celebration", "meeting", "summit", "convention", "gathering", "party", "graduation", "funeral", "birthday", "anniversary", "holiday", "vacation", "trip", "journey", "adventure", "expedition"]
     confidence_threshold: 0.3
+    dictionary_weight: -0.1
     
   event_type:
     description: "Categories of events"
     prototype_words: ["celebration", "disaster", "meeting", "competition", "ceremony", "conference", "festival", "tournament", "exhibition", "performance", "show", "presentation", "workshop", "seminar", "symposium", "convention", "gathering", "assembly", "rally", "demonstration", "protest", "parade", "march", "procession", "ritual"]
     confidence_threshold: 0.4
+    dictionary_weight: 0.6
     
   product:
     description: "Physical objects of various types"
     prototype_words: ["car", "book", "phone", "furniture", "clothing", "computer", "television", "camera", "watch", "shoes", "chair", "table", "lamp", "bottle", "glass", "plate", "cup", "knife", "fork", "spoon", "bag", "wallet", "hat", "shirt", "pants"]
     confidence_threshold: 0.3
+    dictionary_weight: 0.4
     
   product_type:
     description: "Categories of products"
     prototype_words: ["vehicle", "device", "tool", "appliance", "material", "equipment", "instrument", "machine", "gadget", "accessory", "furniture", "clothing", "electronics", "software", "hardware", "commodity", "merchandise", "goods", "item", "article", "object", "thing", "stuff", "substance", "component"]
     confidence_threshold: 0.4
+    dictionary_weight: 0.7
     
   creature:
     description: "Living creatures (real or fictional), species, or common names"
-    prototype_words: ["dog", "bird", "fish", "insect", "mammal", "cat", "horse", "cow", "pig", "sheep", "chicken", "duck", "eagle", "lion", "tiger", "elephant", "bear", "wolf", "deer", "rabbit", "mouse", "rat", "snake", "lizard", "frog"]
+    prototype_words: ["dog", "bird", "fish", "insect", "mammal", "cat", "horse", "cow", "pig", "sheep", "chicken", "duck", "eagle", "lion", "tiger", "elephant", "bear", "wolf", "deer", "rabbit", "mouse", "rat", "snake", "lizard", "frog", "whale", "dolphin", "shark", "turtle", "octopus", "crab", "lobster", "salmon", "trout", "butterfly", "bee", "bat", "owl", "hawk", "parrot", "penguin", "ostrich", "fox", "raccoon", "squirrel", "chipmunk", "beaver", "otter", "seal", "monkey", "gorilla", "chimpanzee", "kangaroo", "koala", "crocodile", "alligator", "iguana", "gecko", "salamander", "toad", "spider", "ant", "fly", "mosquito", "cricket", "grasshopper", "goat", "donkey", "llama"]
     confidence_threshold: 0.3
+    dictionary_weight: 0.4
     
   skill:
     description: "Capabilities, skills, or expertise"
     prototype_words: ["programming", "writing", "speaking", "leadership", "creativity", "communication", "management", "teaching", "cooking", "driving", "singing", "dancing", "painting", "drawing", "reading", "listening", "thinking", "problem", "solving", "analysis", "research", "planning", "organizing", "negotiating", "presenting"]
     confidence_threshold: 0.4
+    dictionary_weight: 0.5
     
   category:
     description: "Words describing types of things (e.g., biology family/genus)"
     prototype_words: ["type", "kind", "class", "group", "family", "category", "classification", "genre", "style", "variety", "species", "breed", "strain", "form", "sort", "nature", "character", "quality", "aspect", "feature", "attribute", "property", "characteristic", "trait", "element"]
     confidence_threshold: 0.4
+    dictionary_weight: 0.8
 
 # Scoring Algorithm Configuration
 scoring:

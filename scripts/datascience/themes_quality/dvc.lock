@@ -63,8 +63,8 @@ stages:
     deps:
     - path: config/pipeline_config.yaml
       hash: md5
-      md5: 65f5bfbd08f749fc216d2230855ffab0
-      size: 13821
+      md5: 21f96d11866ed3457d4e541016a8bbb5
+      size: 14181
     - path: pipeline/vocabulary_generator.py
       hash: md5
       md5: 88c90091dd3dd2d2c56f737645f2f085
@@ -91,16 +91,16 @@ stages:
     deps:
     - path: config/pipeline_config.yaml
       hash: md5
-      md5: 65f5bfbd08f749fc216d2230855ffab0
-      size: 13821
+      md5: 21f96d11866ed3457d4e541016a8bbb5
+      size: 14181
     - path: data/filtered_vocabulary.json
       hash: md5
       md5: 83ad696c9c4d7ab70cac386a98cbc698
       size: 194991
     - path: pipeline/word_categorizer.py
       hash: md5
-      md5: 687bfbb87f9aabeb6f56fc1434758804
-      size: 22749
+      md5: 68f0dd7df4f3a77e845a4b87a221f75e
+      size: 23405
     params:
       params.yaml:
         categories:
@@ -120,32 +120,32 @@ stages:
           - category
           confidence_thresholds:
             person: 0.67
-            person_type: 0.4
+            person_type: 0.25
             location: 0.3
-            location_type: 0.4
+            location_type: 0.25
             organization: 0.3
-            organization_type: 0.4
+            organization_type: 0.25
             event: 0.3
-            event_type: 0.4
-            product: 0.3
+            event_type: 0.25
+            product: 0.2
             product_type: 0.4
             creature: 0.3
-            skill: 0.4
-            category: 0.4
+            skill: 0.25
+            category: 0.2
           embedding_thresholds:
             person: 0.62
-            person_type: 0.3
+            person_type: 0.15
             location: 0.3
-            location_type: 0.3
+            location_type: 0.15
             organization: 0.3
-            organization_type: 0.3
+            organization_type: 0.15
             event: 0.3
-            event_type: 0.3
-            product: 0.3
+            event_type: 0.15
+            product: 0.1
             product_type: 0.3
             creature: 0.3
-            skill: 0.3
-            category: 0.3
+            skill: 0.15
+            category: 0.1
         processing:
           parallel_workers: 6
           batch_size: 1000
@@ -160,19 +160,19 @@ stages:
     outs:
     - path: data/categorized_words.json
       hash: md5
-      md5: 2e06fa6f2d1e246613c227a83a9af2ff
-      size: 3285522
+      md5: cadd81f07d48c19c2b3dbb9beb9341d9
+      size: 216750
   export_vocabularies:
     cmd: python pipeline/vocabulary_exporter.py
     deps:
     - path: config/pipeline_config.yaml
       hash: md5
-      md5: 65f5bfbd08f749fc216d2230855ffab0
-      size: 13821
+      md5: 21f96d11866ed3457d4e541016a8bbb5
+      size: 14181
     - path: data/categorized_words.json
       hash: md5
-      md5: 2e06fa6f2d1e246613c227a83a9af2ff
-      size: 3285522
+      md5: cadd81f07d48c19c2b3dbb9beb9341d9
+      size: 216750
     - path: pipeline/vocabulary_exporter.py
       hash: md5
       md5: 3ab3fc7624936b9aca90074e4e14b03f
@@ -196,32 +196,32 @@ stages:
           - category
           confidence_thresholds:
             person: 0.67
-            person_type: 0.4
+            person_type: 0.25
             location: 0.3
-            location_type: 0.4
+            location_type: 0.25
             organization: 0.3
-            organization_type: 0.4
+            organization_type: 0.25
             event: 0.3
-            event_type: 0.4
-            product: 0.3
+            event_type: 0.25
+            product: 0.2
             product_type: 0.4
             creature: 0.3
-            skill: 0.4
-            category: 0.4
+            skill: 0.25
+            category: 0.2
           embedding_thresholds:
             person: 0.62
-            person_type: 0.3
+            person_type: 0.15
             location: 0.3
-            location_type: 0.3
+            location_type: 0.15
             organization: 0.3
-            organization_type: 0.3
+            organization_type: 0.15
             event: 0.3
-            event_type: 0.3
-            product: 0.3
+            event_type: 0.15
+            product: 0.1
             product_type: 0.3
             creature: 0.3
-            skill: 0.3
-            category: 0.3
+            skill: 0.15
+            category: 0.1
         output:
           format: json
           include_metadata: true
@@ -234,10 +234,10 @@ stages:
     outs:
     - path: data/export_metadata.json
       hash: md5
-      md5: ddd2b9bca1dc90f7583534a18b87aaa9
-      size: 52679
+      md5: c6ba075742a9b5cd7675c94efc621d73
+      size: 53548
     - path: data/vocabs/
       hash: md5
-      md5: c72c044bb7b103928e8449482edc779b.dir
-      size: 3032713
+      md5: 81accd6de4b88fc47749ab4048ea0bb7.dir
+      size: 195421
       nfiles: 13
