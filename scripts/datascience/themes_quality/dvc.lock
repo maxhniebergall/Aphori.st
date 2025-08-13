@@ -63,8 +63,8 @@ stages:
     deps:
     - path: config/pipeline_config.yaml
       hash: md5
-      md5: 32de9f4fe978c53c0454b5ef5a3069e7
-      size: 4111
+      md5: 3eb84fe88573d91127e57d423fc1cdf2
+      size: 13378
     - path: pipeline/vocabulary_generator.py
       hash: md5
       md5: 88c90091dd3dd2d2c56f737645f2f085
@@ -91,16 +91,16 @@ stages:
     deps:
     - path: config/pipeline_config.yaml
       hash: md5
-      md5: 32de9f4fe978c53c0454b5ef5a3069e7
-      size: 4111
+      md5: 3eb84fe88573d91127e57d423fc1cdf2
+      size: 13378
     - path: data/filtered_vocabulary.json
       hash: md5
       md5: 83ad696c9c4d7ab70cac386a98cbc698
       size: 194991
     - path: pipeline/word_categorizer.py
       hash: md5
-      md5: f373713d1e3bda9aa6d6b7d2486d1b3d
-      size: 20003
+      md5: 687bfbb87f9aabeb6f56fc1434758804
+      size: 22749
     params:
       params.yaml:
         categories:
@@ -119,7 +119,7 @@ stages:
           - skill
           - category
           confidence_thresholds:
-            person: 0.3
+            person: 0.67
             person_type: 0.4
             location: 0.3
             location_type: 0.4
@@ -132,6 +132,20 @@ stages:
             creature: 0.3
             skill: 0.4
             category: 0.4
+          embedding_thresholds:
+            person: 0.62
+            person_type: 0.3
+            location: 0.3
+            location_type: 0.3
+            organization: 0.3
+            organization_type: 0.3
+            event: 0.3
+            event_type: 0.3
+            product: 0.3
+            product_type: 0.3
+            creature: 0.3
+            skill: 0.3
+            category: 0.3
         processing:
           parallel_workers: 6
           batch_size: 1000
@@ -146,19 +160,19 @@ stages:
     outs:
     - path: data/categorized_words.json
       hash: md5
-      md5: 70bed53c7274f9ec9c40763d73309387
-      size: 3789829
+      md5: dc84fdc025218b09f66af541761d3ca1
+      size: 3277184
   export_vocabularies:
     cmd: python pipeline/vocabulary_exporter.py
     deps:
     - path: config/pipeline_config.yaml
       hash: md5
-      md5: 32de9f4fe978c53c0454b5ef5a3069e7
-      size: 4111
+      md5: 3eb84fe88573d91127e57d423fc1cdf2
+      size: 13378
     - path: data/categorized_words.json
       hash: md5
-      md5: 70bed53c7274f9ec9c40763d73309387
-      size: 3789829
+      md5: dc84fdc025218b09f66af541761d3ca1
+      size: 3277184
     - path: pipeline/vocabulary_exporter.py
       hash: md5
       md5: 3ab3fc7624936b9aca90074e4e14b03f
@@ -181,7 +195,7 @@ stages:
           - skill
           - category
           confidence_thresholds:
-            person: 0.3
+            person: 0.67
             person_type: 0.4
             location: 0.3
             location_type: 0.4
@@ -194,6 +208,20 @@ stages:
             creature: 0.3
             skill: 0.4
             category: 0.4
+          embedding_thresholds:
+            person: 0.62
+            person_type: 0.3
+            location: 0.3
+            location_type: 0.3
+            organization: 0.3
+            organization_type: 0.3
+            event: 0.3
+            event_type: 0.3
+            product: 0.3
+            product_type: 0.3
+            creature: 0.3
+            skill: 0.3
+            category: 0.3
         output:
           format: json
           include_metadata: true
@@ -206,10 +234,10 @@ stages:
     outs:
     - path: data/export_metadata.json
       hash: md5
-      md5: 5793d1679f19f5b48d0c753e1fa62acc
-      size: 12124
+      md5: d8a57d32850ff77c230d034e7c66bbcc
+      size: 50823
     - path: data/vocabs/
       hash: md5
-      md5: d7151c0d82b615ecf975cff4d2f96705.dir
-      size: 3503169
+      md5: bedd3ef36c7d4f1446f1a3de07c9e013.dir
+      size: 3025195
       nfiles: 13
