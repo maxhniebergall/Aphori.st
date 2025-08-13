@@ -22,6 +22,16 @@ from spacy.tokens import Doc
 import nltk
 from nltk.corpus import wordnet
 
+# Download required NLTK data
+try:
+    nltk.data.find('corpora/wordnet')
+except LookupError:
+    nltk.download('wordnet')
+try:
+    nltk.data.find('corpora/omw-1.4')
+except LookupError:
+    nltk.download('omw-1.4')
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -102,7 +112,32 @@ def _categorize_single_word(word: str) -> Dict:
     )
     
     # Check if word exists in NLTK WordNet
-    nltk_definition = bool(wordnet.synsets(word.lower())) if basic_checks else False
+    nltk_definition = False
+    if basic_checks:
+        try:
+            # Try multiple forms of the word
+            word_lower = word.lower()
+            synsets = wordnet.synsets(word_lower)
+            
+            # Also try with underscores replaced with spaces (for compound words)
+            if not synsets and '_' in word_lower:
+                synsets = wordnet.synsets(word_lower.replace('_', ' '))
+            
+            # Also try without common suffixes for better matching
+            if not synsets:
+                # Try base form by removing common suffixes
+                for suffix in ['s', 'es', 'ed', 'ing', 'ly', 'er', 'est']:
+                    if word_lower.endswith(suffix) and len(word_lower) > len(suffix) + 2:
+                        base_word = word_lower[:-len(suffix)]
+                        synsets = wordnet.synsets(base_word)
+                        if synsets:
+                            break
+            
+            nltk_definition = bool(synsets)
+        except Exception as e:
+            logger.warning(f"WordNet lookup failed for word '{word}': {e}")
+            nltk_definition = False
+    
     dictionary_score = 1.0 if nltk_definition else 0.0
     
     # Compute scores for each category
@@ -336,7 +371,29 @@ class WordCategorizer:
             return False
             
         # Check if word exists in NLTK WordNet
-        return bool(wordnet.synsets(word.lower()))
+        try:
+            # Try multiple forms of the word
+            word_lower = word.lower()
+            synsets = wordnet.synsets(word_lower)
+            
+            # Also try with underscores replaced with spaces (for compound words)
+            if not synsets and '_' in word_lower:
+                synsets = wordnet.synsets(word_lower.replace('_', ' '))
+            
+            # Also try without common suffixes for better matching
+            if not synsets:
+                # Try base form by removing common suffixes
+                for suffix in ['s', 'es', 'ed', 'ing', 'ly', 'er', 'est']:
+                    if word_lower.endswith(suffix) and len(word_lower) > len(suffix) + 2:
+                        base_word = word_lower[:-len(suffix)]
+                        synsets = wordnet.synsets(base_word)
+                        if synsets:
+                            break
+            
+            return bool(synsets)
+        except Exception as e:
+            logger.warning(f"WordNet lookup failed for word '{word}': {e}")
+            return False
     
     def compute_dictionary_score(self, word: str) -> float:
         """Compute dictionary-based score for the word."""
