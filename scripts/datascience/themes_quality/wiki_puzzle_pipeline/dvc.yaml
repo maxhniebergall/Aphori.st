@@ -3,7 +3,7 @@ stages:
     cmd: python pipeline/theme_selector.py
     deps:
       - pipeline/theme_selector.py
-      - ../data/categories/wiki_categories
+      - ../data/categories/wiki_categories_filtered
     outs:
       - data/selected_themes.json
     params:
