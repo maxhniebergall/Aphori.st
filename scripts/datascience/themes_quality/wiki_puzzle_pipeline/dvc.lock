@@ -3,10 +3,10 @@ stages:
   select_themes:
     cmd: python pipeline/theme_selector.py
     deps:
-    - path: ../data/categories/wiki_categories
+    - path: ../data/categories/wiki_categories_filtered
       hash: md5
-      md5: 698bcbc2303dae0536c01975f9c4ccad
-      size: 8130
+      md5: a0524ed4af03780d38e452acd528ce67
+      size: 3147
     - path: pipeline/theme_selector.py
       hash: md5
       md5: e3858f8f079e5d5c860f1b17a6ba4da9
@@ -20,7 +20,7 @@ stages:
           theme_selection_method: random
           random_seed: 42
         themes:
-          source: ../data/categories/wiki_categories
+          source: ../data/categories/wiki_categories_filtered
           exclude_categories:
           - General reference
           - Research
@@ -30,8 +30,8 @@ stages:
     outs:
     - path: data/selected_themes.json
       hash: md5
-      md5: e08825ba0f895fc80beba5b31665a136
-      size: 2264
+      md5: bc2b20e4a1704e917376bcd9a3e71bce
+      size: 1901
   generate_puzzles:
     cmd: python pipeline/puzzle_generator.py
     deps:
@@ -49,8 +49,8 @@ stages:
       size: 9671670
     - path: data/selected_themes.json
       hash: md5
-      md5: e08825ba0f895fc80beba5b31665a136
-      size: 2264
+      md5: bc2b20e4a1704e917376bcd9a3e71bce
+      size: 1901
     - path: pipeline/puzzle_generator.py
       hash: md5
       md5: 62144f11dfd56596db80fcddd2c13a8b
@@ -77,9 +77,9 @@ stages:
     outs:
     - path: data/puzzle_metadata.json
       hash: md5
-      md5: 4d321be8a171c9f94549362f914ab432
-      size: 1269
+      md5: 8da8105eeefec76e800f01db2d467b5d
+      size: 278
     - path: data/wiki_puzzles.json
       hash: md5
-      md5: 064a7ad7b32d9ac967781c7f6126ef36
-      size: 23976
+      md5: 6ea1939439fb0f8188079db9870ccaa8
+      size: 38473
