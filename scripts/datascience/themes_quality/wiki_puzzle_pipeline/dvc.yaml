@@ -1,0 +1,27 @@
+stages:
+  select_themes:
+    cmd: python pipeline/theme_selector.py
+    deps:
+      - pipeline/theme_selector.py
+      - ../data/categories/wiki_categories
+    outs:
+      - data/selected_themes.json
+    params:
+      - puzzle_generation
+      - themes
+
+  generate_puzzles:
+    cmd: python pipeline/puzzle_generator.py
+    deps:
+      - pipeline/puzzle_generator.py
+      - data/selected_themes.json
+      - ../../themes_index/themes_vectors.bin
+      - ../../themes_index/themes_vocabulary.json
+      - ../../themes_index/themes_metadata.json
+    outs:
+      - data/wiki_puzzles.json
+      - data/puzzle_metadata.json
+    params:
+      - puzzle_generation
+      - vector_search
+      - output

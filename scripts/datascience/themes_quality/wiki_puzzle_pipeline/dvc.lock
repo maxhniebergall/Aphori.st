@@ -1,0 +1,85 @@
+schema: '2.0'
+stages:
+  select_themes:
+    cmd: python pipeline/theme_selector.py
+    deps:
+    - path: ../data/categories/wiki_categories
+      hash: md5
+      md5: 698bcbc2303dae0536c01975f9c4ccad
+      size: 8130
+    - path: pipeline/theme_selector.py
+      hash: md5
+      md5: e3858f8f079e5d5c860f1b17a6ba4da9
+      size: 5366
+    params:
+      params.yaml:
+        puzzle_generation:
+          total_puzzle_count: 100
+          words_per_puzzle: 4
+          min_similarity_threshold: 0.3
+          theme_selection_method: random
+          random_seed: 42
+        themes:
+          source: ../data/categories/wiki_categories
+          exclude_categories:
+          - General reference
+          - Research
+          - Academic disciplines
+          - Library science
+          min_theme_length: 3
+    outs:
+    - path: data/selected_themes.json
+      hash: md5
+      md5: e08825ba0f895fc80beba5b31665a136
+      size: 2264
+  generate_puzzles:
+    cmd: python pipeline/puzzle_generator.py
+    deps:
+    - path: ../../themes_index/themes_metadata.json
+      hash: md5
+      md5: 0057523c15907dfe46ab51aac78b3b9a
+      size: 148
+    - path: ../../themes_index/themes_vectors.bin
+      hash: md5
+      md5: 4b3ccfe9e1ce0c8d1e099c86142e6484
+      size: 1028004008
+    - path: ../../themes_index/themes_vocabulary.json
+      hash: md5
+      md5: d1749de07cefb80a52f7e4db20afee80
+      size: 9671670
+    - path: data/selected_themes.json
+      hash: md5
+      md5: e08825ba0f895fc80beba5b31665a136
+      size: 2264
+    - path: pipeline/puzzle_generator.py
+      hash: md5
+      md5: 62144f11dfd56596db80fcddd2c13a8b
+      size: 10751
+    params:
+      params.yaml:
+        output:
+          format: json
+          include_metadata: true
+          include_similarity_scores: true
+          puzzle_file: data/wiki_puzzles.json
+          metadata_file: data/puzzle_metadata.json
+        puzzle_generation:
+          total_puzzle_count: 100
+          words_per_puzzle: 4
+          min_similarity_threshold: 0.3
+          theme_selection_method: random
+          random_seed: 42
+        vector_search:
+          data_source: ../../themes_index
+          use_lemmatized: true
+          similarity_metric: cosine
+          max_search_candidates: 20
+    outs:
+    - path: data/puzzle_metadata.json
+      hash: md5
+      md5: 4d321be8a171c9f94549362f914ab432
+      size: 1269
+    - path: data/wiki_puzzles.json
+      hash: md5
+      md5: 064a7ad7b32d9ac967781c7f6126ef36
+      size: 23976

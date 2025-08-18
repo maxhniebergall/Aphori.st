@@ -1,0 +1,34 @@
+# Wiki Puzzle Generation Pipeline Parameters
+
+puzzle_generation:
+  total_puzzle_count: 100
+  words_per_puzzle: 4
+  min_similarity_threshold: 0.3
+  theme_selection_method: "random"
+  random_seed: 42  # For reproducible puzzle generation
+
+themes:
+  source: "../data/categories/wiki_categories"
+  exclude_categories: 
+    - "General reference"
+    - "Research"
+    - "Academic disciplines"
+    - "Library science"
+  min_theme_length: 3  # Minimum characters for theme name
+
+vector_search:
+  data_source: "../../themes_index"
+  use_lemmatized: true
+  similarity_metric: "cosine"
+  max_search_candidates: 20  # Search top 20, then filter to 4 best
+
+output:
+  format: "json"
+  include_metadata: true
+  include_similarity_scores: true
+  puzzle_file: "data/wiki_puzzles.json"
+  metadata_file: "data/puzzle_metadata.json"
+
+logging:
+  level: "INFO"
+  detailed_output: true
