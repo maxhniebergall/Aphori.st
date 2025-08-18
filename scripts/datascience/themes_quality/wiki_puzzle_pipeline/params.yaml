@@ -8,10 +8,10 @@ puzzle_generation:
   random_seed: 42  # For reproducible puzzle generation
 
 themes:
-  source: "../data/categories/wiki_categories"
+  source: "../data/categories/wiki_categories_filtered"
   exclude_categories: 
     - "General reference"
-    - "Research"
+    - "Research" 
     - "Academic disciplines"
     - "Library science"
   min_theme_length: 3  # Minimum characters for theme name
