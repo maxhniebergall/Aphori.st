@@ -1,3 +1,4 @@
 .gcp/
 themes_quality_venv/
 scripts/__pycache__/
+/puzzle_generation_output

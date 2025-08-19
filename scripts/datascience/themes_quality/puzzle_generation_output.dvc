@@ -1,0 +1,6 @@
+outs:
+- md5: f2de838d0187212c260ed52ca1f53564.dir
+  size: 123092
+  nfiles: 6
+  hash: md5
+  path: puzzle_generation_output
