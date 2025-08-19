@@ -1,0 +1,5 @@
+outs:
+- md5: e07a81d6baa2ca2218d27cd215f42e35
+  size: 30165
+  hash: md5
+  path: test-bridge-output.json

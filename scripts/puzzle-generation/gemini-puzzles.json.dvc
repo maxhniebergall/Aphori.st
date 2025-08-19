@@ -1,0 +1,5 @@
+outs:
+- md5: 284912e30f4b503f6e818257ecf96ea7
+  size: 30165
+  hash: md5
+  path: gemini-puzzles.json
