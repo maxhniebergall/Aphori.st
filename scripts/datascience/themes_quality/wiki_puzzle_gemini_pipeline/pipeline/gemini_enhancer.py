@@ -54,16 +54,15 @@ class GeminiEmbeddingProvider:
             sys.exit(1)
     
     def generate_embedding(self, text: str) -> Optional[List[float]]:
-        """Generate embedding for text using Gemini API."""
+        """Generate embedding for text using Gemini API with exponential backoff retry."""
         if not text or not text.strip():
             logger.warning("Empty text provided for embedding")
             return None
         
-        # Check if mock mode is enabled or if we should auto-fallback
-        use_mock = hasattr(self, 'mock_mode') and self.mock_mode
+        max_retries = 5
+        base_delay = 1.0
         
-        if not use_mock:
-            # Try real API first
+        for attempt in range(max_retries):
             try:
                 response = self.client.models.embed_content(
                     model=self.model_id,
@@ -79,24 +78,31 @@ class GeminiEmbeddingProvider:
                     if embedding_obj and hasattr(embedding_obj, 'values'):
                         values = embedding_obj.values
                         if len(values) != self.dimension:
-                            logger.warning(f"Embedding dimension mismatch: got {len(values)}, expected {self.dimension}")
+                            logger.error(f"Embedding dimension mismatch: got {len(values)}, expected {self.dimension}")
+                            sys.exit(1)
                         return values
                 
                 logger.error(f"Unexpected embedding response structure for text: {text[:50]}...")
-                use_mock = True  # Fallback to mock
+                logger.error("API returned invalid response structure")
+                sys.exit(1)
+                
+            except (ConnectionError, TimeoutError, OSError) as e:
+                # Network-related errors - retry with exponential backoff
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"Network error on attempt {attempt + 1}/{max_retries} for '{text[:30]}...': {e}")
+                
+                if attempt == max_retries - 1:
+                    logger.error(f"Max retries ({max_retries}) exceeded for network connectivity. Terminating process.")
+                    sys.exit(1)
+                
+                logger.info(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
                 
             except Exception as e:
-                logger.warning(f"Gemini API failed for '{text[:30]}...': {e}")
-                logger.info("Falling back to mock embeddings due to API failure")
-                use_mock = True  # Fallback to mock
-        
-        # Generate mock embedding (either explicitly requested or fallback)
-        if use_mock:
-            import random
-            random.seed(hash(text) % 2**32)  # Deterministic based on text
-            mock_embedding = [random.gauss(0, 0.1) for _ in range(self.dimension)]
-            logger.debug(f"Generated mock embedding for '{text[:30]}...' (dimension: {len(mock_embedding)})")
-            return mock_embedding
+                # Non-network errors (auth, quota, etc.) - fail immediately
+                logger.error(f"Gemini API failed for '{text[:30]}...': {e}")
+                logger.error("API failure detected - terminating process")
+                sys.exit(1)
         
         return None
 
@@ -141,13 +147,7 @@ class GeminiEnhancer:
             api_key=api_key
         )
         
-        # Enable mock mode if configured
-        if self.gemini_config.get('mock_mode', False):
-            provider.mock_mode = True
-            logger.info("Mock mode enabled - using simulated embeddings")
-        else:
-            logger.info("Real Gemini API mode enabled - will fallback to mock on API failure")
-            logger.info(f"Using model: {self.gemini_config['model_id']} with {self.gemini_config['embedding_dimension']} dimensions")
+        logger.info(f"Gemini API mode enabled - using model: {self.gemini_config['model_id']} with {self.gemini_config['embedding_dimension']} dimensions")
         
         return provider
     
