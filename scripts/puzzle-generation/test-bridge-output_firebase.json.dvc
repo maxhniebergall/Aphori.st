@@ -1,0 +1,5 @@
+outs:
+- md5: 23dd737210c9ae6c08cbc9314b19ec42
+  size: 28851
+  hash: md5
+  path: test-bridge-output_firebase.json

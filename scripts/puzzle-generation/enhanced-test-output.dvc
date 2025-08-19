@@ -1,0 +1,6 @@
+outs:
+- md5: 2ae491b1be205b063444b5df941677f1.dir
+  size: 5060
+  nfiles: 2
+  hash: md5
+  path: enhanced-test-output
