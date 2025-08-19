@@ -8,10 +8,15 @@
     "build": "tsc",
     "clean": "rm -rf dist",
     "generate": "npm run build && node dist/generate-puzzles.js",
+    "generate:enhanced": "npm run build && node dist/generate-enhanced-puzzles.js",
+    "bridge": "npm run build && node dist/data-science-bridge.js",
+    "use-gemini": "npm run build && node dist/use-gemini-output.js",
     "generate-monthly": "npm run build && node dist/generate-monthly-puzzles.js",
     "validate": "npm run build && node dist/validate-puzzles.js",
     "generate-week": "npm run generate -- $(date +%Y-%m-%d) $(date -d '+7 days' +%Y-%m-%d) 3 0.6",
+    "generate:enhanced-week": "npm run generate:enhanced -- $(date +%Y-%m-%d) $(date -d '+7 days' +%Y-%m-%d) 3 0.6",
     "generate-test": "npm run generate -- $(date +%Y-%m-%d) $(date +%Y-%m-%d) 1 0.5 ./test-output 5 --verbose",
+    "generate:enhanced-test": "npm run generate:enhanced -- $(date +%Y-%m-%d) $(date +%Y-%m-%d) 1 0.5 ./enhanced-test-output 5 --verbose",
     "validate-test": "npm run validate -- ./test-output --verbose",
     "test": "npm run build && node dist/test-generation.js",
     "test-vectors": "npm run build && node dist/test-vector-functionality.js",
@@ -22,6 +27,7 @@
   "dependencies": {
     "dictionary-en-us": "^2.2.1",
     "faiss-node": "^0.5.1",
+    "google-genai": "^0.1.0",
     "nspell": "^2.1.5",
     "wink-lemmatizer": "^3.0.4"
   },
