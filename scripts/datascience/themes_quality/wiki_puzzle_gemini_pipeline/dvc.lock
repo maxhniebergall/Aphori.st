@@ -1,0 +1,156 @@
+schema: '2.0'
+stages:
+  select_themes:
+    cmd: python pipeline/theme_selector.py
+    deps:
+    - path: ../data/categories/wiki_categories_filtered
+      hash: md5
+      md5: a0524ed4af03780d38e452acd528ce67
+      size: 3147
+    - path: pipeline/theme_selector.py
+      hash: md5
+      md5: bca60d54a38fbfc7a531ca51c95cf91e
+      size: 5577
+    params:
+      params.yaml:
+        paths:
+          themes: data/themes/
+          candidates: data/candidates/
+          embeddings: data/embeddings/
+          outputs: data/outputs/
+          reports: reports/
+          cache: data/cache/
+        puzzle_generation:
+          total_puzzle_count: 50
+          words_per_puzzle: 4
+          candidate_words_per_theme: 10
+          min_similarity_threshold: 0.3
+          theme_selection_method: random
+          random_seed: 42
+        themes:
+          source: ../data/categories/wiki_categories_filtered
+          exclude_categories:
+          - General reference
+          - Research
+          - Academic disciplines
+          - Library science
+          min_theme_length: 3
+    outs:
+    - path: data/themes/selected_themes.json
+      hash: md5
+      md5: 7273a529123d49b3a7e15a1a20b33b5b
+      size: 1192
+  select_candidates:
+    cmd: python pipeline/word_selector.py
+    deps:
+    - path: ../../themes_index/themes_metadata.json
+      hash: md5
+      md5: 0057523c15907dfe46ab51aac78b3b9a
+      size: 148
+    - path: ../../themes_index/themes_vectors.bin
+      hash: md5
+      md5: 4b3ccfe9e1ce0c8d1e099c86142e6484
+      size: 1028004008
+    - path: ../../themes_index/themes_vocabulary.json
+      hash: md5
+      md5: d1749de07cefb80a52f7e4db20afee80
+      size: 9671670
+    - path: data/themes/selected_themes.json
+      hash: md5
+      md5: 7273a529123d49b3a7e15a1a20b33b5b
+      size: 1192
+    - path: pipeline/word_selector.py
+      hash: md5
+      md5: fce17c7cf0a342cfc4f3de2d00ae8137
+      size: 8668
+    params:
+      params.yaml:
+        paths:
+          themes: data/themes/
+          candidates: data/candidates/
+          embeddings: data/embeddings/
+          outputs: data/outputs/
+          reports: reports/
+          cache: data/cache/
+        puzzle_generation:
+          total_puzzle_count: 50
+          words_per_puzzle: 4
+          candidate_words_per_theme: 10
+          min_similarity_threshold: 0.3
+          theme_selection_method: random
+          random_seed: 42
+        vector_search:
+          data_source: ../../themes_index
+          use_lemmatized: true
+          similarity_metric: cosine
+          max_search_candidates: 20
+    outs:
+    - path: data/candidates/candidate_words.json
+      hash: md5
+      md5: 56beedccf19e2e04ee32166c18cd0cfe
+      size: 30037
+  enhance_with_gemini:
+    cmd: python pipeline/gemini_enhancer.py
+    deps:
+    - path: data/candidates/candidate_words.json
+      hash: md5
+      md5: 56beedccf19e2e04ee32166c18cd0cfe
+      size: 30037
+    - path: data/themes/selected_themes.json
+      hash: md5
+      md5: 7273a529123d49b3a7e15a1a20b33b5b
+      size: 1192
+    - path: pipeline/gemini_enhancer.py
+      hash: md5
+      md5: 684dbfbb656fb574d924826762295949
+      size: 23577
+    params:
+      params.yaml:
+        gemini:
+          model_id: gemini-embedding-001
+          embedding_dimension: 3072
+          api_key_env: GEMINI_API_KEY
+          task_type: SEMANTIC_SIMILARITY
+          mock_mode: false
+        output:
+          format: json
+          include_metadata: true
+          include_similarity_scores: true
+          csv_precision: 6
+          embedding_cache_file: data/cache/all_embeddings.csv
+          puzzle_embeddings_file: data/embeddings/puzzle_embeddings.csv
+        paths:
+          themes: data/themes/
+          candidates: data/candidates/
+          embeddings: data/embeddings/
+          outputs: data/outputs/
+          reports: reports/
+          cache: data/cache/
+        puzzle_generation:
+          total_puzzle_count: 50
+          words_per_puzzle: 4
+          candidate_words_per_theme: 10
+          min_similarity_threshold: 0.3
+          theme_selection_method: random
+          random_seed: 42
+    outs:
+    - path: data/cache/all_embeddings.csv
+      hash: md5
+      md5: 037e1cd0a6c68de5f3cee4fbbbeeac83
+      size: 15941907
+    - path: data/embeddings/puzzle_embeddings.csv
+      hash: md5
+      md5: ad52c25612e7a11ccae969a4ea4d398e
+      size: 7278032
+    - path: data/outputs/final_puzzles.json
+      hash: md5
+      md5: 5dae1f77ec609b0d789809ffdf19fb34
+      size: 39881
+    - path: data/outputs/puzzle_metadata.json
+      hash: md5
+      md5: 85261751fe406506b054712ea3876562
+      size: 240
+    - path: reports/embedding_analysis.json
+      hash: md5
+      md5: 0410895a17e12fe8ae8c902838c3e6e6
+      size: 824
