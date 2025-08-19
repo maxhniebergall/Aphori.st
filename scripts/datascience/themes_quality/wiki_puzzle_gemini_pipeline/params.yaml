@@ -28,7 +28,6 @@ gemini:
   embedding_dimension: 3072  # Full dimension as originally planned
   api_key_env: "GEMINI_API_KEY"
   task_type: "SEMANTIC_SIMILARITY"
-  mock_mode: false  # Enable for development (API key incompatibility between TypeScript/Python libs)
 
 paths:
   themes: "data/themes/"

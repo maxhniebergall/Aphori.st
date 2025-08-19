@@ -102,8 +102,8 @@ stages:
       size: 1192
     - path: pipeline/gemini_enhancer.py
       hash: md5
-      md5: 684dbfbb656fb574d924826762295949
-      size: 23577
+      md5: f7de6d64d598145e17571882931094af
+      size: 23561
     params:
       params.yaml:
         gemini:
@@ -111,7 +111,6 @@ stages:
           embedding_dimension: 3072
           api_key_env: GEMINI_API_KEY
           task_type: SEMANTIC_SIMILARITY
-          mock_mode: false
         output:
           format: json
           include_metadata: true
@@ -136,21 +135,21 @@ stages:
     outs:
     - path: data/cache/all_embeddings.csv
       hash: md5
-      md5: 037e1cd0a6c68de5f3cee4fbbbeeac83
-      size: 15941907
+      md5: 858cd823c7b2de62a029c3998ef65ab1
+      size: 15934996
     - path: data/embeddings/puzzle_embeddings.csv
       hash: md5
-      md5: ad52c25612e7a11ccae969a4ea4d398e
-      size: 7278032
+      md5: a4767ff5212b1bfeda06b585205e27ef
+      size: 7274632
     - path: data/outputs/final_puzzles.json
       hash: md5
-      md5: 5dae1f77ec609b0d789809ffdf19fb34
-      size: 39881
+      md5: ae3d735a80e7bcd3e6dd483008781ffc
+      size: 38190
     - path: data/outputs/puzzle_metadata.json
       hash: md5
-      md5: 85261751fe406506b054712ea3876562
+      md5: 3864d7f122bea75af5a06ddef79e8673
       size: 240
     - path: reports/embedding_analysis.json
       hash: md5
-      md5: 0410895a17e12fe8ae8c902838c3e6e6
-      size: 824
+      md5: 95e7bbe87bfaa7f1c5552cecf1b04e27
+      size: 819
