@@ -7,6 +7,7 @@ import { PuzzleSetSelector } from '../../../components/games/themes/PuzzleSetSel
 import { PuzzleBrowser } from '../../../components/games/themes/PuzzleBrowser';
 import { useThemesGame } from '../../../hooks/games/themes/useThemesGame';
 import { usePuzzleCompletion } from '../../../hooks/games/themes/usePuzzleCompletion';
+import { usePuzzleAnalytics } from '../../../hooks/games/themes/usePuzzleAnalytics';
 import './ThemesGame.css';
 
 type GameView = 'setSelection' | 'puzzleBrowser' | 'playing';
@@ -56,6 +57,8 @@ export const ThemesGame: React.FC = () => {
     100 // Assuming 100 puzzles per set
   );
 
+  const { trackPuzzleView } = usePuzzleAnalytics();
+
   // Handle set selection
   const handleSetSelected = (setName: string) => {
     navigate(`/games/themes/${encodeURIComponent(setName)}`);
@@ -93,6 +96,13 @@ export const ThemesGame: React.FC = () => {
       markPuzzleCompleted(currentPuzzleNumber);
     }
   }, [gameState.isComplete, currentPuzzleNumber, selectedSet, markPuzzleCompleted]);
+
+  // Track puzzle view when puzzle loads
+  useEffect(() => {
+    if (puzzle && selectedSet && currentPuzzleNumber) {
+      trackPuzzleView(puzzle.id, selectedSet, currentPuzzleNumber);
+    }
+  }, [puzzle, selectedSet, currentPuzzleNumber, trackPuzzleView]);
 
   const handleSubmit = async () => {
     await submitSelection();
@@ -318,6 +328,9 @@ export const ThemesGame: React.FC = () => {
         isOpen={shareModalOpen}
         onClose={() => setShareModalOpen(false)}
         date={`${selectedSet || ''} #${currentPuzzleNumber || ''}`}
+        puzzleId={puzzle?.id}
+        setName={selectedSet || ''}
+        puzzleNumber={currentPuzzleNumber || 0}
       />
     </div>
   );

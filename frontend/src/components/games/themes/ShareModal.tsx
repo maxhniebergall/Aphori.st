@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useShareableResults, ShareableResults } from '../../../hooks/games/themes/useShareableResults';
+import { FeedbackForm } from './FeedbackForm';
 import './ShareModal.css';
 
 interface ShareModalProps {
   isOpen: boolean;
   onClose: () => void;
   date: string;
+  puzzleId?: string;
+  setName?: string;
+  puzzleNumber?: number;
 }
 
-export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, date }) => {
+export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, date, puzzleId, setName, puzzleNumber }) => {
   const { shareableData, loading, error, fetchShareableResults, copyToClipboard, shareNative } = useShareableResults();
   const [copySuccess, setCopySuccess] = useState(false);
 
@@ -121,6 +125,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, date })
                   </div>
                 </div>
               </div>
+
+              {/* Feedback Form */}
+              {puzzleId && setName && puzzleNumber && (
+                <FeedbackForm
+                  puzzleId={puzzleId}
+                  setName={setName}
+                  puzzleNumber={puzzleNumber}
+                />
+              )}
             </>
           )}
         </div>
