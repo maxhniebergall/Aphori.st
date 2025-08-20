@@ -33,19 +33,27 @@ class EmbeddingResult:
     similarity_to_theme: float = 0.0
 
 class GeminiEmbeddingProvider:
-    """Embedding provider using Gemini API - adapted from backend pattern."""
+    """Embedding provider using Gemini API with caching support."""
     
-    def __init__(self, model_id: str, dimension: int, api_key: str):
+    def __init__(self, model_id: str, dimension: int, api_key: str, cache_file: str = None):
         """Initialize Gemini embedding provider."""
         self.model_id = model_id
         self.dimension = dimension
         self.api_key = api_key
+        self.cache_file = cache_file
+        self.embedding_cache = {}
+        
+        # Load existing cache if available
+        if cache_file:
+            self._load_cache()
         
         # Import and initialize Google GenAI
         try:
             from google import genai
             self.client = genai.Client(api_key=api_key)
             logger.info(f"Gemini client initialized with model: {model_id}, dimension: {dimension}")
+            if cache_file:
+                logger.info(f"Cache loaded: {len(self.embedding_cache)} existing embeddings")
         except ImportError:
             logger.error("google-genai library not found. Please install: pip install google-genai")
             sys.exit(1)
@@ -53,12 +61,50 @@ class GeminiEmbeddingProvider:
             logger.error(f"Failed to initialize Gemini client: {e}")
             sys.exit(1)
     
+    def _load_cache(self):
+        """Load embeddings from cache file."""
+        if not self.cache_file:
+            return
+        
+        try:
+            import pandas as pd
+            cache_path = Path(self.cache_file)
+            
+            if cache_path.exists():
+                df = pd.read_csv(cache_path)
+                for _, row in df.iterrows():
+                    word = row['word']
+                    # Extract embedding from dimension columns
+                    embedding_cols = [col for col in df.columns if col.startswith('embedding_dim_')]
+                    if embedding_cols:
+                        embedding = [float(row[col]) for col in embedding_cols]
+                        self.embedding_cache[word] = embedding
+                    else:
+                        logger.warning(f"No embedding dimensions found in cache for word: {word}")
+                logger.info(f"Loaded {len(self.embedding_cache)} cached embeddings")
+            else:
+                logger.info("No existing cache file found, starting with empty cache")
+        except Exception as e:
+            logger.warning(f"Failed to load cache: {e}")
+            self.embedding_cache = {}
+    
+    def _save_to_cache(self, text: str, embedding: List[float]):
+        """Save new embedding to cache."""
+        if self.cache_file:
+            self.embedding_cache[text] = embedding
+    
     def generate_embedding(self, text: str) -> Optional[List[float]]:
-        """Generate embedding for text using Gemini API with exponential backoff retry."""
+        """Generate embedding for text using Gemini API with caching and exponential backoff retry."""
         if not text or not text.strip():
             logger.warning("Empty text provided for embedding")
             return None
         
+        # Check cache first
+        if text in self.embedding_cache:
+            logger.debug(f"Cache hit for: {text}")
+            return self.embedding_cache[text]
+        
+        logger.debug(f"Cache miss, generating embedding for: {text}")
         max_retries = 5
         base_delay = 1.0
         
@@ -141,15 +187,43 @@ class GeminiEnhancer:
             logger.error(f"Environment variable {api_key_env} not set")
             sys.exit(1)
         
+        # Get cache file path
+        cache_file = self.output_config.get('embedding_cache_file', 'data/cache/all_embeddings.csv')
+        
+        # Try to restore cache from DVC if it exists
+        self._try_restore_dvc_cache()
+        
         provider = GeminiEmbeddingProvider(
             model_id=self.gemini_config['model_id'],
             dimension=self.gemini_config['embedding_dimension'],
-            api_key=api_key
+            api_key=api_key,
+            cache_file=cache_file
         )
         
         logger.info(f"Gemini API mode enabled - using model: {self.gemini_config['model_id']} with {self.gemini_config['embedding_dimension']} dimensions")
         
         return provider
+    
+    def _try_restore_dvc_cache(self):
+        """Try to restore embeddings cache from DVC if available."""
+        cache_file = self.output_config.get('embedding_cache_file', 'data/cache/all_embeddings.csv')
+        cache_path = Path(cache_file)
+        
+        # If cache doesn't exist, try to restore from DVC cache
+        if not cache_path.exists():
+            try:
+                import subprocess
+                # Try to checkout just this file from DVC cache
+                result = subprocess.run(['dvc', 'checkout', cache_file], 
+                                      capture_output=True, text=True, cwd='.')
+                if result.returncode == 0:
+                    logger.info(f"Restored cache file from DVC: {cache_file}")
+                else:
+                    logger.info(f"No DVC cache available for {cache_file}, starting fresh")
+            except Exception as e:
+                logger.debug(f"Could not restore from DVC cache: {e}")
+        else:
+            logger.info(f"Cache file already exists: {cache_file}")
     
     def load_data(self) -> Tuple[List[str], Dict]:
         """Load themes and candidate words from previous pipeline stages."""
@@ -233,27 +307,44 @@ class GeminiEnhancer:
     
     def select_final_words(self, word_results: List[EmbeddingResult]) -> List[str]:
         """Select final words from ranked candidates."""
-        words_per_puzzle = self.puzzle_config['words_per_puzzle']
+        words_per_theme = self.puzzle_config.get('words_per_theme', 4)  # Use new config
         
-        # Take top N words
-        final_words = [result.word for result in word_results[:words_per_puzzle]]
+        # Take top N words per theme
+        final_words = [result.word for result in word_results[:words_per_theme]]
         
         logger.debug(f"Selected final words: {final_words}")
         return final_words
     
     def process_all_themes(self, themes: List[str], candidates_dict: Dict) -> Tuple[Dict, List[Dict]]:
-        """Process all themes with Gemini enhancement."""
+        """Process themes to create 4x4 puzzles with Gemini enhancement."""
+        target_puzzle_count = self.puzzle_config['total_puzzle_count']
+        themes_per_puzzle = self.puzzle_config.get('themes_per_puzzle', 4)
+        themes_needed = target_puzzle_count * themes_per_puzzle
+        
+        # Extend themes by cycling if we don't have enough unique ones
+        if len(themes) < themes_needed:
+            logger.warning(f"Only {len(themes)} themes available, need {themes_needed}. Will reuse themes.")
+            extended_themes = []
+            for i in range(themes_needed):
+                extended_themes.append(themes[i % len(themes)])
+            themes_to_use = extended_themes
+        else:
+            themes_to_use = themes[:themes_needed]
+        
         results = {
             "puzzles": {},
             "metadata": {
-                "total_themes": len(themes),
+                "total_themes_needed": themes_needed,
+                "total_themes_available": len(themes),
+                "themes_reused": len(themes) < themes_needed,
                 "successful_puzzles": 0,
-                "failed_themes": [],
+                "failed_puzzles": [],
                 "processing_time": 0,
                 "gemini_config": {
                     "model_id": self.gemini_config['model_id'],
                     "embedding_dimension": self.gemini_config['embedding_dimension'],
-                    "words_per_puzzle": self.puzzle_config['words_per_puzzle']
+                    "words_per_theme": self.puzzle_config.get('words_per_theme', 4),
+                    "themes_per_puzzle": themes_per_puzzle
                 }
             }
         }
@@ -262,105 +353,126 @@ class GeminiEnhancer:
         all_embeddings = []
         
         start_time = time.time()
-        successful = 0
+        successful_puzzles = 0
         
-        for i, theme in enumerate(themes, 1):
-            if theme not in candidates_dict:
-                logger.warning(f"No candidates found for theme: {theme}")
-                results["metadata"]["failed_themes"].append({
-                    "theme": theme,
-                    "reason": "No candidates from previous stage"
-                })
-                continue
+        # Group themes into puzzles of 4 themes each
+        for puzzle_id in range(1, target_puzzle_count + 1):
+            start_idx = (puzzle_id - 1) * themes_per_puzzle
+            puzzle_themes = themes_to_use[start_idx:start_idx + themes_per_puzzle]
             
-            candidate_words = candidates_dict[theme]['words']
-            logger.info(f"Processing theme {i}/{len(themes)}: {theme}")
+            logger.info(f"Processing puzzle {puzzle_id}/{target_puzzle_count} with themes: {puzzle_themes}")
             
             try:
-                # Process with Gemini
-                word_results, theme_embedding = self.process_theme_with_gemini(theme, candidate_words)
+                puzzle_words = []
+                puzzle_similarities = []
+                puzzle_failed = False
                 
-                if not word_results or not theme_embedding:
-                    logger.error(f"Failed to process theme with Gemini: {theme}")
-                    results["metadata"]["failed_themes"].append({
+                # Process each theme in this puzzle
+                for theme in puzzle_themes:
+                    if theme not in candidates_dict:
+                        logger.error(f"No candidates found for theme: {theme}")
+                        results["metadata"]["failed_puzzles"].append({
+                            "puzzle_id": puzzle_id,
+                            "themes": puzzle_themes,
+                            "error": f"No candidates for theme: {theme}"
+                        })
+                        puzzle_failed = True
+                        break
+                    
+                    candidate_words = candidates_dict[theme]['words']
+                    
+                    # Process with Gemini
+                    word_results, theme_embedding = self.process_theme_with_gemini(theme, candidate_words)
+                    
+                    if not word_results or not theme_embedding:
+                        logger.error(f"Failed to process theme with Gemini: {theme}")
+                        results["metadata"]["failed_puzzles"].append({
+                            "puzzle_id": puzzle_id,
+                            "themes": puzzle_themes,
+                            "error": f"Gemini processing failed for theme: {theme}"
+                        })
+                        puzzle_failed = True
+                        break
+                    
+                    # Select final words for this theme
+                    final_words = self.select_final_words(word_results)
+                    
+                    if len(final_words) != 4:
+                        logger.error(f"Theme '{theme}' produced {len(final_words)} words, expected exactly 4")
+                        results["metadata"]["failed_puzzles"].append({
+                            "puzzle_id": puzzle_id,
+                            "themes": puzzle_themes,
+                            "error": f"Theme '{theme}' produced {len(final_words)} words, expected 4"
+                        })
+                        puzzle_failed = True
+                        break
+                    
+                    puzzle_words.extend(final_words)
+                    puzzle_similarities.extend([r.similarity_to_theme for r in word_results[:4]])
+                    
+                    # Add embeddings for tracking
+                    theme_embedding_data = {
                         "theme": theme,
-                        "reason": "Gemini embedding generation failed"
+                        "word": theme,
+                        "word_type": "theme",
+                        "embedding": theme_embedding,
+                        "similarity_to_theme": 1.0,
+                        "rank": 0
+                    }
+                    all_embeddings.append({**theme_embedding_data, "dataset": "cache"})
+                    
+                    for rank, result in enumerate(word_results, 1):
+                        all_embeddings.append({
+                            "theme": theme,
+                            "word": result.word,
+                            "word_type": "candidate" if rank > 4 else "selected_word",
+                            "embedding": result.embedding,
+                            "similarity_to_theme": result.similarity_to_theme,
+                            "rank": rank,
+                            "dataset": "cache" if rank > 4 else "puzzle"
+                        })
+                
+                if puzzle_failed:
+                    continue
+                
+                # Validate we have exactly 16 words
+                if len(puzzle_words) != 16:
+                    logger.error(f"Puzzle {puzzle_id} has {len(puzzle_words)} words, expected exactly 16")
+                    results["metadata"]["failed_puzzles"].append({
+                        "puzzle_id": puzzle_id,
+                        "themes": puzzle_themes,
+                        "error": f"Generated {len(puzzle_words)} words instead of 16"
                     })
                     continue
                 
-                # Select final words
-                final_words = self.select_final_words(word_results)
-                
-                if not final_words:
-                    logger.error(f"No final words selected for theme: {theme}")
-                    results["metadata"]["failed_themes"].append({
-                        "theme": theme,
-                        "reason": "No final words selected"
-                    })
-                    continue
-                
-                # Store puzzle result
-                results["puzzles"][theme] = {
-                    "words": final_words,
-                    "theme_similarity_scores": [r.similarity_to_theme for r in word_results[:len(final_words)]],
-                    "all_candidates": [r.word for r in word_results],
-                    "all_similarities": [r.similarity_to_theme for r in word_results]
+                # Store successful puzzle
+                puzzle_key = f"puzzle_{puzzle_id}"
+                results["puzzles"][puzzle_key] = {
+                    "words": puzzle_words,
+                    "theme_similarity_scores": puzzle_similarities,
+                    "themes": puzzle_themes,
+                    "all_candidates": [],  # Not tracking individual candidates in this format
+                    "all_similarities": puzzle_similarities
                 }
                 
-                # Add theme to both cache and puzzle embeddings
-                theme_embedding_data = {
-                    "theme": theme,
-                    "word": theme,
-                    "word_type": "theme",
-                    "embedding": theme_embedding,
-                    "similarity_to_theme": 1.0,
-                    "rank": 0
-                }
-                all_embeddings.append({**theme_embedding_data, "dataset": "cache"})
-                
-                # Add all candidate words to cache embeddings
-                for rank, result in enumerate(word_results, 1):
-                    all_embeddings.append({
-                        "theme": theme,
-                        "word": result.word,
-                        "word_type": "candidate",
-                        "embedding": result.embedding,
-                        "similarity_to_theme": result.similarity_to_theme,
-                        "rank": rank,
-                        "dataset": "cache"
-                    })
-                
-                # Add theme and final selected words to puzzle embeddings
-                all_embeddings.append({**theme_embedding_data, "dataset": "puzzle"})
-                final_word_count = len(final_words)
-                for rank, result in enumerate(word_results[:final_word_count], 1):
-                    all_embeddings.append({
-                        "theme": theme,
-                        "word": result.word,
-                        "word_type": "selected_word",
-                        "embedding": result.embedding,
-                        "similarity_to_theme": result.similarity_to_theme,
-                        "rank": rank,
-                        "dataset": "puzzle"
-                    })
-                
-                successful += 1
-                logger.info(f"  → Successfully processed with {len(final_words)} final words")
+                successful_puzzles += 1
+                logger.info(f"  → Successfully created puzzle with 16 words from 4 themes")
                 
             except Exception as e:
-                error_msg = f"Error processing theme: {e}"
-                results["metadata"]["failed_themes"].append({
-                    "theme": theme,
-                    "reason": error_msg
+                error_msg = f"Error processing puzzle {puzzle_id}: {e}"
+                results["metadata"]["failed_puzzles"].append({
+                    "puzzle_id": puzzle_id,
+                    "themes": puzzle_themes,
+                    "error": error_msg
                 })
                 logger.error(f"  → {error_msg}")
         
         # Update metadata
         processing_time = time.time() - start_time
-        results["metadata"]["successful_puzzles"] = successful
+        results["metadata"]["successful_puzzles"] = successful_puzzles
         results["metadata"]["processing_time"] = processing_time
         
-        logger.info(f"Gemini enhancement completed: {successful}/{len(themes)} themes successful")
+        logger.info(f"Gemini enhancement completed: {successful_puzzles}/{target_puzzle_count} puzzles successful")
         logger.info(f"Processing time: {processing_time:.2f} seconds")
         
         return results, all_embeddings
@@ -473,8 +585,8 @@ class GeminiEnhancer:
         self.save_csv_embeddings(all_embeddings)
         
         successful = results["metadata"]["successful_puzzles"]
-        total = results["metadata"]["total_themes"]
-        logger.info(f"Saved results for {successful}/{total} successful puzzles")
+        total_themes_needed = results["metadata"]["total_themes_needed"]
+        logger.info(f"Saved results for {successful} successful puzzles (needed {total_themes_needed} total themes)")
         logger.info(f"Final puzzles: {puzzles_path}")
         logger.info(f"Cache embeddings: {self.output_config['embedding_cache_file']}")
         logger.info(f"Puzzle embeddings: {self.output_config['puzzle_embeddings_file']}")

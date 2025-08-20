@@ -93,8 +93,8 @@ class PuzzleGenerator:
             sys.exit(1)
     
     def find_theme_words(self, theme: str) -> Tuple[List[str], List[float]]:
-        """Find the closest words to a theme using semantic search."""
-        words_per_puzzle = self.puzzle_config['words_per_puzzle']
+        """Find exactly 4 words for a theme using semantic search."""
+        words_per_theme = 4
         max_candidates = self.vector_config.get('max_search_candidates', 20)
         min_similarity = self.puzzle_config['min_similarity_threshold']
         
@@ -102,95 +102,127 @@ class PuzzleGenerator:
         neighbors = self.vector_loader.find_nearest_neighbors(theme, k=max_candidates)
         
         if not neighbors:
-            logger.warning(f"No similar words found for theme: {theme}")
-            return [], []
+            raise ValueError(f"No similar words found for theme: {theme}")
         
         # Filter by minimum similarity threshold
         valid_neighbors = [(word, score) for word, score in neighbors if score >= min_similarity]
         
-        if len(valid_neighbors) < words_per_puzzle:
-            logger.warning(f"Only {len(valid_neighbors)} words found above threshold {min_similarity} for theme: {theme}")
-            # Use all valid neighbors if we don't have enough
-            selected_neighbors = valid_neighbors
-        else:
-            # Take the top N words
-            selected_neighbors = valid_neighbors[:words_per_puzzle]
+        if len(valid_neighbors) < words_per_theme:
+            raise ValueError(f"Only {len(valid_neighbors)} words found above threshold {min_similarity} for theme: {theme}. Need exactly {words_per_theme}.")
+        
+        # Take exactly the top 4 words
+        selected_neighbors = valid_neighbors[:words_per_theme]
         
         words = [word for word, score in selected_neighbors]
         scores = [score for word, score in selected_neighbors]
         
         return words, scores
     
-    def generate_puzzle(self, theme: str, puzzle_id: int) -> Optional[Dict]:
-        """Generate a single puzzle for the given theme."""
-        logger.debug(f"Generating puzzle {puzzle_id} for theme: {theme}")
+    def generate_puzzle(self, themes: List[str], puzzle_id: int) -> Dict:
+        """Generate a single 4x4 puzzle using exactly 4 themes."""
+        if len(themes) != 4:
+            raise ValueError(f"Expected exactly 4 themes for puzzle {puzzle_id}, got {len(themes)}")
         
-        words, scores = self.find_theme_words(theme)
+        logger.debug(f"Generating puzzle {puzzle_id} for themes: {themes}")
         
-        if len(words) < 2:  # Need at least 2 words for a meaningful puzzle
-            logger.warning(f"Skipping theme '{theme}' - insufficient words found")
-            return None
+        categories = []
+        all_words = []
+        all_scores = []
+        
+        for i, theme in enumerate(themes):
+            words, scores = self.find_theme_words(theme)
+            
+            if len(words) != 4:
+                raise ValueError(f"Theme '{theme}' produced {len(words)} words, expected exactly 4")
+            
+            categories.append({
+                "id": i,
+                "theme": theme,
+                "words": words,
+                "similarity_scores": scores,
+                "average_similarity": sum(scores) / len(scores)
+            })
+            
+            all_words.extend(words)
+            all_scores.extend(scores)
         
         puzzle = {
             "id": puzzle_id,
-            "theme": theme,
-            "words": words,
-            "word_count": len(words)
+            "categories": categories,
+            "words": all_words,
+            "word_count": len(all_words)
         }
         
-        # Add similarity scores if requested
+        # Add overall similarity scores if requested
         if self.output_config.get('include_similarity_scores', False):
-            puzzle["similarity_scores"] = scores
-            puzzle["average_similarity"] = sum(scores) / len(scores) if scores else 0.0
+            puzzle["overall_similarity_scores"] = all_scores
+            puzzle["average_similarity"] = sum(all_scores) / len(all_scores)
         
         return puzzle
     
     def generate_all_puzzles(self, themes: List[str]) -> Tuple[List[Dict], Dict]:
-        """Generate puzzles for all themes and return results + metadata."""
+        """Generate 4x4 puzzles using groups of 4 themes each."""
+        target_puzzle_count = self.puzzle_config['total_puzzle_count']
+        themes_needed = target_puzzle_count * 4
+        
+        if len(themes) < 4:
+            raise ValueError(f"Need at least 4 themes to generate puzzles, but only {len(themes)} themes available")
+        
+        # Extend themes by cycling if we don't have enough unique ones
+        if len(themes) < themes_needed:
+            logger.warning(f"Only {len(themes)} themes available, need {themes_needed}. Will reuse themes.")
+            extended_themes = []
+            for i in range(themes_needed):
+                extended_themes.append(themes[i % len(themes)])
+            themes_to_use = extended_themes
+        else:
+            themes_to_use = themes[:themes_needed]
+        
         puzzles = []
         metadata = {
-            "total_themes": len(themes),
+            "total_themes_needed": themes_needed,
+            "total_themes_available": len(themes),
+            "themes_reused": len(themes) < themes_needed,
             "successful_puzzles": 0,
-            "failed_themes": [],
+            "failed_puzzles": [],
             "generation_time": 0,
-            "average_words_per_puzzle": 0,
             "config": {
-                "words_per_puzzle": self.puzzle_config['words_per_puzzle'],
+                "themes_per_puzzle": 4,
+                "words_per_theme": 4,
                 "min_similarity_threshold": self.puzzle_config['min_similarity_threshold'],
                 "vector_source": self.vector_config['data_source']
             }
         }
         
         start_time = time.time()
-        total_words = 0
         
-        for i, theme in enumerate(themes, 1):
+        # Group themes into sets of 4 for each puzzle
+        for puzzle_id in range(1, target_puzzle_count + 1):
+            start_idx = (puzzle_id - 1) * 4
+            puzzle_themes = themes_to_use[start_idx:start_idx + 4]
+            
             try:
-                puzzle = self.generate_puzzle(theme, i)
+                puzzle = self.generate_puzzle(puzzle_themes, puzzle_id)
+                puzzles.append(puzzle)
+                metadata["successful_puzzles"] += 1
                 
-                if puzzle:
-                    puzzles.append(puzzle)
-                    total_words += puzzle["word_count"]
-                    metadata["successful_puzzles"] += 1
-                    
-                    if i % 10 == 0:
-                        logger.info(f"Generated {i}/{len(themes)} puzzles...")
-                else:
-                    metadata["failed_themes"].append(theme)
+                if puzzle_id % 10 == 0:
+                    logger.info(f"Generated {puzzle_id}/{target_puzzle_count} puzzles...")
                     
             except Exception as e:
-                logger.error(f"Error generating puzzle for theme '{theme}': {e}")
-                metadata["failed_themes"].append(theme)
+                logger.error(f"Error generating puzzle {puzzle_id} with themes {puzzle_themes}: {e}")
+                metadata["failed_puzzles"].append({
+                    "puzzle_id": puzzle_id,
+                    "themes": puzzle_themes,
+                    "error": str(e)
+                })
         
         end_time = time.time()
         metadata["generation_time"] = end_time - start_time
         
-        if metadata["successful_puzzles"] > 0:
-            metadata["average_words_per_puzzle"] = total_words / metadata["successful_puzzles"]
-        
         logger.info(f"Generated {metadata['successful_puzzles']} puzzles successfully")
-        if metadata["failed_themes"]:
-            logger.warning(f"Failed to generate puzzles for {len(metadata['failed_themes'])} themes")
+        if metadata["failed_puzzles"]:
+            logger.warning(f"Failed to generate {len(metadata['failed_puzzles'])} puzzles")
         
         return puzzles, metadata
     
@@ -212,7 +244,8 @@ class PuzzleGenerator:
         # Add metadata if requested
         if self.output_config.get('include_metadata', False):
             puzzle_output["generation_config"] = {
-                "words_per_puzzle": self.puzzle_config['words_per_puzzle'],
+                "themes_per_puzzle": 4,
+                "words_per_theme": 4,
                 "min_similarity_threshold": self.puzzle_config['min_similarity_threshold'],
                 "theme_selection_method": self.puzzle_config.get('theme_selection_method'),
                 "vector_source": self.vector_config['data_source']
