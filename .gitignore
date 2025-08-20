@@ -60,3 +60,4 @@ scripts/datascience/themes_quality/data/unigram_freq.csv
 scripts/datascience/__pycache__
 scripts/datascience/themes_quality/pipeline/__pycache__
 scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline/pipeline/__pycache__
+scripts/datascience/themes_quality/wiki_puzzle_pipeline/pipeline/__pycache__
