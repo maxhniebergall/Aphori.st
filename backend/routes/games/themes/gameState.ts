@@ -20,6 +20,7 @@ import {
 import { 
   ThemesAttempt, 
   ThemesGameState,
+  ThemesPuzzleCompletion,
   THEMES_DB_PATHS,
   isTemporaryUserId 
 } from '../../../types/games/themes.js';
@@ -39,9 +40,9 @@ async function handleTempUser(req: Request, res: Response, next: NextFunction) {
     const { tempUserService } = getThemesServices();
     
     // Check if user is logged in
-    if (req.user && req.user.id) {
-      req.effectiveUserId = req.user.id;
-      req.userType = 'logged_in';
+    if ((req as any).user && (req as any).user.id) {
+      (req as any).effectiveUserId = (req as any).user.id;
+      (req as any).userType = 'logged_in';
       return next();
     }
 
@@ -58,8 +59,8 @@ async function handleTempUser(req: Request, res: Response, next: NextFunction) {
       sameSite: 'lax'
     });
 
-    req.effectiveUserId = tempUser.tempId;
-    req.userType = 'temporary';
+    (req as any).effectiveUserId = tempUser.tempId;
+    (req as any).userType = 'temporary';
     next();
   } catch (error) {
     logger.error('Error handling temporary user:', error);
@@ -73,14 +74,128 @@ async function handleTempUser(req: Request, res: Response, next: NextFunction) {
 router.use(handleTempUser);
 
 /**
+ * Helper function to create completion metrics
+ */
+async function createCompletionMetrics(
+  dbClient: any,
+  userId: string,
+  userType: 'logged_in' | 'temporary',
+  puzzle: any,
+  puzzleId: string,
+  currentDate: string
+): Promise<void> {
+  try {
+    // Get all user attempts for this puzzle
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
+    const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
+    
+    const puzzleAttempts = Object.values(allAttempts).filter(
+      (attempt: any) => attempt.puzzleId === puzzleId
+    ) as ThemesAttempt[];
+
+    if (puzzleAttempts.length === 0) return;
+
+    // Sort attempts by timestamp
+    puzzleAttempts.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Get first view time (from puzzle views)
+    const userViewsPath = THEMES_DB_PATHS.USER_PUZZLE_VIEWS(userId);
+    const userViews = await dbClient.getRawPath(userViewsPath) || {};
+    
+    let firstViewTime = puzzleAttempts[0].timestamp; // Fallback to first attempt
+    for (const viewData of Object.values(userViews) as any[]) {
+      if (viewData.puzzleId === puzzleId && viewData.timestamp < firstViewTime) {
+        firstViewTime = viewData.timestamp;
+        break;
+      }
+    }
+
+    // Calculate completion metrics
+    const completionTime = Date.now() - firstViewTime;
+    const totalAttempts = puzzleAttempts.length;
+    
+    // Calculate category completion order
+    const categoryCompletionOrder: string[] = [];
+    const correctAttempts = puzzleAttempts.filter(attempt => attempt.result === 'correct');
+    
+    for (const attempt of correctAttempts) {
+      // Find which category this attempt solved
+      const solvedCategory = puzzle.categories.find((cat: any) => {
+        const categoryWordSet = new Set(cat.words);
+        const selectedWordSet = new Set(attempt.selectedWords);
+        return categoryWordSet.size === selectedWordSet.size && 
+               [...categoryWordSet].every(word => selectedWordSet.has(word));
+      });
+      
+      if (solvedCategory && !categoryCompletionOrder.includes(solvedCategory.id)) {
+        categoryCompletionOrder.push(solvedCategory.id);
+      }
+    }
+
+    // Calculate average words per attempt
+    const totalWordsSelected = puzzleAttempts.reduce((sum, attempt) => sum + attempt.selectedWords.length, 0);
+    const averageWordsPerAttempt = totalWordsSelected / totalAttempts;
+
+    // Calculate unique word selections
+    const uniqueWords = new Set();
+    puzzleAttempts.forEach(attempt => {
+      attempt.selectedWords.forEach(word => uniqueWords.add(word));
+    });
+
+    // Extract set and puzzle number from puzzle ID
+    const puzzleIdParts = puzzleId.split('_');
+    const setName = puzzleIdParts[0] || 'unknown';
+    const puzzleNumber = puzzle.puzzleNumber || 0;
+
+    // Create completion record
+    const completionId = generateAttemptId();
+    const completion: ThemesPuzzleCompletion = {
+      id: completionId,
+      userId,
+      userType,
+      puzzleId,
+      setName,
+      puzzleNumber,
+      totalAttempts,
+      completionTime,
+      categoryCompletionOrder,
+      averageWordsPerAttempt: Math.round(averageWordsPerAttempt * 100) / 100,
+      uniqueWordSelections: uniqueWords.size,
+      timestamp: Date.now()
+    };
+
+    // Store completion metrics
+    const completionPath = THEMES_DB_PATHS.COMPLETION_ENTRY(completionId);
+    await dbClient.setRawPath(completionPath, completion);
+
+    // Also store in user-specific index
+    const userCompletionsPath = `${THEMES_DB_PATHS.USER_COMPLETIONS(userId)}/${completionId}`;
+    await dbClient.setRawPath(userCompletionsPath, {
+      completionId,
+      puzzleId,
+      setName,
+      puzzleNumber,
+      totalAttempts,
+      completionTime,
+      timestamp: completion.timestamp
+    });
+
+    logger.info(`Created completion metrics for ${userId}: ${puzzleId} (${totalAttempts} attempts, ${Math.round(completionTime/1000)}s)`);
+  } catch (error) {
+    logger.error('Error creating completion metrics:', error);
+    // Don't throw - completion metrics are optional
+  }
+}
+
+/**
  * GET /api/games/themes/state/progress
  * Get user's game progress
  */
-router.get('/progress', async (req: TempUserRequest, res: Response) => {
+router.get('/progress', async (req: Request, res: Response) => {
   try {
     const { dbClient } = getThemesServices();
-    const userId = req.effectiveUserId;
-    const userType = req.userType;
+    const userId = (req as any).effectiveUserId;
+    const userType = (req as any).userType;
 
     // Get progress path based on user type
     const progressPath = userType === 'logged_in' 
@@ -117,9 +232,9 @@ router.get('/progress', async (req: TempUserRequest, res: Response) => {
  * POST /api/games/themes/state/attempt
  * Submit a puzzle attempt
  */
-router.post('/attempt', async (req: TempUserRequest, res: Response) => {
+router.post('/attempt', async (req: Request, res: Response) => {
   try {
-    const { puzzleId, selectedWords } = req.body;
+    const { puzzleId, selectedWords, selectionOrder } = req.body;
 
     if (!puzzleId || !Array.isArray(selectedWords) || selectedWords.length === 0) {
       res.status(400).json({
@@ -130,8 +245,8 @@ router.post('/attempt', async (req: TempUserRequest, res: Response) => {
     }
 
     const { dbClient } = getThemesServices();
-    const userId = req.effectiveUserId;
-    const userType = req.userType;
+    const userId = (req as any).effectiveUserId;
+    const userType = (req as any).userType;
     
     // Extract date from puzzleId (format: themes_YYYY-MM-DD_N)
     const puzzleIdParts = puzzleId.split('_');
@@ -203,6 +318,7 @@ router.post('/attempt', async (req: TempUserRequest, res: Response) => {
       userType,
       puzzleId,
       selectedWords,
+      selectionOrder: selectionOrder || [],
       result,
       distance,
       timestamp: Date.now(),
@@ -238,6 +354,9 @@ router.post('/attempt', async (req: TempUserRequest, res: Response) => {
       currentProgress.lastAccessed = Date.now();
       
       await dbClient.setRawPath(progressPath, currentProgress);
+      
+      // Create enhanced completion metrics
+      await createCompletionMetrics(dbClient, userId, userType, puzzle, puzzleId, currentDate);
     }
 
     res.json({
@@ -269,7 +388,7 @@ router.post('/attempt', async (req: TempUserRequest, res: Response) => {
  * GET /api/games/themes/state/shareable/:date
  * Get shareable results for a specific date
  */
-router.get('/shareable/:date', async (req: TempUserRequest, res: Response) => {
+router.get('/shareable/:date', async (req: Request, res: Response) => {
   try {
     const { date } = req.params;
     const userId = req.effectiveUserId;

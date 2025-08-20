@@ -12,6 +12,7 @@ import { TemporaryUserService } from '../../../services/games/TemporaryUserServi
 import dailyPuzzlesRoutes from './dailyPuzzles.js';
 import puzzleSetsRoutes from './puzzleSets.js';
 import gameStateRoutes from './gameState.js';
+import analyticsRoutes from './analytics.js';
 // import adminRoutes from './admin.js';
 
 // Global services that will be injected
@@ -86,6 +87,7 @@ router.get('/health', async (req, res) => {
 router.use('/daily', dailyPuzzlesRoutes);
 router.use('/sets', puzzleSetsRoutes);
 router.use('/state', gameStateRoutes);
+router.use('/analytics', analyticsRoutes);
 // Temporarily disabled due to TypeScript errors
 // router.use('/admin', adminRoutes);
 
