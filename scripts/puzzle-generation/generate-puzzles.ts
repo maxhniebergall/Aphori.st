@@ -36,6 +36,17 @@ class PuzzleGenerationScript {
   ) {}
 
   /**
+   * Create a visual progress indicator
+   */
+  private createProgressIndicator(current: number, total: number): string {
+    const percentage = Math.round((current / total) * 100);
+    const filled = Math.round((current / total) * 10);
+    const empty = 10 - filled;
+    const bar = '█'.repeat(filled) + '░'.repeat(empty);
+    return `[${bar}] ${percentage}% (${current}/${total})`;
+  }
+
+  /**
    * Generate puzzles for a date range
    */
   async generateDateRange(config: GenerationConfig): Promise<GenerationSummary> {
@@ -63,8 +74,9 @@ class PuzzleGenerationScript {
     // Collect all puzzles in a single Firebase structure
     const firebaseData: Record<string, any> = {};
 
-    for (const date of dates) {
-      console.log(`\n📅 Processing date: ${date}`);
+    for (const [index, date] of dates.entries()) {
+      const progressBar = this.createProgressIndicator(index + 1, dates.length);
+      console.log(`\n📅 ${progressBar} Processing date: ${date}`);
       
       try {
         const output = await this.puzzleGenerator.generateDailyPuzzles(date, config.puzzlesPerDay);
@@ -81,6 +93,7 @@ class PuzzleGenerationScript {
             qualityCount++;
             
             console.log(`✅ ${date}: Generated ${output.puzzles.length}/${config.puzzlesPerDay} puzzles (quality: ${output.metadata.qualityScore.toFixed(3)})`);
+            console.log(`   🏁 Date ${date} completed successfully`);
             
             if (config.verbose) {
               this.logPuzzleDetails(output);
@@ -88,14 +101,17 @@ class PuzzleGenerationScript {
           } else {
             results.failedDates.push(date);
             console.log(`❌ ${date}: Quality too low (${output.metadata.qualityScore.toFixed(3)} < ${config.qualityThreshold})`);
+            console.log(`   🏁 Date ${date} completed with quality issues`);
           }
         } else {
           results.failedDates.push(date);
           console.log(`❌ ${date}: Failed to generate puzzles`);
+          console.log(`   🏁 Date ${date} completed with failures`);
         }
       } catch (error) {
         results.failedDates.push(date);
         console.log(`💥 ${date}: Error - ${(error as Error).message}`);
+        console.log(`   🏁 Date ${date} completed with errors`);
         if (config.verbose) {
           console.error(error);
         }

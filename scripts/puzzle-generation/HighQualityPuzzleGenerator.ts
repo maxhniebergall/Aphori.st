@@ -71,6 +71,17 @@ export class HighQualityPuzzleGenerator {
   }
 
   /**
+   * Create a visual progress indicator
+   */
+  private createProgressIndicator(current: number, total: number): string {
+    const percentage = Math.round((current / total) * 100);
+    const filled = Math.round((current / total) * 10);
+    const empty = 10 - filled;
+    const bar = '█'.repeat(filled) + '░'.repeat(empty);
+    return `[${bar}] ${percentage}% (${current}/${total})`;
+  }
+
+  /**
    * Generate multiple puzzles for a given date (sizes 4x4 through 10x10)
    */
   async generateDailyPuzzles(date: string, count: number = 7): Promise<GeneratedPuzzleOutput> {
@@ -91,19 +102,25 @@ export class HighQualityPuzzleGenerator {
     let totalAttempts = 0;
     const qualityScores: number[] = [];
 
-    for (let i = 0; i < Math.min(count, puzzleConfigs.length); i++) {
+    const totalPuzzles = Math.min(count, puzzleConfigs.length);
+    let completedPuzzles = 0;
+
+    for (let i = 0; i < totalPuzzles; i++) {
       const config = puzzleConfigs[i];
       console.log(`\n🎲 Generating puzzle ${i + 1}: ${config.name}`);
       
       const result = await this.generateSinglePuzzle(date, i + 1, config.size);
       
       if (result.puzzle) {
+        completedPuzzles++;
         puzzles.push(result.puzzle);
         qualityScores.push(result.qualityScore);
         
+        const progressBar = this.createProgressIndicator(completedPuzzles, totalPuzzles);
+        console.log(`   ✅ ${progressBar} Puzzle ${i + 1} completed (${config.size}x${config.size}, quality: ${result.qualityScore.toFixed(3)})`);
+        
         // Log difficulty progression
         const difficulties = result.puzzle.categories.map(cat => cat.difficulty);
-        console.log(`✅ Puzzle ${i + 1} (${config.name}): Generated in ${result.attempts} attempts`);
         console.log(`   📊 Quality: ${result.qualityScore.toFixed(2)}, Difficulties: [${difficulties.join(', ')}]`);
         
         // Log difficulty details
@@ -111,6 +128,8 @@ export class HighQualityPuzzleGenerator {
           const metrics = cat.difficultyMetrics;
           console.log(`   📈 Category ${idx + 1} (${cat.themeWord}): N=${metrics.totalNeighbors}, range=${metrics.selectedRange}`);
         });
+      } else {
+        console.log(`   ❌ Puzzle ${i + 1} failed after ${result.attempts} attempts`);
       }
       
       totalAttempts += result.attempts;
