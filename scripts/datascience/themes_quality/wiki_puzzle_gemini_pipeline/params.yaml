@@ -1,8 +1,9 @@
 # Enhanced Wiki Puzzle Generation Pipeline with Gemini Embeddings
 
 puzzle_generation:
-  total_puzzle_count: 50  # Configurable puzzle count
-  words_per_puzzle: 4
+  total_puzzle_count: 100  # Configurable puzzle count  
+  words_per_theme: 4  # 4 words per theme for 4x4 puzzles
+  themes_per_puzzle: 4  # 4 themes per puzzle
   candidate_words_per_theme: 10  # Initial vector search candidates
   min_similarity_threshold: 0.3
   theme_selection_method: "random"
