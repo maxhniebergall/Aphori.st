@@ -29,6 +29,7 @@ export interface ThemeCategory {
 
 export interface GameState {
   selectedWords: string[];
+  selectionOrder: number[]; // Order in which words were selected
   completedCategories: string[];
   attempts: number;
   isComplete: boolean;
@@ -61,6 +62,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
   
   const [gameState, setGameState] = useState<GameState>({
     selectedWords: [],
+    selectionOrder: [],
     completedCategories: [],
     attempts: 0,
     isComplete: false,
@@ -130,6 +132,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
       setPuzzle(targetPuzzle);
       setGameState({
         selectedWords: [],
+        selectionOrder: [],
         completedCategories: [],
         attempts: 0,
         isComplete: false,
@@ -165,6 +168,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
       setPuzzle(targetPuzzle);
       setGameState({
         selectedWords: [],
+        selectionOrder: [],
         completedCategories: [],
         attempts: 0,
         isComplete: false,
@@ -184,23 +188,29 @@ export const useThemesGame = (): UseThemesGameReturn => {
     setGameState(prev => {
       const isSelected = prev.selectedWords.includes(word);
       let newSelected: string[];
+      let newSelectionOrder: number[];
 
       if (isSelected) {
-        // Deselect word
+        // Deselect word - remove from both arrays
+        const wordIndex = prev.selectedWords.indexOf(word);
         newSelected = prev.selectedWords.filter(w => w !== word);
+        newSelectionOrder = prev.selectionOrder.filter((_, i) => i !== wordIndex);
       } else {
         // Select word (up to WORDS_PER_CATEGORY)
         if (prev.selectedWords.length < WORDS_PER_CATEGORY) {
           newSelected = [...prev.selectedWords, word];
+          newSelectionOrder = [...prev.selectionOrder, prev.selectionOrder.length];
         } else {
           // Replace oldest selected word
           newSelected = [...prev.selectedWords.slice(1), word];
+          newSelectionOrder = [...prev.selectionOrder.slice(1).map(order => order - 1), prev.selectionOrder.length - 1];
         }
       }
 
       return {
         ...prev,
         selectedWords: newSelected,
+        selectionOrder: newSelectionOrder,
         shakingWords: [] // Clear any shaking animation
       };
     });
@@ -222,7 +232,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
         credentials: 'include',
         body: JSON.stringify({
           puzzleId: puzzle.id,
-          selectedWords: gameState.selectedWords
+          selectedWords: gameState.selectedWords,
+          selectionOrder: gameState.selectionOrder
         })
       });
 
@@ -276,6 +287,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
             }, 1000);
           }
           newState.selectedWords = [];
+          newState.selectionOrder = [];
           
           // Check if game is complete
           if (newState.completedCategories.length === puzzle.categories.length) {
@@ -285,6 +297,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
           // Incorrect selection - trigger shake animation
           newState.shakingWords = prev.selectedWords;
           newState.selectedWords = [];
+          newState.selectionOrder = [];
           
           // Clear any existing shake timeout
           if (shakeTimeoutRef.current) {
@@ -315,6 +328,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
       ...prev,
       gridWords: shuffleArray(prev.gridWords),
       selectedWords: [], // Clear selection on shuffle
+      selectionOrder: [], // Clear selection order on shuffle
       shakingWords: [] // Clear any shaking animation
     }));
   }, [puzzle, shuffleArray]);
@@ -325,6 +339,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
 
     setGameState({
       selectedWords: [],
+      selectionOrder: [],
       completedCategories: [],
       attempts: 0,
       isComplete: false,
