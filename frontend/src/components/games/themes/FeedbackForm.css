@@ -1,0 +1,158 @@
+.feedback-form {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background-color: #fafafa;
+}
+
+.feedback-form h3 {
+  margin: 0 0 0.5rem 0;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.feedback-form > p {
+  margin: 0 0 1.5rem 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+/* Rating Section */
+.rating-section {
+  margin-bottom: 1.5rem;
+}
+
+.rating-section label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.star-rating {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.star {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #ddd;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  padding: 0.25rem;
+}
+
+.star:hover {
+  color: #ffd700;
+}
+
+.star.active {
+  color: #ffd700;
+}
+
+.star:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.rating-text {
+  font-size: 0.9rem;
+  color: #666;
+  font-style: italic;
+}
+
+/* Comment Section */
+.comment-section {
+  margin-bottom: 1.5rem;
+}
+
+.comment-section label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.comment-section textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.comment-section textarea:focus {
+  outline: none;
+  border-color: #4CAF50;
+}
+
+.comment-section textarea:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.char-count {
+  text-align: right;
+  font-size: 0.8rem;
+  color: #999;
+  margin-top: 0.25rem;
+}
+
+/* Error Message */
+.error-message {
+  color: #d32f2f;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  background-color: #ffebee;
+  border-radius: 4px;
+  border-left: 4px solid #d32f2f;
+}
+
+/* Submit Section */
+.submit-section {
+  text-align: center;
+}
+
+.submit-feedback-button {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.submit-feedback-button:hover:not(:disabled) {
+  background-color: #45a049;
+}
+
+.submit-feedback-button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* Submitted State */
+.feedback-form.submitted {
+  text-align: center;
+  padding: 2rem;
+}
+
+.feedback-success h3 {
+  color: #4CAF50;
+  margin-bottom: 0.5rem;
+}
+
+.feedback-success p {
+  color: #666;
+  margin: 0;
+}
