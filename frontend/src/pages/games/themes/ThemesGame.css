@@ -1,54 +1,106 @@
 .themes-game-container {
-  max-width: 600px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 16px;
-  height: 100vh;
-  max-height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* When playing a specific puzzle, constrain the width */
+.themes-game-container:has(.game-grid) {
+  max-width: 600px;
+  height: 100vh;
+  max-height: 100vh;
   justify-content: center;
   overflow: hidden;
-  box-sizing: border-box;
 }
 
 .game-header {
   text-align: center;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.game-header .back-button {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.game-header .back-button:hover {
+  background: #5a6268;
+}
+
+.game-header .header-content {
+  flex: 1;
+  text-align: center;
 }
 
 .game-header h1 {
-  font-size: 2.2rem;
+  font-size: 1.8rem;
   font-weight: 700;
   color: #1f2937;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .game-description {
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: #6b7280;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .puzzle-info {
   display: flex;
   justify-content: center;
-  gap: 16px;
-  font-size: 0.85rem;
+  gap: 12px;
+  font-size: 0.8rem;
   color: #9ca3af;
+  margin-bottom: 0;
 }
 
-.puzzle-date {
+.puzzle-date,
+.puzzle-set,
+.puzzle-number {
   font-weight: 600;
 }
 
 .puzzle-difficulty {
-  padding: 4px 8px;
-  background-color: #f3f4f6;
-  border-radius: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
+  color: white;
+}
+
+.puzzle-difficulty.easy {
+  background-color: #27ae60;
+}
+
+.puzzle-difficulty.medium {
+  background-color: #f39c12;
+}
+
+.puzzle-difficulty.hard {
+  background-color: #e67e22;
+}
+
+.puzzle-difficulty.expert {
+  background-color: #e74c3c;
 }
 
 /* Loading state */
@@ -85,7 +137,8 @@
 
 .retry-button,
 .play-again-button,
-.try-again-button {
+.try-again-button,
+.back-to-browser-button {
   padding: 12px 24px;
   background-color: #3b82f6;
   color: white;
@@ -96,6 +149,14 @@
   cursor: pointer;
   transition: background-color 0.2s ease;
   margin-top: 16px;
+}
+
+.back-to-browser-button {
+  background-color: #667eea;
+}
+
+.back-to-browser-button:hover {
+  background-color: #5a6fd8;
 }
 
 .retry-button:hover,
@@ -200,39 +261,47 @@
 /* Mobile responsive adjustments */
 @media (max-width: 640px) {
   .themes-game-container {
-    padding: 12px;
+    padding: 8px;
     height: 100vh;
     max-height: 100vh;
   }
   
   .game-header {
-    margin-bottom: 16px;
+    margin-bottom: 8px;
+    gap: 12px;
   }
   
   .game-header h1 {
-    font-size: 1.75rem;
-    margin-bottom: 4px;
+    font-size: 1.5rem;
+    margin-bottom: 2px;
   }
   
   .game-description {
-    font-size: 0.9rem;
-    margin-bottom: 8px;
+    font-size: 0.8rem;
+    margin-bottom: 6px;
   }
   
   .puzzle-info {
-    flex-direction: column;
-    gap: 4px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+  
+  .puzzle-difficulty {
+    padding: 2px 6px;
+    font-size: 0.65rem;
   }
   
   .game-complete,
   .game-over {
-    padding: 16px 12px;
-    margin: 16px 0;
+    padding: 12px 8px;
+    margin: 12px 0;
   }
   
   .completed-categories {
-    padding: 12px;
-    margin-top: 16px;
+    padding: 8px;
+    margin-top: 12px;
   }
 }
 
@@ -267,8 +336,8 @@
 /* Desktop adjustments */
 @media (min-width: 1024px) {
   .themes-game-container {
-    max-width: 500px;
-    padding: 20px;
+    max-width: 520px;
+    padding: 16px;
     height: 100vh;
     max-height: 100vh;
     overflow: hidden;
@@ -276,11 +345,11 @@
   }
   
   .game-header {
-    margin-bottom: 12px;
+    margin-bottom: 8px;
   }
   
   .game-header h1 {
-    font-size: 2rem;
-    margin-bottom: 4px;
+    font-size: 1.8rem;
+    margin-bottom: 3px;
   }
 }

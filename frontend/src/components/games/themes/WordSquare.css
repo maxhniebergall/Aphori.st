@@ -14,11 +14,11 @@
   align-items: center;
   justify-content: center;
   aspect-ratio: 1;
-  background-color: #f6f7f8;
-  border: 2px solid #d3d6da;
+  background-color: #f8fafc;
+  border: 2px solid #e2e8f0;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
   position: relative;
   min-height: 50px;
@@ -26,11 +26,14 @@
   min-width: 0;
   width: 100%;
   will-change: transform, background-color, border-color;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
 }
 
 .word-square:hover {
-  background-color: #e5e7eb;
-  border-color: #9ca3af;
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.1), 0 2px 4px 0 rgba(0, 0, 0, 0.06);
 }
 
 .word-square:focus {
@@ -39,14 +42,18 @@
 }
 
 .word-square.selected {
-  background-color: #5a67d8;
-  border-color: #4c51bf;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: #5a6fd8;
   color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px 0 rgba(102, 126, 234, 0.3), 0 2px 6px 0 rgba(102, 126, 234, 0.2);
 }
 
 .word-square.selected:hover {
-  background-color: #4c51bf;
-  border-color: #434190;
+  background: linear-gradient(135deg, #5a6fd8 0%, #6b46c1 100%);
+  border-color: #4c51bf;
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px 0 rgba(102, 126, 234, 0.4), 0 3px 8px 0 rgba(102, 126, 234, 0.25);
 }
 
 .word-square.disabled {
@@ -74,13 +81,10 @@
   text-align: center;
   line-height: 1.1;
   padding: 4px;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  hyphens: auto;
+  white-space: nowrap;
   width: 100%;
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* Shake animation for invalid selections */

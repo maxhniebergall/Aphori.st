@@ -1,5 +1,5 @@
 .game-grid {
-  --grid-gap: 8px;
+  --grid-gap: 6px;
   --grid-padding: 12px;
   --mobile-max-width: 100%;
   
@@ -19,7 +19,7 @@
 /* Responsive adjustments using custom properties */
 @media (max-width: 320px) {
   .game-grid {
-    --grid-gap: 4px;
+    --grid-gap: 3px;
     --grid-padding: 8px;
     max-width: min(100%, 300px);
   }
@@ -27,7 +27,7 @@
 
 @media (min-width: 321px) and (max-width: 375px) {
   .game-grid {
-    --grid-gap: 4px;
+    --grid-gap: 3px;
     --grid-padding: 10px;
     max-width: min(100%, 350px);
   }
@@ -35,7 +35,7 @@
 
 @media (min-width: 376px) and (max-width: 480px) {
   .game-grid {
-    --grid-gap: 6px;
+    --grid-gap: 4px;
     --grid-padding: 12px;
     max-width: min(100%, 440px);
   }
@@ -43,7 +43,7 @@
 
 @media (min-width: 481px) and (max-width: 640px) {
   .game-grid {
-    --grid-gap: 6px;
+    --grid-gap: 5px;
     --grid-padding: 14px;
     max-width: min(100%, 550px);
   }

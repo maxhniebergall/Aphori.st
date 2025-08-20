@@ -3,12 +3,20 @@ import { GridWord } from '../../../components/games/themes/GameGrid';
 
 export interface ThemesPuzzle {
   id: string;
-  date: string;
+  setName: string;
   puzzleNumber: number;
   gridSize: number;
   difficulty: number;
   categories: ThemeCategory[];
   words: string[];
+  createdAt?: number;
+  metadata?: {
+    avgSimilarity: number;
+    qualityScore: number;
+    generatedBy: string;
+    algorithm?: string;
+    batchGenerated?: boolean;
+  };
 }
 
 export interface ThemeCategory {
@@ -38,6 +46,7 @@ export interface UseThemesGameReturn {
   submitSelection: () => Promise<void>;
   randomizeGrid: () => void;
   loadPuzzle: (date: string, puzzleNumber: number) => Promise<void>;
+  loadPuzzleFromSet: (setName: string, version: string, puzzleNumber: number) => Promise<void>;
   resetGame: () => void;
 }
 
@@ -117,6 +126,41 @@ export const useThemesGame = (): UseThemesGameReturn => {
       if (!targetPuzzle) {
         throw new Error(`Puzzle ${puzzleNumber} not found for date ${date}`);
       }
+
+      setPuzzle(targetPuzzle);
+      setGameState({
+        selectedWords: [],
+        completedCategories: [],
+        attempts: 0,
+        isComplete: false,
+        shakingWords: [],
+        gridWords: initializeGridWords(targetPuzzle),
+        animatingWords: []
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, [initializeGridWords]);
+
+  // Load puzzle from a specific set
+  const loadPuzzleFromSet = useCallback(async (setName: string, version: string, puzzleNumber: number) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
+      const response = await fetch(`${baseURL}/api/games/themes/sets/${setName}/${version}/puzzle/${puzzleNumber}`, {
+        credentials: 'include'
+      });
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to load puzzle');
+      }
+
+      const targetPuzzle = data.data.puzzle;
 
       setPuzzle(targetPuzzle);
       setGameState({
@@ -299,6 +343,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
     submitSelection,
     randomizeGrid,
     loadPuzzle,
+    loadPuzzleFromSet,
     resetGame
   };
 };
