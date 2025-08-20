@@ -191,11 +191,11 @@ async function createCompletionMetrics(
  * GET /api/games/themes/state/progress
  * Get user's game progress
  */
-router.get('/progress', async (req: Request, res: Response) => {
+router.get('/progress', async (req: TempUserRequest, res: Response) => {
   try {
     const { dbClient } = getThemesServices();
-    const userId = (req as any).effectiveUserId;
-    const userType = (req as any).userType;
+    const userId = req.effectiveUserId;
+    const userType = req.userType;
 
     // Get progress path based on user type
     const progressPath = userType === 'logged_in' 
@@ -232,7 +232,7 @@ router.get('/progress', async (req: Request, res: Response) => {
  * POST /api/games/themes/state/attempt
  * Submit a puzzle attempt
  */
-router.post('/attempt', async (req: Request, res: Response) => {
+router.post('/attempt', async (req: TempUserRequest, res: Response) => {
   try {
     const { puzzleId, selectedWords, selectionOrder } = req.body;
 
@@ -245,12 +245,12 @@ router.post('/attempt', async (req: Request, res: Response) => {
     }
 
     const { dbClient } = getThemesServices();
-    const userId = (req as any).effectiveUserId;
-    const userType = (req as any).userType;
+    const userId = req.effectiveUserId;
+    const userType = req.userType;
     
-    // Extract date from puzzleId (format: themes_YYYY-MM-DD_N)
+    // Extract set name from puzzleId (format: setName_puzzleNumber)
     const puzzleIdParts = puzzleId.split('_');
-    if (puzzleIdParts.length < 3 || !puzzleIdParts[1]) {
+    if (puzzleIdParts.length < 2) {
       res.status(400).json({
         success: false,
         error: 'Invalid puzzle ID format'
@@ -258,12 +258,31 @@ router.post('/attempt', async (req: Request, res: Response) => {
       return;
     }
     
-    const puzzleDate = puzzleIdParts[1]; // Extract date from puzzleId
+    // For puzzle sets, the format is setName_puzzleNumber (e.g., "wiki_batch_2025-08-20_1")
+    // Extract set name by joining all parts except the last one
+    const setName = puzzleIdParts.slice(0, -1).join('_');
     const currentDate = getCurrentDateString();
 
-    // Get the puzzle to validate the attempt
-    const puzzlePath = `dailyPuzzles/themes/${puzzleDate}/4x4/${puzzleId}`;
-    const puzzle = await dbClient.getRawPath(puzzlePath);
+    // Get the puzzle from puzzle sets to validate the attempt
+    let puzzle = null;
+    
+    // Search through all grid sizes in the puzzle set
+    const puzzleSetPath = `puzzleSets/${setName}`;
+    const puzzleSetData = await dbClient.getRawPath(puzzleSetPath);
+    
+    if (puzzleSetData) {
+      // Search through all grid sizes for the puzzle
+      for (const [, gridData] of Object.entries(puzzleSetData)) {
+        if (gridData && typeof gridData === 'object') {
+          const foundPuzzle = (gridData as any)[puzzleId];
+          if (foundPuzzle) {
+            puzzle = foundPuzzle;
+            break;
+          }
+        }
+      }
+    }
+    
     if (!puzzle) {
       res.status(404).json({
         success: false,
@@ -385,33 +404,74 @@ router.post('/attempt', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/games/themes/state/shareable/:date
- * Get shareable results for a specific date
+ * GET /api/games/themes/state/shareable/:setName/:puzzleNumber
+ * Get shareable results for a specific puzzle
  */
-router.get('/shareable/:date', async (req: Request, res: Response) => {
+router.get('/shareable/:setName/:puzzleNumber', async (req: TempUserRequest, res: Response) => {
   try {
-    const { date } = req.params;
+    const { setName, puzzleNumber } = req.params;
     const userId = req.effectiveUserId;
     const { dbClient } = getThemesServices();
-
-    // Get user's attempts for the date
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, date);
-    const attempts = await dbClient.getRawPath(attemptsPath) || {};
     
-    // Get puzzles for the date to understand the categories and their difficulties
-    const puzzlesPath = `dailyPuzzles/themes/${date}/4x4`;
-    const puzzlesData = await dbClient.getRawPath(puzzlesPath) || {};
-    
-    if (!puzzlesData || Object.keys(puzzlesData).length === 0) {
-      res.status(404).json({
+    const puzzleNum = parseInt(puzzleNumber, 10);
+    if (isNaN(puzzleNum)) {
+      res.status(400).json({
         success: false,
-        error: 'No puzzles found for this date'
+        error: 'Invalid puzzle number'
       });
       return;
     }
 
+    // Construct the specific puzzle ID
+    const puzzleId = `${setName}_${puzzleNum}`;
+
+    // Get all user attempts and filter for this specific puzzle
+    const currentDate = getCurrentDateString();
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
+    const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
+    
+    // Filter attempts for this specific puzzle
+    const puzzleAttempts: Record<string, any> = {};
+    for (const [attemptId, attempt] of Object.entries(allAttempts)) {
+      if (attempt && typeof attempt === 'object' && 
+          (attempt as any).puzzleId === puzzleId) {
+        puzzleAttempts[attemptId] = attempt;
+      }
+    }
+    
+    // Get the specific puzzle from the puzzle set
+    const puzzlesPath = `puzzleSets/${setName}`;
+    const puzzleSetData = await dbClient.getRawPath(puzzlesPath) || {};
+    
+    // Find the specific puzzle
+    let targetPuzzle = null;
+    if (puzzleSetData) {
+      for (const [, gridData] of Object.entries(puzzleSetData)) {
+        if (gridData && typeof gridData === 'object') {
+          const foundPuzzle = (gridData as any)[puzzleId];
+          if (foundPuzzle) {
+            targetPuzzle = foundPuzzle;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (!targetPuzzle) {
+      res.status(404).json({
+        success: false,
+        error: 'Puzzle not found'
+      });
+      return;
+    }
+
+    // Create a puzzles data structure with just this one puzzle
+    const puzzlesData: Record<string, any> = {
+      [puzzleId]: targetPuzzle
+    };
+
     // Generate shareable content
-    const shareableContent = generateShareableContent(attempts, puzzlesData, date);
+    const shareableContent = generateShareableContent(puzzleAttempts, puzzlesData, setName);
     
     res.json({
       success: true,

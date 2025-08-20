@@ -257,46 +257,4 @@ router.post('/feedback', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /api/games/themes/analytics/stats
- * Get basic analytics stats (admin endpoint)
- */
-router.get('/stats', async (req: Request, res: Response) => {
-  try {
-    const { dbClient } = getThemesServices();
-    
-    // Get puzzle views count
-    const puzzleViews = await dbClient.getRawPath(THEMES_DB_PATHS.PUZZLE_VIEWS);
-    const viewsCount = puzzleViews ? Object.keys(puzzleViews).length : 0;
-    
-    // Get feedback count
-    const puzzleFeedback = await dbClient.getRawPath(THEMES_DB_PATHS.PUZZLE_FEEDBACK);
-    const feedbackCount = puzzleFeedback ? Object.keys(puzzleFeedback).length : 0;
-    
-    // Calculate average rating
-    let averageRating = 0;
-    if (puzzleFeedback && feedbackCount > 0) {
-      const ratings = Object.values(puzzleFeedback) as ThemesPuzzleFeedback[];
-      const totalRating = ratings.reduce((sum, f) => sum + f.rating, 0);
-      averageRating = totalRating / feedbackCount;
-    }
-
-    res.json({
-      success: true,
-      data: {
-        puzzleViews: viewsCount,
-        feedbackSubmissions: feedbackCount,
-        averageRating: Math.round(averageRating * 100) / 100,
-        timestamp: Date.now()
-      }
-    });
-  } catch (error) {
-    logger.error('Error getting analytics stats:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get analytics stats'
-    });
-  }
-});
-
 export default router;
