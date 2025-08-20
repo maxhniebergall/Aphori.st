@@ -327,10 +327,9 @@ export const ThemesGame: React.FC = () => {
       <ShareModal 
         isOpen={shareModalOpen}
         onClose={() => setShareModalOpen(false)}
-        date={`${selectedSet || ''} #${currentPuzzleNumber || ''}`}
-        puzzleId={puzzle?.id}
         setName={selectedSet || ''}
         puzzleNumber={currentPuzzleNumber || 0}
+        puzzleId={puzzle?.id}
       />
     </div>
   );

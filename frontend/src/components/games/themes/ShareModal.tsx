@@ -6,21 +6,20 @@ import './ShareModal.css';
 interface ShareModalProps {
   isOpen: boolean;
   onClose: () => void;
-  date: string;
+  setName: string;
+  puzzleNumber: number;
   puzzleId?: string;
-  setName?: string;
-  puzzleNumber?: number;
 }
 
-export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, date, puzzleId, setName, puzzleNumber }) => {
+export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, setName, puzzleNumber, puzzleId }) => {
   const { shareableData, loading, error, fetchShareableResults, copyToClipboard, shareNative } = useShareableResults();
   const [copySuccess, setCopySuccess] = useState(false);
 
   useEffect(() => {
     if (isOpen && !shareableData) {
-      fetchShareableResults(date);
+      fetchShareableResults(setName, puzzleNumber);
     }
-  }, [isOpen, date, shareableData, fetchShareableResults]);
+  }, [isOpen, setName, puzzleNumber, shareableData, fetchShareableResults]);
 
   const handleShare = async () => {
     const success = await shareNative();
@@ -59,7 +58,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, date, p
           {error && (
             <div className="error-state">
               <p>Error: {error}</p>
-              <button onClick={() => fetchShareableResults(date)}>Try Again</button>
+              <button onClick={() => fetchShareableResults(setName, puzzleNumber)}>Try Again</button>
             </div>
           )}
 
@@ -127,7 +126,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, date, p
               </div>
 
               {/* Feedback Form */}
-              {puzzleId && setName && puzzleNumber && (
+              {puzzleId && (
                 <FeedbackForm
                   puzzleId={puzzleId}
                   setName={setName}
