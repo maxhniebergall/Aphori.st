@@ -12,6 +12,7 @@ import { TemporaryUserService } from '../../../services/games/TemporaryUserServi
 // Import individual route modules
 import dailyPuzzlesRoutes from './dailyPuzzles.js';
 import gameStateRoutes from './gameState.js';
+import analyticsRoutes from './analytics.js';
 import adminRoutes from './admin.js';
 
 // Global services that will be injected
@@ -98,6 +99,7 @@ router.get('/health', async (req, res) => {
 // Mount sub-routes
 router.use('/daily', dailyPuzzlesRoutes);
 router.use('/state', gameStateRoutes);
+router.use('/analytics', analyticsRoutes);
 router.use('/admin', adminRoutes);
 
 export default router;
