@@ -45,15 +45,23 @@ ENV/
 env/
 *_venv/
 
-# Data science and ML files
+# Data science and ML files (data only, preserve code)
 scripts/datascience/data/
-scripts/datascience/themes_quality/
+scripts/datascience/themes_quality/data/
+scripts/datascience/themes_quality/results/
+scripts/datascience/themes_quality/reports/
+scripts/datascience/themes_quality/puzzle_generation_output/
+scripts/datascience/themes_quality/themes_quality_venv/
+scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline/data/
+scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline/reports/
+scripts/datascience/themes_quality/wiki_puzzle_pipeline/data/
+scripts/datascience/themes_quality/wiki_puzzle_pipeline/venv/
 scripts/datascience/themes_quality_venv/
-*.npy
-*.npy.backup.npy
-word_vocab.json
-word_vocab.json.backup
-word_vocab_filtered_out.json
+scripts/datascience/*.npy
+scripts/datascience/*.npy.backup.npy
+scripts/datascience/word_vocab.json
+scripts/datascience/word_vocab.json.backup
+scripts/datascience/word_vocab_filtered_out.json
 
 # Puzzle generation artifacts
 scripts/puzzle-generation/
