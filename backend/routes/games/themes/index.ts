@@ -10,6 +10,7 @@ import { TemporaryUserService } from '../../../services/games/TemporaryUserServi
 
 // Import individual route modules
 import dailyPuzzlesRoutes from './dailyPuzzles.js';
+import puzzleSetsRoutes from './puzzleSets.js';
 import gameStateRoutes from './gameState.js';
 // import adminRoutes from './admin.js';
 
@@ -83,6 +84,7 @@ router.get('/health', async (req, res) => {
 
 // Mount sub-routes
 router.use('/daily', dailyPuzzlesRoutes);
+router.use('/sets', puzzleSetsRoutes);
 router.use('/state', gameStateRoutes);
 // Temporarily disabled due to TypeScript errors
 // router.use('/admin', adminRoutes);
