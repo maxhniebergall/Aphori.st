@@ -1,15 +1,38 @@
 import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { GameGrid } from '../../../components/games/themes/GameGrid';
 import { GameControls } from '../../../components/games/themes/GameControls';
 import { ShareModal } from '../../../components/games/themes/ShareModal';
+import { PuzzleSetSelector } from '../../../components/games/themes/PuzzleSetSelector';
+import { PuzzleBrowser } from '../../../components/games/themes/PuzzleBrowser';
 import { useThemesGame } from '../../../hooks/games/themes/useThemesGame';
+import { usePuzzleCompletion } from '../../../hooks/games/themes/usePuzzleCompletion';
 import './ThemesGame.css';
 
+type GameView = 'setSelection' | 'puzzleBrowser' | 'playing';
+
 export const ThemesGame: React.FC = () => {
-  // Always use today's date and start with puzzle 1
-  const date = new Date().toISOString().split('T')[0];
-  const puzzleNumber = 1;
+  const navigate = useNavigate();
+  const params = useParams<{
+    setName?: string;
+    puzzleNumber?: string;
+  }>();
+  
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  
+  // Derive state from URL parameters
+  const selectedSet = params.setName ? decodeURIComponent(params.setName) : null;
+  
+  const currentPuzzleNumber = params.puzzleNumber ? parseInt(params.puzzleNumber, 10) : null;
+  
+  // Determine current view based on URL parameters
+  const getCurrentView = (): GameView => {
+    if (currentPuzzleNumber) return 'playing';
+    if (selectedSet) return 'puzzleBrowser';
+    return 'setSelection';
+  };
+  
+  const currentView = getCurrentView();
   
   const {
     gameState,
@@ -19,14 +42,57 @@ export const ThemesGame: React.FC = () => {
     selectWord,
     submitSelection,
     randomizeGrid,
-    loadPuzzle,
+    loadPuzzleFromSet,
     resetGame
   } = useThemesGame();
 
-  // Load puzzle on mount or when props change
+  const {
+    completedPuzzles,
+    markPuzzleCompleted,
+    getCompletionStats
+  } = usePuzzleCompletion(
+    selectedSet || '',
+    selectedSet || '', // Keep second param for compatibility, but use same value
+    100 // Assuming 100 puzzles per set
+  );
+
+  // Handle set selection
+  const handleSetSelected = (setName: string) => {
+    navigate(`/games/themes/${encodeURIComponent(setName)}`);
+  };
+
+  // Handle puzzle selection
+  const handlePuzzleSelected = (puzzleNumber: number) => {
+    if (selectedSet) {
+      navigate(`/games/themes/${encodeURIComponent(selectedSet)}/puzzle/${puzzleNumber}`);
+    }
+  };
+
+  // Handle back to set selection
+  const handleBackToSetSelection = () => {
+    navigate('/games/themes');
+  };
+
+  // Handle back to puzzle browser
+  const handleBackToPuzzleBrowser = () => {
+    if (selectedSet) {
+      navigate(`/games/themes/${encodeURIComponent(selectedSet)}`);
+    }
+  };
+
+  // Load puzzle when URL parameters change
   useEffect(() => {
-    loadPuzzle(date, puzzleNumber);
-  }, [date, puzzleNumber, loadPuzzle]);
+    if (selectedSet && currentPuzzleNumber) {
+      loadPuzzleFromSet(selectedSet, selectedSet, currentPuzzleNumber);
+    }
+  }, [selectedSet, currentPuzzleNumber, loadPuzzleFromSet]);
+
+  // Mark puzzle as completed when the game is completed
+  useEffect(() => {
+    if (gameState.isComplete && currentPuzzleNumber && selectedSet) {
+      markPuzzleCompleted(currentPuzzleNumber);
+    }
+  }, [gameState.isComplete, currentPuzzleNumber, selectedSet, markPuzzleCompleted]);
 
   const handleSubmit = async () => {
     await submitSelection();
@@ -36,9 +102,41 @@ export const ThemesGame: React.FC = () => {
                    gameState.attempts < 4 && 
                    !gameState.isComplete;
 
+  // Render different views based on current state
+  if (currentView === 'setSelection') {
+    return (
+      <div className="themes-game-container">
+        <PuzzleSetSelector 
+          onSetSelected={handleSetSelected}
+          selectedSet={selectedSet}
+        />
+      </div>
+    );
+  }
+
+  if (currentView === 'puzzleBrowser' && selectedSet) {
+    return (
+      <div className="themes-game-container">
+        <PuzzleBrowser
+          setName={selectedSet}
+          onPuzzleSelected={handlePuzzleSelected}
+          onBackToSetSelection={handleBackToSetSelection}
+          completedPuzzles={completedPuzzles}
+        />
+      </div>
+    );
+  }
+
+  // Playing view
   if (loading) {
     return (
       <div className="themes-game-container">
+        <div className="game-header">
+          <button onClick={handleBackToPuzzleBrowser} className="back-button">
+            ← Back to Puzzles
+          </button>
+          <h1>Themes</h1>
+        </div>
         <div className="loading-state">
           <div className="loading-spinner"></div>
           <p>Loading puzzle...</p>
@@ -50,11 +148,21 @@ export const ThemesGame: React.FC = () => {
   if (error) {
     return (
       <div className="themes-game-container">
+        <div className="game-header">
+          <button onClick={handleBackToPuzzleBrowser} className="back-button">
+            ← Back to Puzzles
+          </button>
+          <h1>Themes</h1>
+        </div>
         <div className="error-state">
           <h2>Oops! Something went wrong</h2>
           <p>{error}</p>
           <button 
-            onClick={() => loadPuzzle(date, puzzleNumber)}
+            onClick={() => {
+              if (selectedSet && currentPuzzleNumber) {
+                loadPuzzleFromSet(selectedSet, selectedSet, currentPuzzleNumber);
+              }
+            }}
             className="retry-button"
           >
             Try Again
@@ -67,11 +175,21 @@ export const ThemesGame: React.FC = () => {
   if (!puzzle) {
     return (
       <div className="themes-game-container">
+        <div className="game-header">
+          <button onClick={handleBackToPuzzleBrowser} className="back-button">
+            ← Back to Puzzles
+          </button>
+          <h1>Themes</h1>
+        </div>
         <div className="error-state">
           <h2>Puzzle Not Found</h2>
           <p>The requested puzzle could not be loaded.</p>
           <button 
-            onClick={() => loadPuzzle(date, puzzleNumber)}
+            onClick={() => {
+              if (selectedSet && currentPuzzleNumber) {
+                loadPuzzleFromSet(selectedSet, selectedSet, currentPuzzleNumber);
+              }
+            }}
             className="retry-button"
           >
             Reload
@@ -81,16 +199,33 @@ export const ThemesGame: React.FC = () => {
     );
   }
 
+  const formatSetName = (name: string) => {
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  };
+
+  const getDifficultyClass = (difficulty: number) => {
+    if (difficulty <= 2) return 'easy';
+    if (difficulty <= 4) return 'medium';
+    if (difficulty <= 6) return 'hard';
+    return 'expert';
+  };
+
   return (
     <div className="themes-game-container">
       <div className="game-header">
-        <h1>Themes</h1>
-        <p className="game-description">
-          Find groups of four words that share a common theme. test
-        </p>
-        <div className="puzzle-info">
-          <span className="puzzle-date">{new Date(puzzle.date).toLocaleDateString()}</span>
-          <span className="puzzle-difficulty">LEVEL {puzzle.difficulty}</span>
+        <button onClick={handleBackToPuzzleBrowser} className="back-button">
+          ← Back to Puzzles
+        </button>
+        <div className="header-content">
+          <h1>Themes</h1>
+          <p className="game-description">
+            Find groups of four words that share a common theme.
+          </p>
+          <div className="puzzle-info">
+            <span className="puzzle-set">{formatSetName(selectedSet || '')}</span>
+            <span className="puzzle-number">Puzzle #{currentPuzzleNumber}</span>
+            <span className={`puzzle-difficulty ${getDifficultyClass(puzzle.difficulty)}`}>LEVEL {puzzle.difficulty}</span>
+          </div>
         </div>
       </div>
 
@@ -104,6 +239,9 @@ export const ThemesGame: React.FC = () => {
           <div className="completion-actions">
             <button onClick={() => setShareModalOpen(true)} className="share-button">
               📤 Share Results
+            </button>
+            <button onClick={handleBackToPuzzleBrowser} className="back-to-browser-button">
+              Choose Next Puzzle
             </button>
             <button onClick={resetGame} className="play-again-button">
               Play Again
@@ -125,6 +263,9 @@ export const ThemesGame: React.FC = () => {
           <div className="game-over-actions">
             <button onClick={() => setShareModalOpen(true)} className="share-button">
               📤 Share Results
+            </button>
+            <button onClick={handleBackToPuzzleBrowser} className="back-to-browser-button">
+              Choose Next Puzzle
             </button>
             <button onClick={resetGame} className="try-again-button">
               Try Again
@@ -150,8 +291,8 @@ export const ThemesGame: React.FC = () => {
             isSubmitting={loading}
             selectedCount={gameState.selectedWords.length}
             requiredCount={4}
-            currentPuzzle={puzzle.puzzleNumber}
-            totalPuzzles={7} // Assuming 7 daily puzzles
+            currentPuzzle={currentPuzzleNumber || 0}
+            totalPuzzles={100}
             attempts={gameState.attempts}
             maxAttempts={4}
           />
@@ -176,7 +317,7 @@ export const ThemesGame: React.FC = () => {
       <ShareModal 
         isOpen={shareModalOpen}
         onClose={() => setShareModalOpen(false)}
-        date={date}
+        date={`${selectedSet || ''} #${currentPuzzleNumber || ''}`}
       />
     </div>
   );

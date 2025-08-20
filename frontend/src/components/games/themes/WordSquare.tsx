@@ -46,51 +46,51 @@ export const WordSquare: React.FC<WordSquareProps> = ({
     if (viewportWidth <= 320) {
       // iPhone SE and smaller
       baseSize = 18;
-      minSize = 10;
+      minSize = 6;
       maxSize = 22;
-      scalingFactor = 0.10;
+      scalingFactor = 0.15;
     } else if (viewportWidth <= 375) {
       // iPhone 12 mini, iPhone 13 mini
       baseSize = 20;
-      minSize = 11;
+      minSize = 7;
       maxSize = 24;
-      scalingFactor = 0.10;
+      scalingFactor = 0.15;
     } else if (viewportWidth <= 480) {
       // Standard mobile phones
       baseSize = 24;
-      minSize = 12;
+      minSize = 8;
       maxSize = 28;
-      scalingFactor = 0.11;
+      scalingFactor = 0.16;
     } else if (viewportWidth <= 640) {
       // Large phones
       baseSize = 28;
-      minSize = 14;
+      minSize = 9;
       maxSize = 32;
-      scalingFactor = 0.12;
+      scalingFactor = 0.17;
     } else if (viewportWidth <= 768) {
       // iPad mini and small tablets
       baseSize = 32;
-      minSize = 16;
+      minSize = 10;
       maxSize = 36;
-      scalingFactor = 0.12;
+      scalingFactor = 0.17;
     } else if (viewportWidth <= 1024) {
       // iPad and larger tablets
       baseSize = 34;
-      minSize = 16;
+      minSize = 10;
       maxSize = 38;
-      scalingFactor = 0.14;
+      scalingFactor = 0.19;
     } else if (viewportWidth <= 1366) {
       // Small laptops
       baseSize = 28;
-      minSize = 14;
+      minSize = 9;
       maxSize = 32;
-      scalingFactor = 0.12;
+      scalingFactor = 0.17;
     } else {
       // Desktop and larger screens
       baseSize = 30;
-      minSize = 15;
+      minSize = 10;
       maxSize = 34;
-      scalingFactor = 0.13;
+      scalingFactor = 0.18;
     }
     
     // Adjust for smaller screens in landscape mode
@@ -100,9 +100,24 @@ export const WordSquare: React.FC<WordSquareProps> = ({
       maxSize = Math.round(maxSize * 0.85);
     }
     
-    // Scale down font size based on word length
-    // Shorter words get larger text, longer words get smaller text
-    const lengthFactor = Math.max(0.4, 1 - (word.length - 3) * scalingFactor);
+    // Very aggressive scaling based on word length to ensure single line fit
+    // Apply exponential scaling for longer words with stricter minimum sizes
+    let lengthFactor;
+    if (word.length <= 3) {
+      lengthFactor = 1;
+    } else if (word.length <= 5) {
+      lengthFactor = Math.max(0.7, 1 - (word.length - 3) * scalingFactor * 0.8);
+    } else if (word.length <= 7) {
+      lengthFactor = Math.max(0.5, 0.7 - (word.length - 5) * scalingFactor * 1.2);
+    } else if (word.length <= 10) {
+      lengthFactor = Math.max(0.3, 0.5 - (word.length - 7) * scalingFactor * 1.5);
+    } else if (word.length <= 13) {
+      lengthFactor = Math.max(0.2, 0.3 - (word.length - 10) * scalingFactor * 1.8);
+    } else {
+      // Very long words get extremely small
+      lengthFactor = Math.max(0.15, 0.2 - (word.length - 13) * scalingFactor * 2.0);
+    }
+    
     const calculatedSize = Math.round(baseSize * lengthFactor);
     
     // Clamp to min/max bounds

@@ -84,6 +84,8 @@ function App() {
                 <Route path="/search" element={<SearchResultsPage />} />
                 <Route path="/games" element={<GamesLanding />} />
                 <Route path="/games/themes" element={<ThemesGame />} />
+                <Route path="/games/themes/:setName" element={<ThemesGame />} />
+                <Route path="/games/themes/:setName/puzzle/:puzzleNumber" element={<ThemesGame />} />
 
                 <Route 
                     path="/profile" 
