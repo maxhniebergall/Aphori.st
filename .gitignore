@@ -73,3 +73,10 @@ test_import.json
 
 # Data import/export
 import_data/
+scripts/datascience/themes_quality/.gcp/themes-quality-dvc-service-account.json
+
+# DVC cache and temp files
+**/.dvc/cache/
+**/.dvc/tmp/
+**/.dvc/plots/
+**/.dvcignore
