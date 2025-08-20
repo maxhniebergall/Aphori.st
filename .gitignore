@@ -32,3 +32,36 @@ backend/firebase-debug.log
 backend/backend.log
 database-debug.log
 *.log
+
+# Python virtual environments and cache
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+ENV/
+env/
+*_venv/
+
+# Data science and ML files
+scripts/datascience/data/
+scripts/datascience/themes_quality/
+scripts/datascience/themes_quality_venv/
+*.npy
+*.npy.backup.npy
+word_vocab.json
+word_vocab.json.backup
+word_vocab_filtered_out.json
+
+# Puzzle generation artifacts
+scripts/puzzle-generation/
+
+# Testing artifacts
+playwright-report/
+test-results/
+test_import.json
+
+# Data import/export
+import_data/
