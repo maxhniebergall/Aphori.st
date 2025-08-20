@@ -35,6 +35,7 @@ export interface ThemesAttempt {
   userType: 'logged_in' | 'temporary';
   puzzleId: string;
   selectedWords: string[];
+  selectionOrder: number[]; // Order in which words were selected (indices into selectedWords)
   result: 'correct' | 'incorrect';
   distance: number; // How many words away from correct (0 = correct)
   timestamp: number;
@@ -63,6 +64,57 @@ export interface TemporaryUserId {
   createdAt: number;
   lastAccessed: number;
   expiresAt: number; // 60 days from creation
+  fingerprint?: UserFingerprint; // Browser fingerprinting data
+}
+
+// Analytics interfaces
+export interface ThemesPuzzleView {
+  id: string;
+  userId: string;
+  userType: 'logged_in' | 'temporary';
+  puzzleId: string;
+  setName: string;
+  puzzleNumber: number;
+  timestamp: number;
+  ipAddress: string;
+  userAgent: string;
+  fingerprint?: UserFingerprint;
+}
+
+export interface UserFingerprint {
+  screenResolution: string;
+  timezone: string;
+  language: string;
+  platform: string;
+  cookieEnabled: boolean;
+  doNotTrack: boolean;
+}
+
+export interface ThemesPuzzleFeedback {
+  id: string;
+  userId: string;
+  userType: 'logged_in' | 'temporary';
+  puzzleId: string;
+  setName: string;
+  puzzleNumber: number;
+  rating: number; // 1-5 stars
+  comment: string;
+  timestamp: number;
+}
+
+export interface ThemesPuzzleCompletion {
+  id: string;
+  userId: string;
+  userType: 'logged_in' | 'temporary';
+  puzzleId: string;
+  setName: string;
+  puzzleNumber: number;
+  totalAttempts: number;
+  completionTime: number; // Time from first view to completion in milliseconds
+  categoryCompletionOrder: string[]; // Order categories were solved
+  averageWordsPerAttempt: number;
+  uniqueWordSelections: number; // Total unique words selected across all attempts
+  timestamp: number;
 }
 
 // Vector-related types for themes system
@@ -116,6 +168,17 @@ export const THEMES_DB_PATHS = {
   // Word dataset
   WORD_DATASET: 'themesWordDataset',
   WORD_DATASET_METADATA: 'themesWordDataset/metadata',
+  
+  // Analytics paths
+  PUZZLE_VIEWS: 'analytics/puzzleViews',
+  PUZZLE_VIEW: (viewId: string) => `analytics/puzzleViews/${viewId}`,
+  USER_PUZZLE_VIEWS: (userId: string) => `analytics/userPuzzleViews/${userId}`,
+  PUZZLE_FEEDBACK: 'analytics/puzzleFeedback',
+  FEEDBACK_ENTRY: (feedbackId: string) => `analytics/puzzleFeedback/${feedbackId}`,
+  USER_FEEDBACK: (userId: string) => `analytics/userFeedback/${userId}`,
+  PUZZLE_COMPLETIONS: 'analytics/puzzleCompletions',
+  COMPLETION_ENTRY: (completionId: string) => `analytics/puzzleCompletions/${completionId}`,
+  USER_COMPLETIONS: (userId: string) => `analytics/userCompletions/${userId}`,
 } as const;
 
 // Configuration constants
