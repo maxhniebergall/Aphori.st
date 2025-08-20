@@ -23,13 +23,13 @@ export const useShareableResults = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchShareableResults = useCallback(async (date: string) => {
+  const fetchShareableResults = useCallback(async (setName: string, puzzleNumber: number) => {
     setLoading(true);
     setError(null);
 
     try {
       const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${baseURL}/api/games/themes/state/shareable/${date}`, {
+      const response = await fetch(`${baseURL}/api/games/themes/state/shareable/${setName}/${puzzleNumber}`, {
         credentials: 'include'
       });
       

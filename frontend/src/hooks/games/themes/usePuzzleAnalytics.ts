@@ -44,8 +44,9 @@ export function usePuzzleAnalytics() {
   ): Promise<boolean> => {
     try {
       const fingerprint = collectFingerprint();
+      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
       
-      const response = await fetch('/api/games/themes/analytics/view', {
+      const response = await fetch(`${baseURL}/api/games/themes/analytics/view`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -84,7 +85,8 @@ export function usePuzzleAnalytics() {
     feedback: PuzzleFeedback
   ): Promise<boolean> => {
     try {
-      const response = await fetch('/api/games/themes/analytics/feedback', {
+      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
+      const response = await fetch(`${baseURL}/api/games/themes/analytics/feedback`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -114,37 +116,9 @@ export function usePuzzleAnalytics() {
     }
   }, []);
 
-  /**
-   * Get analytics stats (admin function)
-   */
-  const getAnalyticsStats = useCallback(async () => {
-    try {
-      const response = await fetch('/api/games/themes/analytics/stats', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
-
-      const data = await response.json();
-      
-      if (!data.success) {
-        console.error('Failed to get analytics stats:', data.error);
-        return null;
-      }
-
-      return data.data;
-    } catch (error) {
-      console.error('Error getting analytics stats:', error);
-      return null;
-    }
-  }, []);
-
   return {
     trackPuzzleView,
     submitFeedback,
-    getAnalyticsStats,
     collectFingerprint
   };
 }
