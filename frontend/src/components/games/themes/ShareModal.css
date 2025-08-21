@@ -17,17 +17,20 @@
   border-radius: 12px;
   width: 100%;
   max-width: 500px;
-  max-height: 90vh;
+  max-height: 85vh;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
 }
 
 .share-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem;
+  padding: 1rem 1.5rem;
   border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
 }
 
 .share-modal-header h2 {
@@ -56,7 +59,9 @@
 }
 
 .share-modal-body {
-  padding: 1.5rem;
+  padding: 1rem 1.5rem 1.5rem;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .loading-state {
@@ -96,7 +101,7 @@
 }
 
 .shareable-preview {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .shareable-preview h3 {
@@ -109,7 +114,9 @@
   background: #f8f9fa;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.75rem;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 .shareable-text pre {
@@ -122,48 +129,42 @@
 }
 
 .share-summary {
-  margin-bottom: 1.5rem;
-  padding: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
   background: #f0f7ff;
   border-radius: 8px;
 }
 
 .summary-stats {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  flex-direction: row;
+  gap: 1rem;
+  justify-content: space-between;
 }
 
 .stat {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: #333;
+  text-align: center;
+  flex: 1;
 }
 
 .share-actions {
   display: flex;
   gap: 0.75rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   justify-content: center;
 }
 
-.share-button, .copy-button {
+.copy-button {
   flex: 1;
-  padding: 0.75rem 1.5rem;
+  padding: 0.6rem 1.2rem;
   border-radius: 8px;
   border: none;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 0.95rem;
-}
-
-.share-button.primary {
-  background: #007bff;
-  color: white;
-}
-
-.share-button.primary:hover {
-  background: #0056b3;
+  font-size: 0.9rem;
 }
 
 .copy-button {
@@ -211,15 +212,24 @@
   }
   
   .share-modal-content {
-    max-height: 95vh;
+    max-height: 90vh;
   }
   
   .share-modal-header {
-    padding: 1rem;
+    padding: 0.75rem 1rem;
   }
   
   .share-modal-body {
-    padding: 1rem;
+    padding: 0.75rem 1rem 1rem;
+  }
+  
+  .summary-stats {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .stat {
+    text-align: left;
   }
   
   .legend-items {
