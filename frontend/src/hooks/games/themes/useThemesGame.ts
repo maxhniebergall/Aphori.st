@@ -99,8 +99,16 @@ export const useThemesGame = (): UseThemesGameReturn => {
   // Initialize grid words from puzzle
   const initializeGridWords = useCallback((puzzle: ThemesPuzzle, completedCategories: string[] = []): GridWord[] => {
     const gridWords: GridWord[] = puzzle.words.map((word, index) => {
-      const category = puzzle.categories.find(cat => cat.words.includes(word));
+      // Use case-insensitive matching for category finding
+      const category = puzzle.categories.find(cat => 
+        cat.words.some(catWord => catWord.toLowerCase().trim() === word.toLowerCase().trim())
+      );
       const isCompleted = category ? completedCategories.includes(category.id) : false;
+      
+      if (category) {
+        console.log(`[ThemesGame] Initializing word "${word}" in category: ${category.themeWord}`);
+      }
+      
       return {
         word,
         id: `word-${index}`,
@@ -296,7 +304,13 @@ export const useThemesGame = (): UseThemesGameReturn => {
             
             // Update gridWords to mark completed words - ensure atomic update with validation
             newState.gridWords = prev.gridWords.map(gridWord => {
-              if (correctCategory.words.includes(gridWord.word)) {
+              // Use case-insensitive matching to handle potential case differences
+              const isWordInCategory = correctCategory.words.some(categoryWord => 
+                categoryWord.toLowerCase().trim() === gridWord.word.toLowerCase().trim()
+              );
+              
+              if (isWordInCategory) {
+                console.log(`[ThemesGame] Marking word as completed: "${gridWord.word}" in category: ${correctCategory.themeWord}`);
                 // Always ensure completed words maintain their state, even if already completed
                 return {
                   ...gridWord,
@@ -324,8 +338,10 @@ export const useThemesGame = (): UseThemesGameReturn => {
                 }
                 
                 // Verify all words in this category are still marked as completed
-                const allWordsStillCompleted = correctCategory.words.every(word => {
-                  const gridWord = current.gridWords.find(gw => gw.word === word);
+                const allWordsStillCompleted = correctCategory.words.every(categoryWord => {
+                  const gridWord = current.gridWords.find(gw => 
+                    gw.word.toLowerCase().trim() === categoryWord.toLowerCase().trim()
+                  );
                   return gridWord?.isCompleted === true;
                 });
                 
@@ -335,8 +351,10 @@ export const useThemesGame = (): UseThemesGameReturn => {
                 }
                 
                 // Only clear animation for words from this specific category
-                const remainingAnimatingWords = current.animatingWords.filter(
-                  word => !correctCategory.words.includes(word)
+                const remainingAnimatingWords = current.animatingWords.filter(animatingWord => 
+                  !correctCategory.words.some(categoryWord => 
+                    categoryWord.toLowerCase().trim() === animatingWord.toLowerCase().trim()
+                  )
                 );
                 
                 if (remainingAnimatingWords.length !== current.animatingWords.length) {
