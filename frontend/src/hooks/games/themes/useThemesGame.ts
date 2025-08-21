@@ -59,6 +59,9 @@ export const useThemesGame = (): UseThemesGameReturn => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const shakeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const submissionInProgressRef = useRef<boolean>(false);
+  const lastSubmissionTimeRef = useRef<number>(0);
   
   const [gameState, setGameState] = useState<GameState>({
     selectedWords: [],
@@ -71,11 +74,14 @@ export const useThemesGame = (): UseThemesGameReturn => {
     animatingWords: []
   });
 
-  // Cleanup shake timeout on unmount
+  // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
       if (shakeTimeoutRef.current) {
         clearTimeout(shakeTimeoutRef.current);
+      }
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
       }
     };
   }, []);
@@ -222,6 +228,26 @@ export const useThemesGame = (): UseThemesGameReturn => {
       return;
     }
 
+    // Prevent concurrent submissions and rapid clicking
+    const now = Date.now();
+    if (submissionInProgressRef.current) {
+      console.warn('Submission already in progress, ignoring duplicate request');
+      return;
+    }
+
+    // Debounce rapid submissions (prevent clicks within 100ms)
+    if (now - lastSubmissionTimeRef.current < 100) {
+      console.warn('Rapid submission detected, ignoring duplicate request');
+      return;
+    }
+
+    submissionInProgressRef.current = true;
+    lastSubmissionTimeRef.current = now;
+
+    // Capture current selected words to avoid stale closure issues
+    const currentSelectedWords = gameState.selectedWords;
+    const currentSelectionOrder = gameState.selectionOrder;
+
     try {
       const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
       const response = await fetch(`${baseURL}/api/games/themes/state/attempt`, {
@@ -232,8 +258,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
         credentials: 'include',
         body: JSON.stringify({
           puzzleId: puzzle.id,
-          selectedWords: gameState.selectedWords,
-          selectionOrder: gameState.selectionOrder
+          selectedWords: currentSelectedWords,
+          selectionOrder: currentSelectionOrder
         })
       });
 
@@ -255,35 +281,73 @@ export const useThemesGame = (): UseThemesGameReturn => {
           // Found a complete category - find which category was solved
           const correctCategory = puzzle.categories.find(cat => {
             const categoryWordSet = new Set(cat.words);
-            const selectedWordSet = new Set(gameState.selectedWords);
+            const selectedWordSet = new Set(currentSelectedWords);
             return categoryWordSet.size === selectedWordSet.size && 
                    [...categoryWordSet].every(word => selectedWordSet.has(word));
           });
           
           if (correctCategory && !prev.completedCategories.includes(correctCategory.id)) {
+            console.log(`[ThemesGame] Completing category: ${correctCategory.themeWord} with words:`, correctCategory.words);
+            
             newState.completedCategories = [...prev.completedCategories, correctCategory.id];
             
             // Start animation for completed category words
             newState.animatingWords = correctCategory.words;
             
-            // Update gridWords to mark completed words
+            // Update gridWords to mark completed words - ensure atomic update with validation
             newState.gridWords = prev.gridWords.map(gridWord => {
               if (correctCategory.words.includes(gridWord.word)) {
+                // Always ensure completed words maintain their state, even if already completed
                 return {
                   ...gridWord,
                   isCompleted: true,
-                  difficulty: correctCategory.difficulty as 1 | 2 | 3 | 4
+                  difficulty: correctCategory.difficulty as 1 | 2 | 3 | 4,
+                  // Add a timestamp to help debug race conditions
+                  completedAt: Date.now()
                 };
               }
               return gridWord;
             });
             
-            // Clear animation state after animation duration
-            setTimeout(() => {
-              setGameState(current => ({
-                ...current,
-                animatingWords: []
-              }));
+            // Clear any existing animation timeout to prevent conflicts
+            if (animationTimeoutRef.current) {
+              clearTimeout(animationTimeoutRef.current);
+            }
+            
+            // Use a more robust animation cleanup with state validation
+            animationTimeoutRef.current = setTimeout(() => {
+              setGameState(current => {
+                // Validate that we should still clear these animations
+                // Check if the category is still in completed categories
+                if (!current.completedCategories.includes(correctCategory.id)) {
+                  return current; // Don't clear if category was somehow removed
+                }
+                
+                // Verify all words in this category are still marked as completed
+                const allWordsStillCompleted = correctCategory.words.every(word => {
+                  const gridWord = current.gridWords.find(gw => gw.word === word);
+                  return gridWord?.isCompleted === true;
+                });
+                
+                if (!allWordsStillCompleted) {
+                  console.warn('Some words lost completed state, preserving animation');
+                  return current;
+                }
+                
+                // Only clear animation for words from this specific category
+                const remainingAnimatingWords = current.animatingWords.filter(
+                  word => !correctCategory.words.includes(word)
+                );
+                
+                if (remainingAnimatingWords.length !== current.animatingWords.length) {
+                  return {
+                    ...current,
+                    animatingWords: remainingAnimatingWords
+                  };
+                }
+                return current;
+              });
+              animationTimeoutRef.current = null;
             }, 1000);
           }
           newState.selectedWords = [];
@@ -295,7 +359,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
           }
         } else {
           // Incorrect selection - trigger shake animation
-          newState.shakingWords = prev.selectedWords;
+          newState.shakingWords = currentSelectedWords;
           newState.selectedWords = [];
           newState.selectionOrder = [];
           
@@ -306,10 +370,17 @@ export const useThemesGame = (): UseThemesGameReturn => {
           
           // Clear shake animation after delay
           shakeTimeoutRef.current = setTimeout(() => {
-            setGameState(current => ({
-              ...current,
-              shakingWords: []
-            }));
+            setGameState(current => {
+              // Only update shakingWords, preserve all other state
+              if (current.shakingWords.length > 0) {
+                return {
+                  ...current,
+                  shakingWords: []
+                };
+              }
+              return current;
+            });
+            shakeTimeoutRef.current = null;
           }, 500);
         }
 
@@ -317,8 +388,11 @@ export const useThemesGame = (): UseThemesGameReturn => {
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit attempt');
+    } finally {
+      // Always reset submission flag, even if there's an error
+      submissionInProgressRef.current = false;
     }
-  }, [puzzle, gameState.selectedWords]);
+  }, [puzzle, gameState.selectedWords, gameState.selectionOrder]);
 
   // Randomize grid
   const randomizeGrid = useCallback(() => {
