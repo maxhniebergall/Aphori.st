@@ -9,6 +9,7 @@ export interface GridWord {
   categoryId?: string;
   isCompleted?: boolean;
   difficulty?: 1 | 2 | 3 | 4;
+  completedAt?: number;
 }
 
 interface GameGridProps {
