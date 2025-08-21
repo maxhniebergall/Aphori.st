@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useShareableResults, ShareableResults } from '../../../hooks/games/themes/useShareableResults';
+import { useShareableResults } from '../../../hooks/games/themes/useShareableResults';
 import { FeedbackForm } from './FeedbackForm';
 import './ShareModal.css';
 
@@ -12,7 +12,7 @@ interface ShareModalProps {
 }
 
 export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, setName, puzzleNumber, puzzleId }) => {
-  const { shareableData, loading, error, fetchShareableResults, copyToClipboard, shareNative } = useShareableResults();
+  const { shareableData, loading, error, fetchShareableResults, copyToClipboard } = useShareableResults();
   const [copySuccess, setCopySuccess] = useState(false);
 
   useEffect(() => {
@@ -21,13 +21,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, setName
     }
   }, [isOpen, setName, puzzleNumber, shareableData, fetchShareableResults]);
 
-  const handleShare = async () => {
-    const success = await shareNative();
-    if (success) {
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    }
-  };
 
   const handleCopy = async () => {
     const success = await copyToClipboard();
@@ -83,46 +76,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, setName
               </div>
 
               <div className="share-actions">
-                {typeof navigator !== 'undefined' && 'share' in navigator && (
-                  <button 
-                    className="share-button primary"
-                    onClick={handleShare}
-                  >
-                    📤 Share
-                  </button>
-                )}
                 <button 
                   className="copy-button"
                   onClick={handleCopy}
                 >
                   {copySuccess ? '✅ Copied!' : '📋 Copy'}
                 </button>
-              </div>
-
-              <div className="legend">
-                <h4>Legend</h4>
-                <div className="legend-items">
-                  <div className="legend-item">
-                    <span className="emoji">🟨🟨🟨🟨</span>
-                    <span>Yellow (Easy)</span>
-                  </div>
-                  <div className="legend-item">
-                    <span className="emoji">🟩🟩🟩🟩</span>
-                    <span>Green (Medium-Easy)</span>
-                  </div>
-                  <div className="legend-item">
-                    <span className="emoji">🟦🟦🟦🟦</span>
-                    <span>Blue (Medium-Hard)</span>
-                  </div>
-                  <div className="legend-item">
-                    <span className="emoji">🟪🟪🟪🟪</span>
-                    <span>Purple (Hardest)</span>
-                  </div>
-                  <div className="legend-item">
-                    <span className="emoji">⬜⬜⬜⬜</span>
-                    <span>Failed attempts</span>
-                  </div>
-                </div>
               </div>
 
               {/* Feedback Form */}
