@@ -471,7 +471,7 @@ router.get('/shareable/:setName/:puzzleNumber', async (req: TempUserRequest, res
     };
 
     // Generate shareable content
-    const shareableContent = generateShareableContent(puzzleAttempts, puzzlesData, setName);
+    const shareableContent = generateShareableContent(puzzleAttempts, puzzlesData, setName, puzzleNum);
     
     res.json({
       success: true,
@@ -489,7 +489,7 @@ router.get('/shareable/:setName/:puzzleNumber', async (req: TempUserRequest, res
 /**
  * Generate shareable content with emoji representation
  */
-function generateShareableContent(attempts: any, puzzlesData: any, date: string) {
+function generateShareableContent(attempts: any, puzzlesData: any, date: string, puzzleNumber?: number) {
   // Difficulty to emoji mapping (yellow, green, blue, purple based on standard Connections colors)
   const difficultyEmojis = {
     1: '🟨', // Yellow - Easiest
@@ -553,15 +553,18 @@ function generateShareableContent(attempts: any, puzzlesData: any, date: string)
   const completedCount = shareableResults.length;
   const totalCompletedPuzzles = puzzles.length; // Total available puzzles
   
+  // Create the puzzle link using the actual setName and puzzleNumber
+  const puzzleLink = puzzleNumber 
+    ? `https://aphori.st/games/themes/${date}/puzzle/${puzzleNumber}`
+    : `https://aphori.st/games/themes/${date}`;
+  
   const shareableText = [
-    `Themes ${date}`,
-    `${completedCount}/${totalCompletedPuzzles} puzzles completed`,
-    '',
     ...shareableResults.flatMap(puzzle => [
       `Puzzle ${puzzle.puzzleNumber}:`,
       ...puzzle.emojiRows,
       ''
-    ])
+    ]),
+    puzzleLink
   ].join('\n').trim();
 
   return {
