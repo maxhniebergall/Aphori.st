@@ -8,7 +8,7 @@ import {
     DisplayReplyTargetQuote
 } from '../types/search';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL + "/api"; // Assuming your API is served from /api
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
 
 export interface SearchPagination {
     offset: number;

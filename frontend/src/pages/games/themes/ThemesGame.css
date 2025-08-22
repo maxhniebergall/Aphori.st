@@ -335,7 +335,7 @@
 
 /* Desktop adjustments */
 @media (min-width: 1024px) {
-  .themes-game-container {
+  .themes-game-container:has(.game-grid) {
     max-width: 520px;
     padding: 16px;
     height: 100vh;
