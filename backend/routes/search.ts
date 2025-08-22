@@ -66,8 +66,33 @@ router.get<
     }
 
     // Parse and validate pagination parameters
-    const limit = Math.min(50, Math.max(1, parseInt(limitStr || '10', 10))); // Default 10, max 50
-    const offset = Math.max(0, parseInt(offsetStr || '0', 10)); // Default 0, min 0
+    const parsedLimit = parseInt(limitStr || '10', 10);
+    const parsedOffset = parseInt(offsetStr || '0', 10);
+    
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+        logger.warn({ ...logContext, limitStr }, 'Invalid limit parameter for vector search');
+        const error = createValidationError('Limit parameter must be a valid integer greater than 0', 'limit', requestId);
+        res.status(400).json({ 
+            success: false, 
+            results: [], 
+            ...error 
+        });
+        return;
+    }
+    
+    if (!Number.isInteger(parsedOffset) || parsedOffset < 0) {
+        logger.warn({ ...logContext, offsetStr }, 'Invalid offset parameter for vector search');
+        const error = createValidationError('Offset parameter must be a valid integer greater than or equal to 0', 'offset', requestId);
+        res.status(400).json({ 
+            success: false, 
+            results: [], 
+            ...error 
+        });
+        return;
+    }
+    
+    const limit = Math.min(50, parsedLimit); // Max 50
+    const offset = parsedOffset;
     
     // For vector search, we need to fetch more results than requested to support pagination
     // We'll fetch a larger set and then slice for pagination

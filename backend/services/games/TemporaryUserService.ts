@@ -56,7 +56,12 @@ export class TemporaryUserService {
    * Returns the user data if valid, null if expired or invalid
    */
   async validateAndRefreshTempUser(tempId: string): Promise<TemporaryUserId | null> {
-    if (!tempId || !tempId.startsWith('temp_')) {
+    // Validate tempId format: temp_{timestamp}_{random}
+    // timestamp: base-36 encoded timestamp (variable length)
+    // random: base-36 encoded random string (13 characters)
+    const tempIdPattern = /^temp_[a-z0-9]+_[a-z0-9]{13}$/;
+    
+    if (!tempId || typeof tempId !== 'string' || !tempIdPattern.test(tempId)) {
       return null;
     }
 

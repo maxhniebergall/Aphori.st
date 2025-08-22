@@ -10,6 +10,36 @@ import logger from '../../../logger.js';
 const router = Router();
 
 /**
+ * Validates setName parameter to prevent path traversal attacks
+ * Only allows alphanumeric characters, hyphens, and underscores
+ */
+function validateSetName(setName: string): boolean {
+  if (!setName || typeof setName !== 'string') {
+    return false;
+  }
+  
+  // Allow only alphanumeric characters, hyphens, and underscores
+  // Length should be reasonable (1-50 characters)
+  const validPattern = /^[a-zA-Z0-9_-]{1,50}$/;
+  return validPattern.test(setName);
+}
+
+/**
+ * Validates version parameter to prevent path traversal attacks
+ * Only allows alphanumeric characters, hyphens, underscores, and dots
+ */
+function validateVersion(version: string): boolean {
+  if (!version || typeof version !== 'string') {
+    return false;
+  }
+  
+  // Allow only alphanumeric characters, hyphens, underscores, and dots
+  // Length should be reasonable (1-50 characters)
+  const validPattern = /^[a-zA-Z0-9_.-]{1,50}$/;
+  return validPattern.test(version);
+}
+
+/**
  * GET /api/games/themes/sets
  * Get available puzzle sets
  */
@@ -86,6 +116,23 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/:setName/:version', async (req: Request, res: Response) => {
   try {
     const { setName, version } = req.params;
+    
+    // Validate setName to prevent path traversal attacks
+    if (!validateSetName(setName)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid set name. Only alphanumeric characters, hyphens, and underscores are allowed.'
+      });
+    }
+    
+    // Validate version to prevent path traversal attacks
+    if (!validateVersion(version)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid version. Only alphanumeric characters, hyphens, underscores, and dots are allowed.'
+      });
+    }
+    
     const { dbClient } = getThemesServices();
     
     // Fetch puzzles from the specific set
@@ -141,6 +188,23 @@ router.get('/:setName/:version', async (req: Request, res: Response) => {
 router.get('/:setName/:version/puzzle/:puzzleNumber', async (req: Request, res: Response) => {
   try {
     const { setName, version, puzzleNumber } = req.params;
+    
+    // Validate setName to prevent path traversal attacks
+    if (!validateSetName(setName)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid set name. Only alphanumeric characters, hyphens, and underscores are allowed.'
+      });
+    }
+    
+    // Validate version to prevent path traversal attacks
+    if (!validateVersion(version)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid version. Only alphanumeric characters, hyphens, underscores, and dots are allowed.'
+      });
+    }
+    
     const { dbClient } = getThemesServices();
     const puzzleNum = parseInt(puzzleNumber, 10);
     

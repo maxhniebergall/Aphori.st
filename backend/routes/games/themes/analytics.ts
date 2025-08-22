@@ -129,6 +129,16 @@ router.post('/view', async (req: Request, res: Response) => {
       return;
     }
 
+    // Validate puzzleNumber is a valid integer
+    const parsedPuzzleNumber = parseInt(puzzleNumber.toString(), 10);
+    if (!Number.isInteger(parsedPuzzleNumber)) {
+      res.status(400).json({
+        success: false,
+        error: 'puzzleNumber must be a valid integer'
+      });
+      return;
+    }
+
     const { dbClient } = getThemesServices();
     const userId = (req as any).effectiveUserId;
     const userType = (req as any).userType;
@@ -141,7 +151,7 @@ router.post('/view', async (req: Request, res: Response) => {
       userType,
       puzzleId,
       setName,
-      puzzleNumber: parseInt(puzzleNumber.toString(), 10),
+      puzzleNumber: parsedPuzzleNumber,
       timestamp: Date.now(),
       ipAddress: getClientIp(req),
       userAgent: req.headers['user-agent'] || 'unknown',
@@ -196,6 +206,16 @@ router.post('/feedback', async (req: Request, res: Response) => {
       return;
     }
 
+    // Validate puzzleNumber is a valid integer
+    const puzzleNum = parseInt(puzzleNumber.toString(), 10);
+    if (!Number.isInteger(puzzleNum)) {
+      res.status(400).json({
+        success: false,
+        error: 'puzzleNumber must be a valid integer'
+      });
+      return;
+    }
+
     // Validate rating
     const ratingNum = parseInt(rating.toString(), 10);
     if (ratingNum < 1 || ratingNum > 5) {
@@ -218,7 +238,7 @@ router.post('/feedback', async (req: Request, res: Response) => {
       userType,
       puzzleId,
       setName,
-      puzzleNumber: parseInt(puzzleNumber.toString(), 10),
+      puzzleNumber: puzzleNum,
       rating: ratingNum,
       comment: comment || '',
       timestamp: Date.now()
