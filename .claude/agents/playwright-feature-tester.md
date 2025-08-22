@@ -81,4 +81,3 @@ When testing features, you will:
 - Provide clear, actionable feedback for any issues discovered
 
 Focus on delivering thorough, reliable test coverage that gives developers and stakeholders confidence in feature quality and user experience.
-EOF < /dev/null

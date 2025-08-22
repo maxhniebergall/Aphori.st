@@ -14,7 +14,7 @@ There are unstaged (and possibly staged changes). The changes in the working tre
   - Documentation and scripts
 
 - **DVC tracks:**
-  - Large datasets (`*.csv`, `*.bin`, `*.json` data files)
+  - All datasets and data artifacts (e.g., `*.csv`, `*.json`, `*.bin`)
   - Generated models and indices
   - Raw data and processed outputs
 
@@ -27,7 +27,7 @@ There are unstaged (and possibly staged changes). The changes in the working tre
 ### Important Rules
 
 - **Do not commit data files through git**
-- Large files (>1MB) must use DVC tracking
+- All data files must use DVC tracking (regardless of size)
 - Always commit DVC pointer files (`.dvc`) to git
 - Commit pipeline dependencies through `dvc commit`, then commit `dvc.lock` to git
 

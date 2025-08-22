@@ -22,7 +22,8 @@ ab54eac7
 8b941c91
 a93c7011
 0d2fcad0
-4b2a2b63# Sub-agent commits:
+4b2a2b63
+# Sub-agent commits:
 b8c0ada7
 40391b6b
 219820a2
@@ -47,7 +48,8 @@ ff51828d
 dd53afed
 b003faca
 7f58d56e
-7be52cd3# From two:
+7be52cd3
+# From two:
 ec11c96c
 aab907f4
 3b4f07c4
