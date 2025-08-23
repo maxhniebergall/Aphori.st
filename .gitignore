@@ -87,5 +87,8 @@ scripts/datascience/themes_quality/.gcp/themes-quality-dvc-service-account.json
 **/.dvc/plots/
 **/.dvcignore
 
+# Always keep DVC metadata, even inside ignored data dirs
+!**/*.dvc
+
 # Test result files (data, not code)
 **/test_multiword_results.json
