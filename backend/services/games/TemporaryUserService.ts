@@ -127,16 +127,28 @@ export class TemporaryUserService {
       const tempProgress = await this.firebaseClient.getRawPath(tempProgressPath);
       
       if (tempProgress && Object.keys(tempProgress).length > 0) {
-        // Copy progress to permanent user
+        // Merge with existing permanent user progress to avoid overwriting
         const permanentProgressPath = THEMES_DB_PATHS.USER_PROGRESS(permanentUserId);
-        await this.firebaseClient.setRawPath(permanentProgressPath, {
+        const existingProgress = await this.firebaseClient.getRawPath(permanentProgressPath);
+        
+        const mergedProgress = {
           ...tempProgress,
+          ...existingProgress, // Existing permanent data takes precedence
           userId: permanentUserId,
           userType: 'logged_in',
           migratedFrom: tempId,
-          migratedAt: Date.now()
-        });
-
+          migratedAt: Date.now(),
+          // Merge completed puzzles arrays if both exist
+          completedPuzzles: [
+            ...(tempProgress.completedPuzzles || []),
+            ...(existingProgress?.completedPuzzles || [])
+          ].filter((puzzle, index, arr) => arr.indexOf(puzzle) === index), // Remove duplicates
+          // Use higher values for numeric fields
+          totalAttempts: Math.max(tempProgress.totalAttempts || 0, existingProgress?.totalAttempts || 0),
+          currentPuzzleIndex: Math.max(tempProgress.currentPuzzleIndex || 0, existingProgress?.currentPuzzleIndex || 0)
+        };
+        
+        await this.firebaseClient.setRawPath(permanentProgressPath, mergedProgress);
         logger.info(`Migrated temporary user progress: ${tempId} -> ${permanentUserId}`);
       }
 
@@ -158,29 +170,49 @@ export class TemporaryUserService {
    */
   private async migrateUserAttempts(tempId: string, permanentUserId: string): Promise<void> {
     try {
-      const currentDate = getCurrentDateString();
-      const tempAttemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(tempId, currentDate);
-      const tempAttempts = await this.firebaseClient.getRawPath(tempAttemptsPath);
+      // Get all attempts for the temp user by reading the temp user's attempts root
+      const tempUserAttemptsRootPath = `gameAttempts/themes/${tempId}`;
+      const tempUserAttempts = await this.firebaseClient.getRawPath(tempUserAttemptsRootPath);
 
-      if (tempAttempts && Object.keys(tempAttempts).length > 0) {
-        const permanentAttemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(permanentUserId, currentDate);
+      if (!tempUserAttempts || Object.keys(tempUserAttempts).length === 0) {
+        logger.debug(`No attempts found for temp user ${tempId}`);
+        return;
+      }
+
+      let totalMigratedAttempts = 0;
+
+      // Iterate over all date keys and migrate each date's attempts
+      for (const [dateKey, dateAttempts] of Object.entries(tempUserAttempts)) {
+        if (!dateAttempts || typeof dateAttempts !== 'object') {
+          continue;
+        }
+
+        const permanentAttemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(permanentUserId, dateKey);
+        const existingPermanentAttempts = await this.firebaseClient.getRawPath(permanentAttemptsPath) || {};
         
-        // Update user IDs in attempt records
-        const migratedAttempts: Record<string, any> = {};
-        for (const [attemptId, attemptData] of Object.entries(tempAttempts)) {
+        // Update user IDs in attempt records and merge with existing
+        const migratedAttempts: Record<string, any> = { ...existingPermanentAttempts };
+        
+        for (const [attemptId, attemptData] of Object.entries(dateAttempts)) {
           if (attemptData && typeof attemptData === 'object') {
-            migratedAttempts[attemptId] = {
-              ...attemptData,
-              userId: permanentUserId,
-              userType: 'logged_in',
-              originalTempId: tempId
-            };
+            // Only add if not already present (avoid overwriting existing permanent attempts)
+            if (!migratedAttempts[attemptId]) {
+              migratedAttempts[attemptId] = {
+                ...attemptData,
+                userId: permanentUserId,
+                userType: 'logged_in',
+                originalTempId: tempId
+              };
+              totalMigratedAttempts++;
+            }
           }
         }
 
         await this.firebaseClient.setRawPath(permanentAttemptsPath, migratedAttempts);
-        logger.debug(`Migrated ${Object.keys(migratedAttempts).length} attempts from ${tempId} to ${permanentUserId}`);
+        logger.debug(`Migrated attempts for date ${dateKey} from ${tempId} to ${permanentUserId}`);
       }
+
+      logger.info(`Migrated ${totalMigratedAttempts} total attempts from ${tempId} to ${permanentUserId}`);
     } catch (error) {
       logger.error(`Failed to migrate attempts from ${tempId} to ${permanentUserId}:`, error);
       // Don't throw - migration can continue without attempts
