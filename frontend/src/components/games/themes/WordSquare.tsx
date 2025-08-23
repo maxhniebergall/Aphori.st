@@ -25,13 +25,25 @@ export const WordSquare: React.FC<WordSquareProps> = ({
 }) => {
   const upperCaseWord = useMemo(() => word.toUpperCase(), [word]);
   
-  // Track viewport width for responsive font sizing
-  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  // Track viewport width for responsive font sizing with SSR compatibility
+  const [viewportWidth, setViewportWidth] = useState(() => {
+    // Safely access window in client-side only
+    if (typeof window !== 'undefined') {
+      return window.innerWidth;
+    }
+    return 1024; // Default fallback for SSR
+  });
   
   useEffect(() => {
+    // Only add resize listeners on client-side
+    if (typeof window === 'undefined') return;
+    
     const handleResize = () => {
       setViewportWidth(window.innerWidth);
     };
+    
+    // Set initial value once mounted on client-side
+    setViewportWidth(window.innerWidth);
     
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -93,8 +105,8 @@ export const WordSquare: React.FC<WordSquareProps> = ({
       scalingFactor = 0.18;
     }
     
-    // Adjust for smaller screens in landscape mode
-    if (window.innerHeight < 800 && viewportWidth >= 1024) {
+    // Adjust for smaller screens in landscape mode (SSR-safe)
+    if (typeof window !== 'undefined' && window.innerHeight < 800 && viewportWidth >= 1024) {
       baseSize = Math.round(baseSize * 0.85);
       minSize = Math.round(minSize * 0.85);
       maxSize = Math.round(maxSize * 0.85);
