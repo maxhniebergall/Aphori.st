@@ -121,10 +121,10 @@ async function createCompletionMetrics(
     for (const attempt of correctAttempts) {
       // Find which category this attempt solved
       const solvedCategory = puzzle.categories.find((cat: any) => {
-        const categoryWordSet = new Set(cat.words);
+        const categoryWordSet = new Set(cat.words as string[]);
         const selectedWordSet = new Set(attempt.selectedWords);
         return categoryWordSet.size === selectedWordSet.size && 
-               [...categoryWordSet].every(word => selectedWordSet.has(word));
+               [...categoryWordSet].every(word => selectedWordSet.has(word as string));
       });
       
       if (solvedCategory && !categoryCompletionOrder.includes(solvedCategory.id)) {
@@ -320,13 +320,38 @@ router.post('/attempt', async (req: TempUserRequest, res: Response) => {
       const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
       const existingAttempts = await dbClient.getRawPath(attemptsPath) || {};
       
-      // Count correct attempts
-      const correctAttempts = Object.values(existingAttempts).filter(
-        (attempt: any) => attempt.puzzleId === puzzleId && attempt.result === 'correct'
-      ).length;
+      // Track distinct solved categories by creating a Set of unique category identifiers
+      const solvedCategories = new Set<string>();
+      
+      // Add categories from previous correct attempts
+      Object.values(existingAttempts).forEach((attempt: any) => {
+        if (attempt.puzzleId === puzzleId && attempt.result === 'correct') {
+          // Find which category this attempt solved
+          const solvedCategory = puzzle.categories.find((cat: any) => {
+            const categoryWordSet = new Set(cat.words as string[]);
+            const selectedWordSet = new Set(attempt.selectedWords);
+            return categoryWordSet.size === selectedWordSet.size && 
+                   [...categoryWordSet].every(word => selectedWordSet.has(word as string));
+          });
+          if (solvedCategory && solvedCategory.id) {
+            solvedCategories.add(solvedCategory.id);
+          }
+        }
+      });
+      
+      // Add the current attempt's category
+      const currentSolvedCategory = puzzle.categories.find((cat: any) => {
+        const categoryWordSet = new Set(cat.words as string[]);
+        const selectedWordSet = new Set(selectedWords);
+        return categoryWordSet.size === selectedWordSet.size && 
+               [...categoryWordSet].every(word => selectedWordSet.has(word as string));
+      });
+      if (currentSolvedCategory && currentSolvedCategory.id) {
+        solvedCategories.add(currentSolvedCategory.id);
+      }
 
       // Puzzle is completed when all categories are found
-      completedPuzzle = (correctAttempts + 1) >= puzzle.categories.length;
+      completedPuzzle = solvedCategories.size >= puzzle.categories.length;
     }
 
     // Create attempt record
@@ -466,8 +491,13 @@ router.get('/shareable/:setName/:puzzleNumber', async (req: TempUserRequest, res
     }
 
     // Create a puzzles data structure with just this one puzzle
+    // Ensure the puzzle object has the correct id field for state management
+    const puzzleWithId = {
+      ...targetPuzzle,
+      id: puzzleId
+    };
     const puzzlesData: Record<string, any> = {
-      [puzzleId]: targetPuzzle
+      [puzzleId]: puzzleWithId
     };
 
     // Generate shareable content
@@ -522,10 +552,10 @@ function generateShareableContent(attempts: any, puzzlesData: any, date: string,
         if (attempt.result === 'correct') {
           // Find which category this attempt solved
           const solvedCategory = puzzle.categories.find((cat: any) => {
-            const categoryWordSet = new Set(cat.words);
+            const categoryWordSet = new Set(cat.words as string[]);
             const selectedWordSet = new Set(attempt.selectedWords);
             return categoryWordSet.size === selectedWordSet.size && 
-                   [...categoryWordSet].every(word => selectedWordSet.has(word));
+                   [...categoryWordSet].every(word => selectedWordSet.has(word as string));
           });
           
           if (solvedCategory && !categoryOrder.find(c => c.id === solvedCategory.id)) {

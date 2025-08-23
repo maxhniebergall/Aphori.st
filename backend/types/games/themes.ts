@@ -14,9 +14,11 @@ export interface ThemesPuzzle {
 }
 
 export interface ThemesCategory {
+  id: string; // Unique identifier for the category
   themeWord: string; // The central word that defines this category
   words: string[]; // All words in this category (including themeWord)
   similarity: number; // Average similarity score within category
+  difficulty: number; // 1-4 difficulty level (yellow, green, blue, purple)
 }
 
 export interface ThemesGameState {
