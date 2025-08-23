@@ -25,6 +25,7 @@ import express, { Request, Response, NextFunction } from "express";
 import { createDatabaseClient } from './db/index.js';
 import logger from './logger.js';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import compression from 'compression';
 import requestLogger from './middleware/requestLogger.js';
@@ -102,24 +103,8 @@ const corsOptions = {
 // Apply CORS middleware
 app.use(cors(corsOptions));
 
-// Simple cookie parsing middleware
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const cookieHeader = req.headers.cookie;
-  req.cookies = {};
-  
-  if (cookieHeader) {
-    cookieHeader.split(';').forEach(cookie => {
-      const parts = cookie.trim().split('=');
-      if (parts.length === 2) {
-        const name = parts[0].trim();
-        const value = decodeURIComponent(parts[1].trim());
-        req.cookies![name] = value;
-      }
-    });
-  }
-  
-  next();
-});
+// Cookie parsing middleware
+app.use(cookieParser());
 
 // --- Apply Optional Authentication and Rate Limiting Middlewares ---
 // This middleware attempts to identify the user from JWT for rate limiting purposes,
@@ -230,10 +215,8 @@ await db.connect().then(async () => { // Make the callback async
         isVectorIndexReady = true;
         logger.info('Vector service index initialized successfully.');
     } catch (err) {
-        logger.error({ err }, 'Failed to initialize vector service index. Service will start but search may be unavailable.');
-        // Decide if this should be fatal. For now, let it continue but mark as not ready.
-        isVectorIndexReady = false; 
-        // Consider adding a health check status for vector index
+        logger.error({ err }, 'Failed to initialize vector service index. This is fatal - service cannot start without vector index.');
+        process.exit(1);
     }
     // --- End Vector Index Initialization ---
 

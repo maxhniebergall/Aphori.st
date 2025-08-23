@@ -1,6 +1,9 @@
 /**
  * Games API Router
  * Main router for all game-related endpoints
+ * 
+ * Note: When running TypeScript scripts in dev container, use:
+ * docker exec aphorist-backend-1 sh -c 'cd /app && NODE_OPTIONS="--loader ts-node/esm --experimental-specifier-resolution=node" node script.ts'
  */
 
 import { Router } from 'express';

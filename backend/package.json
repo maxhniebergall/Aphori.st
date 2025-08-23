@@ -17,8 +17,10 @@
   "description": "",
   "dependencies": {
     "@google/genai": "^0.13.0",
+    "@types/cookie-parser": "^1.4.9",
     "@types/dompurify": "^3.2.0",
     "compression": "^1.8.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",

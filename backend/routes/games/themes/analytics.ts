@@ -101,16 +101,62 @@ function extractFingerprint(req: Request): UserFingerprint | undefined {
 }
 
 /**
- * Helper function to get client IP address
+ * Helper function to get client IP address with robust proxy/load balancer support
  */
 function getClientIp(req: Request): string {
-  return (
-    req.headers['x-forwarded-for'] as string ||
-    req.headers['x-real-ip'] as string ||
-    req.connection.remoteAddress ||
-    req.socket.remoteAddress ||
-    'unknown'
-  );
+  // Try various proxy headers (in order of reliability)
+  const forwardedFor = req.headers['x-forwarded-for'] as string;
+  if (forwardedFor) {
+    // x-forwarded-for can contain multiple IPs (comma-separated), take the first (original client)
+    const ips = forwardedFor.split(',').map(ip => ip.trim());
+    const clientIp = ips[0];
+    if (clientIp && isValidIp(clientIp)) {
+      return clientIp;
+    }
+  }
+  
+  // Try other proxy headers
+  const headers = [
+    'x-real-ip',
+    'x-client-ip',
+    'x-forwarded',
+    'forwarded-for',
+    'forwarded'
+  ];
+  
+  for (const header of headers) {
+    const value = req.headers[header] as string;
+    if (value && isValidIp(value)) {
+      return value;
+    }
+  }
+  
+  // Fall back to connection properties
+  const connectionIp = req.connection?.remoteAddress || 
+                      req.socket?.remoteAddress || 
+                      (req as any).ip; // Express may set req.ip
+                      
+  if (connectionIp && isValidIp(connectionIp)) {
+    return connectionIp;
+  }
+  
+  return 'unknown';
+}
+
+/**
+ * Basic IP address validation
+ */
+function isValidIp(ip: string): boolean {
+  if (!ip || ip === 'unknown') return false;
+  
+  // Remove IPv6 brackets and port if present
+  ip = ip.replace(/^\[|\]$/g, '').split(':')[0];
+  
+  // Basic IPv4/IPv6 pattern check
+  const ipv4Pattern = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  const ipv6Pattern = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::$/;
+  
+  return ipv4Pattern.test(ip) || ipv6Pattern.test(ip);
 }
 
 /**
