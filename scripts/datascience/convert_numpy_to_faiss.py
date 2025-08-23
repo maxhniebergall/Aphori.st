@@ -53,12 +53,15 @@ def save_binary_index(words, vectors, output_dir):
     # Format: [num_vectors (4 bytes)] [dimension (4 bytes)] [vector_data]
     vectors_path = os.path.join(output_dir, 'themes_vectors.bin')
     with open(vectors_path, 'wb') as f:
-        # Write header
-        f.write(struct.pack('I', len(vectors)))  # number of vectors
-        f.write(struct.pack('I', vectors.shape[1]))  # dimension
+        # Write header with explicit little-endian format for cross-platform compatibility
+        f.write(struct.pack('<I', len(vectors)))  # number of vectors (little-endian)
+        f.write(struct.pack('<I', vectors.shape[1]))  # dimension (little-endian)
         
-        # Write vector data as float32
+        # Write vector data as float32 in little-endian format
         vectors_float32 = vectors.astype(np.float32)
+        # Ensure little-endian byte order for cross-platform reproducibility
+        if vectors_float32.dtype.byteorder not in ('=', '<'):  # if not native little-endian or already little-endian
+            vectors_float32 = vectors_float32.astype('<f4')  # force little-endian float32
         f.write(vectors_float32.tobytes())
     
     # Save metadata
@@ -102,6 +105,23 @@ def main():
         return 1
     
     vectors = np.load(vectors_path)
+    
+    # Validate loaded arrays
+    if vectors is None or vectors.size == 0:
+        print("Error: Loaded vectors array is empty or invalid")
+        return 1
+    
+    if len(vectors.shape) != 2:
+        print(f"Error: Expected 2D vectors array, got shape {vectors.shape}")
+        return 1
+    
+    if not np.isfinite(vectors).all():
+        print("Error: Vectors contain non-finite values (NaN or inf)")
+        return 1
+    
+    if not isinstance(vocabulary, list) or len(vocabulary) == 0:
+        print("Error: Vocabulary must be a non-empty list")
+        return 1
     
     print(f"Loaded {len(vocabulary)} words with {vectors.shape[1]} dimensional vectors")
     

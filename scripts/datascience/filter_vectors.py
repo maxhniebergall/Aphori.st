@@ -28,15 +28,29 @@ def filter_vectors(vectors_file, filtered_out_file, output_file=None):
         with open(filtered_out_file, 'r', encoding='utf-8') as f:
             filtered_out_data = json.load(f)
         
-        # Extract indices to remove
-        indices_to_remove = [item['index'] for item in filtered_out_data]
-        indices_to_remove = sorted(set(indices_to_remove))  # Remove duplicates and sort
+        # Extract indices to remove with robust handling
+        indices_to_remove = []
+        for item in filtered_out_data:
+            if isinstance(item, int):
+                indices_to_remove.append(item)
+            elif isinstance(item, dict):
+                index = item.get('index')
+                if isinstance(index, int):
+                    indices_to_remove.append(index)
         
-        print(f"Found {len(indices_to_remove)} indices to remove")
+        # Remove duplicates and invalid indices
+        total_vectors = vectors.shape[0]
+        indices_to_remove = sorted(set(idx for idx in indices_to_remove 
+                                     if 0 <= idx < total_vectors))
+        
+        if not indices_to_remove:
+            print("No valid indices to remove found")
+            return False
+            
+        print(f"Found {len(indices_to_remove)} valid indices to remove")
         print(f"Index range: {min(indices_to_remove)} to {max(indices_to_remove)}")
         
         # Create boolean mask for indices to keep
-        total_vectors = vectors.shape[0]
         keep_mask = np.ones(total_vectors, dtype=bool)
         keep_mask[indices_to_remove] = False
         
@@ -56,7 +70,38 @@ def filter_vectors(vectors_file, filtered_out_file, output_file=None):
             output_file = vectors_file
         
         print(f"Saving filtered vectors to: {output_file}")
-        np.save(output_file, filtered_vectors)
+        # Use atomic file operations - write to temporary file first
+        import tempfile
+        temp_file = None
+        try:
+            # Write to temporary file first for atomic operation
+            temp_dir = os.path.dirname(output_file)
+            with tempfile.NamedTemporaryFile(mode='wb', dir=temp_dir, delete=False, suffix='.tmp') as f:
+                temp_file = f.name
+                np.save(temp_file, filtered_vectors)
+            
+            # Atomic move to final location
+            if os.path.exists(output_file):
+                # Keep a backup just in case
+                backup_temp = output_file + '.tmp_backup'
+                os.rename(output_file, backup_temp)
+                try:
+                    os.rename(temp_file, output_file)
+                    os.remove(backup_temp)  # Remove backup on success
+                except:
+                    # Restore backup if move failed
+                    if os.path.exists(backup_temp):
+                        os.rename(backup_temp, output_file)
+                    raise
+            else:
+                os.rename(temp_file, output_file)
+            temp_file = None  # Successfully moved
+            
+        except Exception as e:
+            # Clean up temporary file if something went wrong
+            if temp_file and os.path.exists(temp_file):
+                os.remove(temp_file)
+            raise e
         
         print("✅ Vector filtering completed successfully!")
         
