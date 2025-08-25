@@ -33,15 +33,6 @@ export function initializeThemesServices(): void {
 }
 
 /**
- * Initialize themes index
- * Vector services removed - themes now use pregenerated puzzles only
- */
-export async function initializeThemesIndex(): Promise<void> {
-  // No initialization needed for pregenerated puzzles
-  return Promise.resolve();
-}
-
-/**
  * Get themes services for use in route handlers
  */
 export function getThemesServices() {
