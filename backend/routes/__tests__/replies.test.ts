@@ -1,10 +1,9 @@
 import { jest, describe, it, expect, beforeAll, beforeEach } from '@jest/globals';
 import request from 'supertest';
 import express, { Express } from 'express';
-import repliesRouter, { setDb as setRepliesDbAndService } from '../replies.js';
-import { VectorService } from '../../services/vectorService.js';
+import repliesRouter, { setDb as setRepliesDb } from '../replies.js';
 import { LoggedDatabaseClient } from '../../db/LoggedDatabaseClient.js';
-import { AuthenticatedRequest, User, CreateReplyRequest, Quote, PostData, ReplyData } from '../../types/index.js';
+import { AuthenticatedRequest, User, CreateReplyRequest, Quote, Post, Reply } from '../../types/index.js';
 import logger from '../../logger.js';
 
 // Create function spies for logger methods
@@ -28,15 +27,10 @@ jest.mock('../../utils/quoteUtils.js', () => ({
     : 'quotes:TDCwig5ZR7hWtt1RbXbszOjDx8UaqKEC5jsD2/ZtlUQ='),
 }));
 
-// Mock services and db client
-const mockAddVectorReplies = jest.fn<VectorService['addVector']>();
+// Mock db client
 const mockCreateReplyTransaction = jest.fn<LoggedDatabaseClient['createReplyTransaction']>();
-const mockGetPost = jest.fn<(id: string) => Promise<PostData | null>>();
-const mockGetReply = jest.fn<(id: string) => Promise<ReplyData | null>>();
-
-const mockVectorServiceReplies = {
-  addVector: mockAddVectorReplies,
-} as unknown as VectorService;
+const mockGetPost = jest.fn<(id: string) => Promise<Post | null>>();
+const mockGetReply = jest.fn<(id: string) => Promise<Reply | null>>();
 
 const mockDbClientReplies = {
   createReplyTransaction: mockCreateReplyTransaction,
@@ -53,7 +47,7 @@ beforeAll(() => {
     res.locals.requestId = 'test-request-id-replies';
     next();
   });
-  setRepliesDbAndService(mockDbClientReplies, mockVectorServiceReplies);
+  setRepliesDb(mockDbClientReplies);
   appReplies.use('/api/replies', repliesRouter);
 });
 
@@ -74,11 +68,10 @@ describe('POST /api/replies/createReply', () => {
     },
   };
 
-  it('should create a reply, save to DB, and call vectorService.addVector when parent is a post', async () => {
+  it('should create a reply and save to DB when parent is a post', async () => {
     mockGetPost.mockResolvedValue({ id: 'parentPostId123', authorId: 'testAuthor', content: 'parent content', createdAt: 'date', replyCount: 0 }); // Corrected PostData
     mockGetReply.mockResolvedValue(null); // Parent is not a reply
     mockCreateReplyTransaction.mockResolvedValue(undefined);
-    mockAddVectorReplies.mockResolvedValue(undefined);
 
     const response = await request(appReplies)
       .post('/api/replies/createReply')
@@ -104,11 +97,9 @@ describe('POST /api/replies/createReply', () => {
       'quotes:3PzabmoZkMtBqsokYkTpcQMHxQsFYL+CyeO6knBs0ag=', // from mock getQuoteKey
       expect.objectContaining({ requestId: 'test-request-id-replies', operationId: expect.any(String) }) // logContext
     );
-    expect(mockAddVectorReplies).toHaveBeenCalledWith(replyId, 'reply', validReplyRequest.text);
-    expect(mockLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({ replyId }), 'Reply content added to vector index.');
   });
 
-  it('should create a reply, save to DB, and call vectorService.addVector when parent is a reply', async () => {
+  it('should create a reply and save to DB when parent is a reply', async () => {
     const parentReplyId = 'parentReplyId456';
     const rootPostIdForParentReply = 'rootPostForParentReply789';
     const requestWithReplyParent: CreateReplyRequest = {
@@ -122,13 +113,11 @@ describe('POST /api/replies/createReply', () => {
         authorId: 'parentReplyAuthor', 
         text: 'parent reply text', 
         parentId: 'someOtherParent', // or rootPostIdForParentReply if it's a direct child of a post
-        parentType: 'post', // or 'reply' depending on actual parent structure
         quote: { text: 'quote from parent reply', sourceId: 'someOtherParent', selectionRange: {start: 0, end: 5}}, 
         createdAt: 'date',
         rootPostId: rootPostIdForParentReply 
     }); 
     mockCreateReplyTransaction.mockResolvedValue(undefined);
-    mockAddVectorReplies.mockResolvedValue(undefined);
 
     const response = await request(appReplies)
       .post('/api/replies/createReply')
@@ -148,26 +137,8 @@ describe('POST /api/replies/createReply', () => {
         'quotes:TDCwig5ZR7hWtt1RbXbszOjDx8UaqKEC5jsD2/ZtlUQ=', // hashedQuoteKey
         expect.objectContaining({ requestId: 'test-request-id-replies', operationId: expect.any(String) }) // logContext
     );
-    expect(mockAddVectorReplies).toHaveBeenCalledWith(replyId, 'reply', requestWithReplyParent.text);
   });
 
-  it('should still create reply successfully even if vectorService.addVector fails', async () => {
-    mockGetPost.mockResolvedValue({ id: 'parentPostId123', authorId: 'testAuthor', content: 'parent content', createdAt: 'date', replyCount: 0 }); // Corrected PostData
-    mockGetReply.mockResolvedValue(null);
-    mockCreateReplyTransaction.mockResolvedValue(undefined);
-    const vectorError = new Error('Vector add failed for reply');
-    mockAddVectorReplies.mockRejectedValue(vectorError);
-
-    const response = await request(appReplies)
-      .post('/api/replies/createReply')
-      .set('Authorization', 'Bearer dev_token')
-      .send(validReplyRequest);
-
-    expect(response.status).toBe(201);
-    expect(mockCreateReplyTransaction).toHaveBeenCalledTimes(1);
-    expect(mockAddVectorReplies).toHaveBeenCalledTimes(1);
-    expect(mockLoggerError).toHaveBeenCalledWith(expect.objectContaining({ replyId: response.body.data.id, err: vectorError }), 'Error adding reply content to vector index.');
-  });
 
   it('should return 404 if parent post/reply not found', async () => {
     mockGetPost.mockResolvedValue(null);
@@ -318,6 +289,5 @@ describe('POST /api/replies/createReply', () => {
 
     expect(response.status).toBe(500);
     expect(response.body.error).toBe('Server error creating reply');
-    expect(mockAddVectorReplies).not.toHaveBeenCalled();
   });
 }); 

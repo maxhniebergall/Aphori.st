@@ -1,7 +1,6 @@
 import request from 'supertest';
 import express, { Express } from 'express';
-import postsRouter, { setDb as setPostsDbAndService, MAX_POST_LENGTH } from '../posts.js'; 
-import { VectorService } from '../../services/vectorService.js';
+import postsRouter, { setDb as setPostsDb, MAX_POST_LENGTH } from '../posts.js'; 
 import { LoggedDatabaseClient } from '../../db/LoggedDatabaseClient.js';
 import { AuthenticatedRequest, User } from '../../types/index.js';
 import { jest } from '@jest/globals';
@@ -21,13 +20,8 @@ jest.mock('../../middleware/authMiddleware.js', () => ({
   },
 }));
 
-// Mock services and db client
-const mockAddVector = jest.fn<() => Promise<void>>();
+// Mock db client
 const mockCreatePostTransaction = jest.fn<() => Promise<void>>();
-
-const mockVectorService = {
-  addVector: mockAddVector,
-} as unknown as VectorService;
 
 const mockDbClient = {
   createPostTransaction: mockCreatePostTransaction,
@@ -41,7 +35,7 @@ let app: Express;
 beforeAll(() => {
   app = express();
   app.use(express.json());
-  setPostsDbAndService(mockDbClient, mockVectorService); // Inject mocks into posts router
+  setPostsDb(mockDbClient); // Inject mocks into posts router
   app.use('/api/posts', postsRouter);
   app.use((req, res, next) => { // Basic requestId middleware for logging context in route
     res.locals.requestId = 'test-request-id';
@@ -57,9 +51,8 @@ describe('POST /api/posts/createPost', () => {
   const validPostContent = 'a'.repeat(TEST_MIN_POST_LENGTH);
   const postTree = { content: validPostContent };
 
-  it('should create a post, save to DB, and call vectorService.addVector on success', async () => {
+  it('should create a post and save to DB on success', async () => {
     mockCreatePostTransaction.mockResolvedValue(undefined); // Simulate successful DB transaction
-    mockAddVector.mockResolvedValue(undefined); // Simulate successful vector add
 
     const response = await request(app)
       .post('/api/posts/createPost')
@@ -83,28 +76,8 @@ describe('POST /api/posts/createPost', () => {
         textSnippet: validPostContent.substring(0, 100),
       })
     );
-    expect(mockAddVector).toHaveBeenCalledWith(postId, 'post', validPostContent);
-    expect(mockLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({ postId }), 'Post content added to vector index.');
   });
 
-  it('should still create post successfully even if vectorService.addVector fails (fire and forget)', async () => {
-    mockCreatePostTransaction.mockResolvedValue(undefined);
-    const vectorError = new Error('Vector add failed');
-    mockAddVector.mockRejectedValue(vectorError); // Simulate vector add failure
-
-    const response = await request(app)
-      .post('/api/posts/createPost')
-      .set('Authorization', 'Bearer dev_token')
-      .send({ postTree });
-
-    expect(response.status).toBe(201);
-    expect(response.body.id).toBeDefined();
-    const postId = response.body.id;
-
-    expect(mockCreatePostTransaction).toHaveBeenCalledTimes(1);
-    expect(mockAddVector).toHaveBeenCalledWith(postId, 'post', validPostContent);
-    expect(mockLoggerError).toHaveBeenCalledWith(expect.objectContaining({ postId, err: vectorError }), 'Error adding post content to vector index.');
-  });
 
   it('should return 400 if post content is missing', async () => {
     const response = await request(app)
@@ -146,6 +119,5 @@ describe('POST /api/posts/createPost', () => {
 
     expect(response.status).toBe(500);
     expect(response.body.error).toBe('Server error creating post');
-    expect(mockAddVector).not.toHaveBeenCalled(); // Should not be called if DB fails
   });
 }); 
