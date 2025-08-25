@@ -1,0 +1,5 @@
+outs:
+- md5: 7c428c7ccab7138af7a6486acbcaea5e
+  size: 937517
+  hash: md5
+  path: firebase_import.json
