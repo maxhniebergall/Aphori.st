@@ -302,31 +302,47 @@ export class FullVectorLoader {
       throw new Error('FullVectorLoader not initialized');
     }
 
-    // First check if the theme word has the same canonical form as existing words
+    // First check if the theme word is a duplicate of existing words
     if (this.spellCheckService) {
       try {
-        const matchResult = this.spellCheckService.hasMatchingCanonicalForm(themeWord, existingWords);
+        const matchResult = this.spellCheckService.hasDuplicateInSet(themeWord, existingWords);
         if (matchResult.hasMatch) {
-          console.log(`🔍 Theme word "${themeWord}" has same canonical form as existing word "${matchResult.matchingWord}" (both: "${matchResult.canonicalForm}")`);
+          console.log(`🔍 Theme word "${themeWord}" is duplicate of existing word "${matchResult.matchingWord}" (${matchResult.reason})`);
           return []; // Return empty results - can't use this theme word
         }
       } catch (error) {
-        console.warn(`⚠️ Canonical form check error for theme word "${themeWord}", using fallback check:`, error);
-        // Fallback to case-insensitive check
+        console.warn(`⚠️ Duplicate check error for theme word "${themeWord}", using fallback check:`, error);
+        // Fallback to basic duplicate checking
         const themeWordLower = themeWord.toLowerCase();
         for (const existingWord of existingWords) {
-          if (themeWordLower === existingWord.toLowerCase()) {
+          const existingLower = existingWord.toLowerCase();
+          
+          // Check case-insensitive match
+          if (themeWordLower === existingLower) {
             console.log(`🔍 Theme word "${themeWord}" is case-insensitive duplicate of existing word "${existingWord}" (fallback)`);
+            return [];
+          }
+          
+          // Check simple plural
+          if (themeWordLower === existingLower + 's' || existingLower === themeWordLower + 's') {
+            console.log(`🔍 Theme word "${themeWord}" is plural form of existing word "${existingWord}" (fallback)`);
             return [];
           }
         }
       }
     } else {
-      // Fallback to case-insensitive check if spell checker not available
+      // Fallback to basic duplicate checking if spell checker not available
       const themeWordLower = themeWord.toLowerCase();
       for (const existingWord of existingWords) {
-        if (themeWordLower === existingWord.toLowerCase()) {
+        const existingLower = existingWord.toLowerCase();
+        
+        if (themeWordLower === existingLower) {
           console.log(`🔍 Theme word "${themeWord}" is case-insensitive duplicate of existing word "${existingWord}" (no spell checker)`);
+          return [];
+        }
+        
+        if (themeWordLower === existingLower + 's' || existingLower === themeWordLower + 's') {
+          console.log(`🔍 Theme word "${themeWord}" is plural form of existing word "${existingWord}" (no spell checker)`);
           return [];
         }
       }
@@ -426,33 +442,50 @@ export class FullVectorLoader {
    */
   private hasSameCanonicalForm(word: string, themeWord: string): boolean {
     if (!this.spellCheckService) {
-      // Fallback to substring checking if spell checker not available
-      console.warn(`     ⚠️ Spell checker not available, falling back to substring check for "${word}" vs "${themeWord}"`);
+      // Fallback to basic duplicate checking if spell checker not available
+      console.warn(`     ⚠️ Spell checker not available, falling back to basic duplicate check for "${word}" vs "${themeWord}"`);
       const wordLower = word.toLowerCase();
       const themeLower = themeWord.toLowerCase();
-      const contains = wordLower.includes(themeLower) || themeLower.includes(wordLower);
       
+      // Check case-insensitive match
+      if (wordLower === themeLower) {
+        console.log(`     🔤 "${word}" is case-insensitive duplicate of theme word "${themeWord}"`);
+        return true;
+      }
+      
+      // Check simple plural
+      if (wordLower === themeLower + 's' || themeLower === wordLower + 's') {
+        console.log(`     🔤 "${word}" is plural form of theme word "${themeWord}"`);
+        return true;
+      }
+      
+      // Check substring containment
+      const contains = wordLower.includes(themeLower) || themeLower.includes(wordLower);
       if (contains) {
-        console.log(`     🔤 "${word}" contains theme word "${themeWord}" (substring fallback)`);
+        console.log(`     🔤 "${word}" contains/contained by theme word "${themeWord}"`);
       }
       
       return contains;
     }
 
     try {
-      const hasSameCanonical = this.spellCheckService.haveSameCanonicalForm(word, themeWord);
+      // Use enhanced duplicate detection
+      const areDuplicates = this.spellCheckService.areDuplicates(word, themeWord);
       
-      if (hasSameCanonical) {
+      if (areDuplicates) {
         const canonicalForm = this.spellCheckService.getCanonicalForm(word);
-        console.log(`     🔤 "${word}" has same canonical form as theme word "${themeWord}" (both: "${canonicalForm}")`);
+        console.log(`     🔤 "${word}" is a duplicate of theme word "${themeWord}" (canonical: "${canonicalForm}")`);
       }
       
-      return hasSameCanonical;
+      return areDuplicates;
     } catch (error) {
-      console.warn(`     ⚠️ Spell check error for "${word}" vs "${themeWord}", falling back to substring: ${error}`);
-      // Fallback to substring checking
+      console.warn(`     ⚠️ Spell check error for "${word}" vs "${themeWord}", falling back to basic check: ${error}`);
+      // Fallback to basic duplicate checking
       const wordLower = word.toLowerCase();
       const themeLower = themeWord.toLowerCase();
+      
+      if (wordLower === themeLower) return true;
+      if (wordLower === themeLower + 's' || themeLower === wordLower + 's') return true;
       return wordLower.includes(themeLower) || themeLower.includes(wordLower);
     }
   }
@@ -462,22 +495,28 @@ export class FullVectorLoader {
    */
   private hasMatchingCanonicalFormInSet(word: string, existingWords: Set<string>): boolean {
     if (!this.spellCheckService) {
-      // Fallback to substring checking if spell checker not available
-      console.warn(`     ⚠️ Spell checker not available, falling back to substring check for "${word}"`);
+      // Fallback to basic duplicate checking if spell checker not available
+      console.warn(`     ⚠️ Spell checker not available, falling back to basic duplicate check for "${word}"`);
       const wordLower = word.toLowerCase();
       
       for (const existingWord of existingWords) {
         const existingLower = existingWord.toLowerCase();
         
-        // Check for exact match (case-insensitive) - this is a duplicate word
+        // Check for exact match (case-insensitive)
         if (wordLower === existingLower) {
-          console.log(`     🔗 "${word}" is duplicate of existing word "${existingWord}" (case-insensitive)`);
+          console.log(`     🔗 "${word}" is case-insensitive duplicate of existing word "${existingWord}"`);
+          return true;
+        }
+        
+        // Check for simple plural
+        if (wordLower === existingLower + 's' || existingLower === wordLower + 's') {
+          console.log(`     🔗 "${word}" is plural form of existing word "${existingWord}"`);
           return true;
         }
         
         // Check if candidate word contains existing word or vice versa (substring containment)
         if (wordLower.includes(existingLower) || existingLower.includes(wordLower)) {
-          console.log(`     🔗 "${word}" has containment with existing word "${existingWord}" (substring fallback)`);
+          console.log(`     🔗 "${word}" has containment with existing word "${existingWord}"`);
           return true;
         }
       }
@@ -486,28 +525,30 @@ export class FullVectorLoader {
     }
 
     try {
-      const matchResult = this.spellCheckService.hasMatchingCanonicalForm(word, existingWords);
+      // Use enhanced duplicate detection
+      const matchResult = this.spellCheckService.hasDuplicateInSet(word, existingWords);
       
       if (matchResult.hasMatch) {
-        console.log(`     🔗 "${word}" has same canonical form as existing word "${matchResult.matchingWord}" (both: "${matchResult.canonicalForm}")`);
+        console.log(`     🔗 "${word}" is duplicate of existing word "${matchResult.matchingWord}" (${matchResult.reason})`);
       }
       
       return matchResult.hasMatch;
     } catch (error) {
-      console.warn(`     ⚠️ Spell check error for "${word}" vs existing words, falling back to substring: ${error}`);
-      // Fallback to substring checking
+      console.warn(`     ⚠️ Spell check error for "${word}" vs existing words, falling back to basic check: ${error}`);
+      // Fallback to basic duplicate checking
       const wordLower = word.toLowerCase();
       
       for (const existingWord of existingWords) {
         const existingLower = existingWord.toLowerCase();
         
-        if (wordLower === existingLower) {
-          return true;
-        }
+        // Case-insensitive match
+        if (wordLower === existingLower) return true;
         
-        if (wordLower.includes(existingLower) || existingLower.includes(wordLower)) {
-          return true;
-        }
+        // Simple plural check
+        if (wordLower === existingLower + 's' || existingLower === wordLower + 's') return true;
+        
+        // Substring containment
+        if (wordLower.includes(existingLower) || existingLower.includes(wordLower)) return true;
       }
       
       return false;

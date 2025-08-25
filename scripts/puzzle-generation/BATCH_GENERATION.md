@@ -1,18 +1,18 @@
 # Batch Generation System
 
-This document describes the batch generation system for creating 100 4x4 puzzles using two different data science algorithms.
+This document describes the batch generation system for creating 80 4x4 puzzles using two different data science algorithms.
 
 ## Overview
 
-The batch generation system creates two separate sets of 100 puzzles each using:
+The batch generation system creates two separate sets of 80 puzzles each using:
 1. **Wiki Pipeline**: Basic vector similarity search on themes_index
 2. **Gemini Pipeline**: Enhanced Gemini API embeddings for semantic similarity
 
 ## Scripts
 
 ### Individual Batch Generation
-- `npm run generate:batch-wiki` - Generate 100 4x4 puzzles using wiki pipeline
-- `npm run generate:batch-gemini` - Generate 100 4x4 puzzles using Gemini pipeline
+- `npm run generate:batch-wiki` - Generate 80 4x4 puzzles using wiki pipeline
+- `npm run generate:batch-gemini` - Generate 80 4x4 puzzles using Gemini pipeline
 
 ### Combined Generation
 - `npm run generate:all-batches` - Generate both sets and create comparison analysis
@@ -111,20 +111,20 @@ The unified Firebase format uses **named sets** instead of daily puzzles:
       "4x4": {
         "wiki_batch_2025-08-19_1": { /* puzzle data */ },
         "wiki_batch_2025-08-19_2": { /* puzzle data */ }
-        // ... up to 100 puzzles
+        // ... up to 80 puzzles
       }
     },
     "gemini_batch_2025-08-19": {
       "4x4": {
         "gemini_batch_2025-08-19_1": { /* puzzle data */ },
         "gemini_batch_2025-08-19_2": { /* puzzle data */ }
-        // ... up to 100 puzzles
+        // ... up to 80 puzzles
       }
     }
   },
   "setIndex": {
     "wiki_batch_2025-08-19": {
-      "totalCount": 100,
+      "totalCount": 80,
       "algorithm": "wiki_puzzle_pipeline",
       "status": "active",
       "metadata": {

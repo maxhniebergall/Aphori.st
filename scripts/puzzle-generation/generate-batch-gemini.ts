@@ -2,7 +2,7 @@
 
 /**
  * Batch Gemini Pipeline Generator
- * Generates 100 4x4 puzzles using the wiki_puzzle_gemini_pipeline algorithm
+ * Generates 80 4x4 puzzles using the wiki_puzzle_gemini_pipeline algorithm
  */
 
 import fs from 'fs/promises';
@@ -28,7 +28,7 @@ class GeminiBatchGenerator {
   constructor(private config: GeminiBatchConfig) {}
 
   /**
-   * Generate 100 4x4 puzzles using gemini pipeline
+   * Generate 80 4x4 puzzles using gemini pipeline
    */
   async generateBatch(): Promise<GeminiBatchResult> {
     const startTime = Date.now();
@@ -112,6 +112,20 @@ class GeminiBatchGenerator {
         console.error(`❌ DVC is not installed. Please install DVC: pip install dvc`);
         resolve({ success: false, error: 'DVC not installed' });
         return;
+      }
+
+      // First try to pull existing cache files
+      console.log(`🔄 Attempting to restore cache from DVC...`);
+      const dvcPull = spawnSync('dvc', ['pull', 'data/cache/all_embeddings.csv'], {
+        cwd: pipelinePath,
+        stdio: 'pipe',
+        env: { ...process.env, GEMINI_API_KEY: process.env.GEMINI_API_KEY }
+      });
+      
+      if (dvcPull.status === 0) {
+        console.log(`✅ Cache restored from DVC`);
+      } else {
+        console.log(`ℹ️  No existing cache in DVC, will start fresh`);
       }
 
       // Run the DVC pipeline with verbose output to see progress

@@ -2,19 +2,29 @@
 
 /**
  * Generate All Batches Script
- * Generates 100 4x4 puzzles using both algorithms and creates comparison analysis
+ * Generates 80 4x4 puzzles using both algorithms and creates comparison analysis
  */
 
 import fs from 'fs/promises';
 import path from 'path';
+import { spawn } from 'child_process';
 import { WikiBatchGenerator, WikiBatchResult } from './generate-batch-wiki.js';
 import { GeminiBatchGenerator, GeminiBatchResult } from './generate-batch-gemini.js';
 import { FirebaseFormatConverter } from './firebase-format-converter.js';
+
+export interface DvcStatusResult {
+  wikiNeedsUpdate: boolean;
+  geminiNeedsUpdate: boolean;
+  wikiChanges: string[];
+  geminiChanges: string[];
+  statusMessage: string;
+}
 
 export interface BatchComparisonResult {
   totalPuzzles: number;
   wikiResults: WikiBatchResult;
   geminiResults: GeminiBatchResult;
+  skippedPipelines: string[];
   comparison: {
     wikiPuzzleCount: number;
     geminiPuzzleCount: number;
@@ -44,7 +54,167 @@ class AllBatchesGenerator {
   }
 
   /**
-   * Generate both sets of 100 4x4 puzzles and create comparison analysis
+   * Commit DVC outputs for specific pipeline stages immediately after completion.
+   * This ensures that if the script is interrupted or run again, completed 
+   * pipelines won't need to be re-run unnecessarily.
+   */
+  private async commitDvcOutputs(pipelineName: string, pipelinePath: string, stages: string[]): Promise<boolean> {
+    console.log(`💾 Committing DVC stages for ${pipelineName} pipeline: ${stages.join(', ')}`);
+    
+    return new Promise((resolve) => {
+      // First try without force, then with force if needed
+      const dvcArgs = ['commit', ...stages];
+      const dvcProcess = spawn('dvc', dvcArgs, {
+        cwd: pipelinePath,
+        stdio: 'pipe',
+        env: process.env
+      });
+      
+      let errorOutput = '';
+      let stdoutOutput = '';
+      
+      dvcProcess.stdout?.on('data', (data) => {
+        const text = data.toString();
+        stdoutOutput += text;
+        if (this.verbose && text.trim()) {
+          console.log(`   📝 ${text.trim()}`);
+        }
+      });
+      
+      dvcProcess.stderr?.on('data', (data) => {
+        const text = data.toString();
+        errorOutput += text;
+        if (this.verbose && text.trim()) {
+          console.log(`   📝 ${text.trim()}`);
+        }
+      });
+      
+      dvcProcess.on('close', (code) => {
+        if (code === 0) {
+          console.log(`✅ ${pipelineName} outputs committed to DVC successfully`);
+          resolve(true);
+        } else {
+          console.warn(`⚠️  Initial DVC commit failed for ${pipelineName} (exit code: ${code})`);
+          if (this.verbose && errorOutput.trim()) {
+            console.warn(`   Error: ${errorOutput.trim()}`);
+          }
+          
+          // Retry with --force if the initial commit failed due to dependency issues
+          if (errorOutput.includes('Use `-f|--force` to force')) {
+            console.log(`   🔄 Retrying with --force...`);
+            
+            const forceArgs = ['commit', '--force', ...stages];
+            const forceProcess = spawn('dvc', forceArgs, {
+              cwd: pipelinePath,
+              stdio: 'pipe',
+              env: process.env
+            });
+            
+            let forceError = '';
+            forceProcess.stderr?.on('data', (data) => {
+              forceError += data.toString();
+            });
+            
+            forceProcess.on('close', (forceCode) => {
+              if (forceCode === 0) {
+                console.log(`✅ ${pipelineName} outputs committed to DVC successfully (with force)`);
+                resolve(true);
+              } else {
+                console.warn(`⚠️  DVC commit failed even with --force for ${pipelineName} (exit code: ${forceCode})`);
+                if (forceError.trim()) {
+                  console.warn(`   Force error: ${forceError.trim()}`);
+                }
+                resolve(false);
+              }
+            });
+          } else {
+            // Don't retry if it's a different type of error
+            resolve(false);
+          }
+        }
+      });
+    });
+  }
+
+  /**
+   * Check DVC status to determine which pipelines need updates
+   */
+  private async checkDvcStatus(): Promise<DvcStatusResult> {
+    const themesQualityPath = path.resolve('../datascience/themes_quality');
+    
+    console.log(`🔍 Checking DVC status to determine which pipelines need updates...`);
+    
+    return new Promise((resolve) => {
+      const dvcProcess = spawn('dvc', ['status', '--verbose'], {
+        cwd: themesQualityPath,
+        stdio: 'pipe',
+        env: process.env
+      });
+      
+      let statusOutput = '';
+      let errorOutput = '';
+      
+      dvcProcess.stdout?.on('data', (data) => {
+        statusOutput += data.toString();
+      });
+      
+      dvcProcess.stderr?.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+      
+      dvcProcess.on('close', (code) => {
+        const allOutput = statusOutput + errorOutput;
+        
+        // Parse DVC status output to determine what needs updating
+        const wikiChanges: string[] = [];
+        const geminiChanges: string[] = [];
+        
+        // Check for wiki pipeline changes
+        if (allOutput.includes('wiki_puzzle_pipeline/dvc.yaml:')) {
+          const wikiMatches = allOutput.match(/wiki_puzzle_pipeline\/dvc\.yaml:[\s\S]*?(?=\n\n|\n[a-zA-Z]|$)/g);
+          if (wikiMatches) {
+            wikiMatches.forEach(match => wikiChanges.push(match.trim()));
+          }
+        }
+        
+        // Check for gemini pipeline changes  
+        if (allOutput.includes('wiki_puzzle_gemini_pipeline/dvc.yaml:')) {
+          const geminiMatches = allOutput.match(/wiki_puzzle_gemini_pipeline\/dvc\.yaml:[\s\S]*?(?=\n\n|\n[a-zA-Z]|$)/g);
+          if (geminiMatches) {
+            geminiMatches.forEach(match => geminiChanges.push(match.trim()));
+          }
+        }
+        
+        const wikiNeedsUpdate = wikiChanges.length > 0;
+        const geminiNeedsUpdate = geminiChanges.length > 0;
+        
+        // If no specific pipeline changes detected but we have output, something needs updating
+        const hasAnyChanges = allOutput.trim() !== '' && !allOutput.includes('Data and pipelines are up to date');
+        
+        console.log(`📊 DVC Status Analysis:`);
+        console.log(`   Wiki Pipeline: ${wikiNeedsUpdate ? '🔄 Needs Update' : '✅ Up to Date'}`);
+        console.log(`   Gemini Pipeline: ${geminiNeedsUpdate ? '🔄 Needs Update' : '✅ Up to Date'}`);
+        
+        if (wikiChanges.length > 0) {
+          console.log(`   Wiki changes: ${wikiChanges.length} detected`);
+        }
+        if (geminiChanges.length > 0) {
+          console.log(`   Gemini changes: ${geminiChanges.length} detected`);
+        }
+        
+        resolve({
+          wikiNeedsUpdate: wikiNeedsUpdate || (hasAnyChanges && !geminiNeedsUpdate),
+          geminiNeedsUpdate: geminiNeedsUpdate || (hasAnyChanges && !wikiNeedsUpdate),
+          wikiChanges,
+          geminiChanges,
+          statusMessage: allOutput
+        });
+      });
+    });
+  }
+
+  /**
+   * Generate both sets of 80 4x4 puzzles and create comparison analysis
    */
   async generateAllBatches(): Promise<BatchComparisonResult> {
     const startTime = Date.now();
@@ -52,38 +222,81 @@ class AllBatchesGenerator {
     console.log(`🎯 Starting generation of both puzzle sets...`);
     console.log(`📁 Base output directory: ${this.baseOutputDir}`);
     
+    // Check DVC status to determine what needs updating
+    const dvcStatus = await this.checkDvcStatus();
+    
     // Ensure base output directory exists
     await fs.mkdir(this.baseOutputDir, { recursive: true });
     
     const wikiOutputDir = path.join(this.baseOutputDir, 'set1-wiki-pipeline');
     const geminiOutputDir = path.join(this.baseOutputDir, 'set2-gemini-pipeline');
     
-    // Generate Wiki pipeline puzzles
-    console.log(`\n🔄 Step 1: Generating Wiki pipeline puzzles...`);
-    const wikiGenerator = new WikiBatchGenerator({
-      outputDir: wikiOutputDir,
-      verbose: this.verbose
-    });
-    const wikiResults = await wikiGenerator.generateBatch();
+    let wikiResults: WikiBatchResult;
+    let geminiResults: GeminiBatchResult;
+    const skippedPipelines: string[] = [];
     
-    if (!wikiResults.success) {
-      console.error(`❌ Wiki pipeline failed: ${wikiResults.error}`);
+    // Conditionally generate Wiki pipeline puzzles
+    if (dvcStatus.wikiNeedsUpdate) {
+      console.log(`\n🔄 Step 1: Generating Wiki pipeline puzzles...`);
+      const wikiGenerator = new WikiBatchGenerator({
+        outputDir: wikiOutputDir,
+        verbose: this.verbose
+      });
+      wikiResults = await wikiGenerator.generateBatch();
+      
+      if (!wikiResults.success) {
+        console.error(`❌ Wiki pipeline failed: ${wikiResults.error}`);
+      } else {
+        console.log(`✅ Wiki pipeline: ${wikiResults.puzzleCount} puzzles generated`);
+        
+        // Immediately commit DVC outputs for wiki pipeline
+        const wikiPipelinePath = path.resolve('../datascience/themes_quality/wiki_puzzle_pipeline');
+        const wikiStages = ['dvc.yaml:select_themes', 'dvc.yaml:generate_puzzles'];
+        await this.commitDvcOutputs('Wiki', wikiPipelinePath, wikiStages);
+      }
     } else {
-      console.log(`✅ Wiki pipeline: ${wikiResults.puzzleCount} puzzles generated`);
+      console.log(`\n⏭️  Step 1: Skipping Wiki pipeline (no changes detected)`);
+      skippedPipelines.push('wiki');
+      // Create a placeholder result for skipped pipeline
+      wikiResults = {
+        success: true,
+        puzzleCount: 0,
+        outputPath: wikiOutputDir,
+        processingTime: 0,
+        metadata: { skipped: true, reason: 'No DVC changes detected' }
+      };
     }
     
-    // Generate Gemini pipeline puzzles
-    console.log(`\n🔄 Step 2: Generating Gemini pipeline puzzles...`);
-    const geminiGenerator = new GeminiBatchGenerator({
-      outputDir: geminiOutputDir,
-      verbose: this.verbose
-    });
-    const geminiResults = await geminiGenerator.generateBatch();
-    
-    if (!geminiResults.success) {
-      console.error(`❌ Gemini pipeline failed: ${geminiResults.error}`);
+    // Conditionally generate Gemini pipeline puzzles
+    if (dvcStatus.geminiNeedsUpdate) {
+      console.log(`\n🔄 Step 2: Generating Gemini pipeline puzzles...`);
+      const geminiGenerator = new GeminiBatchGenerator({
+        outputDir: geminiOutputDir,
+        verbose: this.verbose
+      });
+      geminiResults = await geminiGenerator.generateBatch();
+      
+      if (!geminiResults.success) {
+        console.error(`❌ Gemini pipeline failed: ${geminiResults.error}`);
+      } else {
+        console.log(`✅ Gemini pipeline: ${geminiResults.puzzleCount} puzzles generated`);
+        
+        // Immediately commit DVC outputs for gemini pipeline
+        const geminiPipelinePath = path.resolve('../datascience/themes_quality/wiki_puzzle_gemini_pipeline');
+        const geminiStages = ['dvc.yaml:select_themes', 'dvc.yaml:select_candidates', 'dvc.yaml:enhance_with_gemini'];
+        await this.commitDvcOutputs('Gemini', geminiPipelinePath, geminiStages);
+      }
     } else {
-      console.log(`✅ Gemini pipeline: ${geminiResults.puzzleCount} puzzles generated`);
+      console.log(`\n⏭️  Step 2: Skipping Gemini pipeline (no changes detected)`);
+      skippedPipelines.push('gemini');
+      // Create a placeholder result for skipped pipeline
+      geminiResults = {
+        success: true,
+        puzzleCount: 0,
+        outputPath: geminiOutputDir,
+        processingTime: 0,
+        metadata: { skipped: true, reason: 'No DVC changes detected' }
+      };
     }
     
     // Create comparison analysis
@@ -94,12 +307,28 @@ class AllBatchesGenerator {
     console.log(`\n🔄 Step 4: Creating unified Firebase format...`);
     await this.createUnifiedFirebaseFormat(wikiOutputDir, geminiOutputDir);
     
+    // Final DVC commit at the themes_quality level to catch any remaining changes
+    if (dvcStatus.wikiNeedsUpdate || dvcStatus.geminiNeedsUpdate) {
+      console.log(`\n💾 Final DVC commit for overall themes_quality changes...`);
+      const themesQualityPath = path.resolve('../datascience/themes_quality');
+      // For the parent level, we'll commit all pipeline stages that were executed
+      const allStages: string[] = [];
+      if (dvcStatus.wikiNeedsUpdate) {
+        allStages.push('wiki_puzzle_pipeline/dvc.yaml:select_themes', 'wiki_puzzle_pipeline/dvc.yaml:generate_puzzles');
+      }
+      if (dvcStatus.geminiNeedsUpdate) {
+        allStages.push('wiki_puzzle_gemini_pipeline/dvc.yaml:select_themes', 'wiki_puzzle_gemini_pipeline/dvc.yaml:select_candidates', 'wiki_puzzle_gemini_pipeline/dvc.yaml:enhance_with_gemini');
+      }
+      await this.commitDvcOutputs('themes_quality', themesQualityPath, allStages);
+    }
+    
     const totalProcessingTime = Date.now() - startTime;
     
     const result: BatchComparisonResult = {
       totalPuzzles: wikiResults.puzzleCount + geminiResults.puzzleCount,
       wikiResults,
       geminiResults,
+      skippedPipelines,
       comparison: {
         wikiPuzzleCount: wikiResults.puzzleCount,
         geminiPuzzleCount: geminiResults.puzzleCount,
@@ -125,6 +354,9 @@ class AllBatchesGenerator {
     
     console.log(`\n🎉 All batches completed!`);
     console.log(`📊 Total puzzles: ${result.totalPuzzles}`);
+    if (skippedPipelines.length > 0) {
+      console.log(`⏭️  Skipped pipelines: ${skippedPipelines.join(', ')} (no changes)`);
+    }
     console.log(`⏱️  Total time: ${totalProcessingTime}ms`);
     console.log(`📁 Results saved to: ${this.baseOutputDir}`);
     
@@ -146,7 +378,9 @@ class AllBatchesGenerator {
           processingTime: wikiResults.processingTime,
           avgTimePerPuzzle: wikiResults.puzzleCount > 0 ? 
             wikiResults.processingTime / wikiResults.puzzleCount : 0,
-          error: wikiResults.error
+          error: wikiResults.error,
+          skipped: wikiResults.metadata?.skipped || false,
+          skipReason: wikiResults.metadata?.reason
         },
         gemini_pipeline: {
           success: geminiResults.success,
@@ -154,7 +388,9 @@ class AllBatchesGenerator {
           processingTime: geminiResults.processingTime,
           avgTimePerPuzzle: geminiResults.puzzleCount > 0 ? 
             geminiResults.processingTime / geminiResults.puzzleCount : 0,
-          error: geminiResults.error
+          error: geminiResults.error,
+          skipped: geminiResults.metadata?.skipped || false,
+          skipReason: geminiResults.metadata?.reason
         }
       },
       performance: {
@@ -166,15 +402,15 @@ class AllBatchesGenerator {
       },
       output: {
         total_puzzles: wikiResults.puzzleCount + geminiResults.puzzleCount,
-        wiki_output_ratio: wikiResults.puzzleCount / 100,
-        gemini_output_ratio: geminiResults.puzzleCount / 100,
+        wiki_output_ratio: wikiResults.puzzleCount / 80,
+        gemini_output_ratio: geminiResults.puzzleCount / 80,
         both_successful: wikiResults.success && geminiResults.success
       },
       generatedAt: new Date().toISOString(),
       target: {
-        expected_puzzles_per_set: 100,
+        expected_puzzles_per_set: 80,
         expected_puzzle_format: '4x4',
-        expected_total_puzzles: 200
+        expected_total_puzzles: 160
       }
     };
     
@@ -203,6 +439,7 @@ class AllBatchesGenerator {
           result.wikiResults.success ? 'wiki_pipeline' : null,
           result.geminiResults.success ? 'gemini_pipeline' : null
         ].filter(Boolean),
+        skippedSets: result.skippedPipelines,
         processingTime: result.comparison.totalProcessingTime
       },
       setResults: {
@@ -293,8 +530,13 @@ async function main() {
   }
   
   console.log(`\n📊 Final Summary:`);
-  console.log(`   Wiki Pipeline: ${result.wikiResults.success ? '✅' : '❌'} ${result.wikiResults.puzzleCount} puzzles`);
-  console.log(`   Gemini Pipeline: ${result.geminiResults.success ? '✅' : '❌'} ${result.geminiResults.puzzleCount} puzzles`);
+  const wikiStatus = result.skippedPipelines.includes('wiki') ? '⏭️  Skipped' : 
+                    (result.wikiResults.success ? '✅' : '❌');
+  const geminiStatus = result.skippedPipelines.includes('gemini') ? '⏭️  Skipped' : 
+                      (result.geminiResults.success ? '✅' : '❌');
+  
+  console.log(`   Wiki Pipeline: ${wikiStatus} ${result.wikiResults.puzzleCount} puzzles`);
+  console.log(`   Gemini Pipeline: ${geminiStatus} ${result.geminiResults.puzzleCount} puzzles`);
   console.log(`   Total: ${result.totalPuzzles} puzzles`);
   console.log(`   Results: ${outputDir}`);
 }

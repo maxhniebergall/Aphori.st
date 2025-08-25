@@ -135,6 +135,37 @@ export class SpellCheckService {
   }
 
   /**
+   * Check if two words are duplicates considering:
+   * 1. Case-insensitive matching
+   * 2. One word being a plural of the other (ending with 's')
+   * 3. Same canonical form (lemmatization)
+   */
+  areDuplicates(word1: string, word2: string): boolean {
+    if (!this.initialized) {
+      throw new Error('SpellCheckService not initialized');
+    }
+
+    const lower1 = word1.toLowerCase();
+    const lower2 = word2.toLowerCase();
+
+    // Check 1: Exact case-insensitive match
+    if (lower1 === lower2) {
+      return true;
+    }
+
+    // Check 2: Simple plural check (one ends with 's' and the rest matches)
+    if ((lower1 === lower2 + 's') || (lower2 === lower1 + 's')) {
+      return true;
+    }
+
+    // Check 3: Same canonical form (handles more complex plurals and word forms)
+    const canonical1 = this.getCanonicalForm(word1);
+    const canonical2 = this.getCanonicalForm(word2);
+    
+    return canonical1 === canonical2;
+  }
+
+  /**
    * Check if two words have the same correct spelling
    * This is the main method for quality control - replaces substring checking
    */
@@ -208,6 +239,40 @@ export class SpellCheckService {
           hasMatch: true,
           matchingWord: existingWord,
           canonicalForm: canonicalForm
+        };
+      }
+    }
+    
+    return { hasMatch: false };
+  }
+
+  /**
+   * Check if a word is a duplicate of any word in a set
+   * Uses the enhanced duplicate detection (case-insensitive, plurals, canonical forms)
+   */
+  hasDuplicateInSet(word: string, wordSet: Set<string>): { hasMatch: boolean; matchingWord?: string; reason?: string } {
+    if (!this.initialized) {
+      throw new Error('SpellCheckService not initialized');
+    }
+
+    const wordLower = word.toLowerCase();
+    
+    for (const existingWord of wordSet) {
+      if (this.areDuplicates(word, existingWord)) {
+        const existingLower = existingWord.toLowerCase();
+        
+        // Determine the reason for the match
+        let reason = 'canonical form';
+        if (wordLower === existingLower) {
+          reason = 'case-insensitive match';
+        } else if (wordLower === existingLower + 's' || existingLower === wordLower + 's') {
+          reason = 'plural form';
+        }
+        
+        return {
+          hasMatch: true,
+          matchingWord: existingWord,
+          reason: reason
         };
       }
     }

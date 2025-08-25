@@ -118,7 +118,7 @@ class FirebaseFormatConverter {
           metadata: {
             batchGenerated: true,
             generatedAt: new Date().toISOString(),
-            targetCount: 100,
+            targetCount: 80,
             description: `Batch-generated 4x4 puzzles using ${algorithm}`
           }
         }

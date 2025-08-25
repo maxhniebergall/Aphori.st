@@ -2,7 +2,7 @@
 
 /**
  * Batch Wiki Pipeline Generator
- * Generates 100 4x4 puzzles using the wiki_puzzle_pipeline algorithm
+ * Generates 80 4x4 puzzles using the wiki_puzzle_pipeline algorithm
  */
 
 import fs from 'fs/promises';
@@ -29,7 +29,7 @@ class WikiBatchGenerator {
   constructor(private config: WikiBatchConfig) {}
 
   /**
-   * Generate 100 4x4 puzzles using wiki pipeline
+   * Generate 80 4x4 puzzles using wiki pipeline
    */
   async generateBatch(): Promise<WikiBatchResult> {
     const startTime = Date.now();
@@ -121,7 +121,7 @@ class WikiBatchGenerator {
     
     console.log(`   ✅ Python script found: ${pythonScriptPath}`);
     console.log(`   ✅ Virtual environment found: ${pythonPath}`);
-    console.log(`   ⏳ This may take several minutes... (generating 100+ puzzles)`);
+    console.log(`   ⏳ This may take several minutes... (generating many puzzles)`);
     
     return new Promise((resolve) => {
       // Use the virtual environment Python
