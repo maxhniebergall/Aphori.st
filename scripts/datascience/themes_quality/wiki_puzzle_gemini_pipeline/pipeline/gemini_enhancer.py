@@ -17,6 +17,7 @@ import sys
 import time
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
+from collections import deque
 import yaml
 import numpy as np
 from dataclasses import dataclass
@@ -33,15 +34,25 @@ class EmbeddingResult:
     similarity_to_theme: float = 0.0
 
 class GeminiEmbeddingProvider:
-    """Embedding provider using Gemini API with caching support."""
+    """Embedding provider using Gemini API with caching and rate limiting support."""
     
-    def __init__(self, model_id: str, dimension: int, api_key: str, cache_file: str = None):
+    def __init__(self, model_id: str, dimension: int, api_key: str, cache_file: str = None, 
+                 min_request_interval: float = 0.1, max_retries: int = 5, retry_base_delay: float = 1.0,
+                 requests_per_minute: int = 60):
         """Initialize Gemini embedding provider."""
         self.model_id = model_id
         self.dimension = dimension
         self.api_key = api_key
         self.cache_file = cache_file
         self.embedding_cache = {}
+        
+        # Rate limiting configuration
+        self.min_request_interval = min_request_interval
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
+        self.requests_per_minute = requests_per_minute
+        self.last_request_time = 0
+        self.request_times = deque()  # Track request timestamps for RPM limiting
         
         # Load existing cache if available
         if cache_file:
@@ -127,58 +138,130 @@ class GeminiEmbeddingProvider:
         except Exception as e:
             logger.warning(f"Failed to persist cache to disk: {e}")
     
+    def _enforce_rpm_limit(self):
+        """Enforce requests per minute limit with logging."""
+        current_time = time.time()
+        
+        # Remove requests older than 1 minute
+        one_minute_ago = current_time - 60
+        while self.request_times and self.request_times[0] < one_minute_ago:
+            self.request_times.popleft()
+        
+        # Check if we're at the RPM limit
+        if len(self.request_times) >= self.requests_per_minute:
+            # Calculate how long to wait until the oldest request is more than 1 minute old
+            wait_time = 60 - (current_time - self.request_times[0])
+            if wait_time > 0:
+                logger.info(f"🚦 RPM limit: waiting {wait_time:.3f}s to stay under {self.requests_per_minute} requests/minute (current: {len(self.request_times)} requests in last minute)")
+                time.sleep(wait_time)
+                
+                # Clean up the queue again after waiting
+                current_time = time.time()
+                one_minute_ago = current_time - 60
+                while self.request_times and self.request_times[0] < one_minute_ago:
+                    self.request_times.popleft()
+        
+        # Record this request time
+        self.request_times.append(current_time)
+    
     def generate_embedding(self, text: str) -> Optional[List[float]]:
         """Generate embedding for text using Gemini API with caching and exponential backoff retry."""
-        if not text or not text.strip():
-            logger.warning("Empty text provided for embedding")
-            return None
+        results = self.generate_embeddings([text])
+        return results[0] if results else None
+    
+    def generate_embeddings(self, texts: List[str]) -> List[Optional[List[float]]]:
+        """Generate embeddings for multiple texts using Gemini API with caching and batch processing."""
+        if not texts:
+            logger.warning("Empty texts list provided for embedding")
+            return []
         
-        # Normalize text for consistent caching (lowercase)
-        normalized_text = text.lower().strip()
+        # Remove empty texts and normalize for caching
+        normalized_texts = []
+        original_texts = []
+        cache_results = []
+        texts_to_generate = []
+        text_indices = []
         
-        # Check cache first using normalized form
-        logger.debug(f"🔍 Checking cache for '{text}' (normalized: '{normalized_text}') in {len(self.embedding_cache)} cached entries")
-        if normalized_text in self.embedding_cache:
-            logger.info(f"📋 Cache hit for: {text} (cached as: {normalized_text})")
-            return self.embedding_cache[normalized_text]
+        for i, text in enumerate(texts):
+            if not text or not text.strip():
+                logger.warning(f"Empty text at index {i}, skipping")
+                cache_results.append(None)
+                continue
+                
+            normalized_text = text.lower().strip()
+            normalized_texts.append(normalized_text)
+            original_texts.append(text)
+            
+            # Check cache first
+            if normalized_text in self.embedding_cache:
+                logger.debug(f"📋 Cache hit for: {text} (cached as: {normalized_text})")
+                cache_results.append(self.embedding_cache[normalized_text])
+            else:
+                cache_results.append(None)
+                texts_to_generate.append(text)
+                text_indices.append(i)
         
-        logger.info(f"🔄 Cache miss, generating embedding for: {text}")
-        max_retries = 5
-        base_delay = 1.0
+        # If all texts were cached, return cached results
+        if not texts_to_generate:
+            logger.info(f"📋 All {len(texts)} texts found in cache")
+            return cache_results
         
-        for attempt in range(max_retries):
+        logger.info(f"🔄 Cache miss for {len(texts_to_generate)}/{len(texts)} texts, generating embeddings")
+        
+        # Rate limiting: enforce RPM limit first, then min interval
+        self._enforce_rpm_limit()
+        
+        # Rate limiting: ensure minimum interval between requests
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        if time_since_last < self.min_request_interval:
+            sleep_time = self.min_request_interval - time_since_last
+            logger.info(f"⏳ Rate limiting: waiting {sleep_time:.3f}s before batch request (min interval: {self.min_request_interval}s)")
+            time.sleep(sleep_time)
+        
+        # Generate embeddings for uncached texts in batch
+        batch_embeddings = []
+        for attempt in range(self.max_retries):
             try:
                 response = self.client.models.embed_content(
                     model=self.model_id,
-                    contents=[text],
+                    contents=texts_to_generate,
                     config={
                         "task_type": "SEMANTIC_SIMILARITY",
                         "output_dimensionality": self.dimension,
                     }
                 )
                 
-                if response and response.embeddings and len(response.embeddings) > 0:
-                    embedding_obj = response.embeddings[0]
-                    if embedding_obj and hasattr(embedding_obj, 'values'):
-                        values = embedding_obj.values
-                        if len(values) != self.dimension:
-                            logger.error(f"Embedding dimension mismatch: got {len(values)}, expected {self.dimension}")
-                            sys.exit(1)
-                        # Save to cache after successful generation using normalized key
-                        self._save_to_cache(normalized_text, values)
-                        return values
-                
-                logger.error(f"Unexpected embedding response structure for text: {text[:50]}...")
-                logger.error("API returned invalid response structure")
-                sys.exit(1)
+                if response and response.embeddings and len(response.embeddings) == len(texts_to_generate):
+                    for i, embedding_obj in enumerate(response.embeddings):
+                        if embedding_obj and hasattr(embedding_obj, 'values'):
+                            values = embedding_obj.values
+                            if len(values) != self.dimension:
+                                logger.error(f"Embedding dimension mismatch: got {len(values)}, expected {self.dimension}")
+                                sys.exit(1)
+                            batch_embeddings.append(values)
+                            # Save to cache using normalized form
+                            normalized_text = texts_to_generate[i].lower().strip()
+                            self._save_to_cache(normalized_text, values)
+                        else:
+                            logger.error(f"Invalid embedding object for text: {texts_to_generate[i][:50]}...")
+                            batch_embeddings.append(None)
+                    
+                    # Update last request time for rate limiting
+                    self.last_request_time = time.time()
+                    break
+                else:
+                    logger.error(f"Unexpected batch embedding response: expected {len(texts_to_generate)} embeddings, got {len(response.embeddings) if response and response.embeddings else 0}")
+                    logger.error("API returned invalid response structure")
+                    sys.exit(1)
                 
             except (ConnectionError, TimeoutError, OSError) as e:
                 # Network-related errors - retry with exponential backoff
-                delay = base_delay * (2 ** attempt)
-                logger.warning(f"Network error on attempt {attempt + 1}/{max_retries} for '{text[:30]}...': {e}")
+                delay = self.retry_base_delay * (2 ** attempt)
+                logger.warning(f"Network error on attempt {attempt + 1}/{self.max_retries} for batch of {len(texts_to_generate)} texts: {e}")
                 
-                if attempt == max_retries - 1:
-                    logger.error(f"Max retries ({max_retries}) exceeded for network connectivity. Terminating process.")
+                if attempt == self.max_retries - 1:
+                    logger.error(f"Max retries ({self.max_retries}) exceeded for network connectivity. Terminating process.")
                     sys.exit(1)
                 
                 logger.info(f"Retrying in {delay} seconds...")
@@ -186,11 +269,26 @@ class GeminiEmbeddingProvider:
                 
             except Exception as e:
                 # Non-network errors (auth, quota, etc.) - fail immediately
-                logger.error(f"Gemini API failed for '{text[:30]}...': {e}")
+                logger.error(f"Gemini API failed for batch of {len(texts_to_generate)} texts: {e}")
                 logger.error("API failure detected - terminating process")
                 sys.exit(1)
         
-        return None
+        # Merge cached results with batch results
+        final_results = []
+        batch_idx = 0
+        
+        for i, cached_result in enumerate(cache_results):
+            if cached_result is not None:
+                final_results.append(cached_result)
+            else:
+                if batch_idx < len(batch_embeddings):
+                    final_results.append(batch_embeddings[batch_idx])
+                    batch_idx += 1
+                else:
+                    final_results.append(None)
+        
+        logger.info(f"✅ Generated {len([r for r in final_results if r is not None])}/{len(texts)} embeddings successfully")
+        return final_results
 
 class GeminiEnhancer:
     """Enhances word selection using Gemini embeddings."""
@@ -233,14 +331,25 @@ class GeminiEnhancer:
         # Try to restore cache from DVC if it exists
         self._try_restore_dvc_cache()
         
+        # Get rate limiting configuration with defaults
+        min_request_interval = self.gemini_config.get('min_request_interval', 0.1)
+        max_retries = self.gemini_config.get('max_retries', 5)
+        retry_base_delay = self.gemini_config.get('retry_base_delay', 1.0)
+        requests_per_minute = self.gemini_config.get('requests_per_minute', 60)
+        
         provider = GeminiEmbeddingProvider(
             model_id=self.gemini_config['model_id'],
             dimension=self.gemini_config['embedding_dimension'],
             api_key=api_key,
-            cache_file=cache_file
+            cache_file=cache_file,
+            min_request_interval=min_request_interval,
+            max_retries=max_retries,
+            retry_base_delay=retry_base_delay,
+            requests_per_minute=requests_per_minute
         )
         
         logger.info(f"Gemini API mode enabled - using model: {self.gemini_config['model_id']} with {self.gemini_config['embedding_dimension']} dimensions")
+        logger.info(f"Rate limiting: {requests_per_minute} RPM, {min_request_interval}s min interval, {max_retries} max retries")
         
         return provider
     
@@ -342,27 +451,20 @@ class GeminiEnhancer:
         return False, None, None
     
     def process_theme_with_gemini(self, theme: str, candidate_words: List[str]) -> Tuple[List[EmbeddingResult], Optional[List[float]]]:
-        """Process a theme and its candidates with Gemini embeddings."""
-        logger.info(f"Processing theme '{theme}' with {len(candidate_words)} candidates")
+        """Process a theme and its candidates with Gemini embeddings using batch processing."""
+        logger.info(f"Processing theme '{theme}' with {len(candidate_words)} candidates using batch embeddings")
         
-        # Generate embedding for theme
-        theme_embedding = self.embedding_provider.generate_embedding(theme)
-        if not theme_embedding:
-            logger.error(f"Failed to generate embedding for theme: {theme}")
-            return [], None
-        
-        # Track processed words to avoid duplicates
+        # Filter out duplicate words first
         processed_words = set()
-        word_results = []
+        unique_words = []
         skipped_duplicates = []
         
-        # Generate embeddings for candidate words, skipping duplicates
         for word in candidate_words:
-            # Check for duplicates before generating embedding
+            # Check for duplicates before processing
             is_duplicate, matching_word, reason = self.is_duplicate_word(word, processed_words)
             
             if is_duplicate:
-                logger.info(f"⏭️  Skipping duplicate word '{word}' (matches '{matching_word}', reason: {reason})")
+                logger.debug(f"⏭️  Skipping duplicate word '{word}' (matches '{matching_word}', reason: {reason})")
                 skipped_duplicates.append({
                     "word": word,
                     "matching_word": matching_word,
@@ -370,11 +472,35 @@ class GeminiEnhancer:
                 })
                 continue
             
-            # Add normalized word to processed set
+            # Add normalized word to processed set and unique words list
             processed_words.add(self.normalize_word(word))
-            
-            # Generate embedding for unique word
-            word_embedding = self.embedding_provider.generate_embedding(word)
+            unique_words.append(word)
+        
+        # Log summary of duplicate detection
+        if skipped_duplicates:
+            logger.info(f"📊 Skipped {len(skipped_duplicates)} duplicate words for theme '{theme}' (keeping {len(unique_words)} unique)")
+        
+        # Prepare batch: theme + unique candidate words
+        batch_texts = [theme] + unique_words
+        
+        # Generate embeddings for all texts in batch
+        logger.info(f"🚀 Generating batch embeddings for theme + {len(unique_words)} unique words")
+        batch_embeddings = self.embedding_provider.generate_embeddings(batch_texts)
+        
+        if not batch_embeddings or len(batch_embeddings) != len(batch_texts):
+            logger.error(f"Failed to generate batch embeddings: expected {len(batch_texts)}, got {len(batch_embeddings) if batch_embeddings else 0}")
+            return [], None
+        
+        # Extract theme embedding (first in batch)
+        theme_embedding = batch_embeddings[0]
+        if not theme_embedding:
+            logger.error(f"Failed to generate embedding for theme: {theme}")
+            return [], None
+        
+        # Process word embeddings and calculate similarities
+        word_results = []
+        for i, word in enumerate(unique_words):
+            word_embedding = batch_embeddings[i + 1]  # +1 because theme is at index 0
             if word_embedding:
                 # Calculate similarity to theme
                 similarity = self.cosine_similarity(theme_embedding, word_embedding)
@@ -387,16 +513,10 @@ class GeminiEnhancer:
             else:
                 logger.warning(f"Failed to generate embedding for word: {word}")
         
-        # Log summary of duplicate detection
-        if skipped_duplicates:
-            logger.info(f"📊 Skipped {len(skipped_duplicates)} duplicate words for theme '{theme}':")
-            for skip_info in skipped_duplicates:
-                logger.info(f"   - {skip_info['word']} (matches {skip_info['matching_word']}, {skip_info['reason']})")
-        
         # Sort by similarity (highest first)
         word_results.sort(key=lambda x: x.similarity_to_theme, reverse=True)
         
-        logger.info(f"✅ Processed {len(word_results)} unique words for theme '{theme}' (skipped {len(skipped_duplicates)} duplicates)")
+        logger.info(f"✅ Batch processed {len(word_results)} unique words for theme '{theme}' (skipped {len(skipped_duplicates)} duplicates)")
         
         return word_results, theme_embedding
     
