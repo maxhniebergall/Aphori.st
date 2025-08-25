@@ -1,6 +1,5 @@
 import { LoggedDatabaseClient } from "./db/LoggedDatabaseClient.js";
 import logger from './logger.js';
-import { migrate } from './migrate.js';
 import { sendStartupEmails, EMAIL_VERSIONS_CONTENT } from './startupMailer.js';
 
 // --- Configuration ---
@@ -42,25 +41,6 @@ export async function checkAndRunMigrations(db: LoggedDatabaseClient): Promise<v
         logger.info("Skipping data migration based on database version check.");
     }
 
-    // Always run vector investigation after migration check
-    try {
-        logger.info("Running vector discrepancy investigation...");
-        logger.info("Attempting to import investigation module...");
-        
-        const { investigateVectorDiscrepancy } = await import('./investigate-vectors.js');
-        logger.info("Investigation module imported successfully");
-        
-        await investigateVectorDiscrepancy(db);
-        logger.info("Vector investigation completed successfully");
-    } catch (error: any) {
-        logger.error("Vector investigation failed:", error);
-        logger.error("Error details:", {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-        });
-        // Don't fail startup for investigation issues
-    }
 }
 
 function determineIfMigrationNeeded(dbVersionInfo: any): boolean {
@@ -87,13 +67,8 @@ function determineIfMigrationNeeded(dbVersionInfo: any): boolean {
 }
 
 async function executeMigration(db: LoggedDatabaseClient): Promise<void> {
-    try {
-        logger.info(`Proceeding with data migration...`);
-        await migrate(db); // Assumes migrate.ts handles setting the new version on success/failure
-        logger.info('Data migration completed successfully.');
-    } catch (migrationError) {
-        handleFatalError("FATAL: Data migration failed during execution.", migrationError);
-    }
+    // Migration functionality removed
+    logger.info('Migration functionality has been removed - no migration needed.');
 }
 
 /**
