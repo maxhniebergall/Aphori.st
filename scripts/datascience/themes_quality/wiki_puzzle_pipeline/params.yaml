@@ -1,7 +1,7 @@
 # Wiki Puzzle Generation Pipeline Parameters
 
 puzzle_generation:
-  total_puzzle_count: 100
+  total_puzzle_count: 80
   themes_per_puzzle: 4
   words_per_theme: 4
   min_similarity_threshold: 0.3
