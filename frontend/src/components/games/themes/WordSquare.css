@@ -227,3 +227,69 @@
     line-height: 1.1;
   }
 }
+
+/* Landscape orientation optimizations for tablets and laptops */
+@media (orientation: landscape) and (min-width: 768px) and (max-width: 1366px) and (max-height: 1024px) {
+  .word-square {
+    min-height: 85px;
+    max-height: 85px;
+    border-radius: 6px;
+  }
+  
+  .word-text {
+    letter-spacing: 0.2px;
+    padding: 2px;
+    line-height: 1.0;
+    font-size: 0.9em;
+  }
+}
+
+/* Compact sizing for laptop landscape mode */
+@media (orientation: landscape) and (min-width: 1024px) and (max-width: 1366px) and (max-height: 800px) {
+  .word-square {
+    min-height: 75px;
+    max-height: 75px;
+    border-radius: 5px;
+  }
+  
+  .word-text {
+    letter-spacing: 0.1px;
+    padding: 1px;
+    line-height: 1.0;
+    font-size: 0.85em;
+  }
+}
+
+/* Very compact sizing for short landscape screens */
+@media (orientation: landscape) and (max-height: 768px) and (min-width: 1024px) {
+  .word-square {
+    min-height: 50px;
+    max-height: 50px;
+    border-radius: 4px;
+    border-width: 1px;
+  }
+  
+  .word-text {
+    letter-spacing: 0px;
+    padding: 1px;
+    line-height: 0.9;
+    font-size: 0.75em;
+  }
+}
+
+/* Extra small for very constrained heights */
+@media (orientation: landscape) and (max-height: 600px) and (min-width: 1024px) {
+  .word-square {
+    min-height: 40px;
+    max-height: 40px;
+    border-radius: 3px;
+    border-width: 1px;
+  }
+  
+  .word-text {
+    letter-spacing: 0px;
+    padding: 1px;
+    line-height: 0.85;
+    font-size: 0.7em;
+  }
+}

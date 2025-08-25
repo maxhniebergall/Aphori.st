@@ -88,3 +88,41 @@
     max-width: min(100%, 500px);
   }
 }
+
+/* Landscape orientation optimizations for tablets and laptops */
+@media (orientation: landscape) and (min-width: 768px) and (max-width: 1366px) and (max-height: 1024px) {
+  .game-grid {
+    --grid-gap: 4px;
+    --grid-padding: 8px;
+    max-width: min(100%, 420px);
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
+
+/* Specific landscape adjustments for common laptop resolutions */
+@media (orientation: landscape) and (min-width: 1024px) and (max-width: 1366px) and (max-height: 800px) {
+  .game-grid {
+    --grid-gap: 3px;
+    --grid-padding: 6px;
+    max-width: min(100%, 380px);
+  }
+}
+
+/* Very short landscape screens (like 13" laptops) */
+@media (orientation: landscape) and (max-height: 768px) and (min-width: 1024px) {
+  .game-grid {
+    --grid-gap: 2px;
+    --grid-padding: 3px;
+    max-width: min(100%, 320px);
+  }
+}
+
+/* Extra small for very constrained heights */
+@media (orientation: landscape) and (max-height: 600px) and (min-width: 1024px) {
+  .game-grid {
+    --grid-gap: 1px;
+    --grid-padding: 2px;
+    max-width: min(100%, 280px);
+  }
+}

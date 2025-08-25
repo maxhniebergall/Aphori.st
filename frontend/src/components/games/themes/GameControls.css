@@ -150,3 +150,112 @@
     padding: 8px 16px;
   }
 }
+
+/* Landscape orientation specific adjustments for tablets and laptops */
+@media (orientation: landscape) and (min-width: 768px) and (max-width: 1366px) and (max-height: 1024px) {
+  .game-controls {
+    gap: 6px;
+    padding: 6px;
+    max-width: 380px;
+    background: transparent;
+    border: none;
+    margin-top: 4px;
+  }
+  
+  .game-stats {
+    font-size: 12px;
+  }
+  
+  .selection-feedback {
+    min-height: 16px;
+  }
+  
+  .feedback-text {
+    font-size: 14px;
+  }
+  
+  .control-buttons {
+    gap: 8px;
+  }
+  
+  .randomize-button,
+  .submit-button {
+    padding: 8px 16px;
+    font-size: 14px;
+    min-width: 100px;
+  }
+}
+
+/* Very compact layout for laptops with short screens */
+@media (orientation: landscape) and (min-width: 1024px) and (max-width: 1366px) and (max-height: 800px) {
+  .game-controls {
+    gap: 4px;
+    padding: 4px;
+    max-width: 360px;
+    margin-top: 2px;
+  }
+  
+  .game-stats {
+    font-size: 11px;
+  }
+  
+  .selection-feedback {
+    min-height: 14px;
+  }
+  
+  .feedback-text {
+    font-size: 13px;
+  }
+  
+  .randomize-button,
+  .submit-button {
+    padding: 6px 14px;
+    font-size: 13px;
+    min-width: 90px;
+  }
+}
+
+/* Extra compact for very short screens */
+@media (orientation: landscape) and (max-height: 768px) and (min-width: 1024px) {
+  .game-controls {
+    gap: 2px;
+    padding: 2px;
+    max-width: 300px;
+  }
+  
+  .randomize-button,
+  .submit-button {
+    padding: 4px 12px;
+    font-size: 12px;
+    min-width: 70px;
+  }
+}
+
+/* Ultra compact for very constrained heights */
+@media (orientation: landscape) and (max-height: 600px) and (min-width: 1024px) {
+  .game-controls {
+    gap: 1px;
+    padding: 1px;
+    max-width: 260px;
+    margin-top: 1px;
+  }
+  
+  .game-stats {
+    font-size: 10px;
+  }
+  
+  .selection-feedback {
+    min-height: 12px;
+  }
+  
+  .feedback-text {
+    font-size: 11px;
+  }
+  
+  .randomize-button,
+  .submit-button {
+    padding: 3px 8px;
+    font-size: 11px;
+    min-width: 60px;
+  }
+}
