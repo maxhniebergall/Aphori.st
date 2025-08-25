@@ -51,7 +51,7 @@ env/
 # Data science and ML files (data only, preserve code)
 scripts/datascience/data/
 scripts/datascience/themes_quality/data/
-!scripts/datascience/themes_quality/data/puzzle_imports/*.dvc
+!scripts/datascience/themes_quality/data/puzzle_imports/
 wiki_categories/
 scripts/datascience/themes_quality/results/
 scripts/datascience/themes_quality/reports/
