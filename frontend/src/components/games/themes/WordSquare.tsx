@@ -23,6 +23,13 @@ export const WordSquare: React.FC<WordSquareProps> = ({
   difficulty,
   isAnimating = false
 }) => {
+  // Debug log for completed words
+  React.useEffect(() => {
+    if (isCompleted) {
+      console.log(`[WordSquare] Rendering completed word "${word}": isCompleted=${isCompleted}, difficulty=${difficulty}`);
+    }
+  }, [word, isCompleted, difficulty]);
+  
   const upperCaseWord = useMemo(() => word.toUpperCase(), [word]);
   
   // Track viewport width for responsive font sizing with SSR compatibility
@@ -149,7 +156,23 @@ export const WordSquare: React.FC<WordSquareProps> = ({
     }
   };
 
-  // Animation variants
+  // Get color based on difficulty
+  const getCompletedColor = () => {
+    if (isCompleted && difficulty === undefined) {
+      console.warn(`[WordSquare] Completed word "${word}" has no difficulty set!`);
+    }
+    switch (difficulty) {
+      case 1: return { backgroundColor: 'var(--difficulty-1-color)', borderColor: 'var(--difficulty-1-border)' };
+      case 2: return { backgroundColor: 'var(--difficulty-2-color)', borderColor: 'var(--difficulty-2-border)' };
+      case 3: return { backgroundColor: 'var(--difficulty-3-color)', borderColor: 'var(--difficulty-3-border)' };
+      case 4: return { backgroundColor: 'var(--difficulty-4-color)', borderColor: 'var(--difficulty-4-border)' };
+      default: return { backgroundColor: '#f6f7f8', borderColor: '#d3d6da' };
+    }
+  };
+
+  // Animation variants - dynamically include completed colors
+  const completedColors = isCompleted ? getCompletedColor() : {};
+  
   const variants = {
     default: {
       backgroundColor: '#f6f7f8',
@@ -164,24 +187,13 @@ export const WordSquare: React.FC<WordSquareProps> = ({
       transition: { duration: 0.2 }
     },
     completed: {
+      ...completedColors, // Include the difficulty colors here
       scale: 1,
       transition: { duration: 0.3, type: 'spring', stiffness: 300 }
     }
   };
 
-  // Get color based on difficulty
-  const getCompletedColor = () => {
-    switch (difficulty) {
-      case 1: return { backgroundColor: 'var(--difficulty-1-color)', borderColor: 'var(--difficulty-1-border)' };
-      case 2: return { backgroundColor: 'var(--difficulty-2-color)', borderColor: 'var(--difficulty-2-border)' };
-      case 3: return { backgroundColor: 'var(--difficulty-3-color)', borderColor: 'var(--difficulty-3-border)' };
-      case 4: return { backgroundColor: 'var(--difficulty-4-color)', borderColor: 'var(--difficulty-4-border)' };
-      default: return { backgroundColor: '#f6f7f8', borderColor: '#d3d6da' };
-    }
-  };
-
   const currentVariant = isCompleted ? 'completed' : isSelected ? 'selected' : 'default';
-  const completedColors = isCompleted ? getCompletedColor() : {};
 
   return (
     <motion.div
@@ -196,9 +208,6 @@ export const WordSquare: React.FC<WordSquareProps> = ({
       variants={variants}
       initial="default"
       animate={currentVariant}
-      style={{
-        ...completedColors
-      }}
       layout
       transition={{
         layout: { duration: 0.6, type: 'spring', stiffness: 200, damping: 25 }

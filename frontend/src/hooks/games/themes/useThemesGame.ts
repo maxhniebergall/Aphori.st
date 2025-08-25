@@ -105,7 +105,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
       const isCompleted = category ? completedCategories.includes(category.id) : false;
       
       if (category) {
-        console.log(`[ThemesGame] Initializing word "${word}" in category: ${category.themeWord}`);
+        console.log(`[ThemesGame] Initializing word "${word}" in category: ${category.themeWord}, difficulty: ${category.difficulty}, isCompleted: ${isCompleted}`);
       }
       
       return {
@@ -127,6 +127,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
 
     try {
       const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
+      
+      // Load the puzzle
       const response = await fetch(`${baseURL}/api/games/themes/sets/${setName}/${version}/puzzle/${puzzleNumber}`, {
         credentials: 'include'
       });
@@ -137,18 +139,62 @@ export const useThemesGame = (): UseThemesGameReturn => {
       }
 
       const targetPuzzle = data.data.puzzle;
-
       setPuzzle(targetPuzzle);
-      setGameState({
-        selectedWords: [],
-        selectionOrder: [],
-        completedCategories: [],
-        attempts: 0,
-        isComplete: false,
-        shakingWords: [],
-        gridWords: initializeGridWords(targetPuzzle),
-        animatingWords: []
+
+      // Load previous attempts for this puzzle
+      const puzzleId = `${setName}_${puzzleNumber}`;
+      const attemptsResponse = await fetch(`${baseURL}/api/games/themes/state/attempts/${puzzleId}`, {
+        credentials: 'include'
       });
+      const attemptsData = await attemptsResponse.json();
+
+      // Reconstruct game state from attempts
+      if (attemptsData.success && attemptsData.data.attempts.length > 0) {
+        const attempts = attemptsData.data.attempts;
+        
+        // Find completed categories from correct attempts
+        const completedCategories: string[] = [];
+        for (const attempt of attempts) {
+          if (attempt.result === 'correct') {
+            // Find which category this attempt solved
+            const solvedCategory = targetPuzzle.categories.find((cat: ThemeCategory) => {
+              const categoryWordSet = new Set(cat.words.map((w: string) => w.toLowerCase().trim()));
+              const selectedWordSet = new Set(attempt.selectedWords.map((w: string) => w.toLowerCase().trim()));
+              return categoryWordSet.size === selectedWordSet.size && 
+                     [...categoryWordSet].every(word => selectedWordSet.has(word));
+            });
+            if (solvedCategory && !completedCategories.includes(solvedCategory.id)) {
+              completedCategories.push(solvedCategory.id);
+            }
+          }
+        }
+
+        // Check if puzzle is complete
+        const isComplete = completedCategories.length >= targetPuzzle.categories.length;
+        
+        setGameState({
+          selectedWords: [],
+          selectionOrder: [],
+          completedCategories,
+          attempts: attempts.length,
+          isComplete,
+          shakingWords: [],
+          gridWords: initializeGridWords(targetPuzzle, completedCategories),
+          animatingWords: []
+        });
+      } else {
+        // No previous attempts, start fresh
+        setGameState({
+          selectedWords: [],
+          selectionOrder: [],
+          completedCategories: [],
+          attempts: 0,
+          isComplete: false,
+          shakingWords: [],
+          gridWords: initializeGridWords(targetPuzzle),
+          animatingWords: []
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {

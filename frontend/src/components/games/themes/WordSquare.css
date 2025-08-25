@@ -1,12 +1,12 @@
 :root {
-  --difficulty-1-color: #9f7aea;
-  --difficulty-1-border: #805ad5;
-  --difficulty-2-color: #48bb78;
-  --difficulty-2-border: #38a169;
-  --difficulty-3-color: #ecc94b;
-  --difficulty-3-border: #d69e2e;
-  --difficulty-4-color: #f56565;
-  --difficulty-4-border: #e53e3e;
+  --difficulty-1-color: #f9df6d;
+  --difficulty-1-border: #e8ce5c;
+  --difficulty-2-color: #a0c35a;
+  --difficulty-2-border: #8fb249;
+  --difficulty-3-color: #b0c4ef;
+  --difficulty-3-border: #9fb3de;
+  --difficulty-4-color: #ba81c5;
+  --difficulty-4-border: #a970b4;
 }
 
 .word-square {

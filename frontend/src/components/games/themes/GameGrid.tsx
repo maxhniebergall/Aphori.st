@@ -55,6 +55,15 @@ export const GameGrid: React.FC<GameGridProps> = ({
     const completed = words.filter(word => word.isCompleted);
     const incomplete = words.filter(word => !word.isCompleted);
     
+    // Debug log completed words
+    if (completed.length > 0) {
+      console.log('[GameGrid] Completed words:', JSON.stringify(completed.map(w => ({
+        word: w.word,
+        isCompleted: w.isCompleted,
+        difficulty: w.difficulty
+      })), null, 2));
+    }
+    
     // Sort completed words by difficulty (1-4) then by original position
     const sortedCompleted = completed.sort((a, b) => {
       if (a.difficulty && b.difficulty && a.difficulty !== b.difficulty) {
