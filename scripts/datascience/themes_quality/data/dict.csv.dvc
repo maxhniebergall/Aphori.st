@@ -1,0 +1,5 @@
+outs:
+- md5: b8d3f041ad8ef75f32f95558a3d95a59
+  size: 20071065
+  hash: md5
+  path: dict.csv

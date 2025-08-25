@@ -1,0 +1,38 @@
+# Parameter sweep configuration
+parameter_sweeps:
+  frequency_thresholds: [1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000]
+  similarity_thresholds: [0.3, 0.6, 0.8]
+  puzzle_sizes: [4]
+  algorithms: ["N=K", "N=K+D"]
+  samples_per_configuration: 20
+
+# Quality assessment metrics
+quality_assessment:
+  metrics:
+    - "intracategory_word_distinctiveness"
+    - "intercategory_discoherence"
+    - "intracategory_coherence"
+    - "difficulty_progression"
+    - "generation_success_rate"
+    - "generation_time"
+    - "memory_usage"
+
+# Performance targets
+performance_targets:
+  quality_score_improvement: 0.1
+  success_rate_target: 0.95
+  generation_time_reduction: 0.5
+  category_coherence_target: 0.7
+
+# Data collection settings
+data_collection:
+  batch_size: 10
+  parallel_workers: 4
+  timeout_seconds: 300
+
+# Logging configuration
+logging:
+  level: "INFO"
+  detailed_metrics: true
+  performance_profiling: true
+  quality_scoring: true

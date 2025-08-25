@@ -12,14 +12,10 @@ import { Uuid25 } from 'uuid25';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { getQuoteKey as generateHashedQuoteKey } from '../utils/quoteUtils.js';
 import { LoggedDatabaseClient } from '../db/LoggedDatabaseClient.js';
-import { VectorService } from '../services/vectorService.js';
-
 let db: LoggedDatabaseClient;
-let vectorService: VectorService;
 
-export const setDb = (databaseClient: LoggedDatabaseClient, vs: VectorService) => {
+export const setDb = (databaseClient: LoggedDatabaseClient) => {
     db = databaseClient;
-    vectorService = vs;
 };
 
 const router = Router();
@@ -140,12 +136,6 @@ router.post<{}, CreateReplyResponse, CreateReplyRequest>('/createReply', authent
 
         logger.info({ ...logContext, replyId, parentId: actualParentId }, 'Successfully created new reply');
 
-        // Add to vector index (fire and forget for now, or await if critical)
-        if (vectorService) {
-            vectorService.addVector(newReply.id, 'reply', newReply.text)
-                .then(() => logger.info({ ...logContext, replyId: newReply.id }, 'Reply content added to vector index.'))
-                .catch(err => logger.error({ ...logContext, replyId: newReply.id, err }, 'Error adding reply content to vector index.'));
-        }
 
         const response: CreateReplyResponse = {
             success: true,

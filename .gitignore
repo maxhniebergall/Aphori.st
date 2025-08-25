@@ -45,9 +45,14 @@ ENV/
 env/
 *_venv/
 
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
 # Data science and ML files (data only, preserve code)
 scripts/datascience/data/
 scripts/datascience/themes_quality/data/
+!scripts/datascience/themes_quality/data/puzzle_imports/
+wiki_categories/
 scripts/datascience/themes_quality/results/
 scripts/datascience/themes_quality/reports/
 scripts/datascience/themes_quality/puzzle_generation_output/
@@ -62,9 +67,15 @@ scripts/datascience/*.npy.backup.npy
 scripts/datascience/word_vocab.json
 scripts/datascience/word_vocab.json.backup
 scripts/datascience/word_vocab_filtered_out.json
+scripts/puzzle-generation/dist
+scripts/puzzle-generation/node_modules
+scripts/puzzle-generation/test-real-fixed
+scripts/puzzle-generation/today-output
+scripts/datascience/themes_quality_venv
+scripts/datascience/themes_index/
 
 # Puzzle generation artifacts
-scripts/puzzle-generation/
+!scripts/puzzle-generation/august-puzzles/firebase_import.json
 
 # Testing artifacts
 playwright-report/
@@ -73,7 +84,8 @@ test_import.json
 
 # Data import/export
 import_data/
-scripts/datascience/themes_quality/.gcp/themes-quality-dvc-service-account.json
+.gcp/
+*.json
 
 # DVC cache and temp files
 **/.dvc/cache/
@@ -81,5 +93,13 @@ scripts/datascience/themes_quality/.gcp/themes-quality-dvc-service-account.json
 **/.dvc/plots/
 **/.dvcignore
 
+# Always keep DVC metadata, even inside ignored data dirs
+!**/*.dvc
+
 # Test result files (data, not code)
 **/test_multiword_results.json
+
+# Cookie files and session data
+frontend/cookies.txt
+*.cookiejar
+*.cookies.txt

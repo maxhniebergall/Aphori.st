@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## In General
+Never mention things that we didn't do. If you removed some code, you don't need to leave a comment mentioning what was there before. 
+
 ## Development Commands
 
 ### Docker Development Environment
@@ -142,3 +145,4 @@ Local development requires the Firebase emulator running on localhost:9000 for d
 
 #### Vector Search
 The vector search system requires GCP credentials and Vertex AI access. It maintains an in-memory FAISS index that rebuilds on server restart from RTDB data.
+- all data files (including json, csv, small files, etc.) should be committed with dvc. no data files should be committed to git regardless of their size.

@@ -1,0 +1,16 @@
+stages:
+  generate_parameter_sweep:
+    cmd: python scripts/generate_parameter_sweep.py
+    deps:
+      - scripts/generate_parameter_sweep.py
+      - scripts/configurable_generator.py
+      - scripts/typescript_bridge.py
+      - scripts/quality_metrics.py
+      - config/investigation_config.json
+    params:
+      - parameter_sweeps
+      - data_collection
+      - logging
+    outs:
+      - data/raw:
+          cache: true

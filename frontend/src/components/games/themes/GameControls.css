@@ -1,0 +1,152 @@
+.game-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  max-width: 420px;
+  margin: 0 auto;
+  flex-shrink: 0;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.game-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: clamp(12px, 2.5vw, 16px);
+  color: #6b7280;
+}
+
+.puzzle-progress {
+  font-weight: 600;
+}
+
+.attempts-remaining {
+  color: #ef4444;
+}
+
+.selection-feedback {
+  text-align: center;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feedback-text {
+  font-size: clamp(14px, 3vw, 18px);
+  font-weight: 500;
+}
+
+.feedback-text.ready {
+  color: #10b981;
+}
+
+.feedback-text.error {
+  color: #ef4444;
+}
+
+.control-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.randomize-button,
+.submit-button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: clamp(14px, 2.8vw, 16px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: clamp(100px, 20vw, 140px);
+  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.1);
+}
+
+.randomize-button {
+  background-color: #ffffff;
+  color: #475569;
+  border: 2px solid #e2e8f0;
+}
+
+.randomize-button:hover:not(:disabled) {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.12);
+}
+
+.submit-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: 2px solid transparent;
+}
+
+.submit-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6b46c1 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px 0 rgba(102, 126, 234, 0.3);
+}
+
+.submit-button:disabled,
+.randomize-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 640px) {
+  .game-controls {
+    padding: 8px;
+    gap: 8px;
+    background: transparent;
+    border: none;
+  }
+  
+  .selection-feedback {
+    min-height: 18px;
+  }
+  
+  .control-buttons {
+    gap: 8px;
+  }
+  
+  .randomize-button,
+  .submit-button {
+    padding: 10px 20px;
+    font-size: 14px;
+    min-width: 100px;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 641px) and (max-width: 1023px) {
+  .game-controls {
+    padding: 12px;
+  }
+}
+
+/* Desktop adjustments */
+@media (min-width: 1024px) {
+  .game-controls {
+    gap: 6px;
+    padding: 6px;
+  }
+}
+
+/* Laptop with shorter screens */
+@media (min-width: 1024px) and (max-height: 800px) {
+  .game-controls {
+    gap: 4px;
+    padding: 4px;
+  }
+  
+  .randomize-button,
+  .submit-button {
+    padding: 8px 16px;
+  }
+}

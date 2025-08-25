@@ -18,29 +18,43 @@
  * - Performance optimization and proper null checks/fallbacks
  */
 
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import './PostTree.css';
 import Header from './Header';
 import { PostTreeProvider, usePostTree } from '../context/PostTreeContext';
-import VirtualizedPostList from './VirtualizedPostList';
+import VirtualizedPostList, { VirtualizedPostListRef } from './VirtualizedPostList';
 import { ReplyProvider, useReplyContext } from '../context/ReplyContext';
 import PostTreeOperator from '../operators/PostTreeOperator';
 import { useUser } from '../context/UserContext';
 import ReplyEditor from './ReplyEditor';
 
-// Memoized content component to prevent unnecessary re-renders
-const MemoizedVirtualizedPostList = React.memo(VirtualizedPostList);
 
 // Main content component
 function PostTreeContent() {
   const navigate = useNavigate();
   const { state } = usePostTree();
-  const { uuid: rootUUID } = useParams<{ uuid: string }>();
+  const { uuid: rootUUID, replyId } = useParams<{ uuid: string; replyId?: string }>();
   const { replyTarget } = useReplyContext();
+  const virtualizedListRef = useRef<VirtualizedPostListRef>(null);
 
   // Memoize the UUID to prevent unnecessary re-renders
   const memoizedUUID = useMemo(() => rootUUID || '', [rootUUID]);
+  const memoizedReplyId = useMemo(() => replyId, [replyId]);
+
+  // Effect to scroll to reply when tree is loaded and replyId is present
+  useEffect(() => {
+    if (memoizedReplyId && state.postTree && state.postTree.levels && state.postTree.levels.length > 0 && !state.isLoadingMore) {
+      // Use a small delay to ensure the list is rendered
+      const timeoutId = setTimeout(() => {
+        if (virtualizedListRef.current) {
+          virtualizedListRef.current.scrollToItem(memoizedReplyId);
+        }
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [memoizedReplyId, state.postTree, state.isLoadingMore]);
 
   // Header is now rendered unconditionally
   // The main content area will conditionally render error or list
@@ -64,7 +78,7 @@ function PostTreeContent() {
           </div>
         ) : (
           // Render the post list if there is no error
-          <MemoizedVirtualizedPostList postRootId={memoizedUUID} />
+          <VirtualizedPostList ref={virtualizedListRef} postRootId={memoizedUUID} />
         )}
       </main>
       {/* Reply editor remains conditional based on replyTarget */}
@@ -79,7 +93,7 @@ function PostTreeSetupAndContent() {
   const { state: postTreeState, dispatch: postTreeDispatch } = usePostTree();
   const { state: userState } = useUser();
   const { clearReplyState, setRootUUID } = useReplyContext();
-  const { uuid: rootUUIDFromParams } = useParams<{ uuid: string }>();
+  const { uuid: rootUUIDFromParams } = useParams<{ uuid: string; replyId?: string }>();
 
   // Memoize the root UUID from params to prevent unnecessary effect runs
   const rootUUID = useMemo(() => rootUUIDFromParams || null, [rootUUIDFromParams]);

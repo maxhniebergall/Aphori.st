@@ -1,0 +1,45 @@
+stages:
+  select_themes:
+    cmd: python pipeline/theme_selector.py
+    deps:
+      - pipeline/theme_selector.py
+      - ../data/categories/wiki_categories_filtered
+    outs:
+      - data/themes/selected_themes.json
+    params:
+      - puzzle_generation
+      - themes
+      - paths
+
+  select_candidates:
+    cmd: python pipeline/word_selector.py
+    deps:
+      - pipeline/word_selector.py
+      - data/themes/selected_themes.json
+      - ../../themes_index/themes_vectors.bin
+      - ../../themes_index/themes_vocabulary.json
+      - ../../themes_index/themes_metadata.json
+    outs:
+      - data/candidates/candidate_words.json
+    params:
+      - puzzle_generation
+      - vector_search
+      - paths
+
+  enhance_with_gemini:
+    cmd: python pipeline/gemini_enhancer.py
+    deps:
+      - pipeline/gemini_enhancer.py
+      - data/themes/selected_themes.json
+      - data/candidates/candidate_words.json
+    outs:
+      - data/cache/all_embeddings.csv
+      - data/embeddings/puzzle_embeddings.csv
+      - data/outputs/final_puzzles.json
+      - data/outputs/puzzle_metadata.json
+      - reports/embedding_analysis.json
+    params:
+      - puzzle_generation
+      - gemini
+      - output
+      - paths

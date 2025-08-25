@@ -10,6 +10,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import NotFound from './components/NotFound';
 import PostPage from './components/PostPage';
 import SearchResultsPage from './components/SearchResultsPage';
+import { GamesLanding } from './pages/games/GamesLanding';
+import { ThemesGame } from './pages/games/themes/ThemesGame';
 import { UserProvider } from './context/UserContext';
 import axios from 'axios';
 import { setupCache, buildWebStorage } from 'axios-cache-interceptor';
@@ -76,10 +78,14 @@ function App() {
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/verify" element={<VerifyMagicLink />} />
                 <Route path="/feed" element={<Feed />} />
-                <Route path="/postTree/:uuid" element={<PostTreePage />} />
+                <Route path="/postTree/:uuid/:replyId?" element={<PostTreePage />} />
                 <Route path="/post" element={<PostPage />} />
                 <Route path="/" element={<Feed />} />
                 <Route path="/search" element={<SearchResultsPage />} />
+                <Route path="/games" element={<GamesLanding />} />
+                <Route path="/games/themes" element={<ThemesGame />} />
+                <Route path="/games/themes/:setName" element={<ThemesGame />} />
+                <Route path="/games/themes/:setName/puzzle/:puzzleNumber" element={<ThemesGame />} />
 
                 <Route 
                     path="/profile" 

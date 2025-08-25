@@ -174,11 +174,11 @@ export interface CreateReplyRequest {
     quote: Quote;
 }
 
-// Vector Search Types (as per VectorSearch.md)
+// Minimal vector types for existing FirebaseClient methods (not used by search functionality)
 export interface VectorIndexEntry {
     vector: number[];
     type: "post" | "reply";
-    createdAt: string; // ISO8601 Timestamp String
+    createdAt: string;
 }
 
 export interface VectorIndexMetadata {
@@ -192,27 +192,6 @@ export interface VectorDataForFaiss {
     id: string;
     vector: number[];
     type: 'post' | 'reply';
-}
-
-
-export interface PostData { // Defining PostData based on backend_architecture.md for VectorSearchResponse
-    id: string;
-    authorId: string;
-    // authorUsername?: string;
-    content: string;
-    createdAt: string; // ISO 8601 Timestamp String
-    replyCount: number;
-}
-
-export interface VectorSearchResponse {
-    success: boolean;
-    results: Array<{
-        id: string; // $contentId (original condensed UUID7 of post or reply)
-        type: "post" | "reply"; // Type of the original content
-        score: number; // Similarity score/distance from FAISS
-        data: PostData | ReplyData; // Full post or reply object, fetched using 'type'
-    }>;
-    error?: string;
 }
 
 export interface ApiError {

@@ -1,0 +1,5 @@
+outs:
+- md5: 18703bf5a7512dbd484631ea9a14c91d
+  size: 28851
+  hash: md5
+  path: gemini-puzzles_firebase.json

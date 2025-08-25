@@ -10,10 +10,6 @@ export interface ApiError {
   requestId?: string;
 }
 
-export interface VectorError extends Error {
-  type: 'VECTOR_INDEX_UNAVAILABLE' | 'EMBEDDING_GENERATION_FAILED' | 'VECTOR_DIMENSION_MISMATCH' | 'VECTOR_SEARCH_FAILED';
-}
-
 export interface ValidationError extends Error {
   type: 'VALIDATION_ERROR';
   field?: string;
@@ -29,15 +25,6 @@ export const createStandardError = (error: string, message: string, code?: strin
   };
 };
 
-export const createVectorError = (type: VectorError['type'], message: string, requestId?: string): ApiError => {
-  return {
-    error: 'Vector Search Error',
-    message,
-    code: type,
-    requestId,
-    timestamp: new Date().toISOString()
-  };
-};
 
 export const createValidationError = (message: string, field?: string, requestId?: string): ApiError => {
   return {
@@ -103,9 +90,6 @@ export const errorHandler = (err: Error, req: Request, res: Response, next: Next
   let apiError: ApiError;
   
   switch (category) {
-    case 'VECTOR_ERROR':
-      apiError = createVectorError('VECTOR_SEARCH_FAILED', 'Vector search service is temporarily unavailable. Please try again later.', requestId);
-      break;
     case 'DATABASE_ERROR':
       apiError = createStandardError('Database Error', 'Database service is temporarily unavailable. Please try again later.', 'DATABASE_ERROR');
       break;

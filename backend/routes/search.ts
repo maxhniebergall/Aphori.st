@@ -37,20 +37,22 @@ router.use((req: Request, res: Response, next: NextFunction) => {
 
 /**
  * @route   GET /api/search/vector
- * @desc    Performs vector search based on query text.
+ * @desc    Performs vector search based on query text with pagination support.
  * @access  Public (for now, consider auth later if needed)
  * @query   {string} query - The search text.
- * @returns {VectorSearchResponse} Search results with score and original data.
+ * @query   {number} [limit] - Number of results per page (default: 10, max: 50).
+ * @query   {number} [offset] - Number of results to skip (default: 0).
+ * @returns {VectorSearchResponse} Search results with score and original data plus pagination info.
  */
 router.get<
     Record<string, never>,
     VectorSearchResponse, 
     Record<string, never>,
-    { query?: string } // Specify query parameters type
->('/vector', async (req: Request<{}, VectorSearchResponse, {}, { query?: string }>, res: Response<VectorSearchResponse>) => {
-    const { query } = req.query;
+    { query?: string; limit?: string; offset?: string } // Specify query parameters type
+>('/vector', async (req: Request<{}, VectorSearchResponse, {}, { query?: string; limit?: string; offset?: string }>, res: Response<VectorSearchResponse>) => {
+    const { query, limit: limitStr, offset: offsetStr } = req.query;
     const requestId = res.locals.requestId;
-    const logContext = { requestId, query };
+    const logContext = { requestId, query, limit: limitStr, offset: offsetStr };
 
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
         logger.warn(logContext, 'Missing or invalid query parameter for vector search');
@@ -63,7 +65,38 @@ router.get<
         return;
     }
 
-    const K_NEIGHBORS = 10; // Fixed number of results as per design doc
+    // Parse and validate pagination parameters
+    const parsedLimit = parseInt(limitStr || '10', 10);
+    const parsedOffset = parseInt(offsetStr || '0', 10);
+    
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1) {
+        logger.warn({ ...logContext, limitStr }, 'Invalid limit parameter for vector search');
+        const error = createValidationError('Limit parameter must be a valid integer greater than 0', 'limit', requestId);
+        res.status(400).json({ 
+            success: false, 
+            results: [], 
+            ...error 
+        });
+        return;
+    }
+    
+    if (!Number.isInteger(parsedOffset) || parsedOffset < 0) {
+        logger.warn({ ...logContext, offsetStr }, 'Invalid offset parameter for vector search');
+        const error = createValidationError('Offset parameter must be a valid integer greater than or equal to 0', 'offset', requestId);
+        res.status(400).json({ 
+            success: false, 
+            results: [], 
+            ...error 
+        });
+        return;
+    }
+    
+    const limit = Math.min(50, parsedLimit); // Max 50
+    const offset = parsedOffset;
+    
+    // For vector search, we need to fetch more results than requested to support pagination
+    // We'll fetch a larger set and then slice for pagination
+    const K_NEIGHBORS = Math.min(200, offset + limit * 3); // Fetch enough for current + some future pages
 
     try {
         logger.debug(logContext, `Performing vector search for k=${K_NEIGHBORS}`);
@@ -109,12 +142,33 @@ router.get<
         const resultsWithData = (await Promise.all(resultsWithDataPromises))
                                 .filter(r => r !== null) as VectorSearchResponse['results'];
 
-        logger.info({ ...logContext, returnedCount: resultsWithData.length }, 'Successfully processed vector search request.');
+        // Apply pagination to the results
+        const totalResults = resultsWithData.length;
+        const paginatedResults = resultsWithData.slice(offset, offset + limit);
+        const hasMore = offset + limit < totalResults;
+
+        logger.info({ 
+            ...logContext, 
+            totalFound: totalResults, 
+            returnedCount: paginatedResults.length, 
+            hasMore,
+            offset,
+            limit
+        }, 'Successfully processed vector search request with pagination.');
         
         // Set Cache-Control header (e.g., cache for 1 minute)
         res.setHeader('Cache-Control', 'public, max-age=60');
         
-        res.json({ success: true, results: resultsWithData });
+        res.json({ 
+            success: true, 
+            results: paginatedResults,
+            pagination: {
+                offset,
+                limit,
+                total: totalResults,
+                hasMore
+            }
+        });
 
     } catch (error) {
         logger.error({ ...logContext, err: error }, 'Error performing vector search');

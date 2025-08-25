@@ -1,0 +1,54 @@
+# Enhanced Wiki Puzzle Generation Pipeline with Gemini Embeddings
+
+puzzle_generation:
+  total_puzzle_count: 100  # Configurable puzzle count  
+  words_per_theme: 4  # 4 words per theme for 4x4 puzzles
+  themes_per_puzzle: 4  # 4 themes per puzzle
+  candidate_words_per_theme: 10  # Initial vector search candidates
+  min_similarity_threshold: 0.3
+  theme_selection_method: "random"
+  random_seed: 42  # For reproducible puzzle generation
+
+themes:
+  source: "../data/categories/wiki_categories_filtered"
+  exclude_categories: 
+    - "General reference"
+    - "Research" 
+    - "Academic disciplines"
+    - "Library science"
+  min_theme_length: 3  # Minimum characters for theme name
+
+vector_search:
+  data_source: "../../themes_index"
+  use_lemmatized: true
+  similarity_metric: "cosine"
+  max_search_candidates: 20  # Search top 20, then filter to 10 best
+
+gemini:
+  model_id: "gemini-embedding-001"  # Updated to latest Gemini model
+  embedding_dimension: 3072  # Full dimension as originally planned
+  api_key_env: "GEMINI_API_KEY"
+  task_type: "SEMANTIC_SIMILARITY"
+
+paths:
+  themes: "data/themes/"
+  candidates: "data/candidates/"
+  embeddings: "data/embeddings/"
+  outputs: "data/outputs/"
+  reports: "reports/"
+  cache: "data/cache/"
+
+output:
+  format: "json"
+  include_metadata: true
+  include_similarity_scores: true
+  csv_precision: 6  # Decimal places for embedding values
+  
+  # Two CSV outputs
+  embedding_cache_file: "data/cache/all_embeddings.csv"  # All generated embeddings
+  puzzle_embeddings_file: "data/embeddings/puzzle_embeddings.csv"  # Final puzzle words only
+
+logging:
+  level: "INFO"
+  detailed_output: true
+  log_embedding_stats: true

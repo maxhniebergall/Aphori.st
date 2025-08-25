@@ -16,8 +16,8 @@
  * - Clear loading state after data is loaded
  */
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { Virtuoso } from 'react-virtuoso';
+import React, { useEffect, useState, useMemo, useCallback, useImperativeHandle, forwardRef, useRef } from 'react';
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { usePostTree } from '../context/PostTreeContext';
 import { useReplyContext } from '../context/ReplyContext';
 import { PostTreeLevel } from '../types/types';
@@ -27,6 +27,10 @@ import { getLevelNumber } from '../utils/levelDataHelpers';
 
 interface VirtualizedPostListProps {
   postRootId: string;
+}
+
+export interface VirtualizedPostListRef {
+  scrollToItem: (itemId: string) => void;
 }
 
 // Custom hook to selectively extract only the reply context values we need
@@ -42,15 +46,40 @@ function useReplyContextForList() {
   ]);
 }
 
-const VirtualizedPostList: React.FC<VirtualizedPostListProps> = React.memo(({ postRootId }) => {
+const VirtualizedPostList = React.memo(forwardRef<VirtualizedPostListRef, VirtualizedPostListProps>(({ postRootId }, ref) => {
   const { state } = usePostTree();
   const [error, setError] = useState<string | null>(null);
   const [levels, setLevels] = useState<PostTreeLevel[]>([]);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   
   const { replyTarget } = useReplyContextForList();
   const { isLoadingMore } = state;
 
   // --- HOOKS MUST BE CALLED UNCONDITIONALLY BEFORE EARLY RETURNS ---
+
+  // Expose scrollToItem method via ref
+  useImperativeHandle(ref, () => ({
+    scrollToItem: (itemId: string) => {
+      // Find the index of the item with the given ID
+      const itemIndex = levels.findIndex(level => {
+        // Check if this level contains the item with the given ID
+        // The item could be the root node, selected node, or one of the sibling nodes
+        if (level.midLevel?.rootNodeId === itemId) return true;
+        if (level.lastLevel?.rootNodeId === itemId) return true;
+        if (level.midLevel?.selectedNode?.id === itemId) return true;
+        if (level.midLevel?.siblings?.nodes?.some((node: any) => node.id === itemId)) return true;
+        return false;
+      });
+      
+      if (itemIndex !== -1 && virtuosoRef.current) {
+        virtuosoRef.current.scrollToIndex({
+          index: itemIndex,
+          align: 'center',
+          behavior: 'smooth'
+        });
+      }
+    }
+  }), [levels]);
 
   // UPDATE: Effect syncs context levels AND triggers initial loading up to 5 levels
   useEffect(() => {
@@ -158,6 +187,7 @@ const VirtualizedPostList: React.FC<VirtualizedPostListProps> = React.memo(({ po
   return (
     <div style={{ height: '100%' }} role="list" aria-label="Post tree content">
       <Virtuoso
+        ref={virtuosoRef}
         style={{ height: '100%' }}
         data={levels}
         itemContent={itemContent}
@@ -175,7 +205,7 @@ const VirtualizedPostList: React.FC<VirtualizedPostListProps> = React.memo(({ po
       )}
     </div>
   );
-});
+}));
 
 // Add display name for better debugging
 VirtualizedPostList.displayName = 'VirtualizedPostList';

@@ -1,0 +1,25 @@
+# GCP credentials and config
+.gcp/
+
+# Python virtual environments and cache
+themes_quality_venv/
+scripts/__pycache__/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+env/
+*_venv/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Raw data files (managed by DVC)
+data/raw/
+config/investigation_config.json
+
+# Output directories
+/puzzle_generation_output

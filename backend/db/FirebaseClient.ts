@@ -34,19 +34,53 @@ export class FirebaseClient extends DatabaseClientInterface {
 
     // Safely initialize the app or reuse existing one
     var app;
+    
+    // Extract namespace from databaseURL for app naming
+    let namespace: string;
+    try {
+      const url = new URL(config.databaseURL);
+      // First try to get namespace from query parameter
+      const nsParam = url.searchParams.get('ns');
+      if (nsParam) {
+        namespace = nsParam;
+      } else {
+        // Derive namespace from hostname, removing -default-rtdb suffix if present
+        const hostname = url.hostname.split('.')[0];
+        namespace = hostname.replace(/-default-rtdb$/, '');
+      }
+    } catch (error) {
+      console.warn(`Failed to parse databaseURL '${config.databaseURL}', falling back to 'default' namespace:`, error);
+      namespace = 'default';
+    }
+    
+    const appName = namespace === 'aphorist' ? '[DEFAULT]' : `firebase-${namespace}`;
+    
+    console.log(`FirebaseClient: Resolved namespace '${namespace}' from URL '${config.databaseURL}', using app name '${appName}'`);
+    
     // Check if admin and admin.apps are available and not empty
     if (FirebaseClient.isTestEnvironment && admin && admin.apps && admin.apps.length > 0) {
-      // In test environment, reuse the default app if it exists
-      const defaultApp = admin.apps.find(a => a && a.name === '[DEFAULT]');
-      if (defaultApp) {
-        app = defaultApp;
-        console.log('Reusing existing Firebase default app in test environment');
+      // In test environment, reuse the app with the same namespace/name if it exists
+      const existingApp = admin.apps.find(a => a && a.name === appName);
+      if (existingApp) {
+        app = existingApp;
+        console.log(`Reusing existing Firebase app: ${appName} for namespace: ${namespace}`);
       } else {
-        app = initializeApp(appOptions);
+        // Create new app with namespace-specific name
+        if (appName === '[DEFAULT]') {
+          app = initializeApp(appOptions);
+        } else {
+          app = initializeApp(appOptions, appName);
+        }
+        console.log(`Created new Firebase app: ${appName} for namespace: ${namespace}`);
       }
     } else {
       // In non-test environments, initialize as normal
-      app = initializeApp(appOptions);
+      if (appName === '[DEFAULT]') {
+        app = initializeApp(appOptions);
+      } else {
+        app = initializeApp(appOptions, appName);
+      }
+      console.log(`Initialized Firebase app: ${appName} for namespace: ${namespace}`);
     }
     
     this.db = getDatabase(app);
@@ -667,13 +701,22 @@ export class FirebaseClient extends DatabaseClientInterface {
 
   // --- Semantic Methods: Low-Level Generic ---
   async getRawPath(path: string): Promise<any | null> {
-    this._assertFirebaseKeyComponentSafe(path, 'getRawPath', 'path');
+    // getRawPath accepts full Firebase paths which can contain '/' characters
+    // Only validate individual path components for forbidden chars (. # $ [ ])
+    const forbiddenPathChars = /[.#$[\]]/;
+    if (forbiddenPathChars.test(path)) {
+      console.warn(`FirebaseClient: getRawPath called with path ("${path}") containing forbidden characters . # $ [ ]. Firebase paths should not contain these characters.`);
+    }
     const snapshot = await this.db.ref(path).once('value');
     return snapshot.exists() ? snapshot.val() : null;
   }
 
   async setRawPath(path: string, value: any): Promise<void> {
-    this._assertFirebaseKeyComponentSafe(path, 'setRawPath', 'path');
+    // setRawPath accepts full Firebase paths which can contain '/' characters
+    const forbiddenPathChars = /[.#$[\]]/;
+    if (forbiddenPathChars.test(path)) {
+      console.warn(`FirebaseClient: setRawPath called with path ("${path}") containing forbidden characters . # $ [ ]. Firebase paths should not contain these characters.`);
+    }
     await this.db.ref(path).set(value);
   }
 

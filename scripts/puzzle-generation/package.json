@@ -1,0 +1,54 @@
+{
+  "name": "themes-puzzle-generator",
+  "version": "1.0.0",
+  "description": "Offline puzzle generation for themes game using full vector index",
+  "type": "module",
+  "main": "dist/generate-puzzles.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "generate": "npm run build && node dist/generate-puzzles.js",
+    "generate:enhanced": "npm run build && node dist/generate-enhanced-puzzles.js",
+    "bridge": "npm run build && node dist/data-science-bridge.js",
+    "use-gemini": "npm run build && node dist/use-gemini-output.js",
+    "generate-monthly": "npm run build && node dist/generate-monthly-puzzles.js",
+    "validate": "npm run build && node dist/validate-puzzles.js",
+    "generate-week": "npm run generate -- $(date +%Y-%m-%d) $(date -d '+7 days' +%Y-%m-%d) 3 0.6",
+    "generate:enhanced-week": "npm run generate:enhanced -- $(date +%Y-%m-%d) $(date -d '+7 days' +%Y-%m-%d) 3 0.6",
+    "generate-test": "npm run generate -- $(date +%Y-%m-%d) $(date +%Y-%m-%d) 1 0.5 ./test-output 5 --verbose",
+    "generate:enhanced-test": "npm run generate:enhanced -- $(date +%Y-%m-%d) $(date +%Y-%m-%d) 1 0.5 ./enhanced-test-output 5 --verbose",
+    "validate-test": "npm run validate -- ./test-output --verbose",
+    "generate:batch-wiki": "npm run build && node dist/generate-batch-wiki.js",
+    "generate:batch-gemini": "npm run build && node dist/generate-batch-gemini.js",
+    "generate:all-batches": "npm run build && node dist/generate-all-batches.js",
+    "validate:batch": "npm run build && node dist/validate-batch-quality.js",
+    "test": "npm run build && node dist/test-generation.js",
+    "test-vectors": "npm run build && node dist/test-vector-functionality.js",
+    "test-quality": "npm run build && node dist/test-quality-controls.js",
+    "test-case": "npm run build && node dist/test-case-sensitivity.js",
+    "test-named-sets": "npm run build && node dist/test-named-sets-format.js",
+    "dev": "npm run test"
+  },
+  "dependencies": {
+    "dictionary-en-us": "^2.2.1",
+    "faiss-node": "^0.5.1",
+    "google-genai": "^0.1.0",
+    "nspell": "^2.1.5",
+    "wink-lemmatizer": "^3.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "puzzle",
+    "games",
+    "vector",
+    "similarity",
+    "themes",
+    "offline",
+    "generation"
+  ],
+  "author": "Aphorist Development Team",
+  "license": "MIT"
+}
