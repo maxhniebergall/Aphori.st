@@ -45,9 +45,13 @@ ENV/
 env/
 *_venv/
 
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
 # Data science and ML files (data only, preserve code)
 scripts/datascience/data/
 scripts/datascience/themes_quality/data/
+wiki_categories/
 scripts/datascience/themes_quality/results/
 scripts/datascience/themes_quality/reports/
 scripts/datascience/themes_quality/puzzle_generation_output/
@@ -71,6 +75,7 @@ scripts/datascience/themes_index/
 
 # Puzzle generation artifacts
 scripts/puzzle-generation/
+!scripts/puzzle-generation/august-puzzles/firebase_import.json
 
 # Testing artifacts
 playwright-report/
@@ -79,7 +84,8 @@ test_import.json
 
 # Data import/export
 import_data/
-scripts/datascience/themes_quality/.gcp/themes-quality-dvc-service-account.json
+.gcp/
+*.json
 
 # DVC cache and temp files
 **/.dvc/cache/
