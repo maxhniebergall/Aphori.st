@@ -75,7 +75,6 @@ scripts/datascience/themes_quality_venv
 scripts/datascience/themes_index/
 
 # Puzzle generation artifacts
-scripts/puzzle-generation/
 !scripts/puzzle-generation/august-puzzles/firebase_import.json
 
 # Testing artifacts
