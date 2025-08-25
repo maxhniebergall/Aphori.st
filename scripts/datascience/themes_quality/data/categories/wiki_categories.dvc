@@ -1,3 +1,4 @@
+desc: Wikipedia categories dataset for theme classification analysis
 outs:
 - md5: 698bcbc2303dae0536c01975f9c4ccad
   size: 8130
