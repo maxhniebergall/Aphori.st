@@ -33,7 +33,8 @@ stages:
       - data/themes/selected_themes.json
       - data/candidates/candidate_words.json
     outs:
-      - data/cache/all_embeddings.csv
+      - data/cache/all_embeddings.csv:
+          persist: true
       - data/embeddings/puzzle_embeddings.csv
       - data/outputs/final_puzzles.json
       - data/outputs/puzzle_metadata.json

@@ -86,15 +86,17 @@ class ThemeSelector:
     def select_themes(self, categories: List[str]) -> List[str]:
         """Randomly select themes for puzzle generation."""
         puzzle_count = self.puzzle_config['total_puzzle_count']
+        themes_per_puzzle = self.puzzle_config.get('themes_per_puzzle', 4)
+        themes_needed = puzzle_count * themes_per_puzzle
         
-        if len(categories) < puzzle_count:
-            logger.warning(f"Only {len(categories)} categories available, but {puzzle_count} puzzles requested")
-            puzzle_count = len(categories)
+        if len(categories) < themes_needed:
+            logger.warning(f"Only {len(categories)} categories available, but {themes_needed} themes needed ({puzzle_count} puzzles × {themes_per_puzzle} themes/puzzle)")
+            themes_needed = len(categories)
         
         # Sample without replacement to ensure unique themes
-        selected = random.sample(categories, puzzle_count)
+        selected = random.sample(categories, themes_needed)
         
-        logger.info(f"Selected {len(selected)} themes for puzzle generation")
+        logger.info(f"Selected {len(selected)} themes for {puzzle_count} puzzles ({themes_per_puzzle} themes per puzzle)")
         return selected
     
     def save_themes(self, themes: List[str]):

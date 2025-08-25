@@ -1,10 +1,10 @@
 # Enhanced Wiki Puzzle Generation Pipeline with Gemini Embeddings
 
 puzzle_generation:
-  total_puzzle_count: 100  # Configurable puzzle count  
+  total_puzzle_count: 80  # Configurable puzzle count  
   words_per_theme: 4  # 4 words per theme for 4x4 puzzles
   themes_per_puzzle: 4  # 4 themes per puzzle
-  candidate_words_per_theme: 10  # Initial vector search candidates
+  candidate_words_per_theme: 50  # Initial vector search candidates
   min_similarity_threshold: 0.3
   theme_selection_method: "random"
   random_seed: 42  # For reproducible puzzle generation
@@ -22,7 +22,7 @@ vector_search:
   data_source: "../../themes_index"
   use_lemmatized: true
   similarity_metric: "cosine"
-  max_search_candidates: 20  # Search top 20, then filter to 10 best
+  max_search_candidates: 50
 
 gemini:
   model_id: "gemini-embedding-001"  # Updated to latest Gemini model

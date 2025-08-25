@@ -63,7 +63,9 @@ class GeminiEmbeddingProvider:
     
     def _load_cache(self):
         """Load embeddings from cache file."""
+        logger.info(f"🔍 Attempting to load cache from: {self.cache_file}")
         if not self.cache_file:
+            logger.warning("❌ No cache file specified")
             return
         
         try:
@@ -81,17 +83,49 @@ class GeminiEmbeddingProvider:
                         self.embedding_cache[word] = embedding
                     else:
                         logger.warning(f"No embedding dimensions found in cache for word: {word}")
-                logger.info(f"Loaded {len(self.embedding_cache)} cached embeddings")
+                logger.info(f"✅ Loaded {len(self.embedding_cache)} cached embeddings from {cache_path}")
+                logger.info(f"   Sample cached words: {list(self.embedding_cache.keys())[:5]}")
             else:
-                logger.info("No existing cache file found, starting with empty cache")
+                logger.info("❌ No existing cache file found, starting with empty cache")
         except Exception as e:
             logger.warning(f"Failed to load cache: {e}")
             self.embedding_cache = {}
     
     def _save_to_cache(self, text: str, embedding: List[float]):
-        """Save new embedding to cache."""
+        """Save new embedding to cache and persist to disk immediately."""
         if self.cache_file:
             self.embedding_cache[text] = embedding
+            # Persist to disk immediately for crash recovery
+            self._persist_cache_to_disk()
+
+    def _persist_cache_to_disk(self):
+        """Persist the current cache to disk."""
+        if not self.cache_file or not self.embedding_cache:
+            return
+            
+        try:
+            import pandas as pd
+            cache_path = Path(self.cache_file)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Simple cache format: just word and embedding dimensions
+            rows = []
+            for word, embedding in self.embedding_cache.items():
+                row_data = {'word': word}
+                
+                # Add embedding dimensions (match _save_csv_file format)
+                for i, value in enumerate(embedding):
+                    row_data[f'embedding_dim_{i+1}'] = value
+                    
+                rows.append(row_data)
+            
+            if rows:
+                df = pd.DataFrame(rows)
+                df.to_csv(cache_path, index=False)
+                logger.debug(f"Cache persisted to {cache_path} with {len(rows)} entries")
+                
+        except Exception as e:
+            logger.warning(f"Failed to persist cache to disk: {e}")
     
     def generate_embedding(self, text: str) -> Optional[List[float]]:
         """Generate embedding for text using Gemini API with caching and exponential backoff retry."""
@@ -99,12 +133,16 @@ class GeminiEmbeddingProvider:
             logger.warning("Empty text provided for embedding")
             return None
         
-        # Check cache first
-        if text in self.embedding_cache:
-            logger.debug(f"Cache hit for: {text}")
-            return self.embedding_cache[text]
+        # Normalize text for consistent caching (lowercase)
+        normalized_text = text.lower().strip()
         
-        logger.debug(f"Cache miss, generating embedding for: {text}")
+        # Check cache first using normalized form
+        logger.debug(f"🔍 Checking cache for '{text}' (normalized: '{normalized_text}') in {len(self.embedding_cache)} cached entries")
+        if normalized_text in self.embedding_cache:
+            logger.info(f"📋 Cache hit for: {text} (cached as: {normalized_text})")
+            return self.embedding_cache[normalized_text]
+        
+        logger.info(f"🔄 Cache miss, generating embedding for: {text}")
         max_retries = 5
         base_delay = 1.0
         
@@ -126,6 +164,8 @@ class GeminiEmbeddingProvider:
                         if len(values) != self.dimension:
                             logger.error(f"Embedding dimension mismatch: got {len(values)}, expected {self.dimension}")
                             sys.exit(1)
+                        # Save to cache after successful generation using normalized key
+                        self._save_to_cache(normalized_text, values)
                         return values
                 
                 logger.error(f"Unexpected embedding response structure for text: {text[:50]}...")
@@ -273,6 +313,34 @@ class GeminiEnhancer:
             logger.error(f"Error calculating cosine similarity: {e}")
             return 0.0
     
+    def normalize_word(self, word: str) -> str:
+        """Normalize a word for duplicate detection (lowercase only)."""
+        return word.lower().strip()
+    
+    def is_duplicate_word(self, word: str, processed_words: set) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Check if a word is a duplicate of already processed words.
+        Returns (is_duplicate, matching_word, reason)
+        """
+        word_lower = self.normalize_word(word)
+        
+        # Check exact case-insensitive match
+        if word_lower in processed_words:
+            return True, word_lower, "case-insensitive match"
+        
+        # Check if it's a plural form (simple heuristic: ends with 's')
+        if word_lower.endswith('s') and len(word_lower) > 1:
+            singular_form = word_lower[:-1]
+            if singular_form in processed_words:
+                return True, singular_form, "plural form"
+        
+        # Check if any existing word is a plural of this word
+        plural_form = word_lower + 's'
+        if plural_form in processed_words:
+            return True, plural_form, "singular of existing plural"
+        
+        return False, None, None
+    
     def process_theme_with_gemini(self, theme: str, candidate_words: List[str]) -> Tuple[List[EmbeddingResult], Optional[List[float]]]:
         """Process a theme and its candidates with Gemini embeddings."""
         logger.info(f"Processing theme '{theme}' with {len(candidate_words)} candidates")
@@ -283,10 +351,29 @@ class GeminiEnhancer:
             logger.error(f"Failed to generate embedding for theme: {theme}")
             return [], None
         
-        # Generate embeddings for candidate words
+        # Track processed words to avoid duplicates
+        processed_words = set()
         word_results = []
+        skipped_duplicates = []
         
+        # Generate embeddings for candidate words, skipping duplicates
         for word in candidate_words:
+            # Check for duplicates before generating embedding
+            is_duplicate, matching_word, reason = self.is_duplicate_word(word, processed_words)
+            
+            if is_duplicate:
+                logger.info(f"⏭️  Skipping duplicate word '{word}' (matches '{matching_word}', reason: {reason})")
+                skipped_duplicates.append({
+                    "word": word,
+                    "matching_word": matching_word,
+                    "reason": reason
+                })
+                continue
+            
+            # Add normalized word to processed set
+            processed_words.add(self.normalize_word(word))
+            
+            # Generate embedding for unique word
             word_embedding = self.embedding_provider.generate_embedding(word)
             if word_embedding:
                 # Calculate similarity to theme
@@ -300,8 +387,16 @@ class GeminiEnhancer:
             else:
                 logger.warning(f"Failed to generate embedding for word: {word}")
         
+        # Log summary of duplicate detection
+        if skipped_duplicates:
+            logger.info(f"📊 Skipped {len(skipped_duplicates)} duplicate words for theme '{theme}':")
+            for skip_info in skipped_duplicates:
+                logger.info(f"   - {skip_info['word']} (matches {skip_info['matching_word']}, {skip_info['reason']})")
+        
         # Sort by similarity (highest first)
         word_results.sort(key=lambda x: x.similarity_to_theme, reverse=True)
+        
+        logger.info(f"✅ Processed {len(word_results)} unique words for theme '{theme}' (skipped {len(skipped_duplicates)} duplicates)")
         
         return word_results, theme_embedding
     

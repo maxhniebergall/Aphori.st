@@ -9,8 +9,8 @@ stages:
       size: 3147
     - path: pipeline/theme_selector.py
       hash: md5
-      md5: bca60d54a38fbfc7a531ca51c95cf91e
-      size: 5577
+      md5: a43600531a580e543a329424fd13ad40
+      size: 5816
     params:
       params.yaml:
         paths:
@@ -21,10 +21,10 @@ stages:
           reports: reports/
           cache: data/cache/
         puzzle_generation:
-          total_puzzle_count: 100
+          total_puzzle_count: 80
           words_per_theme: 4
           themes_per_puzzle: 4
-          candidate_words_per_theme: 10
+          candidate_words_per_theme: 50
           min_similarity_threshold: 0.3
           theme_selection_method: random
           random_seed: 42
@@ -39,8 +39,8 @@ stages:
     outs:
     - path: data/themes/selected_themes.json
       hash: md5
-      md5: a9930d7974a19d0333b0e4647d7089c2
-      size: 2016
+      md5: 89939b35836595e537679cb999490e40
+      size: 5648
   select_candidates:
     cmd: python pipeline/word_selector.py
     deps:
@@ -58,8 +58,8 @@ stages:
       size: 9671670
     - path: data/themes/selected_themes.json
       hash: md5
-      md5: a9930d7974a19d0333b0e4647d7089c2
-      size: 2016
+      md5: 89939b35836595e537679cb999490e40
+      size: 5648
     - path: pipeline/word_selector.py
       hash: md5
       md5: fce17c7cf0a342cfc4f3de2d00ae8137
@@ -74,10 +74,10 @@ stages:
           reports: reports/
           cache: data/cache/
         puzzle_generation:
-          total_puzzle_count: 100
+          total_puzzle_count: 80
           words_per_theme: 4
           themes_per_puzzle: 4
-          candidate_words_per_theme: 10
+          candidate_words_per_theme: 50
           min_similarity_threshold: 0.3
           theme_selection_method: random
           random_seed: 42
@@ -85,12 +85,12 @@ stages:
           data_source: ../../themes_index
           use_lemmatized: true
           similarity_metric: cosine
-          max_search_candidates: 20
+          max_search_candidates: 50
     outs:
     - path: data/candidates/candidate_words.json
       hash: md5
-      md5: 10c8ad9e7ed295fc6ad6dc57092899c1
-      size: 59685
+      md5: 0a92d6b86fe316d227305e2cfc0c4879
+      size: 800445
   enhance_with_gemini:
     cmd: python pipeline/gemini_enhancer.py
     deps:
