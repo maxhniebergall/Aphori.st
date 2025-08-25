@@ -46,7 +46,6 @@ export interface UseThemesGameReturn {
   selectWord: (word: string) => void;
   submitSelection: () => Promise<void>;
   randomizeGrid: () => void;
-  loadPuzzle: (date: string, puzzleNumber: number) => Promise<void>;
   loadPuzzleFromSet: (setName: string, version: string, puzzleNumber: number) => Promise<void>;
   resetGame: () => void;
 }
@@ -120,46 +119,6 @@ export const useThemesGame = (): UseThemesGameReturn => {
     return shuffleArray(gridWords);
   }, [shuffleArray]);
 
-  // Load puzzle from API
-  const loadPuzzle = useCallback(async (date: string, puzzleNumber: number) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${baseURL}/api/games/themes/daily`, {
-        credentials: 'include'
-      });
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to load puzzle');
-      }
-
-      const puzzles = data.data.puzzles;
-      const targetPuzzle = puzzles.find((p: ThemesPuzzle) => p.puzzleNumber === puzzleNumber);
-
-      if (!targetPuzzle) {
-        throw new Error(`Puzzle ${puzzleNumber} not found for date ${date}`);
-      }
-
-      setPuzzle(targetPuzzle);
-      setGameState({
-        selectedWords: [],
-        selectionOrder: [],
-        completedCategories: [],
-        attempts: 0,
-        isComplete: false,
-        shakingWords: [],
-        gridWords: initializeGridWords(targetPuzzle),
-        animatingWords: []
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  }, [initializeGridWords]);
 
   // Load puzzle from a specific set
   const loadPuzzleFromSet = useCallback(async (setName: string, version: string, puzzleNumber: number) => {
@@ -449,7 +408,6 @@ export const useThemesGame = (): UseThemesGameReturn => {
     selectWord,
     submitSelection,
     randomizeGrid,
-    loadPuzzle,
     loadPuzzleFromSet,
     resetGame
   };

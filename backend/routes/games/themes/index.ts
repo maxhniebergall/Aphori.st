@@ -9,7 +9,6 @@ import { createThemesDatabaseClient } from '../../../db/index.js';
 import { TemporaryUserService } from '../../../services/games/TemporaryUserService.js';
 
 // Import individual route modules
-import dailyPuzzlesRoutes from './dailyPuzzles.js';
 import puzzleSetsRoutes from './puzzleSets.js';
 import gameStateRoutes from './gameState.js';
 import analyticsRoutes from './analytics.js';
@@ -84,7 +83,6 @@ router.get('/health', async (req, res) => {
 });
 
 // Mount sub-routes
-router.use('/daily', dailyPuzzlesRoutes);
 router.use('/sets', puzzleSetsRoutes);
 router.use('/state', gameStateRoutes);
 router.use('/analytics', analyticsRoutes);
