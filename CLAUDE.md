@@ -146,3 +146,64 @@ Local development requires the Firebase emulator running on localhost:9000 for d
 #### Vector Search
 The vector search system requires GCP credentials and Vertex AI access. It maintains an in-memory FAISS index that rebuilds on server restart from RTDB data.
 - all data files (including json, csv, small files, etc.) should be committed with dvc. no data files should be committed to git regardless of their size.
+
+## Python Virtual Environments
+
+The project uses multiple Python virtual environments for different components:
+
+### Root Level (.venv)
+```bash
+source .venv/bin/activate
+```
+- **Location**: `/Users/mh/workplace/Aphori.st/.venv/`
+- **Python**: 3.11
+- **Purpose**: Main project virtual environment
+
+### Data Science - Themes Quality (themes_quality_venv) 
+```bash
+cd scripts/datascience/themes_quality
+source themes_quality_venv/bin/activate
+```
+- **Location**: `/Users/mh/workplace/Aphori.st/scripts/datascience/themes_quality/themes_quality_venv/`
+- **Python**: 3.11
+- **Purpose**: Themes quality analysis and Gemini pipeline
+- **Key packages**: DVC, pandas, google-genai, yaml
+- **Used for**: Wiki puzzle Gemini pipeline, theme processing, embedding cache management
+
+### Data Science - Parent Level (themes_quality_venv)
+```bash
+cd scripts/datascience  
+source themes_quality_venv/bin/activate
+```
+- **Location**: `/Users/mh/workplace/Aphori.st/scripts/datascience/themes_quality_venv/`
+- **Python**: 3.11
+- **Purpose**: General data science tasks
+
+### Wiki Puzzle Pipeline (venv)
+```bash
+cd scripts/datascience/themes_quality/wiki_puzzle_pipeline
+source venv/bin/activate  
+```
+- **Location**: `/Users/mh/workplace/Aphori.st/scripts/datascience/themes_quality/wiki_puzzle_pipeline/venv/`
+- **Python**: 3.13
+- **Purpose**: Original wiki puzzle generation pipeline
+
+### Puzzle Generation (venv)
+```bash
+cd scripts/puzzle-generation
+source venv/bin/activate
+```
+- **Location**: `/Users/mh/workplace/Aphori.st/scripts/puzzle-generation/venv/`
+- **Python**: 3.13  
+- **Purpose**: TypeScript puzzle generation scripts
+
+## DVC Operations
+
+For DVC operations on the Gemini pipeline, use the themes_quality_venv:
+```bash
+cd scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline
+source ../themes_quality_venv/bin/activate
+dvc status
+dvc pull
+dvc repro
+```
