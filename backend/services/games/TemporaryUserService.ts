@@ -58,8 +58,8 @@ export class TemporaryUserService {
   async validateAndRefreshTempUser(tempId: string): Promise<TemporaryUserId | null> {
     // Validate tempId format: temp_{timestamp}_{random}
     // timestamp: base-36 encoded timestamp (variable length)
-    // random: base-36 encoded random string (13 characters)
-    const tempIdPattern = /^temp_[a-z0-9]+_[a-z0-9]{13}$/;
+    // random: base-36 encoded random string (variable length, typically 10-13 characters)
+    const tempIdPattern = /^temp_[a-z0-9]+_[a-z0-9]{8,13}$/;
     
     if (!tempId || typeof tempId !== 'string' || !tempIdPattern.test(tempId)) {
       return null;
