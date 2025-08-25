@@ -3,3 +3,4 @@
     autostage = true
 ['remote "storage"']
     url = gs://aphorist-themes-quality-dvc
+    credentialpath = /Users/mh/workplace/Aphori.st/scripts/datascience/themes_quality/.gcp/themes-quality-dvc-service-account.json
