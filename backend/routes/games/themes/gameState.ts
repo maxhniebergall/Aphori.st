@@ -48,6 +48,7 @@ async function handleTempUser(req: Request, res: Response, next: NextFunction) {
 
     // Handle temporary user
     const existingTempId = req.cookies?.temp_user_id;
+    logger.info(`Temp user middleware: existingTempId=${existingTempId}, cookies=${JSON.stringify(req.cookies)}`);
     const tempUser = await tempUserService.getOrCreateTempUser(existingTempId);
     
     // Set cookie for temporary user (60 days)
@@ -186,6 +187,43 @@ async function createCompletionMetrics(
     // Don't throw - completion metrics are optional
   }
 }
+
+/**
+ * GET /api/games/themes/state/attempts/:puzzleId
+ * Get user's attempts for a specific puzzle
+ */
+router.get('/attempts/:puzzleId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { puzzleId } = req.params;
+    const { dbClient } = getThemesServices();
+    const userId = (req as TempUserRequest).effectiveUserId;
+    const currentDate = getCurrentDateString();
+    
+    // Get all attempts for this user and date
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
+    const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
+    
+    // Filter for the specific puzzle
+    const puzzleAttempts = Object.values(allAttempts)
+      .filter((attempt: any) => attempt.puzzleId === puzzleId)
+      .sort((a: any, b: any) => a.timestamp - b.timestamp);
+    
+    res.json({
+      success: true,
+      data: {
+        puzzleId,
+        attempts: puzzleAttempts,
+        totalAttempts: puzzleAttempts.length
+      }
+    });
+  } catch (error) {
+    logger.error('Error getting puzzle attempts:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get puzzle attempts'
+    });
+  }
+});
 
 /**
  * GET /api/games/themes/state/progress
@@ -436,7 +474,10 @@ router.get('/shareable/:setName/:puzzleNumber', async (req: Request, res: Respon
   try {
     const { setName, puzzleNumber } = req.params;
     const userId = (req as TempUserRequest).effectiveUserId;
+    const userType = (req as TempUserRequest).userType;
     const { dbClient } = getThemesServices();
+    
+    logger.info(`Shareable request: userId=${userId}, userType=${userType}, setName=${setName}, puzzleNumber=${puzzleNumber}`);
     
     const puzzleNum = parseInt(puzzleNumber, 10);
     if (isNaN(puzzleNum)) {
@@ -453,7 +494,9 @@ router.get('/shareable/:setName/:puzzleNumber', async (req: Request, res: Respon
     // Get all user attempts and filter for this specific puzzle
     const currentDate = getCurrentDateString();
     const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
+    logger.info(`Looking for attempts at path: ${attemptsPath}`);
     const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
+    logger.info(`Found ${Object.keys(allAttempts).length} total attempts for user`);
     
     // Filter attempts for this specific puzzle
     const puzzleAttempts: Record<string, any> = {};
@@ -463,6 +506,7 @@ router.get('/shareable/:setName/:puzzleNumber', async (req: Request, res: Respon
         puzzleAttempts[attemptId] = attempt;
       }
     }
+    logger.info(`Found ${Object.keys(puzzleAttempts).length} attempts for puzzle ${puzzleId}`);
     
     // Get the specific puzzle from the puzzle set
     const puzzlesPath = `puzzleSets/${setName}`;
@@ -530,8 +574,8 @@ function generateShareableContent(attempts: any, puzzlesData: any, date: string,
 
   const puzzles = Object.values(puzzlesData) as any[];
   
-  // Process each puzzle and only include completed ones
-  const shareableResults = puzzles.map(puzzle => {
+  // Process each puzzle - calculate attempts for ALL puzzles, not just completed ones
+  const allPuzzleResults = puzzles.map(puzzle => {
     const puzzleAttempts = Object.values(attempts).filter(
       (attempt: any) => attempt.puzzleId === puzzle.id
     ) as any[];
@@ -577,11 +621,15 @@ function generateShareableContent(attempts: any, puzzlesData: any, date: string,
       completed: isCompleted,
       emojiRows
     };
-  }).filter(result => result.completed); // Only include completed puzzles
+  });
 
-  // Create shareable text - only show completed puzzles
+  // Filter for shareable display (only completed puzzles)
+  const shareableResults = allPuzzleResults.filter(result => result.completed);
+  
+  // Calculate summary statistics using ALL puzzle results (not just completed ones)
   const completedCount = shareableResults.length;
-  const totalCompletedPuzzles = puzzles.length; // Total available puzzles
+  const totalPuzzles = allPuzzleResults.length; // Total puzzles we have data for
+  const totalAttempts = allPuzzleResults.reduce((sum, p) => sum + p.attempts, 0); // ALL attempts
   
   // Create the puzzle link using the actual setName and puzzleNumber
   const puzzleLink = puzzleNumber 
@@ -603,8 +651,8 @@ function generateShareableContent(attempts: any, puzzlesData: any, date: string,
     puzzleResults: shareableResults,
     summary: {
       completedPuzzles: completedCount,
-      totalPuzzles: totalCompletedPuzzles,
-      totalAttempts: shareableResults.reduce((sum, p) => sum + p.attempts, 0)
+      totalPuzzles: totalPuzzles,
+      totalAttempts: totalAttempts
     }
   };
 }
