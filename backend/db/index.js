@@ -114,7 +114,7 @@ export function createThemesDatabaseClient() {
             firebaseConfig.credential = credential;
             // Use themes-specific database URL
             firebaseConfig.databaseURL = process.env.THEMES_FIREBASE_DATABASE_URL || 
-                'https://aphorist-themes-default-rtdb.firebaseio.com/';
+                'https://aphorist-themes-default-rtdb.firebaseio.com/?ns=aphorist-themes';
             logger.info({ databaseURL: firebaseConfig.databaseURL }, 'Using production Themes Firebase Database');
         } catch (e) {
             logger.error({ err: e }, "Failed to parse FIREBASE_CREDENTIAL for themes");
