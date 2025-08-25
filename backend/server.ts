@@ -40,18 +40,11 @@ import authRoutes, { setDb as setAuthDb } from './routes/auth.js';
 import feedRoutes, { setDb as setFeedDb } from './routes/feed.js';
 import postRoutes, { setDb as setPostDb } from './routes/posts.js';
 import replyRoutes, { setDb as setReplyDb } from './routes/replies.js';
-import searchRoutes, { setDbAndVectorService as setSearchDbAndVectorService } from './routes/search.js';
 import gamesRoutes from './routes/games/index.js';
 import { initializeThemesServices, initializeThemesIndex } from './routes/games/themes/index.js';
 import { checkAndRunMigrations, processStartupEmails } from './startUpChecks.js';
-import { VectorService } from './services/vectorService.js'; // Import VectorService
 import { errorHandler } from './middleware/errorHandler.js';
 
-// --- Embedding Provider Imports ---
-import { EmbeddingProvider } from './services/embeddingProvider.js';
-import { GCPEmbeddingProvider } from './services/gcpEmbeddingProvider.js';
-import { MockEmbeddingProvider } from './services/mockEmbeddingProvider.js';
-// --- End Embedding Provider Imports ---
 
 dotenv.config();
 
@@ -124,34 +117,14 @@ app.use(anonymousLimiterDay);
 // createDatabaseClient() now returns LoggedDatabaseClient
 const db = createDatabaseClient();
 
-// --- Embedding Provider Setup ---
-let embeddingProvider: EmbeddingProvider;
-
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const EMBEDDING_MODEL_ID = 'gemini-embedding-exp-03-07'; 
-const GEMINI_EMBEDDING_DIMENSION = 768; // Defaulting to 768, see for options: https://ai.google.dev/gemini-api/docs/models#gemini-embedding
-
-if (NODE_ENV === 'production' || process.env.USE_VERTEX_AI_LOCALLY === 'true') {
-  embeddingProvider = new GCPEmbeddingProvider(
-    EMBEDDING_MODEL_ID,
-    GEMINI_EMBEDDING_DIMENSION
-  );
-  logger.info("Using real VertexAIEmbeddingProvider.");
-} else {
-  embeddingProvider = new MockEmbeddingProvider();
-  logger.info("Using MockEmbeddingProvider for local development.");
-}
-// --- End Embedding Provider Setup ---
 
 
 let isDbReady = false;
-let isVectorIndexReady = false; // Add flag for vector index
-let vectorService: VectorService; // Global reference for health checks
 
-// Database and Vector Index readiness check
+// Database readiness check
 app.use((req: Request, res: Response, next: NextFunction): void => {
-    if (!isDbReady || !isVectorIndexReady) { // Check both flags
-        logger.warn(`Service not ready (DB: ${isDbReady}, VectorIndex: ${isVectorIndexReady}), returning 503`);
+    if (!isDbReady) {
+        logger.warn(`Service not ready (DB: ${isDbReady}), returning 503`);
         res.status(503).json({ 
             error: 'Service initializing, please try again in a moment'
         });
@@ -161,7 +134,7 @@ app.use((req: Request, res: Response, next: NextFunction): void => {
 });
 
 // --- Graceful Shutdown --- 
-const gracefulShutdown = async (signal: string, vectorService: VectorService) => {
+const gracefulShutdown = async (signal: string) => {
     logger.info(`Received ${signal}. Starting graceful shutdown...`);
     
     // Stop accepting new connections
@@ -171,19 +144,8 @@ const gracefulShutdown = async (signal: string, vectorService: VectorService) =>
             process.exit(1);
         }
         logger.info('HTTP server closed.');
-
-        // Perform async cleanup
-        try {
-            logger.info('Shutting down Vector Service...');
-            await vectorService.handleShutdown(); // Call vector service shutdown
-            logger.info('Vector Service shut down complete.');
-
-            logger.info('Graceful shutdown complete.');
-            process.exit(0);
-        } catch (shutdownErr) {
-            logger.error({ err: shutdownErr }, 'Error during graceful shutdown cleanup');
-            process.exit(1);
-        }
+        logger.info('Graceful shutdown complete.');
+        process.exit(0);
     });
 
     // Force shutdown after timeout
@@ -203,22 +165,9 @@ await db.connect().then(async () => { // Make the callback async
     await processStartupEmails(db); // Handles email logic
     // --- End Startup Checks ---    
 
-    vectorService = new VectorService(db, embeddingProvider); // Pass the chosen provider
-
-    // Register signal handlers for graceful shutdown - always set regardless of initialization success
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM', vectorService));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT', vectorService));
-
-    // --- Initialize Vector Index ---
-    try {
-        await vectorService.initializeIndex();
-        isVectorIndexReady = true;
-        logger.info('Vector service index initialized successfully.');
-    } catch (err) {
-        logger.error({ err }, 'Failed to initialize vector service index. This is fatal - service cannot start without vector index.');
-        process.exit(1);
-    }
-    // --- End Vector Index Initialization ---
+    // Register signal handlers for graceful shutdown
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
     // --- Initialize Themes Game Services ---
     try {
@@ -242,13 +191,12 @@ await db.connect().then(async () => { // Make the callback async
     }
     // --- End Import/Seed --- 
 
-    // Inject DB instance and VectorService into route modules
+    // Inject DB instance into route modules
     setAuthDb(db);
     setFeedDb(db);
-    setPostDb(db, vectorService); // Pass vectorService
-    setReplyDb(db, vectorService); // Pass vectorService
-    setSearchDbAndVectorService(db, vectorService); // Inject into search routes
-    logger.info('Database and VectorService (with chosen EmbeddingProvider) instances injected into route modules.');
+    setPostDb(db);
+    setReplyDb(db);
+    logger.info('Database instance injected into route modules.');
 }).catch((err: Error) => {
     logger.error({ err }, 'Database connection failed');
     process.exit(1);
@@ -281,50 +229,12 @@ app.get('/health', (_req: Request, res: Response): void => {
     res.status(200).json({ status: 'healthy' });
 });
 
-app.get('/health/vector-index', (_req: Request, res: Response): void => {
-    try {
-        if (!vectorService) {
-            res.status(503).json({
-                status: 'unavailable',
-                error: 'Vector service not initialized',
-                ready: false
-            });
-            return;
-        }
-
-        const indexStats = {
-            ready: isVectorIndexReady,
-            indexSize: vectorService.getFaissIndex() ? vectorService.getFaissIndex()!.ntotal() : 0,
-            dimension: vectorService.getEmbeddingDimension(),
-            maxIndexSize: 10000, // MAX_FAISS_INDEX_SIZE constant
-            pendingOperations: vectorService.getPendingOperationsCount()
-        };
-
-        const isHealthy = isVectorIndexReady && 
-                         indexStats.indexSize >= 0 && 
-                         indexStats.pendingOperations < 100; // Alert if too many pending
-
-        res.status(isHealthy ? 200 : 503).json({
-            status: isHealthy ? 'healthy' : 'degraded',
-            ...indexStats,
-            timestamp: new Date().toISOString()
-        });
-    } catch (error) {
-        logger.error({ err: error }, 'Error checking vector index health');
-        res.status(500).json({
-            status: 'error',
-            error: 'Failed to check vector index health',
-            ready: false
-        });
-    }
-});
 
 // --- Mount Routers ---
 app.use('/api/auth', authRoutes);
 app.use('/api/feed', feedRoutes);
 app.use('/api/posts', postRoutes); 
 app.use('/api/replies', replyRoutes);
-app.use('/api/search', searchRoutes);
 app.use('/api/games', gamesRoutes);
 
 // Add the error handling middleware as the last middleware
