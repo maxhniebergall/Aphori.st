@@ -50,7 +50,8 @@ export function createDatabaseClient() {
             try {
                  const credential = JSON.parse(process.env.FIREBASE_CREDENTIAL);
                  firebaseConfig.credential = credential;
-                 firebaseConfig.databaseURL = process.env.FIREBASE_DATABASE_URL;
+                 firebaseConfig.databaseURL = process.env.FIREBASE_DATABASE_URL || 
+                     'https://aphorist-default-rtdb.firebaseio.com/?ns=aphorist';
                  logger.info({ databaseURL: firebaseConfig.databaseURL }, 'Using production Firebase Database');
             } catch (e) {
                  logger.error({ err: e }, "Failed to parse FIREBASE_CREDENTIAL");
