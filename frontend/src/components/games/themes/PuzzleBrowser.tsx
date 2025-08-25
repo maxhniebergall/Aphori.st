@@ -5,6 +5,7 @@ import './PuzzleBrowser.css';
 
 interface PuzzleBrowserProps {
   setName: string;
+  version?: string;
   onPuzzleSelected: (puzzleNumber: number) => void;
   onBackToSetSelection: () => void;
   completedPuzzles?: Set<number>;
@@ -12,6 +13,7 @@ interface PuzzleBrowserProps {
 
 export const PuzzleBrowser: React.FC<PuzzleBrowserProps> = ({
   setName,
+  version,
   onPuzzleSelected,
   onBackToSetSelection,
   completedPuzzles = new Set()
@@ -38,15 +40,18 @@ export const PuzzleBrowser: React.FC<PuzzleBrowserProps> = ({
 
   useEffect(() => {
     loadPuzzles();
-  }, [setName]);
+  }, [setName, version]);
 
   const loadPuzzles = async () => {
     try {
       setLoading(true);
       setError(null);
       
+      // Use provided version or default to setName (following the backend pattern)
+      const puzzleVersion = version || setName;
+      
       const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${baseURL}/api/games/themes/sets/${setName}/${setName}`, {
+      const response = await fetch(`${baseURL}/api/games/themes/sets/${setName}/${puzzleVersion}`, {
         credentials: 'include'
       });
       

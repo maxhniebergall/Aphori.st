@@ -92,3 +92,8 @@ scripts/datascience/themes_quality/.gcp/themes-quality-dvc-service-account.json
 
 # Test result files (data, not code)
 **/test_multiword_results.json
+
+# Cookie files and session data
+frontend/cookies.txt
+*.cookiejar
+*.cookies.txt

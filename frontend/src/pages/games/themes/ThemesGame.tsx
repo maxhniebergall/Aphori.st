@@ -129,6 +129,7 @@ export const ThemesGame: React.FC = () => {
       <div className="themes-game-container">
         <PuzzleBrowser
           setName={selectedSet}
+          version={selectedSet}
           onPuzzleSelected={handlePuzzleSelected}
           onBackToSetSelection={handleBackToSetSelection}
           completedPuzzles={completedPuzzles}

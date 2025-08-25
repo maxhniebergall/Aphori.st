@@ -12,7 +12,7 @@ const SearchResultsPageRow: React.FC<SearchResultsPageRowProps> = ({ item }) => 
 
   const targetUrl = item.type === 'post' 
       ? `/postTree/${item.id}` 
-      : `/postTree/${(item as ReplyDisplaySearchResult).rootPostId}`; // Navigate to root post for replies
+      : `/postTree/${(item as ReplyDisplaySearchResult).rootPostId}/${item.id}`; // Navigate to root post with reply id for deep-linking
 
   // The design doc mentions a handleClick, but using <Link> is more idiomatic for navigation.
   // If more complex logic than navigation is needed on click, a handleClick can be added

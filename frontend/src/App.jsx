@@ -78,7 +78,7 @@ function App() {
                 <Route path="/signup" element={<SignupPage />} />
                 <Route path="/verify" element={<VerifyMagicLink />} />
                 <Route path="/feed" element={<Feed />} />
-                <Route path="/postTree/:uuid" element={<PostTreePage />} />
+                <Route path="/postTree/:uuid/:replyId?" element={<PostTreePage />} />
                 <Route path="/post" element={<PostPage />} />
                 <Route path="/" element={<Feed />} />
                 <Route path="/search" element={<SearchResultsPage />} />

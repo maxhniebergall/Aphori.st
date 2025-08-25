@@ -14,12 +14,15 @@ interface ShareModalProps {
 export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, setName, puzzleNumber, puzzleId }) => {
   const { shareableData, loading, error, fetchShareableResults, copyToClipboard } = useShareableResults();
   const [copySuccess, setCopySuccess] = useState(false);
+  const [lastFetchedKey, setLastFetchedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen && !shareableData) {
+    const currentKey = `${setName}:${puzzleNumber}`;
+    if (isOpen && lastFetchedKey !== currentKey) {
       fetchShareableResults(setName, puzzleNumber);
+      setLastFetchedKey(currentKey);
     }
-  }, [isOpen, setName, puzzleNumber, shareableData, fetchShareableResults]);
+  }, [isOpen, setName, puzzleNumber, lastFetchedKey, fetchShareableResults]);
 
 
   const handleCopy = async () => {
