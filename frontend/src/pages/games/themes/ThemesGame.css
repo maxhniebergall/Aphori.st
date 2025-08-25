@@ -11,10 +11,8 @@
 /* When playing a specific puzzle, constrain the width */
 .themes-game-container:has(.game-grid) {
   max-width: 600px;
-  height: 100vh;
-  max-height: 100vh;
+  min-height: 100vh;
   justify-content: center;
-  overflow: hidden;
 }
 
 .game-header {
@@ -217,6 +215,42 @@
   background-color: #047857;
 }
 
+.view-completed-button {
+  padding: 12px 20px;
+  background-color: #7c3aed;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.view-completed-button:hover {
+  background-color: #6d28d9;
+}
+
+.back-to-results-button {
+  padding: 10px 16px;
+  background-color: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto 24px;
+}
+
+.back-to-results-button:hover {
+  background-color: #4b5563;
+}
+
 /* Revealed categories */
 .revealed-categories {
   margin-top: 24px;
@@ -235,6 +269,28 @@
 
 .revealed-category:last-child {
   border-bottom: none;
+}
+
+/* Completed game view */
+.completed-game-view {
+  text-align: center;
+  margin: 32px 0;
+}
+
+.completed-game-header {
+  margin-bottom: 24px;
+}
+
+.completed-game-header h2 {
+  color: #047857;
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.completed-game-header p {
+  font-size: 1.1rem;
+  color: #6b7280;
+  margin-bottom: 16px;
 }
 
 /* Completed categories */
@@ -338,9 +394,7 @@
   .themes-game-container:has(.game-grid) {
     max-width: 520px;
     padding: 16px;
-    height: 100vh;
-    max-height: 100vh;
-    overflow: hidden;
+    min-height: 100vh;
     justify-content: center;
   }
   
@@ -351,5 +405,54 @@
   .game-header h1 {
     font-size: 1.8rem;
     margin-bottom: 3px;
+  }
+}
+
+/* Landscape orientation specific fixes for tablets and laptops */
+@media (orientation: landscape) and (min-width: 768px) and (max-width: 1366px) and (max-height: 1024px) {
+  .themes-game-container:has(.game-grid) {
+    max-width: 480px;
+    padding: 4px;
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+    justify-content: center;
+  }
+  
+  .game-header {
+    margin-bottom: 4px;
+    flex-shrink: 0;
+  }
+  
+  .game-header h1 {
+    font-size: 1.4rem;
+    margin-bottom: 2px;
+  }
+  
+  .game-description {
+    font-size: 0.8rem;
+    margin-bottom: 4px;
+  }
+  
+  .puzzle-info {
+    font-size: 0.75rem;
+    gap: 8px;
+  }
+}
+
+/* Specific adjustments for common laptop landscape resolutions */
+@media (orientation: landscape) and (min-width: 1024px) and (max-width: 1366px) and (max-height: 800px) {
+  .themes-game-container:has(.game-grid) {
+    max-width: 400px;
+    padding: 4px;
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+    justify-content: center;
+  }
+  
+  .game-header h1 {
+    font-size: 1.3rem;
+    margin-bottom: 1px;
   }
 }

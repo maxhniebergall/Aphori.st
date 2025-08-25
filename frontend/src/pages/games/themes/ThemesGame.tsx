@@ -20,6 +20,7 @@ export const ThemesGame: React.FC = () => {
   }>();
   
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [viewingCompletedGame, setViewingCompletedGame] = useState(false);
   
   // Derive state from URL parameters
   const selectedSet = params.setName ? decodeURIComponent(params.setName) : null;
@@ -240,7 +241,28 @@ export const ThemesGame: React.FC = () => {
         </div>
       </div>
 
-      {gameState.isComplete ? (
+      {gameState.isComplete && viewingCompletedGame ? (
+        <div className="completed-game-view">
+          <div className="completed-game-header">
+            <h2>🎉 Completed Puzzle</h2>
+            <p>All {puzzle.categories.length} themes found in {gameState.attempts} attempts</p>
+            <button onClick={() => setViewingCompletedGame(false)} className="back-to-results-button">
+              ← Back to Results
+            </button>
+          </div>
+          
+          <GameGrid
+            words={gameState.gridWords}
+            selectedWords={[]}
+            shakingWords={[]}
+            onWordClick={() => {}}
+            gridSize={puzzle.gridSize}
+            disabled={true}
+            _completedCategories={gameState.completedCategories}
+            animatingWords={[]}
+          />
+        </div>
+      ) : gameState.isComplete ? (
         <div className="game-complete">
           <h2>🎉 Puzzle Complete!</h2>
           <p>You found all {puzzle.categories.length} themes!</p>
@@ -248,6 +270,9 @@ export const ThemesGame: React.FC = () => {
             <span>Completed in {gameState.attempts} attempts</span>
           </div>
           <div className="completion-actions">
+            <button onClick={() => setViewingCompletedGame(true)} className="view-completed-button">
+              🎯 View Completed Puzzle
+            </button>
             <button onClick={() => setShareModalOpen(true)} className="share-button">
               📤 Share Results
             </button>
