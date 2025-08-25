@@ -191,11 +191,11 @@ async function createCompletionMetrics(
  * GET /api/games/themes/state/progress
  * Get user's game progress
  */
-router.get('/progress', async (req: TempUserRequest, res: Response) => {
+router.get('/progress', async (req: Request, res: Response): Promise<void> => {
   try {
     const { dbClient } = getThemesServices();
-    const userId = req.effectiveUserId;
-    const userType = req.userType;
+    const userId = (req as TempUserRequest).effectiveUserId;
+    const userType = (req as TempUserRequest).userType;
 
     // Get progress path based on user type
     const progressPath = userType === 'logged_in' 
@@ -232,7 +232,7 @@ router.get('/progress', async (req: TempUserRequest, res: Response) => {
  * POST /api/games/themes/state/attempt
  * Submit a puzzle attempt
  */
-router.post('/attempt', async (req: TempUserRequest, res: Response) => {
+router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
   try {
     const { puzzleId, selectedWords, selectionOrder } = req.body;
 
@@ -245,8 +245,8 @@ router.post('/attempt', async (req: TempUserRequest, res: Response) => {
     }
 
     const { dbClient } = getThemesServices();
-    const userId = req.effectiveUserId;
-    const userType = req.userType;
+    const userId = (req as TempUserRequest).effectiveUserId;
+    const userType = (req as TempUserRequest).userType;
     
     // Extract set name from puzzleId (format: setName_puzzleNumber)
     const puzzleIdParts = puzzleId.split('_');
@@ -432,10 +432,10 @@ router.post('/attempt', async (req: TempUserRequest, res: Response) => {
  * GET /api/games/themes/state/shareable/:setName/:puzzleNumber
  * Get shareable results for a specific puzzle
  */
-router.get('/shareable/:setName/:puzzleNumber', async (req: TempUserRequest, res: Response) => {
+router.get('/shareable/:setName/:puzzleNumber', async (req: Request, res: Response): Promise<void> => {
   try {
     const { setName, puzzleNumber } = req.params;
-    const userId = req.effectiveUserId;
+    const userId = (req as TempUserRequest).effectiveUserId;
     const { dbClient } = getThemesServices();
     
     const puzzleNum = parseInt(puzzleNumber, 10);

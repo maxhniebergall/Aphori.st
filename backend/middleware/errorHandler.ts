@@ -37,6 +37,16 @@ export const createValidationError = (message: string, field?: string, requestId
   };
 };
 
+export const createVectorError = (code: string, message: string, requestId?: string): ApiError => {
+  return {
+    error: 'Vector Service Error',
+    message,
+    code,
+    requestId,
+    timestamp: new Date().toISOString()
+  };
+};
+
 const categorizeError = (err: Error): { status: number; category: string } => {
   const errorMessage = err.message.toLowerCase();
   

@@ -43,7 +43,7 @@ function validateVersion(version: string): boolean {
  * GET /api/games/themes/sets
  * Get available puzzle sets
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const { dbClient } = getThemesServices();
     
@@ -53,12 +53,13 @@ router.get('/', async (req: Request, res: Response) => {
     const setsData = await dbClient.getRawPath(setsPath);
     
     if (!setsData) {
-      return res.json({
+      res.json({
         success: true,
         data: {
           sets: []
         }
       });
+      return;
     }
 
     const sets = [];
@@ -113,24 +114,26 @@ router.get('/', async (req: Request, res: Response) => {
  * GET /api/games/themes/sets/:setName/:version
  * Get all puzzles in a specific set and version
  */
-router.get('/:setName/:version', async (req: Request, res: Response) => {
+router.get('/:setName/:version', async (req: Request, res: Response): Promise<void> => {
   try {
     const { setName, version } = req.params;
     
     // Validate setName to prevent path traversal attacks
     if (!validateSetName(setName)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Invalid set name. Only alphanumeric characters, hyphens, and underscores are allowed.'
       });
+      return;
     }
     
     // Validate version to prevent path traversal attacks
     if (!validateVersion(version)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Invalid version. Only alphanumeric characters, hyphens, underscores, and dots are allowed.'
       });
+      return;
     }
     
     const { dbClient } = getThemesServices();
@@ -141,10 +144,11 @@ router.get('/:setName/:version', async (req: Request, res: Response) => {
     const puzzleData = await dbClient.getRawPath(puzzlePath);
     
     if (!puzzleData) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         error: 'Puzzle set not found'
       });
+      return;
     }
 
     const puzzles = [];
@@ -185,34 +189,37 @@ router.get('/:setName/:version', async (req: Request, res: Response) => {
  * GET /api/games/themes/sets/:setName/:version/puzzle/:puzzleNumber
  * Get a specific puzzle by number from a set
  */
-router.get('/:setName/:version/puzzle/:puzzleNumber', async (req: Request, res: Response) => {
+router.get('/:setName/:version/puzzle/:puzzleNumber', async (req: Request, res: Response): Promise<void> => {
   try {
     const { setName, version, puzzleNumber } = req.params;
     
     // Validate setName to prevent path traversal attacks
     if (!validateSetName(setName)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Invalid set name. Only alphanumeric characters, hyphens, and underscores are allowed.'
       });
+      return;
     }
     
     // Validate version to prevent path traversal attacks
     if (!validateVersion(version)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Invalid version. Only alphanumeric characters, hyphens, underscores, and dots are allowed.'
       });
+      return;
     }
     
     const { dbClient } = getThemesServices();
     const puzzleNum = parseInt(puzzleNumber, 10);
     
     if (isNaN(puzzleNum)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Invalid puzzle number'
       });
+      return;
     }
     
     // Fetch puzzles from the specific set
@@ -221,10 +228,11 @@ router.get('/:setName/:version/puzzle/:puzzleNumber', async (req: Request, res: 
     const puzzleData = await dbClient.getRawPath(puzzlePath);
     
     if (!puzzleData) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         error: 'Puzzle set not found'
       });
+      return;
     }
 
     let targetPuzzle = null;
@@ -243,10 +251,11 @@ router.get('/:setName/:version/puzzle/:puzzleNumber', async (req: Request, res: 
     }
     
     if (!targetPuzzle) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         error: 'Puzzle not found'
       });
+      return;
     }
 
     res.json({

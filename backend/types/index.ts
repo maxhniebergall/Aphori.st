@@ -200,3 +200,32 @@ export interface ApiError {
   code?: string;
   details?: unknown;
 }
+
+// PostData interface
+export interface PostData {
+  id: string;
+  authorId: string;
+  content: string;
+  createdAt: string;
+  replyCount: number;
+}
+
+// Vector Search Response Types
+export interface VectorSearchResult {
+  id: string;
+  score: number;
+  type: 'post' | 'reply';
+  data: PostData | ReplyData;
+}
+
+export interface VectorSearchResponse {
+  success: boolean;
+  error?: string;
+  results: VectorSearchResult[];
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}

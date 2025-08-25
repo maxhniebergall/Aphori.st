@@ -32,6 +32,9 @@ export function initializeThemesServices(): void {
   tempUserService = new TemporaryUserService(dbClient);
 }
 
+// Alias for backward compatibility
+export const initializeThemesIndex = initializeThemesServices;
+
 /**
  * Get themes services for use in route handlers
  */
