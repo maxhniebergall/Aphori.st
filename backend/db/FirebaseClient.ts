@@ -36,11 +36,26 @@ export class FirebaseClient extends DatabaseClientInterface {
     var app;
     
     // Extract namespace from databaseURL for app naming
-    const urlMatch = config.databaseURL.match(/\?ns=([^&]+)/);
-    const namespace = urlMatch ? urlMatch[1] : 'default';
+    let namespace: string;
+    try {
+      const url = new URL(config.databaseURL);
+      // First try to get namespace from query parameter
+      const nsParam = url.searchParams.get('ns');
+      if (nsParam) {
+        namespace = nsParam;
+      } else {
+        // Derive namespace from hostname, removing -default-rtdb suffix if present
+        const hostname = url.hostname.split('.')[0];
+        namespace = hostname.replace(/-default-rtdb$/, '');
+      }
+    } catch (error) {
+      console.warn(`Failed to parse databaseURL '${config.databaseURL}', falling back to 'default' namespace:`, error);
+      namespace = 'default';
+    }
+    
     const appName = namespace === 'aphorist' ? '[DEFAULT]' : `firebase-${namespace}`;
     
-    console.log(`FirebaseClient: Parsed namespace '${namespace}' from URL '${config.databaseURL}', using app name '${appName}'`);
+    console.log(`FirebaseClient: Resolved namespace '${namespace}' from URL '${config.databaseURL}', using app name '${appName}'`);
     
     // Check if admin and admin.apps are available and not empty
     if (FirebaseClient.isTestEnvironment && admin && admin.apps && admin.apps.length > 0) {
