@@ -80,7 +80,7 @@ const categorizeError = (err: Error): { status: number; category: string } => {
 };
 
 export const errorHandler = (err: Error, req: Request, res: Response, next: NextFunction) => {
-  const requestId = res.locals.requestId;
+  const requestId = res.locals?.requestId;
   const { status, category } = categorizeError(err);
   
   // Enhanced logging with categorization

@@ -6,10 +6,6 @@ import logger from '../logger.js';
 // Define an interface for requests that might have a user
 interface OptionallyAuthenticatedRequest extends ExpressRequest {
   user?: AuthTokenPayload;
-  // Add locals for requestId if not globally typed for Express.Request
-  locals: {
-    requestId?: string;
-  };
 }
 
 export const optionalAuthMiddleware = (baseReq: ExpressRequest, res: Response, next: NextFunction) => {
@@ -17,8 +13,8 @@ export const optionalAuthMiddleware = (baseReq: ExpressRequest, res: Response, n
   const req = baseReq as OptionallyAuthenticatedRequest;
 
   const authHeader = req.headers.authorization;
-  // Ensure req.locals exists before trying to access requestId, or handle if it might be undefined
-  const requestId = req.locals?.requestId; 
+  // Get requestId from res.locals (set by requestLogger middleware)
+  const requestId = res.locals?.requestId; 
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix

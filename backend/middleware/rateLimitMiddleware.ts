@@ -6,16 +6,13 @@ import logger from '../logger.js';
 // Define an interface for requests that might have a user (consistent with optionalAuthMiddleware)
 interface OptionallyAuthenticatedRequest extends ExpressRequest {
   user?: AuthTokenPayload;
-  locals: {
-    requestId?: string;
-  };
 }
 
 const defaultHandler = (baseReq: ExpressRequest, res: Response, next: NextFunction, options: Options) => {
   const req = baseReq as OptionallyAuthenticatedRequest; // Assert type to access custom properties
   logger.warn(
     { 
-      requestId: req.locals.requestId,
+      requestId: res.locals?.requestId,
       userId: req.user?.id,
       userIp: req.ip, // req.ip is standard on ExpressRequest
       limit: options.limit,
