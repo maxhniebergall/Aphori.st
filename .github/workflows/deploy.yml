@@ -41,6 +41,21 @@ jobs:
       run: |
         gcloud auth configure-docker
 
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Run Database Migration - Upload Puzzles
+      run: |
+        echo "Running puzzle sets migration to Firebase..."
+        cd .database-migration-scripts
+        npm install
+        node upload-puzzles.js
+      env:
+        FIREBASE_CREDENTIAL: '${{ secrets.SERVICE_ACCOUNT_KEY }}'
+        THEMES_FIREBASE_DATABASE_URL: 'https://aphorist-themes-default-rtdb.firebaseio.com/?ns=aphorist-themes'
+
     - name: Build Frontend Docker image
       run: |
         docker build -t gcr.io/${{ secrets.PROJECT_ID }}/$FRONTEND_IMAGE:$GITHUB_SHA -f frontend/Dockerfile.prod ./frontend
