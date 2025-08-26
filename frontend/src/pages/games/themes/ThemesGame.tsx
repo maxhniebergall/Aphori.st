@@ -231,12 +231,6 @@ export const ThemesGame: React.FC = () => {
     return name.charAt(0).toUpperCase() + name.slice(1);
   };
 
-  const getDifficultyClass = (difficulty: number) => {
-    if (difficulty <= 2) return 'easy';
-    if (difficulty <= 4) return 'medium';
-    if (difficulty <= 6) return 'hard';
-    return 'expert';
-  };
 
   return (
     <div>
@@ -254,7 +248,6 @@ export const ThemesGame: React.FC = () => {
           <div className="puzzle-info">
             <span className="puzzle-set">{formatSetName(selectedSet || '')}</span>
             <span className="puzzle-number">Puzzle #{currentPuzzleNumber}</span>
-            <span className={`puzzle-difficulty ${getDifficultyClass(puzzle.difficulty)}`}>LEVEL {puzzle.difficulty}</span>
           </div>
         </div>
       </div>

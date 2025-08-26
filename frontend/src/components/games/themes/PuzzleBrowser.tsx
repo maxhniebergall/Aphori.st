@@ -73,23 +73,7 @@ export const PuzzleBrowser: React.FC<PuzzleBrowserProps> = ({
     return name.charAt(0).toUpperCase() + name.slice(1);
   };
 
-  const getDifficultyColor = (difficulty: number) => {
-    if (difficulty <= 2) return '#27ae60'; // Green - Easy
-    if (difficulty <= 4) return '#f39c12'; // Orange - Medium  
-    if (difficulty <= 6) return '#e67e22'; // Dark Orange - Hard
-    return '#e74c3c'; // Red - Expert
-  };
 
-  const getDifficultyLabel = (difficulty: number) => {
-    if (difficulty <= 2) return 'Easy';
-    if (difficulty <= 4) return 'Medium';
-    if (difficulty <= 6) return 'Hard';
-    return 'Expert';
-  };
-
-  const getGridSizeIcon = (gridSize: number) => {
-    return `${gridSize}×${gridSize}`;
-  };
 
   if (loading) {
     return (
@@ -143,27 +127,7 @@ export const PuzzleBrowser: React.FC<PuzzleBrowserProps> = ({
       >
         <div className="puzzle-number">#{puzzle.puzzleNumber}</div>
         
-        <div className="puzzle-info">
-          <div className="grid-size-badge">
-            {getGridSizeIcon(puzzle.gridSize)}
-          </div>
-          
-          <div 
-            className="difficulty-badge"
-            style={{ backgroundColor: getDifficultyColor(puzzle.difficulty) }}
-          >
-            {getDifficultyLabel(puzzle.difficulty)}
-          </div>
-        </div>
 
-        <div className="puzzle-stats">
-          <div className="categories-count">
-            {puzzle.categories.length} themes
-          </div>
-          <div className="words-count">
-            {puzzle.words.length} words
-          </div>
-        </div>
 
         {isCompleted && (
           <div className="completion-badge">
