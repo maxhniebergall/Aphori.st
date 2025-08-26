@@ -14,6 +14,8 @@ export interface UsePuzzleCompletionReturn {
   getCompletionDate: (puzzleNumber: number) => string | null;
   getCompletionStats: () => { completed: number; total: number; percentage: number };
   clearCompletions: () => void;
+  syncWithBackend: () => Promise<void>;
+  isLoading: boolean;
 }
 
 const STORAGE_KEY_PREFIX = 'themes_puzzle_completion_';
@@ -29,6 +31,7 @@ export const usePuzzleCompletion = (
     completedPuzzles: new Set(),
     completionDate: {}
   });
+  const [isLoading, setIsLoading] = useState(false);
 
   const storageKey = `${STORAGE_KEY_PREFIX}${setName}_${version}`;
 
@@ -85,6 +88,9 @@ export const usePuzzleCompletion = (
       if (!newCompleted.has(puzzleNumber)) {
         newCompleted.add(puzzleNumber);
         newCompletionDate[puzzleNumber] = new Date().toISOString();
+        
+        // Note: The backend completion tracking is handled via the attempt submission
+        // This just updates the local state immediately for responsive UI
       }
 
       return {
@@ -93,7 +99,12 @@ export const usePuzzleCompletion = (
         completionDate: newCompletionDate
       };
     });
-  }, []);
+    
+    // Optionally sync with backend after a short delay to confirm completion
+    setTimeout(() => {
+      syncWithBackend();
+    }, 1000);
+  }, [syncWithBackend]);
 
   const isPuzzleCompleted = useCallback((puzzleNumber: number): boolean => {
     return completionData.completedPuzzles.has(puzzleNumber);
@@ -122,12 +133,68 @@ export const usePuzzleCompletion = (
     }));
   }, []);
 
+  // Fetch completion data from backend
+  const syncWithBackend = useCallback(async () => {
+    if (!setName) return;
+    
+    setIsLoading(true);
+    try {
+      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
+      const response = await fetch(`${baseURL}/api/games/themes/state/completed-puzzles/${encodeURIComponent(setName)}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          const backendCompletedPuzzles = new Set(result.data.completedPuzzles);
+          
+          setCompletionData(prev => {
+            // Merge backend data with local data
+            const mergedCompletions = new Set([
+              ...prev.completedPuzzles,
+              ...backendCompletedPuzzles
+            ]);
+            
+            // Add completion dates for backend puzzles (using current date if not available)
+            const mergedDates = { ...prev.completionDate };
+            backendCompletedPuzzles.forEach(puzzleNum => {
+              if (!mergedDates[puzzleNum]) {
+                mergedDates[puzzleNum] = new Date().toISOString();
+              }
+            });
+            
+            return {
+              ...prev,
+              completedPuzzles: mergedCompletions,
+              completionDate: mergedDates
+            };
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to sync with backend:', error);
+      // Continue with local data on error
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setName]);
+
+  // Auto-sync with backend on mount
+  useEffect(() => {
+    if (setName && version) {
+      syncWithBackend();
+    }
+  }, [setName, version, syncWithBackend]);
+
   return {
     completedPuzzles: completionData.completedPuzzles,
     markPuzzleCompleted,
     isPuzzleCompleted,
     getCompletionDate,
     getCompletionStats,
-    clearCompletions
+    clearCompletions,
+    syncWithBackend,
+    isLoading
   };
 };

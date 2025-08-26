@@ -226,6 +226,53 @@ router.get('/attempts/:puzzleId', async (req: Request, res: Response): Promise<v
 });
 
 /**
+ * GET /api/games/themes/state/completed-puzzles/:setName
+ * Get user's completed puzzles for a specific set
+ */
+router.get('/completed-puzzles/:setName', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { setName } = req.params;
+    const { dbClient } = getThemesServices();
+    const userId = (req as TempUserRequest).effectiveUserId;
+    const userType = (req as TempUserRequest).userType;
+
+    // Get progress path based on user type
+    const progressPath = userType === 'logged_in' 
+      ? THEMES_DB_PATHS.USER_PROGRESS(userId)
+      : THEMES_DB_PATHS.TEMP_USER_PROGRESS(userId);
+
+    const progress = await dbClient.getRawPath(progressPath);
+
+    // Extract completed puzzles for this specific set
+    const completedPuzzles = progress?.completedPuzzles || [];
+    const setCompletedPuzzles = completedPuzzles
+      .filter((puzzleId: string) => puzzleId.startsWith(setName + '_'))
+      .map((puzzleId: string) => {
+        // Extract puzzle number from puzzleId (format: setName_puzzleNumber)
+        const parts = puzzleId.split('_');
+        const puzzleNumber = parseInt(parts[parts.length - 1], 10);
+        return puzzleNumber;
+      })
+      .filter((num: number) => !isNaN(num));
+
+    res.json({
+      success: true,
+      data: {
+        setName,
+        completedPuzzles: setCompletedPuzzles,
+        totalCompleted: setCompletedPuzzles.length
+      }
+    });
+  } catch (error) {
+    logger.error('Error getting completed puzzles:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get completed puzzles'
+    });
+  }
+});
+
+/**
  * GET /api/games/themes/state/progress
  * Get user's game progress
  */
