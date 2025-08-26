@@ -23,7 +23,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from ThemeProcessingTask import ThemeProcessingTask, ThemeProcessingResult, TaskGenerator
 from ThemeWorker import start_worker
-from RateLimiter import SharedRateLimiter
+from SimpleRateLimiter import SimpleSharedRateLimiter
 from ResultAggregator import ResultAggregator
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class GeminiTaskProcessor:
         # Shared resources
         self.task_queue: Optional[mp.Queue] = None
         self.result_queue: Optional[mp.Queue] = None
-        self.rate_limiter: Optional[SharedRateLimiter] = None
+        self.rate_limiter: Optional[SimpleSharedRateLimiter] = None
         self.result_aggregator: Optional[ResultAggregator] = None
         
         # Worker management
@@ -113,7 +113,7 @@ class GeminiTaskProcessor:
         
         # Create shared rate limiter
         gemini_config = self.config['gemini']
-        self.rate_limiter = SharedRateLimiter(
+        self.rate_limiter = SimpleSharedRateLimiter(
             requests_per_minute=gemini_config.get('requests_per_minute', 2900),
             min_request_interval=gemini_config.get('min_request_interval', 0.1),
             max_concurrent_requests=self.multiprocessing_config.get('max_concurrent_requests', 10)

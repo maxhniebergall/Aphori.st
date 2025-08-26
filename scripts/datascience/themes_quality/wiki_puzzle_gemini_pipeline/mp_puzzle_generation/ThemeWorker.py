@@ -20,7 +20,7 @@ import numpy as np
 sys.path.append(str(Path(__file__).parent.parent))
 
 from ThemeProcessingTask import ThemeProcessingTask, ThemeProcessingResult
-from RateLimiter import SharedRateLimiter
+from SimpleRateLimiter import SimpleSharedRateLimiter
 from EmbeddingCacheManager import EmbeddingCacheManager
 
 # Import the original GeminiEmbeddingProvider
@@ -49,7 +49,7 @@ class ThemeWorker:
                  worker_id: int,
                  task_queue: Queue,
                  result_queue: Queue,
-                 rate_limiter: SharedRateLimiter,
+                 rate_limiter: SimpleSharedRateLimiter,
                  config: Dict[str, Any]):
         """
         Initialize theme worker.
@@ -407,7 +407,7 @@ class ThemeWorker:
 
 
 def start_worker(worker_id: int, task_queue: Queue, result_queue: Queue, 
-                rate_limiter: SharedRateLimiter, config: Dict[str, Any]) -> Process:
+                rate_limiter: SimpleSharedRateLimiter, config: Dict[str, Any]) -> Process:
     """
     Start a worker process.
     
