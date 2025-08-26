@@ -34,6 +34,7 @@
 }
 
 .profile-button {
+  margin-left:0.4rem;
   padding: 0.5rem 1rem;
   border: none;
   border-radius: 20px;
@@ -132,6 +133,29 @@
   background-color: #059669;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
+}
+
+.themes-button {
+  margin-top: 0;
+  margin-left:0.4rem;
+  margin-right:0.4rem;
+  padding: 0.4rem 0.6rem;
+  border: none; 
+  border-radius: 20px;
+  background-color: #FF1493;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(255, 20, 147, 0.2);
+
+}
+
+.themes-button:hover {
+  background-color: #DC143C;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(255, 20, 147, 0.3);
 }
 
 .report-bug-button {

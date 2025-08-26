@@ -8,12 +8,24 @@
 }
 
 .search-bar-input {
-  flex-grow: 1;
+  width: 300px;
   border: none;
   outline: none;
   padding: 8px;
   font-size: 1rem;
   background-color: transparent;
+}
+
+@media (max-width: 768px) {
+  .search-bar-input {
+    width: 180px;
+  }
+}
+
+@media (max-width: 480px) {
+  .search-bar-input {
+    width: 120px;
+  }
 }
 
 .search-bar-input::placeholder {
