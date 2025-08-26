@@ -5,11 +5,13 @@ import { useUser } from '../context/UserContext';
 import AuthModal from './AuthModal';
 import SearchBar from './SearchBar';
 import { HeaderProps } from '../types/userAuth';
+import { useNavigate } from 'react-router-dom';
 
 function Header({ onLogoClick }: HeaderProps) {
   const { state, logout, sendMagicLink } = useUser();
   const [isModalOpen, setModalOpen] = useState(false);
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
+  const navigate = useNavigate();
 
   const handleSignIn = async (email: string): Promise<{ success: boolean; error?: string }> => {
     // Attempt to sign in
@@ -27,6 +29,10 @@ function Header({ onLogoClick }: HeaderProps) {
     setModalOpen(!isModalOpen);
   };
 
+  const handleThemesClick = () => {
+    navigate('/games/themes');
+  };
+
   return (
     <div className="combined-header">
       <div className="app-header" style={isModalOpen ? {} : {borderBottom: '1px solid #e0e0e0'}}>
@@ -38,6 +44,9 @@ function Header({ onLogoClick }: HeaderProps) {
             onClick={onLogoClick}
           />
         </div>
+        <button className="themes-button" onClick={handleThemesClick}>
+          🎯 Themes
+        </button>
         <div className="search-bar-header-integration">
             <SearchBar />
           </div>
