@@ -58,8 +58,8 @@ output:
 multiprocessing:
   enabled: true  # Enable/disable multiprocessing (set to false to use original sequential processing)
   worker_count: 4  # Reduced worker count to avoid API quota issues (4 threads)
-  task_queue_size: 80   # Maximum tasks in queue (20 per worker)
-  result_queue_size: 80  # Maximum results in queue (20 per worker)
+  task_queue_size: 40   # Concurrent tasks set to 40 total (10 per worker)
+  result_queue_size: 40  # Concurrent results set to 40 total (10 per worker)
   max_concurrent_requests: 6  # Maximum concurrent API requests across all workers (1.5 per worker)
   cache_sync_interval: 45  # Seconds between cache syncs to disk (more frequent with more workers)
 
