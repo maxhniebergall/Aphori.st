@@ -79,9 +79,9 @@ stages:
     outs:
     - path: data/puzzle_metadata.json
       hash: md5
-      md5: e2a4a281ca15bb4e5c76979d37ebde6c
+      md5: 8d527ecbb16c89a6a8bff461b2a4a4ac
       size: 336
     - path: data/wiki_puzzles.json
       hash: md5
-      md5: dba950cd9ed4dff642609c09c7571550
+      md5: 6a595bd51823cd052bf69d607766f70b
       size: 214528
