@@ -516,9 +516,12 @@ class AllBatchesGenerator {
 
 async function main() {
   const args = process.argv.slice(2);
-  const outputDir = args[0] || './batch-output';
   const verbose = args.includes('--verbose');
   const multiprocessing = args.includes('--multiprocessing') || args.includes('--parallel');
+  
+  // Filter out flags to get positional arguments
+  const positionalArgs = args.filter(arg => !arg.startsWith('--'));
+  const outputDir = positionalArgs[0] || './batch-output';
   
   console.log(`🎯 All Batches Generator`);
   console.log(`📁 Output: ${outputDir}`);

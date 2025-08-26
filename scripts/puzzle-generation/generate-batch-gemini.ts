@@ -294,9 +294,12 @@ class GeminiBatchGenerator {
 
 async function main() {
   const args = process.argv.slice(2);
-  const outputDir = args[0] || './batch-output/set2-gemini-pipeline';
   const verbose = args.includes('--verbose');
   const multiprocessing = args.includes('--multiprocessing') || args.includes('--parallel');
+  
+  // Filter out flags to get positional arguments
+  const positionalArgs = args.filter(arg => !arg.startsWith('--'));
+  const outputDir = positionalArgs[0] || './batch-output/set2-gemini-pipeline';
   
   console.log(`🎯 Gemini Batch Generator`);
   console.log(`📁 Output: ${outputDir}`);
