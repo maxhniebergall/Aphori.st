@@ -60,7 +60,7 @@ multiprocessing:
 
 ### From Python
 ```python
-from multiprocessing.GeminiTaskProcessor import create_task_processor
+from mp_puzzle_generation.GeminiTaskProcessor import create_task_processor
 
 # Create processor with multiprocessing
 processor = create_task_processor(multiprocessing_enabled=True)
@@ -103,7 +103,7 @@ node generate-batch-gemini.ts
 ## File Structure
 
 ```
-multiprocessing/
+mp_puzzle_generation/
 ├── __init__.py                 # Package initialization
 ├── README.md                   # This documentation
 ├── ThemeProcessingTask.py      # Task and result classes
