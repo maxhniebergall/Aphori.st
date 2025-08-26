@@ -103,3 +103,4 @@ import_data/
 frontend/cookies.txt
 *.cookiejar
 *.cookies.txt
+.database-migration-scripts/node_modules
