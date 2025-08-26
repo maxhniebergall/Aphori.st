@@ -165,15 +165,29 @@ class GeminiTaskProcessor:
                 logger.info("Shutdown requested, stopping task submission")
                 break
             
-            try:
-                self.task_queue.put(task, timeout=10)
-                submitted_count += 1
-                
-                if submitted_count % 10 == 0:
-                    logger.info(f"Submitted {submitted_count}/{len(tasks)} tasks")
+            # Implement backpressure - wait for queue to drain if full
+            retry_count = 0
+            max_retries = 5
+            
+            while retry_count < max_retries:
+                try:
+                    self.task_queue.put(task, timeout=5)  # Shorter timeout with retries
+                    submitted_count += 1
+                    break  # Successfully submitted
                     
-            except Exception as e:
-                logger.error(f"Failed to submit task {task.task_id}: {e}")
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        logger.error(f"Failed to submit task {task.task_id} after {max_retries} attempts: {e}")
+                        break
+                    else:
+                        # Queue likely full, wait a bit for workers to process tasks
+                        if retry_count == 1:  # Only log on first retry to avoid spam
+                            logger.info(f"Queue backpressure active, waiting for workers to process tasks...")
+                        time.sleep(2)
+                        
+            if submitted_count % 10 == 0:
+                logger.info(f"Submitted {submitted_count}/{len(tasks)} tasks")
         
         self.total_tasks = submitted_count
         logger.info(f"Submitted {submitted_count} tasks successfully")
