@@ -55,6 +55,14 @@ output:
   embedding_cache_file: "data/cache/all_embeddings.csv"  # All generated embeddings
   puzzle_embeddings_file: "data/embeddings/puzzle_embeddings.csv"  # Final puzzle words only
 
+multiprocessing:
+  enabled: true  # Enable/disable multiprocessing (set to false to use original sequential processing)
+  worker_count: 6  # Number of worker processes (auto-detect if not specified)
+  task_queue_size: 100  # Maximum tasks in queue
+  result_queue_size: 100  # Maximum results in queue
+  max_concurrent_requests: 8  # Maximum concurrent API requests across all workers
+  cache_sync_interval: 60  # Seconds between cache syncs to disk
+
 logging:
   level: "INFO"
   detailed_output: true

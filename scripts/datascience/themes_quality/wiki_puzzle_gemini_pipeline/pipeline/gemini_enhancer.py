@@ -532,6 +532,47 @@ class GeminiEnhancer:
     
     def process_all_themes(self, themes: List[str], candidates_dict: Dict) -> Tuple[Dict, List[Dict]]:
         """Process themes to create 4x4 puzzles with Gemini enhancement."""
+        
+        # Check if multiprocessing is enabled
+        multiprocessing_config = self.config.get('multiprocessing', {})
+        multiprocessing_enabled = multiprocessing_config.get('enabled', False)
+        
+        if multiprocessing_enabled:
+            logger.info("Using multiprocessing task processor")
+            return self._process_with_multiprocessing(themes, candidates_dict)
+        else:
+            logger.info("Using single-process sequential processing")
+            return self._process_sequential(themes, candidates_dict)
+    
+    def _process_with_multiprocessing(self, themes: List[str], candidates_dict: Dict) -> Tuple[Dict, List[Dict]]:
+        """Process themes using multiprocessing task processor."""
+        try:
+            # Import the multiprocessing components
+            import sys
+            from pathlib import Path
+            sys.path.append(str(Path(__file__).parent.parent / "multiprocessing"))
+            
+            from GeminiTaskProcessor import create_task_processor
+            
+            # Create and use task processor
+            processor = create_task_processor(
+                config_path="params.yaml",
+                multiprocessing_enabled=True
+            )
+            
+            return processor.process_themes(themes, candidates_dict)
+            
+        except ImportError as e:
+            logger.error(f"Could not import multiprocessing components: {e}")
+            logger.info("Falling back to sequential processing")
+            return self._process_sequential(themes, candidates_dict)
+        except Exception as e:
+            logger.error(f"Multiprocessing failed: {e}")
+            logger.info("Falling back to sequential processing")
+            return self._process_sequential(themes, candidates_dict)
+    
+    def _process_sequential(self, themes: List[str], candidates_dict: Dict) -> Tuple[Dict, List[Dict]]:
+        """Process themes sequentially (original implementation)."""
         target_puzzle_count = self.puzzle_config['total_puzzle_count']
         themes_per_puzzle = self.puzzle_config.get('themes_per_puzzle', 4)
         themes_needed = target_puzzle_count * themes_per_puzzle

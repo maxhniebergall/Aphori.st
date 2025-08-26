@@ -13,6 +13,7 @@ import { FirebaseFormatConverter } from './firebase-format-converter.js';
 export interface GeminiBatchConfig {
   outputDir: string;
   verbose: boolean;
+  multiprocessing?: boolean;  // Enable/disable multiprocessing
 }
 
 export interface GeminiBatchResult {
@@ -28,13 +29,14 @@ class GeminiBatchGenerator {
   constructor(private config: GeminiBatchConfig) {}
 
   /**
-   * Generate 80 4x4 puzzles using gemini pipeline
+   * Generate 80 4x4 puzzles using gemini pipeline (with multiprocessing support)
    */
   async generateBatch(): Promise<GeminiBatchResult> {
     const startTime = Date.now();
     
     console.log(`🔄 Starting Gemini pipeline batch generation...`);
     console.log(`📁 Output directory: ${this.config.outputDir}`);
+    console.log(`⚡ Multiprocessing: ${this.config.multiprocessing ? 'enabled' : 'disabled'}`);
     
     const steps = [
       'Setup and validation',
@@ -99,7 +101,7 @@ class GeminiBatchGenerator {
   }
 
   /**
-   * Run the Gemini puzzle pipeline using DVC
+   * Run the Gemini puzzle pipeline using DVC (with multiprocessing support)
    */
   private async runGeminiPipeline(): Promise<{ success: boolean; error?: string }> {
     const pipelinePath = path.resolve('../datascience/themes_quality/wiki_puzzle_gemini_pipeline');
@@ -128,11 +130,24 @@ class GeminiBatchGenerator {
         console.log(`ℹ️  No existing cache in DVC, will start fresh`);
       }
 
+      // Set up environment for pipeline execution
+      const pipelineEnv = { 
+        ...process.env, 
+        GEMINI_API_KEY: process.env.GEMINI_API_KEY 
+      };
+
+      // Configure multiprocessing if specified
+      if (this.config.multiprocessing !== undefined) {
+        // The multiprocessing setting will be read from params.yaml
+        // Could potentially override here in the future if needed
+        console.log(`🔧 Multiprocessing preference: ${this.config.multiprocessing ? 'enabled' : 'disabled'}`);
+      }
+
       // Run the DVC pipeline with verbose output to see progress
       const dvcProcess = spawn('dvc', ['repro', '--verbose'], {
         cwd: pipelinePath,
         stdio: 'pipe', // Always capture output to show progress
-        env: { ...process.env, GEMINI_API_KEY: process.env.GEMINI_API_KEY }
+        env: pipelineEnv
       });
       
       let errorOutput = '';
@@ -281,12 +296,14 @@ async function main() {
   const args = process.argv.slice(2);
   const outputDir = args[0] || './batch-output/set2-gemini-pipeline';
   const verbose = args.includes('--verbose');
+  const multiprocessing = args.includes('--multiprocessing') || args.includes('--parallel');
   
   console.log(`🎯 Gemini Batch Generator`);
   console.log(`📁 Output: ${outputDir}`);
   console.log(`🔍 Verbose: ${verbose}`);
+  console.log(`⚡ Multiprocessing: ${multiprocessing ? 'enabled' : 'default (from config)'}`);
   
-  const generator = new GeminiBatchGenerator({ outputDir, verbose });
+  const generator = new GeminiBatchGenerator({ outputDir, verbose, multiprocessing });
   const result = await generator.generateBatch();
   
   if (!result.success) {
