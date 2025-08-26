@@ -552,15 +552,26 @@ class GeminiEnhancer:
             from pathlib import Path
             sys.path.append(str(Path(__file__).parent.parent / "mp_puzzle_generation"))
             
-            from GeminiTaskProcessor import create_task_processor
-            
-            # Create and use task processor
-            processor = create_task_processor(
-                config_path="params.yaml",
-                multiprocessing_enabled=True
-            )
-            
-            return processor.process_themes(themes, candidates_dict)
+            # Try improved implementation first
+            try:
+                from ImprovedGeminiTaskProcessor import create_improved_task_processor
+                logger.info("Using improved multiprocessing implementation (ProcessPoolExecutor-based)")
+                
+                # Create and use improved task processor
+                processor = create_improved_task_processor(config_path="params.yaml")
+                return processor.process_themes(themes, candidates_dict)
+                
+            except ImportError:
+                # Fall back to original multiprocessing implementation
+                logger.warning("Improved multiprocessing implementation not available, using original")
+                from GeminiTaskProcessor import create_task_processor
+                
+                # Create and use original task processor
+                processor = create_task_processor(
+                    config_path="params.yaml",
+                    multiprocessing_enabled=True
+                )
+                return processor.process_themes(themes, candidates_dict)
             
         except ImportError as e:
             logger.error(f"Could not import multiprocessing components: {e}")
