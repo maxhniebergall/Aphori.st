@@ -8,6 +8,7 @@ import { PuzzleBrowser } from '../../../components/games/themes/PuzzleBrowser';
 import { useThemesGame } from '../../../hooks/games/themes/useThemesGame';
 import { usePuzzleCompletion } from '../../../hooks/games/themes/usePuzzleCompletion';
 import { usePuzzleAnalytics } from '../../../hooks/games/themes/usePuzzleAnalytics';
+import Header from '../../../components/Header';
 import './ThemesGame.css';
 
 type GameView = 'setSelection' | 'puzzleBrowser' | 'playing';
@@ -116,25 +117,31 @@ export const ThemesGame: React.FC = () => {
   // Render different views based on current state
   if (currentView === 'setSelection') {
     return (
-      <div className="themes-game-container">
-        <PuzzleSetSelector 
-          onSetSelected={handleSetSelected}
-          selectedSet={selectedSet}
-        />
+      <div>
+        <Header onLogoClick={() => navigate('/')} />
+        <div className="themes-game-container">
+          <PuzzleSetSelector 
+            onSetSelected={handleSetSelected}
+            selectedSet={selectedSet}
+          />
+        </div>
       </div>
     );
   }
 
   if (currentView === 'puzzleBrowser' && selectedSet) {
     return (
-      <div className="themes-game-container">
-        <PuzzleBrowser
-          setName={selectedSet}
-          version={selectedSet}
-          onPuzzleSelected={handlePuzzleSelected}
-          onBackToSetSelection={handleBackToSetSelection}
-          completedPuzzles={completedPuzzles}
-        />
+      <div>
+        <Header onLogoClick={() => navigate('/')} />
+        <div className="themes-game-container">
+          <PuzzleBrowser
+            setName={selectedSet}
+            version={selectedSet}
+            onPuzzleSelected={handlePuzzleSelected}
+            onBackToSetSelection={handleBackToSetSelection}
+            completedPuzzles={completedPuzzles}
+          />
+        </div>
       </div>
     );
   }
@@ -142,16 +149,19 @@ export const ThemesGame: React.FC = () => {
   // Playing view
   if (loading) {
     return (
-      <div className="themes-game-container">
-        <div className="game-header">
-          <button onClick={handleBackToPuzzleBrowser} className="back-button">
-            ← Back to Puzzles
-          </button>
-          <h1>Themes</h1>
-        </div>
-        <div className="loading-state">
-          <div className="loading-spinner"></div>
-          <p>Loading puzzle...</p>
+      <div>
+        <Header onLogoClick={() => navigate('/')} />
+        <div className="themes-game-container">
+          <div className="game-header">
+            <button onClick={handleBackToPuzzleBrowser} className="back-button">
+              ← Back to Puzzles
+            </button>
+            <h1>Themes</h1>
+          </div>
+          <div className="loading-state">
+            <div className="loading-spinner"></div>
+            <p>Loading puzzle...</p>
+          </div>
         </div>
       </div>
     );
@@ -159,26 +169,29 @@ export const ThemesGame: React.FC = () => {
 
   if (error) {
     return (
-      <div className="themes-game-container">
-        <div className="game-header">
-          <button onClick={handleBackToPuzzleBrowser} className="back-button">
-            ← Back to Puzzles
-          </button>
-          <h1>Themes</h1>
-        </div>
-        <div className="error-state">
-          <h2>Oops! Something went wrong</h2>
-          <p>{error}</p>
-          <button 
-            onClick={() => {
-              if (selectedSet && currentPuzzleNumber) {
-                loadPuzzleFromSet(selectedSet, selectedSet, currentPuzzleNumber);
-              }
-            }}
-            className="retry-button"
-          >
-            Try Again
-          </button>
+      <div>
+        <Header onLogoClick={() => navigate('/')} />
+        <div className="themes-game-container">
+          <div className="game-header">
+            <button onClick={handleBackToPuzzleBrowser} className="back-button">
+              ← Back to Puzzles
+            </button>
+            <h1>Themes</h1>
+          </div>
+          <div className="error-state">
+            <h2>Oops! Something went wrong</h2>
+            <p>{error}</p>
+            <button 
+              onClick={() => {
+                if (selectedSet && currentPuzzleNumber) {
+                  loadPuzzleFromSet(selectedSet, selectedSet, currentPuzzleNumber);
+                }
+              }}
+              className="retry-button"
+            >
+              Try Again
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -186,26 +199,29 @@ export const ThemesGame: React.FC = () => {
 
   if (!puzzle) {
     return (
-      <div className="themes-game-container">
-        <div className="game-header">
-          <button onClick={handleBackToPuzzleBrowser} className="back-button">
-            ← Back to Puzzles
-          </button>
-          <h1>Themes</h1>
-        </div>
-        <div className="error-state">
-          <h2>Puzzle Not Found</h2>
-          <p>The requested puzzle could not be loaded.</p>
-          <button 
-            onClick={() => {
-              if (selectedSet && currentPuzzleNumber) {
-                loadPuzzleFromSet(selectedSet, selectedSet, currentPuzzleNumber);
-              }
-            }}
-            className="retry-button"
-          >
-            Reload
-          </button>
+      <div>
+        <Header onLogoClick={() => navigate('/')} />
+        <div className="themes-game-container">
+          <div className="game-header">
+            <button onClick={handleBackToPuzzleBrowser} className="back-button">
+              ← Back to Puzzles
+            </button>
+            <h1>Themes</h1>
+          </div>
+          <div className="error-state">
+            <h2>Puzzle Not Found</h2>
+            <p>The requested puzzle could not be loaded.</p>
+            <button 
+              onClick={() => {
+                if (selectedSet && currentPuzzleNumber) {
+                  loadPuzzleFromSet(selectedSet, selectedSet, currentPuzzleNumber);
+                }
+              }}
+              className="retry-button"
+            >
+              Reload
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -223,7 +239,9 @@ export const ThemesGame: React.FC = () => {
   };
 
   return (
-    <div className="themes-game-container">
+    <div>
+      <Header onLogoClick={() => navigate('/')} />
+      <div className="themes-game-container">
       <div className="game-header">
         <button onClick={handleBackToPuzzleBrowser} className="back-button">
           ← Back to Puzzles
@@ -357,6 +375,7 @@ export const ThemesGame: React.FC = () => {
         puzzleNumber={currentPuzzleNumber || 0}
         puzzleId={puzzle?.id}
       />
+      </div>
     </div>
   );
 };
