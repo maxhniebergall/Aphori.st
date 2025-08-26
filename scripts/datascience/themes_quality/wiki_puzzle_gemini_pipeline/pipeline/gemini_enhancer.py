@@ -550,7 +550,7 @@ class GeminiEnhancer:
             # Import the multiprocessing components
             import sys
             from pathlib import Path
-            sys.path.append(str(Path(__file__).parent.parent / "multiprocessing"))
+            sys.path.append(str(Path(__file__).parent.parent / "mp_puzzle_generation"))
             
             from GeminiTaskProcessor import create_task_processor
             
