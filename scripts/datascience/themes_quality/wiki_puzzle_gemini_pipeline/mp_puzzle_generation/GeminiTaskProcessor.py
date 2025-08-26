@@ -167,24 +167,25 @@ class GeminiTaskProcessor:
             
             # Implement backpressure - wait for queue to drain if full
             retry_count = 0
-            max_retries = 5
+            max_retries = 24  # 24 retries for 4 minutes total patience
             
             while retry_count < max_retries:
                 try:
-                    self.task_queue.put(task, timeout=5)  # Shorter timeout with retries
+                    self.task_queue.put(task, timeout=3)  # Shorter timeout per attempt
                     submitted_count += 1
                     break  # Successfully submitted
                     
                 except Exception as e:
                     retry_count += 1
                     if retry_count >= max_retries:
-                        logger.error(f"Failed to submit task {task.task_id} after {max_retries} attempts: {e}")
+                        logger.error(f"Failed to submit task {task.task_id} after {max_retries} attempts (4 min timeout): {e}")
                         break
                     else:
-                        # Queue likely full, wait a bit for workers to process tasks
+                        # Queue likely full, wait for workers to process tasks
                         if retry_count == 1:  # Only log on first retry to avoid spam
                             logger.info(f"Queue backpressure active, waiting for workers to process tasks...")
-                        time.sleep(2)
+                        # Fixed 10s wait time for consistent 4-minute total (24 × 10s = 240s = 4min)
+                        time.sleep(10)
                         
             if submitted_count % 10 == 0:
                 logger.info(f"Submitted {submitted_count}/{len(tasks)} tasks")

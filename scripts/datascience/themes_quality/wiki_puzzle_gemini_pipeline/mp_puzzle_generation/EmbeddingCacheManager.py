@@ -238,39 +238,41 @@ class EmbeddingCacheManager:
             if backup and self.cache_file.exists():
                 self._create_backup()
             
-            # Write to temporary file first, then move (atomic operation)
+            # Write to temporary file first, then move (atomic operation) - ALL within lock
             temp_file = self.cache_file.with_suffix('.tmp')
             
-            with self._file_lock('w') as f:
-                # Determine embedding dimension from first entry
-                first_entry = next(iter(self._cache.values()))
-                embedding_dim = len(first_entry.embedding)
-                
-                # Create CSV header
-                fieldnames = ['word', 'theme', 'word_type', 'similarity_to_theme', 'timestamp']
-                fieldnames.extend([f'embedding_dim_{i+1}' for i in range(embedding_dim)])
-                
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                
-                # Write all cache entries
-                for entry in self._cache.values():
-                    row = {
-                        'word': entry.word,
-                        'theme': entry.theme or '',
-                        'word_type': entry.word_type or '',
-                        'similarity_to_theme': entry.similarity_to_theme or '',
-                        'timestamp': entry.timestamp
-                    }
+            with self._file_lock('w'):
+                # Write to temporary file
+                with open(temp_file, 'w', newline='', encoding='utf-8') as f:
+                    # Determine embedding dimension from first entry
+                    first_entry = next(iter(self._cache.values()))
+                    embedding_dim = len(first_entry.embedding)
                     
-                    # Add embedding dimensions
-                    for i, value in enumerate(entry.embedding):
-                        row[f'embedding_dim_{i+1}'] = value
+                    # Create CSV header
+                    fieldnames = ['word', 'theme', 'word_type', 'similarity_to_theme', 'timestamp']
+                    fieldnames.extend([f'embedding_dim_{i+1}' for i in range(embedding_dim)])
                     
-                    writer.writerow(row)
-            
-            # Move temp file to actual cache file (atomic operation)
-            shutil.move(str(temp_file), str(self.cache_file))
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    
+                    # Write all cache entries
+                    for entry in self._cache.values():
+                        row = {
+                            'word': entry.word,
+                            'theme': entry.theme or '',
+                            'word_type': entry.word_type or '',
+                            'similarity_to_theme': entry.similarity_to_theme or '',
+                            'timestamp': entry.timestamp
+                        }
+                        
+                        # Add embedding dimensions
+                        for i, value in enumerate(entry.embedding):
+                            row[f'embedding_dim_{i+1}'] = value
+                        
+                        writer.writerow(row)
+                
+                # Move temp file to actual cache file (atomic operation) - NOW WITHIN LOCK!
+                shutil.move(str(temp_file), str(self.cache_file))
             
             self._dirty = False
             self._last_sync = time.time()
@@ -364,14 +366,20 @@ class EmbeddingCacheManager:
             similarity_to_theme=similarity_to_theme
         )
         
+        should_sync = False
+        
         with self._cache_lock:
             self._cache[cache_key] = entry
             self._dirty = True
             self.stats['writes'] += 1
             
-            # Sync to disk periodically
+            # Check if sync is needed (don't sync inside the lock!)
             if (time.time() - self._last_sync) > self.sync_interval:
-                self._save_to_disk()
+                should_sync = True
+        
+        # Sync to disk outside the in-memory lock to prevent blocking other workers
+        if should_sync:
+            self._save_to_disk()
         
         logger.debug(f"Cached embedding for: {word}")
     
@@ -386,6 +394,8 @@ class EmbeddingCacheManager:
             word_types: Optional list of word types (same length as embeddings)
             similarities: Optional list of similarity scores (same length as embeddings)
         """
+        should_sync = False
+        
         with self._cache_lock:
             for i, (word, embedding) in enumerate(embeddings):
                 cache_key = self._normalize_key(word)
@@ -407,9 +417,13 @@ class EmbeddingCacheManager:
             
             self._dirty = True
             
-            # Sync to disk if it's been a while
+            # Check if sync is needed (don't sync inside the lock!)
             if (time.time() - self._last_sync) > self.sync_interval:
-                self._save_to_disk()
+                should_sync = True
+        
+        # Sync to disk outside the in-memory lock to prevent blocking other workers
+        if should_sync:
+            self._save_to_disk()
         
         logger.debug(f"Batch cached {len(embeddings)} embeddings")
     
