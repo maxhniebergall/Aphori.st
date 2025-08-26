@@ -47,10 +47,12 @@ export interface BatchComparisonResult {
 class AllBatchesGenerator {
   private baseOutputDir: string;
   private verbose: boolean;
+  private multiprocessing: boolean;
 
-  constructor(baseOutputDir: string = './batch-output', verbose: boolean = false) {
+  constructor(baseOutputDir: string = './batch-output', verbose: boolean = false, multiprocessing: boolean = false) {
     this.baseOutputDir = baseOutputDir;
     this.verbose = verbose;
+    this.multiprocessing = multiprocessing;
   }
 
   /**
@@ -221,6 +223,7 @@ class AllBatchesGenerator {
     
     console.log(`🎯 Starting generation of both puzzle sets...`);
     console.log(`📁 Base output directory: ${this.baseOutputDir}`);
+    console.log(`⚡ Multiprocessing: ${this.multiprocessing ? 'enabled' : 'default (from config)'}`);
     
     // Check DVC status to determine what needs updating
     const dvcStatus = await this.checkDvcStatus();
@@ -272,7 +275,8 @@ class AllBatchesGenerator {
       console.log(`\n🔄 Step 2: Generating Gemini pipeline puzzles...`);
       const geminiGenerator = new GeminiBatchGenerator({
         outputDir: geminiOutputDir,
-        verbose: this.verbose
+        verbose: this.verbose,
+        multiprocessing: this.multiprocessing
       });
       geminiResults = await geminiGenerator.generateBatch();
       
@@ -514,12 +518,14 @@ async function main() {
   const args = process.argv.slice(2);
   const outputDir = args[0] || './batch-output';
   const verbose = args.includes('--verbose');
+  const multiprocessing = args.includes('--multiprocessing') || args.includes('--parallel');
   
   console.log(`🎯 All Batches Generator`);
   console.log(`📁 Output: ${outputDir}`);
   console.log(`🔍 Verbose: ${verbose}`);
+  console.log(`⚡ Multiprocessing: ${multiprocessing ? 'enabled' : 'default (from config)'}`);
   
-  const generator = new AllBatchesGenerator(outputDir, verbose);
+  const generator = new AllBatchesGenerator(outputDir, verbose, multiprocessing);
   const result = await generator.generateAllBatches();
   
   if (result.comparison.successRate.overall === 0) {
