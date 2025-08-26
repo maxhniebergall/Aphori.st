@@ -32,10 +32,10 @@ gemini:
   
   # Rate limiting configuration optimized for 8 workers
   # Based on Gemini API limits: Free tier = 100 RPM, Tier 1 = 3000 RPM, Tier 2 = 5000 RPM, Tier 3 = 10000 RPM
-  requests_per_minute: 2880  # Slightly more conservative for 8 workers (2880 RPM = 360 per worker max)
-  min_request_interval: 0.05  # Reduced interval for faster processing with 8 workers (0.05s)
-  retry_base_delay: 0.8  # Slightly faster retry for better throughput (0.8s)
-  max_retries: 4  # Reduced retries to fail faster and redistribute work
+  requests_per_minute: 1800  # More conservative for quota limits (1800 RPM = 225 per worker max)
+  min_request_interval: 0.1   # Longer interval to prevent quota exhaustion (0.1s)
+  retry_base_delay: 1.0      # Standard retry delay (1.0s)
+  max_retries: 3             # Reduced retries to fail faster and redistribute work
 
 paths:
   themes: "data/themes/"
@@ -57,10 +57,10 @@ output:
 
 multiprocessing:
   enabled: true  # Enable/disable multiprocessing (set to false to use original sequential processing)
-  worker_count: 8  # Number of worker processes (8 threads for optimal performance)
-  task_queue_size: 160  # Maximum tasks in queue (20 per worker)
-  result_queue_size: 160  # Maximum results in queue (20 per worker)
-  max_concurrent_requests: 12  # Maximum concurrent API requests across all workers (1.5 per worker)
+  worker_count: 4  # Reduced worker count to avoid API quota issues (4 threads)
+  task_queue_size: 80   # Maximum tasks in queue (20 per worker)
+  result_queue_size: 80  # Maximum results in queue (20 per worker)
+  max_concurrent_requests: 6  # Maximum concurrent API requests across all workers (1.5 per worker)
   cache_sync_interval: 45  # Seconds between cache syncs to disk (more frequent with more workers)
 
 logging:
