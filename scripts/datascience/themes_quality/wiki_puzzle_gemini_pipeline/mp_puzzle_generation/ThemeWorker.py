@@ -194,19 +194,27 @@ class ThemeWorker:
         if texts_to_generate:
             logger.debug(f"Worker {self.worker_id}: Generating {len(texts_to_generate)} embeddings via API")
             
-            # Use rate limiter for API calls
-            with self.rate_limiter.acquire_request_slot():
-                api_embeddings = self.embedding_provider.generate_embeddings(texts_to_generate)
-                api_calls = 1  # One batch API call
-            
-            # Merge API results back into cached results
-            api_idx = 0
-            for i in text_indices:
-                if api_idx < len(api_embeddings) and api_embeddings[api_idx] is not None:
-                    cached_embeddings[i] = api_embeddings[api_idx]
-                    # Cache the new embedding
-                    self.cache_manager.put(texts[i], api_embeddings[api_idx])
-                api_idx += 1
+            try:
+                # Use rate limiter for API calls
+                with self.rate_limiter.acquire_request_slot():
+                    api_embeddings = self.embedding_provider.generate_embeddings(texts_to_generate)
+                    api_calls = 1  # One batch API call
+                
+                # Merge API results back into cached results
+                api_idx = 0
+                for i in text_indices:
+                    if api_idx < len(api_embeddings) and api_embeddings[api_idx] is not None:
+                        cached_embeddings[i] = api_embeddings[api_idx]
+                        # Cache the new embedding
+                        self.cache_manager.put(texts[i], api_embeddings[api_idx])
+                    api_idx += 1
+                    
+            except Exception as api_error:
+                logger.error(f"Worker {self.worker_id}: API call failed: {api_error}")
+                # If API fails, return None embeddings for the failed texts
+                for i in text_indices:
+                    cached_embeddings[i] = None
+                api_calls = 0  # No successful API calls
         
         return cached_embeddings, cache_hits, api_calls
     
@@ -378,9 +386,6 @@ class ThemeWorker:
                     
                     # Send result back
                     self.result_queue.put(result)
-                    
-                    # Mark task as done
-                    self.task_queue.task_done()
                     
                 except Exception as e:
                     if "Empty" not in str(e):  # Ignore timeout exceptions
