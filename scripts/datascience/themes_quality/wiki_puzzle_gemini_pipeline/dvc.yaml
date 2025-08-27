@@ -45,11 +45,26 @@ stages:
       - output
       - paths
 
+  build_puzzle_generation:
+    cmd: cd ../../../puzzle-generation && npm ci && npm run build
+    deps:
+      - ../../../puzzle-generation/package.json
+      - ../../../puzzle-generation/package-lock.json
+      - ../../../puzzle-generation/tsconfig.json
+      - ../../../puzzle-generation/use-gemini-output.ts
+      - ../../../puzzle-generation/data-science-bridge.ts
+      - ../../../puzzle-generation/HighQualityPuzzleGenerator.ts
+    outs:
+      - ../../../puzzle-generation/dist/use-gemini-output.js
+      - ../../../puzzle-generation/dist/data-science-bridge.js
+      - ../../../puzzle-generation/dist/HighQualityPuzzleGenerator.js
+
   convert_to_firebase:
     cmd: node ../../../puzzle-generation/dist/use-gemini-output.js
     deps:
       - ../../../puzzle-generation/dist/use-gemini-output.js
       - ../../../puzzle-generation/dist/data-science-bridge.js
+      - ../../../puzzle-generation/dist/HighQualityPuzzleGenerator.js
       - data/outputs/final_puzzles.json
     outs:
       - data/outputs/gemini-puzzles.json
