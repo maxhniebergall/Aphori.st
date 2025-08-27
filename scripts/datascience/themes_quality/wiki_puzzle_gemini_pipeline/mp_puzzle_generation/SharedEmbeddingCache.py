@@ -336,6 +336,8 @@ class SharedEmbeddingCache:
         """Get cache statistics."""
         # Create a copy to avoid issues with shared dict
         stats = dict(self.stats)
+        # Remove stale cache_size to prevent override of computed value
+        stats.pop('cache_size', None)
         total_requests = stats.get('hits', 0) + stats.get('misses', 0)
         hit_rate = (stats.get('hits', 0) / total_requests) if total_requests > 0 else 0.0
         
