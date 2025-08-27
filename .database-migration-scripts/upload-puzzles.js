@@ -1,32 +1,43 @@
 #!/usr/bin/env node
 
 /**
- * Firebase Puzzle Sets Migration Script
+ * Firebase Puzzle Sets Migration Script v2
  * 
- * This script safely uploads new puzzle sets to the aphorist-themes Firebase RTDB
- * without overwriting existing data. It merges new puzzles with existing ones.
+ * This script uploads specific puzzle sets to the aphorist-themes Firebase RTDB
+ * with custom naming. It supports uploading multiple versions of the same puzzle set
+ * with different names (e.g., gemini_50, gemini_51, gemini_test).
+ * 
+ * Features:
+ * - Requires explicit source file and rename target
+ * - Validates name uniqueness before upload
+ * - Transforms puzzle IDs and references to match new name
+ * - Updates both puzzleSets and setIndex atomically
+ * - Supports multiple versions of the same puzzles
+ * 
+ * Usage:
+ * node upload-puzzles.js --source-file <path> --rename-to <unique-name>
+ * 
+ * Examples:
+ * - Upload gemini puzzles as gemini_50:
+ *   node upload-puzzles.js --source-file scripts/puzzle-generation/batch-output/gemini_firebase.json --rename-to gemini_50
+ * 
+ * - Upload another version:
+ *   node upload-puzzles.js --source-file scripts/puzzle-generation/batch-output/gemini_firebase.json --rename-to gemini_51
+ * 
+ * Environment variables:
+ * - Local (with emulator): FIREBASE_DATABASE_EMULATOR_HOST=localhost:9000
+ * - Production: FIREBASE_CREDENTIAL="..." THEMES_FIREBASE_DATABASE_URL="..."
  * 
  * Note: This script does not create backups. Ensure you have manual backups or
  * automated Firebase backups enabled before running in production.
- * 
- * Usage:
- * - Local (with emulator): FIREBASE_DATABASE_EMULATOR_HOST=localhost:9000 node upload-puzzles.js
- * - Production: FIREBASE_CREDENTIAL="..." THEMES_FIREBASE_DATABASE_URL="..." node upload-puzzles.js
  */
 
 import { readFileSync, existsSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
 import admin from 'firebase-admin';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 // Configuration
-const PUZZLE_DATA_PATH = join(__dirname, '..', 'scripts', 'puzzle-generation', 'batch-output', 'unified-firebase-puzzles.json');
-const DVC_PUZZLE_DATA_PATH = join(__dirname, '..', 'scripts', 'datascience', 'themes_quality', 'puzzle_generation_output', 'gemini-puzzles_firebase.json');
 const FIREBASE_RTDB_PATH = 'puzzleSets';
+const SET_INDEX_PATH = 'setIndex';
 
 // Logging utilities
 function log(message, ...args) {
@@ -35,6 +46,95 @@ function log(message, ...args) {
 
 function error(message, ...args) {
   console.error(`[${new Date().toISOString()}] ERROR: ${message}`, ...args);
+}
+
+// Command-line argument parsing
+function getArgValue(args, flag) {
+  const index = args.indexOf(flag);
+  return index !== -1 && index + 1 < args.length ? args[index + 1] : null;
+}
+
+function parseAndValidateArgs() {
+  const args = process.argv.slice(2);
+  const sourceFile = getArgValue(args, '--source-file');
+  const renameTo = getArgValue(args, '--rename-to');
+  
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log('Usage: node upload-puzzles.js --source-file <path> --rename-to <unique-name>');
+    console.log('');
+    console.log('Required arguments:');
+    console.log('  --source-file <path>    Path to puzzle data file (e.g., gemini_firebase.json)');
+    console.log('  --rename-to <name>      Unique name for the puzzle set (e.g., gemini_50)');
+    console.log('');
+    console.log('Environment variables:');
+    console.log('  FIREBASE_DATABASE_EMULATOR_HOST=localhost:9000  (for local testing)');
+    console.log('  FIREBASE_CREDENTIAL="..."                       (for production)');
+    console.log('  THEMES_FIREBASE_DATABASE_URL="..."              (for production)');
+    process.exit(0);
+  }
+  
+  // Validate required parameters
+  if (!sourceFile) {
+    error('--source-file is required');
+    console.log('Usage: node upload-puzzles.js --source-file <path> --rename-to <unique-name>');
+    console.log('Use --help for more information.');
+    process.exit(1);
+  }
+  
+  if (!renameTo) {
+    error('--rename-to is required');
+    console.log('Usage: node upload-puzzles.js --source-file <path> --rename-to <unique-name>');
+    console.log('Use --help for more information.');
+    process.exit(1);
+  }
+  
+  // Validate source file exists
+  if (!existsSync(sourceFile)) {
+    error(`Source file not found: ${sourceFile}`);
+    process.exit(1);
+  }
+  
+  // Validate rename-to format (basic validation)
+  if (!/^[a-zA-Z0-9_-]+$/.test(renameTo)) {
+    error(`Invalid name format: ${renameTo}. Only alphanumeric characters, hyphens, and underscores allowed.`);
+    process.exit(1);
+  }
+  
+  log(`✓ Arguments validated:`);
+  log(`  Source file: ${sourceFile}`);
+  log(`  Rename to: ${renameTo}`);
+  
+  return { sourceFile, renameTo };
+}
+
+
+// Check name uniqueness against database
+async function checkNameUniqueness(db, newName) {
+  log(`Checking if name '${newName}' is unique...`);
+  
+  try {
+    // Check puzzleSets
+    const puzzleSetsSnapshot = await db.ref(`${FIREBASE_RTDB_PATH}/${newName}`).once('value');
+    if (puzzleSetsSnapshot.exists()) {
+      error(`Puzzle set '${newName}' already exists in database`);
+      console.log('Please choose a different name with --rename-to');
+      process.exit(1);
+    }
+    
+    // Check setIndex
+    const setIndexSnapshot = await db.ref(`${SET_INDEX_PATH}/${newName}`).once('value');
+    if (setIndexSnapshot.exists()) {
+      error(`Set index for '${newName}' already exists in database`);
+      console.log('Please choose a different name with --rename-to');
+      process.exit(1);
+    }
+    
+    log(`✓ Name '${newName}' is available`);
+  } catch (e) {
+    error(`Failed to check name uniqueness: ${e.message}`);
+    throw e;
+  }
 }
 
 // Initialize Firebase Admin
@@ -81,304 +181,257 @@ function initializeFirebase() {
   return admin.database();
 }
 
-// Get current database state for merging
-async function getCurrentData(db) {
-  log('Loading current puzzle sets from database...');
-  
-  try {
-    const snapshot = await db.ref(FIREBASE_RTDB_PATH).once('value');
-    const currentData = snapshot.val() || {};
-    
-    const setCount = Object.keys(currentData).length;
-    log(`Found ${setCount} existing puzzle sets in database`);
-    
-    return currentData;
-  } catch (e) {
-    error('Failed to load current data:', e.message);
-    throw e;
-  }
-}
 
-// Ensure DVC data is pulled and available
-function ensureDvcDataAvailable() {
-  log('Ensuring DVC puzzle data is available...');
+// Transform puzzle set with new name and IDs
+function transformPuzzleSet(puzzleSet, oldName, newName) {
+  log(`Transforming puzzle set from '${oldName}' to '${newName}'...`);
+  const transformed = {};
+  let puzzleCount = 0;
   
-  try {
-    // Navigate to the themes_quality directory and activate venv, then pull DVC data
-    const themesQualityDir = join(__dirname, '..', 'scripts', 'datascience', 'themes_quality');
-    const dvcCmd = `cd "${themesQualityDir}" && source themes_quality_venv/bin/activate && dvc pull puzzle_generation_output.dvc`;
+  for (const [gridSize, puzzles] of Object.entries(puzzleSet)) {
+    transformed[gridSize] = {};
     
-    log(`Running: ${dvcCmd}`);
-    execSync(dvcCmd, { 
-      stdio: 'inherit',
-      shell: '/bin/bash'
-    });
-    
-    log('DVC data pull completed successfully');
-  } catch (e) {
-    error('Failed to pull DVC data:', e.message);
-    throw new Error(`Cannot proceed without DVC puzzle data: ${e.message}`);
-  }
-}
-
-// Convert dailyPuzzles format to puzzleSets format
-function convertDailyPuzzlesToPuzzleSets(dailyPuzzlesData) {
-  const puzzleSets = {};
-  
-  if (dailyPuzzlesData.dailyPuzzles) {
-    for (const [setName, dates] of Object.entries(dailyPuzzlesData.dailyPuzzles)) {
-      puzzleSets[setName] = {};
+    for (const [oldPuzzleId, puzzle] of Object.entries(puzzles)) {
+      // Extract puzzle number from old ID (e.g., gemini_batch_2025-08-27_1 -> 1)
+      const puzzleNumber = oldPuzzleId.split('_').pop();
+      const newPuzzleId = `${newName}_${puzzleNumber}`;
       
-      for (const [date, gridSizes] of Object.entries(dates)) {
-        for (const [gridSize, puzzles] of Object.entries(gridSizes)) {
-          if (!puzzleSets[setName][gridSize]) {
-            puzzleSets[setName][gridSize] = {};
-          }
-          
-          // Merge puzzles from this date into the grid size
-          Object.assign(puzzleSets[setName][gridSize], puzzles);
-        }
-      }
+      // Update puzzle object
+      const updatedPuzzle = {
+        ...puzzle,
+        id: newPuzzleId,
+        setName: newName,
+        // Update category IDs to match new naming
+        categories: puzzle.categories.map((cat, idx) => ({
+          ...cat,
+          id: `${newName}_${puzzleNumber}_cat_${idx}`
+        }))
+      };
+      
+      transformed[gridSize][newPuzzleId] = updatedPuzzle;
+      puzzleCount++;
     }
   }
   
-  return puzzleSets;
+  log(`✓ Transformed ${puzzleCount} puzzles`);
+  return transformed;
 }
 
-// Load puzzle data from generated file or DVC
-function loadPuzzleData() {
-  // First try to load from DVC (new format)
-  if (existsSync(DVC_PUZZLE_DATA_PATH)) {
-    log(`Loading DVC puzzle data from: ${DVC_PUZZLE_DATA_PATH}`);
-    
-    // Ensure DVC data is up to date
-    ensureDvcDataAvailable();
-    
-    try {
-      const data = JSON.parse(readFileSync(DVC_PUZZLE_DATA_PATH, 'utf8'));
-      
-      let puzzleSets;
-      if (data.puzzleSets) {
-        // Already in puzzleSets format
-        puzzleSets = data.puzzleSets;
-      } else if (data.dailyPuzzles) {
-        // Convert from dailyPuzzles format
-        log('Converting dailyPuzzles format to puzzleSets format...');
-        puzzleSets = convertDailyPuzzlesToPuzzleSets(data);
-      } else {
-        throw new Error('Invalid DVC puzzle data format: missing puzzleSets or dailyPuzzles');
-      }
-
-      const setCount = Object.keys(puzzleSets).length;
-      let totalPuzzles = 0;
-      
-      Object.values(puzzleSets).forEach(setData => {
-        Object.values(setData).forEach(gridSize => {
-          if (typeof gridSize === 'object') {
-            totalPuzzles += Object.keys(gridSize).length;
-          }
-        });
-      });
-
-      log(`Loaded ${setCount} puzzle sets with ${totalPuzzles} total puzzles from DVC`);
-      return puzzleSets;
-    } catch (e) {
-      error('Failed to load DVC puzzle data:', e.message);
-      error('Falling back to legacy puzzle data file...');
+// Count puzzles in a puzzle set
+function countPuzzles(puzzleSet) {
+  let count = 0;
+  for (const gridSizes of Object.values(puzzleSet)) {
+    if (typeof gridSizes === 'object') {
+      count += Object.keys(gridSizes).length;
     }
   }
-  
-  // Fallback to legacy format
-  log(`Loading legacy puzzle data from: ${PUZZLE_DATA_PATH}`);
-  
-  if (!existsSync(PUZZLE_DATA_PATH)) {
-    throw new Error(`Neither DVC puzzle data (${DVC_PUZZLE_DATA_PATH}) nor legacy puzzle data (${PUZZLE_DATA_PATH}) found`);
-  }
+  return count;
+}
 
+// Load and transform puzzle data from source file
+function loadAndTransformPuzzleData(sourceFile, renameTo) {
+  log(`Loading puzzle data from: ${sourceFile}`);
+  
   try {
-    const data = JSON.parse(readFileSync(PUZZLE_DATA_PATH, 'utf8'));
+    const data = JSON.parse(readFileSync(sourceFile, 'utf8'));
     
-    if (!data.puzzleSets || typeof data.puzzleSets !== 'object') {
-      throw new Error('Invalid legacy puzzle data format: missing puzzleSets');
+    if (!data.puzzleSets || Object.keys(data.puzzleSets).length === 0) {
+      error('No puzzle sets found in source file. File must contain puzzleSets format.');
+      process.exit(1);
     }
-
-    const setCount = Object.keys(data.puzzleSets).length;
-    let totalPuzzles = 0;
     
-    Object.values(data.puzzleSets).forEach(setData => {
-      Object.values(setData).forEach(gridSize => {
-        if (typeof gridSize === 'object') {
-          totalPuzzles += Object.keys(gridSize).length;
-        }
-      });
-    });
-
-    log(`Loaded ${setCount} puzzle sets with ${totalPuzzles} total puzzles from legacy format`);
-    return data.puzzleSets;
+    // Get the puzzle sets from the file
+    const originalSetNames = Object.keys(data.puzzleSets);
+    
+    if (originalSetNames.length === 0) {
+      error('Source file contains no puzzle sets');
+      process.exit(1);
+    }
+    
+    if (originalSetNames.length > 1) {
+      error(`Source file contains multiple puzzle sets: ${originalSetNames.join(', ')}`);
+      console.log('This script currently supports only one puzzle set per file.');
+      console.log('Please use a file with a single puzzle set.');
+      process.exit(1);
+    }
+    
+    const originalSetName = originalSetNames[0];
+    const puzzleSet = data.puzzleSets[originalSetName];
+    
+    log(`Found puzzle set: '${originalSetName}'`);
+    
+    // Transform all puzzle IDs and references
+    const transformedSet = transformPuzzleSet(puzzleSet, originalSetName, renameTo);
+    const puzzleCount = countPuzzles(transformedSet);
+    
+    log(`✓ Loaded and transformed ${puzzleCount} puzzles`);
+    
+    return {
+      puzzleSets: { [renameTo]: transformedSet },
+      originalSetName,
+      puzzleCount
+    };
   } catch (e) {
-    error('Failed to load legacy puzzle data:', e.message);
-    throw e;
+    error(`Failed to load puzzle data: ${e.message}`);
+    process.exit(1);
   }
 }
 
-// Merge new puzzles with existing ones
-function mergePuzzleSets(existing, newPuzzles) {
-  const mergedData = { ...existing };
-  const changes = {
-    newSets: [],
-    updatedSets: [],
-    newPuzzles: 0
+// Create setIndex entry for the new puzzle set
+function createSetIndexEntry(puzzleSet, setName, originalSetName) {
+  log(`Creating setIndex entry for '${setName}'...`);
+  
+  const puzzleIds = [];
+  const sizeCounts = {};
+  let totalCount = 0;
+  
+  // Collect puzzle IDs and count by grid size
+  for (const [gridSize, puzzles] of Object.entries(puzzleSet)) {
+    const gridPuzzleIds = Object.keys(puzzles);
+    puzzleIds.push(...gridPuzzleIds);
+    sizeCounts[gridSize] = gridPuzzleIds.length;
+    totalCount += gridPuzzleIds.length;
+  }
+  
+  // Sort puzzle IDs numerically by puzzle number
+  puzzleIds.sort((a, b) => {
+    const numA = parseInt(a.split('_').pop());
+    const numB = parseInt(b.split('_').pop());
+    return numA - numB;
+  });
+  
+  const setIndexEntry = {
+    algorithm: "wiki_puzzle_gemini_pipeline",
+    availableSizes: Object.keys(sizeCounts).sort(),
+    generatorVersion: "3.0.0-custom",
+    lastUpdated: Date.now(),
+    metadata: {
+      batchGenerated: true,
+      description: `Custom upload of ${setName}`,
+      generatedAt: new Date().toISOString(),
+      originalSetName: originalSetName,
+      uploadedVia: "migration-script-v2"
+    },
+    puzzleIds: puzzleIds,
+    sizeCounts: sizeCounts,
+    status: "active",
+    totalCount: totalCount
   };
-
-  for (const [setName, setData] of Object.entries(newPuzzles)) {
-    if (!mergedData[setName]) {
-      // New set - add entirely
-      mergedData[setName] = setData;
-      changes.newSets.push(setName);
-      
-      // Count puzzles in new set
-      Object.values(setData).forEach(gridSize => {
-        if (typeof gridSize === 'object') {
-          changes.newPuzzles += Object.keys(gridSize).length;
-        }
-      });
-    } else {
-      // Existing set - merge grid sizes and puzzles
-      const existingSet = mergedData[setName];
-      let setPuzzlesAdded = 0;
-      
-      for (const [gridSize, puzzles] of Object.entries(setData)) {
-        if (!existingSet[gridSize]) {
-          // New grid size for this set
-          existingSet[gridSize] = puzzles;
-          setPuzzlesAdded += Object.keys(puzzles).length;
-        } else {
-          // Merge puzzles within this grid size
-          const existingPuzzles = existingSet[gridSize];
-          
-          for (const [puzzleId, puzzleData] of Object.entries(puzzles)) {
-            if (!existingPuzzles[puzzleId]) {
-              existingPuzzles[puzzleId] = puzzleData;
-              setPuzzlesAdded++;
-            } else {
-              log(`Skipping existing puzzle: ${puzzleId} in ${setName}/${gridSize}`);
-            }
-          }
-        }
-      }
-      
-      if (setPuzzlesAdded > 0) {
-        changes.updatedSets.push(setName);
-        changes.newPuzzles += setPuzzlesAdded;
-      }
-    }
-  }
-
-  return { mergedData, changes };
+  
+  log(`✓ Created setIndex entry: ${totalCount} puzzles, sizes: ${Object.keys(sizeCounts).join(', ')}`);
+  return setIndexEntry;
 }
 
-// Upload merged data to Firebase using transaction
-async function uploadMergedData(db, mergedData, changes) {
-  log('Starting Firebase upload...');
+
+// Upload puzzle set with setIndex atomically
+async function uploadPuzzleSet(db, puzzleData, setIndexEntry, setName) {
+  log(`Uploading puzzle set '${setName}' to Firebase...`);
   
   try {
-    await db.ref(FIREBASE_RTDB_PATH).transaction((currentData) => {
-      // Double-check merge in transaction to handle concurrent updates
-      if (currentData === null) {
-        currentData = {};
-      }
-      
-      // Re-merge with current state in case of concurrent changes
-      const finalMerge = mergePuzzleSets(currentData, mergedData);
-      return finalMerge.mergedData;
-    });
+    // Use multi-path update for atomic operation
+    const updates = {};
     
-    log('Upload completed successfully');
-    log(`Summary: ${changes.newSets.length} new sets, ${changes.updatedSets.length} updated sets, ${changes.newPuzzles} new puzzles added`);
+    // Add puzzle set data
+    updates[`${FIREBASE_RTDB_PATH}/${setName}`] = puzzleData.puzzleSets[setName];
     
-    if (changes.newSets.length > 0) {
-      log('New sets:', changes.newSets);
-    }
-    if (changes.updatedSets.length > 0) {
-      log('Updated sets:', changes.updatedSets);
-    }
+    // Add setIndex entry
+    updates[`${SET_INDEX_PATH}/${setName}`] = setIndexEntry;
     
+    // Perform atomic update
+    await db.ref().update(updates);
+    
+    log(`✓ Successfully uploaded ${puzzleData.puzzleCount} puzzles as '${setName}'`);
+    log(`✓ Created setIndex entry for '${setName}'`);
     return true;
   } catch (e) {
-    error('Failed to upload to Firebase:', e.message);
+    error(`Failed to upload puzzle set: ${e.message}`);
     throw e;
   }
 }
 
 // Verify the upload was successful
-async function verifyUpload(db, originalData) {
-  log('Verifying upload...');
+async function verifyPuzzleSetUpload(db, puzzleData, setIndexEntry, setName) {
+  log(`Verifying upload of '${setName}'...`);
   
   try {
-    const snapshot = await db.ref(FIREBASE_RTDB_PATH).once('value');
-    const currentData = snapshot.val() || {};
+    // Check puzzleSets data
+    const puzzleSnapshot = await db.ref(`${FIREBASE_RTDB_PATH}/${setName}`).once('value');
+    if (!puzzleSnapshot.exists()) {
+      throw new Error(`Verification failed: Puzzle set '${setName}' not found in database`);
+    }
     
-    // Check that all new sets and puzzles are present
-    for (const [setName, setData] of Object.entries(originalData)) {
-      if (!currentData[setName]) {
-        throw new Error(`Verification failed: Set ${setName} not found in database`);
-      }
-      
-      for (const [gridSize, puzzles] of Object.entries(setData)) {
-        if (!currentData[setName][gridSize]) {
-          throw new Error(`Verification failed: Grid size ${gridSize} not found in set ${setName}`);
-        }
-        
-        for (const puzzleId of Object.keys(puzzles)) {
-          if (!currentData[setName][gridSize][puzzleId]) {
-            throw new Error(`Verification failed: Puzzle ${puzzleId} not found in ${setName}/${gridSize}`);
-          }
-        }
+    // Check setIndex data
+    const indexSnapshot = await db.ref(`${SET_INDEX_PATH}/${setName}`).once('value');
+    if (!indexSnapshot.exists()) {
+      throw new Error(`Verification failed: Set index for '${setName}' not found in database`);
+    }
+    
+    // Verify puzzle count matches
+    const uploadedPuzzleSet = puzzleSnapshot.val();
+    let uploadedCount = 0;
+    for (const gridSizes of Object.values(uploadedPuzzleSet)) {
+      if (typeof gridSizes === 'object') {
+        uploadedCount += Object.keys(gridSizes).length;
       }
     }
     
-    log('Verification passed - all data successfully uploaded');
+    if (uploadedCount !== puzzleData.puzzleCount) {
+      throw new Error(`Verification failed: Expected ${puzzleData.puzzleCount} puzzles, found ${uploadedCount}`);
+    }
+    
+    // Verify setIndex puzzle count matches
+    const uploadedIndex = indexSnapshot.val();
+    if (uploadedIndex.totalCount !== puzzleData.puzzleCount) {
+      throw new Error(`Verification failed: setIndex totalCount mismatch`);
+    }
+    
+    log(`✓ Verification passed: ${uploadedCount} puzzles uploaded correctly`);
     return true;
   } catch (e) {
-    error('Verification failed:', e.message);
+    error(`Verification failed: ${e.message}`);
     throw e;
   }
 }
 
+
 // Main execution
 async function main() {
   try {
-    log('Starting puzzle migration...');
+    log('Starting selective puzzle upload...');
+    
+    // Parse and validate command-line arguments
+    const { sourceFile, renameTo } = parseAndValidateArgs();
     
     // Initialize Firebase
     const db = initializeFirebase();
     
-    // Load current data
-    const currentData = await getCurrentData(db);
+    // Check name uniqueness
+    await checkNameUniqueness(db, renameTo);
     
-    // Load new puzzle data
-    const newPuzzles = loadPuzzleData();
+    // Load and transform puzzle data
+    const puzzleData = loadAndTransformPuzzleData(sourceFile, renameTo);
     
-    // Merge with existing data
-    log('Merging new puzzles with existing data...');
-    const { mergedData, changes } = mergePuzzleSets(currentData, newPuzzles);
+    // Create setIndex entry
+    const setIndexEntry = createSetIndexEntry(
+      puzzleData.puzzleSets[renameTo], 
+      renameTo, 
+      puzzleData.originalSetName
+    );
     
-    if (changes.newPuzzles === 0) {
-      log('No new puzzles to add - migration complete');
-      return;
-    }
-    
-    // Upload merged data
-    await uploadMergedData(db, mergedData, changes);
+    // Upload puzzle set and setIndex atomically
+    await uploadPuzzleSet(db, puzzleData, setIndexEntry, renameTo);
     
     // Verify upload
-    await verifyUpload(db, newPuzzles);
+    await verifyPuzzleSetUpload(db, puzzleData, setIndexEntry, renameTo);
     
-    log('Puzzle migration completed successfully');
+    log(`🎯 Successfully uploaded puzzle set '${renameTo}' with ${puzzleData.puzzleCount} puzzles`);
+    log('Upload completed successfully!');
     
   } catch (e) {
-    error('Migration failed:', e.message);
-    error('Stack trace:', e.stack);
+    error('Upload failed:', e.message);
+    if (e.stack) {
+      error('Stack trace:', e.stack);
+    }
     process.exit(1);
   }
 }
