@@ -29,8 +29,14 @@ The main migration script that safely uploads new puzzle sets from the puzzle ge
 
 2. Ensure puzzle data exists:
    ```bash
-   # The script expects puzzle data at:
-   # scripts/puzzle-generation/batch-output/unified-firebase-puzzles.json
+   # The script looks for puzzle data in this priority order:
+   # 1. DVC-managed data: scripts/datascience/themes_quality/puzzle_generation_output/gemini-puzzles_firebase.json
+   # 2. Legacy format: scripts/puzzle-generation/batch-output/unified-firebase-puzzles.json
+   
+   # For DVC data, ensure you have access to the DVC remote and run:
+   cd scripts/datascience/themes_quality
+   source themes_quality_venv/bin/activate
+   dvc pull puzzle_generation_output.dvc
    ```
 
 ### Local Testing (with Firebase Emulator)
@@ -60,7 +66,37 @@ node upload-puzzles.js
 
 ## Data Structure
 
-The script expects puzzle data in the following format:
+The script supports two data formats:
+
+### DVC Format (Priority 1)
+
+The preferred format from the DVC-managed Gemini pipeline:
+
+```json
+{
+  "dailyPuzzles": {
+    "setName": {
+      "2025-08-19": {
+        "4x4": {
+          "puzzleId1": {
+            "id": "puzzleId1",
+            "date": "2025-08-19",
+            "puzzleNumber": 1,
+            "gridSize": 4,
+            "words": ["word1", "word2", ...],
+            "categories": [...],
+            "metadata": {...}
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Legacy Format (Priority 2)
+
+The original format for backward compatibility:
 
 ```json
 {
@@ -160,20 +196,26 @@ All logs include timestamps and are structured for easy parsing.
 
 ### Common Issues
 
-1. **"Puzzle data file not found"**
-   - Ensure `scripts/puzzle-generation/batch-output/unified-firebase-puzzles.json` exists
+1. **"Neither DVC puzzle data nor legacy puzzle data found"**
+   - Ensure DVC data is available: `cd scripts/datascience/themes_quality && source themes_quality_venv/bin/activate && dvc pull puzzle_generation_output.dvc`
+   - Or ensure legacy data exists: `scripts/puzzle-generation/batch-output/unified-firebase-puzzles.json`
    - Run puzzle generation script first
 
-2. **"FIREBASE_CREDENTIAL environment variable is required"**
+2. **"Failed to pull DVC data"**
+   - Check DVC remote access and credentials
+   - Ensure the themes_quality_venv virtual environment is properly set up
+   - Verify DVC is installed: `dvc --version`
+
+3. **"FIREBASE_CREDENTIAL environment variable is required"**
    - Set Firebase service account credentials for production mode
    - For local testing, use emulator mode instead
 
-3. **"Verification failed"**
+4. **"Verification failed"**
    - Check Firebase permissions
    - Review transaction conflicts in logs
-   - Examine backup file for data corruption
+   - Check if manual backup is available for restoration
 
-4. **Permission errors**
+5. **Permission errors**
    - Ensure Firebase service account has `Database Admin` role
    - Verify database rules allow writes to `puzzleSets` path
 
@@ -189,8 +231,9 @@ DEBUG=* node upload-puzzles.js
 
 - Never commit Firebase credentials to git
 - Use environment variables for sensitive configuration
-- Backup files may contain sensitive data - handle appropriately
+- Manual backup files may contain sensitive data - handle appropriately
 - Review Firebase security rules before production deployment
+- Always perform manual backups before running migration scripts in production
 
 ## Development
 
