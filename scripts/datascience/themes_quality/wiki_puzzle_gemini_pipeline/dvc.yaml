@@ -75,3 +75,6 @@ stages:
     deps:
       - data/outputs/gemini-puzzles.json
       - data/outputs/gemini-puzzles_firebase.json
+    outs:
+      - ../../../puzzle-generation/gemini-puzzles.json
+      - ../../../puzzle-generation/gemini-puzzles_firebase.json
