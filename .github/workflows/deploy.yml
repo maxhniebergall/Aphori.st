@@ -55,7 +55,7 @@ jobs:
       run: |
         set -euo pipefail
         echo "Installing DVC..."
-        python -m pip install 'dvc[gcs]'
+        python -m pip install 'dvc[gs]'
         echo "Pulling puzzle data from DVC..."
         cd scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline
         dvc pull data/outputs/gemini-puzzles_firebase.json data/outputs/gemini-puzzles.json
