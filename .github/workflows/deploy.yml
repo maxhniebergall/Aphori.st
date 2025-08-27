@@ -46,20 +46,82 @@ jobs:
       with:
         node-version: '18'
 
-    - name: Run Database Migration - Upload Puzzles
+    - name: Set up Python for DVC
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Pull puzzle data from DVC
       run: |
-        echo "Running puzzle sets migration to Firebase..."
-        cd .database-migration-scripts
-        echo "Installing dependencies..."
-        npm ci
-        echo "Checking if firebase-admin is installed..."
-        ls node_modules/ | grep firebase || echo "firebase-admin not found in node_modules"
-        echo "Node.js version:"
-        node --version
-        echo "NPM version:"
-        npm --version
-        echo "Running migration script..."
-        node upload-puzzles.js
+        set -euo pipefail
+        echo "Installing DVC..."
+        python -m pip install 'dvc[gcs]'
+        echo "Pulling puzzle data from DVC..."
+        cd scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline
+        dvc pull data/outputs/gemini-puzzles_firebase.json data/outputs/gemini-puzzles.json
+        echo "DVC puzzle data pulled successfully"
+        echo "Available puzzle files:"
+        ls -la data/outputs/
+
+    - name: Run Database Migration - Upload Gemini Puzzles
+      run: |
+        echo "Discovering puzzle files..."
+        
+        # Search for puzzle files in expected locations
+        DVC_PUZZLE_FILE=""
+        
+        # Priority order for file discovery
+        CANDIDATE_FILES=(
+          "scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline/data/outputs/gemini-puzzles_firebase.json"
+          "scripts/puzzle-generation/gemini-puzzles_firebase.json"
+        )
+        
+        # Also search for any firebase puzzle files in likely locations
+        echo "Searching for puzzle files..."
+        for pattern in "gemini-puzzles_firebase.json" "*puzzles_firebase.json"; do
+          if [ -z "$DVC_PUZZLE_FILE" ]; then
+            found_file=$(find scripts -name "$pattern" -type f 2>/dev/null | head -1)
+            if [ -n "$found_file" ]; then
+              DVC_PUZZLE_FILE="$found_file"
+              break
+            fi
+          fi
+        done
+        
+        # Check candidate files in priority order if not found by search
+        if [ -z "$DVC_PUZZLE_FILE" ]; then
+          for candidate in "${CANDIDATE_FILES[@]}"; do
+            if [ -f "$candidate" ]; then
+              DVC_PUZZLE_FILE="$candidate"
+              break
+            fi
+          done
+        fi
+        
+        if [ -n "$DVC_PUZZLE_FILE" ]; then
+          echo "✅ Found puzzle file: $DVC_PUZZLE_FILE"
+          echo "Running gemini puzzle upload to Firebase..."
+          cd .database-migration-scripts
+          echo "Installing dependencies..."
+          npm ci
+          echo "Running migration script with puzzle file: $DVC_PUZZLE_FILE"
+          echo "Target name: gemini_50"
+          node upload-puzzles.js --source-file "../$DVC_PUZZLE_FILE" --rename-to gemini_50
+        else
+          echo "❌ ERROR: No puzzle file found!"
+          echo "Searched for puzzle files in the following locations:"
+          echo "Candidate directories and their contents:"
+          echo "1. scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline/data/outputs/:"
+          ls -la scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline/data/outputs/ 2>/dev/null || echo "   Directory not found"
+          echo "2. scripts/puzzle-generation/:"
+          ls -la scripts/puzzle-generation/ 2>/dev/null || echo "   Directory not found"
+          echo "3. scripts/datascience/themes_quality/puzzle_generation_output/:"
+          ls -la scripts/datascience/themes_quality/puzzle_generation_output/ 2>/dev/null || echo "   Directory not found"
+          echo "All JSON files in scripts/ tree:"
+          find scripts -name "*.json" -type f 2>/dev/null | grep -E "(puzzle|gemini)" || echo "   No puzzle-related JSON files found"
+          echo "Deployment failed - puzzle data is required for production deployment"
+          exit 1
+        fi
       env:
         FIREBASE_CREDENTIAL: '${{ secrets.SERVICE_ACCOUNT_KEY }}'
         THEMES_FIREBASE_DATABASE_URL: 'https://aphorist-themes-default-rtdb.firebaseio.com/?ns=aphorist-themes'

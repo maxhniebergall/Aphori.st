@@ -304,107 +304,88 @@ class FirebaseFormatConverter {
   }
 
   /**
-   * Convert both batches and merge into single Firebase output
+   * Convert individual algorithm batch to Firebase format
    */
-  async convertBothBatches(
-    wikiBatchPath: string,
-    geminiBatchPath: string,
+  async convertSingleAlgorithmBatch(
+    batchPath: string,
+    algorithm: 'wiki_puzzle_pipeline' | 'wiki_puzzle_gemini_pipeline',
     outputPath: string,
-    wikiSetName?: string,
-    geminiSetName?: string
-  ): Promise<void> {
-    console.log(`🔄 Converting both batches to unified Firebase format...`);
+    setName?: string
+  ): Promise<FirebaseOutput> {
+    console.log(`🔄 Converting ${algorithm} batch to Firebase format...`);
     
     const dateStamp = new Date().toISOString().split('T')[0];
-    const finalWikiSetName = wikiSetName || `wiki_batch_${dateStamp}`;
-    const finalGeminiSetName = geminiSetName || `gemini_batch_${dateStamp}`;
+    const algorithmName = algorithm === 'wiki_puzzle_pipeline' ? 'wiki' : 'gemini';
+    const finalSetName = setName || `${algorithmName}_batch_${dateStamp}`;
     
-    // Convert wiki batch
-    const wikiOutputPath = path.join(path.dirname(outputPath), 'wiki_firebase.json');
-    const wikiOutput = await this.convertBatchToFirebase(
-      wikiBatchPath,
-      'wiki_puzzle_pipeline',
-      wikiOutputPath,
-      finalWikiSetName
+    // Convert batch
+    const output = await this.convertBatchToFirebase(
+      batchPath,
+      algorithm,
+      outputPath,
+      finalSetName
     );
     
-    // Convert gemini batch
-    const geminiOutputPath = path.join(path.dirname(outputPath), 'gemini_firebase.json');
-    const geminiOutput = await this.convertBatchToFirebase(
-      geminiBatchPath,
-      'wiki_puzzle_gemini_pipeline',
-      geminiOutputPath,
-      finalGeminiSetName
-    );
-    
-    // Merge both outputs
-    const mergedOutput: FirebaseOutput = {
-      puzzleSets: {
-        ...wikiOutput.puzzleSets,
-        ...geminiOutput.puzzleSets
-      },
-      setIndex: {
-        ...wikiOutput.setIndex,
-        ...geminiOutput.setIndex
-      }
-    };
-    
-    // Save merged output
-    await fs.writeFile(outputPath, JSON.stringify(mergedOutput, null, 2));
-    console.log(`🎯 Unified Firebase format saved to: ${outputPath}`);
+    // Save output
+    await fs.writeFile(outputPath, JSON.stringify(output, null, 2));
+    console.log(`🎯 Firebase format saved to: ${outputPath}`);
     
     // Create summary
+    const puzzleCount = Object.keys(output.puzzleSets[finalSetName]['4x4']).length;
     const summary = {
       generatedAt: new Date().toISOString(),
       dateStamp,
-      sets: {
-        wiki: {
-          setName: finalWikiSetName,
-          puzzleCount: Object.keys(wikiOutput.puzzleSets[finalWikiSetName]["4x4"]).length,
-          outputFile: wikiOutputPath
-        },
-        gemini: {
-          setName: finalGeminiSetName,
-          puzzleCount: Object.keys(geminiOutput.puzzleSets[finalGeminiSetName]["4x4"]).length,
-          outputFile: geminiOutputPath
-        }
-      },
-      merged: {
-        totalPuzzles: Object.keys(wikiOutput.puzzleSets[finalWikiSetName]["4x4"]).length +
-                     Object.keys(geminiOutput.puzzleSets[finalGeminiSetName]["4x4"]).length,
-        outputFile: outputPath,
-        setNames: [finalWikiSetName, finalGeminiSetName]
-      }
+      setName: finalSetName,
+      algorithm,
+      puzzleCount,
+      outputPath
     };
     
-    const summaryPath = path.join(path.dirname(outputPath), 'firebase-conversion-summary.json');
+    const summaryPath = outputPath.replace('.json', '-summary.json');
     await fs.writeFile(summaryPath, JSON.stringify(summary, null, 2));
-    console.log(`📋 Conversion summary saved to: ${summaryPath}`);
+    console.log(`📊 Conversion summary saved to: ${summaryPath}`);
+    
+    console.log(`\n✅ Conversion completed successfully:`);
+    console.log(`   📊 Algorithm: ${algorithm}`);
+    console.log(`   📊 Set name: ${finalSetName}`);
+    console.log(`   📊 Puzzles: ${puzzleCount}`);
+    
+    return output;
   }
 }
 
 async function main() {
   const args = process.argv.slice(2);
   const batchDir = args[0] || './batch-output';
-  const wikiSetName = args[1]; // Optional custom wiki set name
-  const geminiSetName = args[2]; // Optional custom gemini set name
+  const algorithm = args[1]; // 'wiki' or 'gemini'
+  const setName = args[2]; // Optional custom set name
   
-  console.log(`🎯 Firebase Format Converter`);
+  console.log(`🎯 Firebase Format Converter - Individual Pipeline Mode`);
   console.log(`📁 Batch directory: ${batchDir}`);
-  if (wikiSetName) console.log(`🏷️  Wiki set name: ${wikiSetName}`);
-  if (geminiSetName) console.log(`🏷️  Gemini set name: ${geminiSetName}`);
+  
+  if (!algorithm || !['wiki', 'gemini'].includes(algorithm)) {
+    console.error(`❌ Please specify algorithm: 'wiki' or 'gemini'`);
+    console.log(`Usage: node firebase-format-converter.ts <batch-dir> <algorithm> [custom-set-name]`);
+    console.log(`Example: node firebase-format-converter.ts ./batch-output gemini gemini_50`);
+    process.exit(1);
+  }
+  
+  console.log(`🤖 Algorithm: ${algorithm}`);
+  if (setName) console.log(`🏷️  Set name: ${setName}`);
   
   const converter = new FirebaseFormatConverter();
   
   try {
-    const wikiBatchPath = path.join(batchDir, 'set1-wiki-pipeline');
-    const geminiBatchPath = path.join(batchDir, 'set2-gemini-pipeline');
-    const outputPath = path.join(batchDir, 'unified-firebase-puzzles.json');
+    const algorithmPath = algorithm === 'wiki' ? 'set1-wiki-pipeline' : 'set2-gemini-pipeline';
+    const algorithmName = algorithm === 'wiki' ? 'wiki_puzzle_pipeline' : 'wiki_puzzle_gemini_pipeline';
     
-    await converter.convertBothBatches(wikiBatchPath, geminiBatchPath, outputPath, wikiSetName, geminiSetName);
+    const batchPath = path.join(batchDir, algorithmPath);
+    const outputPath = path.join(batchDir, `${algorithm}_firebase.json`);
+    
+    await converter.convertSingleAlgorithmBatch(batchPath, algorithmName as any, outputPath, setName);
     
     console.log(`✅ Firebase conversion completed successfully`);
-    console.log(`📁 Unified output: ${outputPath}`);
+    console.log(`📁 Output: ${outputPath}`);
     
   } catch (error) {
     console.error(`❌ Firebase conversion failed: ${error}`);

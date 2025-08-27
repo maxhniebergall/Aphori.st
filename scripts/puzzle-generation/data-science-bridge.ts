@@ -10,8 +10,9 @@ import path from 'path';
 import { GeneratedPuzzle, GeneratedCategory } from './HighQualityPuzzleGenerator.js';
 
 export interface DataSciencePuzzleData {
-  [theme: string]: {
+  [puzzleId: string]: {
     words: string[];
+    themes: string[];
     theme_similarity_scores: number[];
     all_candidates: string[];
     all_similarities: number[];
@@ -76,39 +77,42 @@ class DataScienceBridge {
   }
 
   /**
-   * Convert data science themes to puzzle categories
+   * Convert data science puzzles to puzzle categories
    */
   private async convertToPuzzles(dataScienceData: DataSciencePuzzleData, targetDate: string): Promise<GeneratedPuzzle[]> {
-    const themes = Object.keys(dataScienceData);
+    const puzzleKeys = Object.keys(dataScienceData);
     const puzzles: GeneratedPuzzle[] = [];
     
-    // Group themes into puzzles by size (4x4, 5x5, etc.)
-    const puzzleSizes = [4, 5, 6, 7, 8, 9, 10];
-    let themeIndex = 0;
+    console.log(`📊 Converting ${puzzleKeys.length} pre-built puzzles from data science output`);
     
-    for (let sizeIndex = 0; sizeIndex < puzzleSizes.length && themeIndex < themes.length; sizeIndex++) {
-      const puzzleSize = puzzleSizes[sizeIndex];
-      const puzzleThemes = themes.slice(themeIndex, themeIndex + puzzleSize);
+    // Each key in dataScienceData is already a complete puzzle (puzzle_1, puzzle_2, etc.)
+    for (let i = 0; i < puzzleKeys.length; i++) {
+      const puzzleKey = puzzleKeys[i];
+      const puzzleData = dataScienceData[puzzleKey];
       
-      if (puzzleThemes.length === puzzleSize) {
-        const puzzle = await this.createPuzzleFromThemes(
-          puzzleThemes,
-          dataScienceData,
-          targetDate,
-          sizeIndex + 1,
-          puzzleSize
-        );
-        
-        if (puzzle) {
-          puzzles.push(puzzle);
-          console.log(`✅ Created ${puzzleSize}x${puzzleSize} puzzle with themes: [${puzzleThemes.join(', ')}]`);
-        }
-        
-        themeIndex += puzzleSize;
+      // Extract the themes and words from the puzzle data
+      const themes = puzzleData.themes || [];
+      const words = puzzleData.words || [];
+      
+      if (themes.length !== 4 || words.length !== 16) {
+        console.warn(`⚠️ Skipping ${puzzleKey}: expected 4 themes and 16 words, got ${themes.length} themes and ${words.length} words`);
+        continue;
+      }
+      
+      const puzzle = await this.createPuzzleFromData(
+        themes,
+        words,
+        targetDate,
+        i + 1
+      );
+      
+      if (puzzle) {
+        puzzles.push(puzzle);
+        console.log(`✅ Converted puzzle ${i + 1}: [${themes.join(', ')}]`);
       }
     }
     
-    console.log(`🎲 Generated ${puzzles.length} puzzles from ${themeIndex} themes`);
+    console.log(`🎲 Converted ${puzzles.length} puzzles`);
     return puzzles;
   }
 
@@ -169,6 +173,65 @@ class DataScienceBridge {
       metadata: {
         generatedAt: Date.now(),
         avgSimilarity: avgSimilarity,
+        qualityScore: qualityScore
+      }
+    };
+    
+    return puzzle;
+  }
+
+  /**
+   * Create a puzzle from pre-organized themes and words
+   */
+  private async createPuzzleFromData(
+    themes: string[],
+    words: string[],
+    date: string,
+    puzzleNumber: number
+  ): Promise<GeneratedPuzzle | null> {
+    const categories: GeneratedCategory[] = [];
+    
+    // Split the 16 words into 4 groups of 4 (one per theme)
+    for (let i = 0; i < themes.length; i++) {
+      const startIdx = i * 4;
+      const themeWords = words.slice(startIdx, startIdx + 4);
+      
+      if (themeWords.length !== 4) {
+        console.warn(`⚠️ Theme ${themes[i]} has ${themeWords.length} words instead of 4`);
+        return null;
+      }
+      
+      const category: GeneratedCategory = {
+        id: `gemini_cat_${Date.now()}_${i}`,
+        themeWord: themes[i],
+        words: themeWords,
+        difficulty: i + 1, // Progressive difficulty 1-based
+        similarity: 0.85, // Default high similarity for Gemini-generated themes
+        difficultyMetrics: {
+          totalNeighbors: 4,
+          frequencyThreshold: 0.05,
+          discardedClosest: 0,
+          selectedRange: "1-4 (closest neighbors)"
+        }
+      };
+      
+      categories.push(category);
+    }
+    
+    const difficulty = this.calculateDifficulty(categories);
+    const qualityScore = this.calculateQualityScore(categories);
+    
+    const puzzle: GeneratedPuzzle = {
+      id: `gemini_puzzle_${date}_${puzzleNumber}`,
+      date: date,
+      puzzleNumber: puzzleNumber,
+      difficulty: difficulty,
+      gridSize: 4, // Always 4x4
+      categories: categories,
+      words: this.shuffleArray([...words]), // Shuffle all words for the puzzle
+      metadata: {
+        generatedAt: Date.now(),
+        avgSimilarity: 0.85,
         qualityScore: qualityScore
       }
     };
@@ -244,20 +307,28 @@ class DataScienceBridge {
    * Convert to Firebase-compatible format
    */
   private convertToFirebaseFormat(convertedOutput: ConvertedPuzzleOutput): Record<string, any> {
+    const setName = `datascience_${convertedOutput.date}`;
+    
     const firebaseData: Record<string, any> = {
-      dailyPuzzles: {
-        datascience: {
-          [convertedOutput.date]: {}
-        }
+      puzzleSets: {
+        [setName]: {}
       },
-      puzzleIndex: {
-        datascience: {
-          [convertedOutput.date]: {
-            totalCount: convertedOutput.puzzles.length,
-            lastUpdated: convertedOutput.metadata.generatedAt,
-            status: 'converted_from_datascience',
-            generatorVersion: convertedOutput.metadata.generatorVersion,
-            originalSource: convertedOutput.metadata.originalSource
+      setIndex: {
+        [setName]: {
+          totalCount: convertedOutput.puzzles.length,
+          lastUpdated: convertedOutput.metadata.generatedAt,
+          status: 'active',
+          generatorVersion: convertedOutput.metadata.generatorVersion,
+          algorithm: 'datascience_pipeline',
+          availableSizes: [],
+          sizeCounts: {},
+          puzzleIds: [],
+          metadata: {
+            batchGenerated: true,
+            description: `Data science pipeline puzzles for ${convertedOutput.date}`,
+            generatedAt: new Date(convertedOutput.metadata.generatedAt).toISOString(),
+            originalSource: convertedOutput.metadata.originalSource,
+            convertedFromDataScience: true
           }
         }
       }
@@ -273,13 +344,17 @@ class DataScienceBridge {
       return acc;
     }, {} as Record<number, GeneratedPuzzle[]>);
     
-    // Add puzzles organized by size
+    // Add puzzles organized by size to puzzleSets
+    const puzzleIds: string[] = [];
+    const sizeCounts: Record<string, number> = {};
+    const availableSizes: string[] = [];
+    
     Object.entries(puzzlesBySize).forEach(([size, puzzles]) => {
       const sizeKey = `${size}x${size}`;
-      firebaseData.dailyPuzzles.datascience[convertedOutput.date][sizeKey] = puzzles.reduce((acc, puzzle) => {
+      firebaseData.puzzleSets[setName][sizeKey] = puzzles.reduce((acc, puzzle) => {
         acc[puzzle.id] = {
           id: puzzle.id,
-          date: puzzle.date,
+          setName: setName,
           puzzleNumber: puzzle.puzzleNumber,
           gridSize: puzzle.gridSize,
           difficulty: puzzle.difficulty,
@@ -296,22 +371,26 @@ class DataScienceBridge {
             avgSimilarity: puzzle.metadata.avgSimilarity,
             qualityScore: puzzle.metadata.qualityScore,
             generatedBy: 'datascience_bridge_v2.0',
-            convertedFromDataScience: true
+            algorithm: 'datascience_pipeline',
+            batchGenerated: true
           }
         };
+        puzzleIds.push(puzzle.id);
         return acc;
       }, {} as Record<string, any>);
+      
+      sizeCounts[sizeKey] = puzzles.length;
+      availableSizes.push(sizeKey);
     });
     
-    // Update index with size counts
-    const sizeCounts = Object.entries(puzzlesBySize).reduce((acc, [size, puzzles]) => {
-      acc[`${size}x${size}`] = puzzles.length;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    firebaseData.puzzleIndex.datascience[convertedOutput.date].sizeCounts = sizeCounts;
-    firebaseData.puzzleIndex.datascience[convertedOutput.date].availableSizes = Object.keys(puzzlesBySize).map(size => `${size}x${size}`);
-    firebaseData.puzzleIndex.datascience[convertedOutput.date].puzzleIds = convertedOutput.puzzles.map(p => p.id);
+    // Update setIndex with complete information
+    firebaseData.setIndex[setName].sizeCounts = sizeCounts;
+    firebaseData.setIndex[setName].availableSizes = availableSizes.sort();
+    firebaseData.setIndex[setName].puzzleIds = puzzleIds.sort((a, b) => {
+      const na = parseInt(a.split('_').pop() ?? '0', 10);
+      const nb = parseInt(b.split('_').pop() ?? '0', 10);
+      return na - nb || a.localeCompare(b);
+    });
     
     return firebaseData;
   }
@@ -392,12 +471,14 @@ Examples:
 Input Format:
   The input should be a JSON file from the data science pipeline with structure:
   {
-    "ThemeName": {
-      "words": ["word1", "word2", "word3", "word4"],
-      "theme_similarity_scores": [0.9, 0.8, 0.7, 0.6],
-      "all_candidates": ["word1", "word2", ...],
-      "all_similarities": [0.9, 0.8, ...]
-    }
+    "puzzle_1": {
+      "themes": ["Space", "Sailing", "Clothing", "Music"],
+      "words": ["orbit", "comet", "navy", "mast", "sock", "blazer", "lyre", "sonata", "...8 more"],
+      "theme_similarity_scores": [0.92, 0.88, 0.85, 0.87],
+      "all_candidates": ["..."],
+      "all_similarities": ["..."]
+    },
+    "puzzle_2": { "..." }
   }
 
 Output:
