@@ -46,20 +46,43 @@ jobs:
       with:
         node-version: '18'
 
-    - name: Run Database Migration - Upload Puzzles
+    - name: Set up Python for DVC
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Pull puzzle data from DVC
       run: |
-        echo "Running puzzle sets migration to Firebase..."
-        cd .database-migration-scripts
-        echo "Installing dependencies..."
-        npm ci
-        echo "Checking if firebase-admin is installed..."
-        ls node_modules/ | grep firebase || echo "firebase-admin not found in node_modules"
-        echo "Node.js version:"
-        node --version
-        echo "NPM version:"
-        npm --version
-        echo "Running migration script..."
-        node upload-puzzles.js
+        echo "Installing DVC..."
+        pip install dvc[gcs]
+        echo "Pulling puzzle data from DVC..."
+        cd scripts/datascience/themes_quality
+        dvc pull puzzle_generation_output.dvc
+        echo "DVC puzzle data pulled successfully"
+        echo "Available puzzle files:"
+        ls -la puzzle_generation_output/
+
+    - name: Run Database Migration - Upload Gemini Puzzles
+      run: |
+        echo "Checking for DVC puzzle data..."
+        DVC_PUZZLE_FILE="../scripts/puzzle-generation/gemini-puzzles_firebase.json"
+        
+        if [ -f "$DVC_PUZZLE_FILE" ]; then
+          echo "Found DVC puzzle file: $DVC_PUZZLE_FILE"
+          echo "Running gemini puzzle upload to Firebase..."
+          cd .database-migration-scripts
+          echo "Installing dependencies..."
+          npm ci
+          echo "Running migration script with gemini puzzles from DVC..."
+          echo "Source file: $DVC_PUZZLE_FILE"
+          echo "Target name: gemini_50"
+          node upload-puzzles.js --source-file "$DVC_PUZZLE_FILE" --rename-to gemini_50
+        else
+          echo "⚠️  DVC puzzle file not found: $DVC_PUZZLE_FILE"
+          echo "Available files in puzzle_generation_output:"
+          ls -la "../scripts/datascience/themes_quality/puzzle_generation_output/" || echo "Directory not found"
+          echo "Skipping puzzle upload - no DVC puzzle data available"
+        fi
       env:
         FIREBASE_CREDENTIAL: '${{ secrets.SERVICE_ACCOUNT_KEY }}'
         THEMES_FIREBASE_DATABASE_URL: 'https://aphorist-themes-default-rtdb.firebaseio.com/?ns=aphorist-themes'
