@@ -85,7 +85,7 @@ jobs:
           exit 1
         fi
       env:
-        FIREBASE_CREDENTIAL: '${{ secrets.SERVICE_ACCOUNT_KEY }}'
+        FIREBASE_CREDENTIAL: ${{ secrets.SERVICE_ACCOUNT_KEY }}
         THEMES_FIREBASE_DATABASE_URL: 'https://aphorist-themes-default-rtdb.firebaseio.com/?ns=aphorist-themes'
 
     - name: Build Frontend Docker image
