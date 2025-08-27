@@ -46,47 +46,47 @@ jobs:
       with:
         node-version: '18'
 
-    - name: Download puzzle data directly from GCS
-      run: |
-        set -euo pipefail
-        echo "Creating puzzle data directory..."
-        mkdir -p puzzle-data
-        
-        echo "Downloading puzzle files directly from GCS..."
-        
-        # Download from predictable location in GCS bucket
-        gsutil cp gs://aphorist-themes-quality-dvc/puzzle-data/gemini-puzzles_firebase.json puzzle-data/gemini-puzzles_firebase.json
-        gsutil cp gs://aphorist-themes-quality-dvc/puzzle-data/gemini-puzzles.json puzzle-data/gemini-puzzles.json
-        
-        echo "Puzzle data downloaded successfully"
-        echo "Available puzzle files:"
-        ls -la puzzle-data/
+    # - name: Download puzzle data directly from GCS
+    #   run: |
+    #     set -euo pipefail
+    #     echo "Creating puzzle data directory..."
+    #     mkdir -p puzzle-data
+    #     
+    #     echo "Downloading puzzle files directly from GCS..."
+    #     
+    #     # Download from predictable location in GCS bucket
+    #     gsutil cp gs://aphorist-themes-quality-dvc/puzzle-data/gemini-puzzles_firebase.json puzzle-data/gemini-puzzles_firebase.json
+    #     gsutil cp gs://aphorist-themes-quality-dvc/puzzle-data/gemini-puzzles.json puzzle-data/gemini-puzzles.json
+    #     
+    #     echo "Puzzle data downloaded successfully"
+    #     echo "Available puzzle files:"
+    #     ls -la puzzle-data/
 
-    - name: Run Database Migration - Upload Gemini Puzzles
-      run: |
-        echo "Using downloaded puzzle file from GCS..."
-        
-        PUZZLE_FILE="puzzle-data/gemini-puzzles_firebase.json"
-        
-        if [ -f "$PUZZLE_FILE" ]; then
-          echo "✅ Found puzzle file: $PUZZLE_FILE"
-          echo "Running gemini puzzle upload to Firebase..."
-          cd .database-migration-scripts
-          echo "Installing dependencies..."
-          npm ci
-          echo "Running migration script with puzzle file: $PUZZLE_FILE"
-          echo "Target name: gemini_50"
-          node upload-puzzles.js --source-file "../$PUZZLE_FILE" --rename-to gemini_50
-        else
-          echo "❌ ERROR: Puzzle file not found at $PUZZLE_FILE!"
-          echo "Available files in puzzle-data/:"
-          ls -la puzzle-data/ 2>/dev/null || echo "   puzzle-data/ directory not found"
-          echo "Deployment failed - puzzle data is required for production deployment"
-          exit 1
-        fi
-      env:
-        FIREBASE_CREDENTIAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_APHORIST }}
-        THEMES_FIREBASE_DATABASE_URL: 'https://aphorist-themes-default-rtdb.firebaseio.com/?ns=aphorist-themes'
+    # - name: Run Database Migration - Upload Gemini Puzzles
+    #   run: |
+    #     echo "Using downloaded puzzle file from GCS..."
+    #     
+    #     PUZZLE_FILE="puzzle-data/gemini-puzzles_firebase.json"
+    #     
+    #     if [ -f "$PUZZLE_FILE" ]; then
+    #       echo "✅ Found puzzle file: $PUZZLE_FILE"
+    #       echo "Running gemini puzzle upload to Firebase..."
+    #       cd .database-migration-scripts
+    #       echo "Installing dependencies..."
+    #       npm ci
+    #       echo "Running migration script with puzzle file: $PUZZLE_FILE"
+    #       echo "Target name: gemini_50"
+    #       node upload-puzzles.js --source-file "../$PUZZLE_FILE" --rename-to gemini_50
+    #     else
+    #       echo "❌ ERROR: Puzzle file not found at $PUZZLE_FILE!"
+    #       echo "Available files in puzzle-data/:"
+    #       ls -la puzzle-data/ 2>/dev/null || echo "   puzzle-data/ directory not found"
+    #       echo "Deployment failed - puzzle data is required for production deployment"
+    #       exit 1
+    #     fi
+    #   env:
+    #     FIREBASE_CREDENTIAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_APHORIST }}
+    #     THEMES_FIREBASE_DATABASE_URL: 'https://aphorist-themes-default-rtdb.firebaseio.com/?ns=aphorist-themes'
 
     - name: Build Frontend Docker image
       run: |
