@@ -23,7 +23,8 @@ Usage:
 from .ThemeProcessingTask import ThemeProcessingTask, ThemeProcessingResult, TaskGenerator
 from .GeminiTaskProcessor import GeminiTaskProcessor, create_task_processor
 from .ThemeWorker import ThemeWorker, start_worker
-from .RateLimiter import SharedRateLimiter, LocalRateLimiter, create_rate_limiter
+from .RateLimiter import LocalRateLimiter, create_rate_limiter
+from .SharedRateLimiter import SharedRateLimiter
 from .EmbeddingCacheManager import EmbeddingCacheManager, EmbeddingCacheEntry
 from .ResultAggregator import ResultAggregator, SingleProcessResultAggregator
 
