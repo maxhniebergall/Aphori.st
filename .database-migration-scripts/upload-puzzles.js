@@ -277,8 +277,32 @@ function loadAndTransformPuzzleData(sourceFile, renameTo) {
   }
 }
 
+// Extract algorithm from puzzle set by examining the first puzzle's metadata
+function extractAlgorithmFromPuzzleSet(puzzleSet) {
+  // Look at all grid sizes to find the first puzzle
+  for (const [gridSize, puzzles] of Object.entries(puzzleSet)) {
+    const puzzleIds = Object.keys(puzzles);
+    if (puzzleIds.length > 0) {
+      const firstPuzzleId = puzzleIds[0];
+      const firstPuzzle = puzzles[firstPuzzleId];
+      
+      // Check if the puzzle has metadata with algorithm field
+      if (firstPuzzle && firstPuzzle.metadata && firstPuzzle.metadata.algorithm) {
+        return firstPuzzle.metadata.algorithm;
+      }
+      
+      // If no metadata.algorithm, try to derive from puzzle structure or ID
+      // This could be extended with more sophisticated logic if needed
+      break;
+    }
+  }
+  
+  // Return null if algorithm cannot be determined, caller will use default
+  return null;
+}
+
 // Create setIndex entry for the new puzzle set
-function createSetIndexEntry(puzzleSet, setName, originalSetName) {
+function createSetIndexEntry(puzzleSet, setName, originalSetName, algorithm = "wiki_puzzle_gemini_pipeline") {
   log(`Creating setIndex entry for '${setName}'...`);
   
   const puzzleIds = [];
@@ -301,7 +325,7 @@ function createSetIndexEntry(puzzleSet, setName, originalSetName) {
   });
   
   const setIndexEntry = {
-    algorithm: "wiki_puzzle_gemini_pipeline",
+    algorithm: algorithm,
     availableSizes: Object.keys(sizeCounts).sort(),
     generatorVersion: "3.0.0-custom",
     lastUpdated: Date.now(),
@@ -411,11 +435,15 @@ async function main() {
     // Load and transform puzzle data
     const puzzleData = loadAndTransformPuzzleData(sourceFile, renameTo);
     
+    // Extract algorithm from puzzle set or use default
+    const algorithm = extractAlgorithmFromPuzzleSet(puzzleData.puzzleSets[renameTo]) || "wiki_puzzle_gemini_pipeline";
+    
     // Create setIndex entry
     const setIndexEntry = createSetIndexEntry(
       puzzleData.puzzleSets[renameTo], 
       renameTo, 
-      puzzleData.originalSetName
+      puzzleData.originalSetName,
+      algorithm
     );
     
     // Upload puzzle set and setIndex atomically
