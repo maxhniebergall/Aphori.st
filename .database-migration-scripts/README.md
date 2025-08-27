@@ -12,10 +12,11 @@ The main migration script that safely uploads new puzzle sets from the puzzle ge
 
 - **Safe merging**: Never overwrites existing puzzles, only adds new ones
 - **Atomic operations**: Uses Firebase transactions to ensure data consistency
-- **Backup creation**: Automatically creates timestamped backups before any changes
 - **Environment flexibility**: Works with both Firebase emulator (local) and production
 - **Verification**: Confirms successful upload after migration
 - **Detailed logging**: Comprehensive logging for debugging and audit trails
+
+**Note**: This script relies on Firebase's automated backup system and manual backups performed before migration. Local backup creation has been removed to simplify the migration process.
 
 ## Usage
 
@@ -130,7 +131,7 @@ The original format for backward compatibility:
 
 ### Safety Measures
 
-1. **Backup Creation**: Before any changes, the current state is backed up to `./backups/`
+1. **Manual Backups**: Perform manual backups before running the script using Firebase console or automated backup system
 2. **Transaction Safety**: All writes use Firebase transactions for atomicity
 3. **Verification**: After upload, the script verifies all data was written correctly
 4. **Error Handling**: Comprehensive error handling with detailed logging
@@ -138,8 +139,8 @@ The original format for backward compatibility:
 ### Example Migration Flow
 
 ```
-1. Load current data from Firebase → Create backup
-2. Load new puzzle data from JSON file
+1. Load current data from Firebase
+2. Load new puzzle data from JSON file (DVC or legacy format)
 3. Merge new data with existing data:
    - Set "wiki_batch_2025-08-26" exists → merge puzzles
    - Set "new_set_2025-08-27" doesn't exist → add entirely
@@ -148,29 +149,26 @@ The original format for backward compatibility:
 6. Log summary of changes
 ```
 
-## Backup System
+## Backup Strategy
 
-Backups are automatically created in the `./backups/` directory with timestamps:
+This migration script does not create local backups. Instead, it relies on:
 
-```
-./backups/
-├── puzzleSets-backup-2025-08-26T10-30-45-123Z.json
-├── puzzleSets-backup-2025-08-26T11-15-20-456Z.json
-└── ...
-```
+1. **Firebase Automated Backups**: Ensure your Firebase project has automated daily backups enabled (requires Blaze plan)
+2. **Manual Pre-Migration Backups**: Perform a manual backup before running the migration script:
+   - Use Firebase Console → Database → Export JSON
+   - Or use Firebase CLI: `firebase database:get / > backup.json`
+3. **Version Control**: Keep puzzle generation data in version control with DVC for reproducibility
 
 ### Restoring from Backup
 
-To restore from a backup (manual process):
+To restore from a manual backup:
 
 ```bash
-# Load backup data and upload to Firebase
-node -e "
-const admin = require('firebase-admin');
-const fs = require('fs');
-const backup = JSON.parse(fs.readFileSync('./backups/puzzleSets-backup-TIMESTAMP.json'));
-// Initialize Firebase and upload backup data
-"
+# Using Firebase CLI
+firebase database:set / backup.json
+
+# Or using REST API
+curl -X PUT -d @backup.json 'https://PROJECT-ID.firebaseio.com/.json?auth=TOKEN'
 ```
 
 ## CI/CD Integration
