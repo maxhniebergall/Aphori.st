@@ -94,13 +94,14 @@ class SharedRateLimiter:
     def _wait_for_rpm_limit(self) -> float:
         """Wait if we're at the RPM limit."""
         wait_time = 0.0
-        current_time = time.time()
         
+        # Compute wait time while holding lock
         with self.request_lock:
+            current_time = time.time()
             self._reset_minute_counter(current_time)
             
             if self.shared_state['requests_this_minute'] >= self.requests_per_minute:
-                # Wait until the next minute
+                # Calculate wait time until next minute
                 wait_time = 60 - (current_time - self.shared_state['minute_start_time'])
                 if wait_time > 0:
                     logger.debug(f"RPM limit reached: waiting {wait_time:.2f}s")
@@ -110,11 +111,18 @@ class SharedRateLimiter:
                         self.stats['requests_blocked_rpm'] += 1
                         self.stats['total_wait_time'] += wait_time
                         self.stats['longest_wait'] = max(self.stats['longest_wait'], wait_time)
-                    
-                    time.sleep(wait_time)
-                    # Reset counter after waiting
-                    self.shared_state['requests_this_minute'] = 0
-                    self.shared_state['minute_start_time'] = time.time()
+        
+        # Sleep outside the lock to avoid global stall
+        if wait_time > 0:
+            time.sleep(wait_time)
+            
+            # Reacquire lock to reset counter and recheck state
+            with self.request_lock:
+                current_time = time.time()
+                self._reset_minute_counter(current_time)
+                # Reset counter after waiting - we've waited a full minute
+                self.shared_state['requests_this_minute'] = 0
+                self.shared_state['minute_start_time'] = current_time
         
         return wait_time
     
