@@ -54,9 +54,25 @@ class SharedRateLimiter:
             'last_second': int(time.time())
         })
         
+        # Statistics tracking
+        self.stats = self.manager.dict({
+            'requests_made': 0,
+            'requests_blocked_rpm': 0,
+            'requests_blocked_interval': 0,
+            'requests_blocked_concurrent': 0,
+            'total_wait_time': 0.0,
+            'longest_wait': 0.0,
+            'start_time': time.time()
+        })
+        
         # Shared locks for coordination
         self.request_lock = self.manager.Lock()
         self.active_lock = self.manager.Lock()
+        # Protect composite RMW operations on stats
+        self.stats_lock = self.manager.Lock()
+        
+        # Shared counters using Value for atomic operations
+        self.total_requests = mp.Value('i', 0)
         
         logger.info(f"SharedRateLimiter initialized: {requests_per_minute} RPM, "
                    f"{min_request_interval}s interval, {max_concurrent_requests} concurrent")
@@ -88,6 +104,13 @@ class SharedRateLimiter:
                 wait_time = 60 - (current_time - self.shared_state['minute_start_time'])
                 if wait_time > 0:
                     logger.debug(f"RPM limit reached: waiting {wait_time:.2f}s")
+                    
+                    # Update stats (atomic section)
+                    with self.stats_lock:
+                        self.stats['requests_blocked_rpm'] += 1
+                        self.stats['total_wait_time'] += wait_time
+                        self.stats['longest_wait'] = max(self.stats['longest_wait'], wait_time)
+                    
                     time.sleep(wait_time)
                     # Reset counter after waiting
                     self.shared_state['requests_this_minute'] = 0
@@ -106,6 +129,13 @@ class SharedRateLimiter:
             if time_since_last < self.min_request_interval:
                 wait_time = self.min_request_interval - time_since_last
                 logger.debug(f"Interval limit: waiting {wait_time:.3f}s")
+                
+                # Update stats (atomic section)
+                with self.stats_lock:
+                    self.stats['requests_blocked_interval'] += 1
+                    self.stats['total_wait_time'] += wait_time
+                    self.stats['longest_wait'] = max(self.stats['longest_wait'], wait_time)
+                
                 time.sleep(wait_time)
         
         return wait_time
@@ -132,6 +162,12 @@ class SharedRateLimiter:
                     self.shared_state['active_requests'] += 1
                 break
         
+        if wait_time > 0:
+            with self.stats_lock:
+                self.stats['requests_blocked_concurrent'] += 1
+                self.stats['total_wait_time'] += wait_time
+                self.stats['longest_wait'] = max(self.stats['longest_wait'], wait_time)
+        
         return wait_time
     
     @contextmanager
@@ -153,6 +189,11 @@ class SharedRateLimiter:
             self._update_rps_counter(current_time)
             self.shared_state['requests_per_second'] += 1
         
+        # Update stats
+        with self.stats_lock:
+            self.stats['requests_made'] += 1
+        self.total_requests.value += 1
+        
         try:
             yield
         finally:
@@ -162,16 +203,23 @@ class SharedRateLimiter:
     
     def get_stats(self) -> Dict[str, Any]:
         """Get rate limiter statistics."""
+        current_time = time.time()
+        elapsed_time = current_time - self.stats['start_time']
+        
         # Create a copy to avoid issues with shared dict
-        return {
+        stats_copy = dict(self.stats)
+        stats_copy.update({
             'active_requests': self.shared_state['active_requests'],
             'total_requests': self.shared_state['total_requests'],
             'requests_this_minute': self.shared_state['requests_this_minute'],
             'requests_per_second': self.shared_state['requests_per_second'],
             'requests_per_minute_limit': self.requests_per_minute,
             'max_concurrent_limit': self.max_concurrent_requests,
-            'min_request_interval': self.min_request_interval
-        }
+            'min_request_interval': self.min_request_interval,
+            'elapsed_time': elapsed_time,
+            'average_wait_time': stats_copy['total_wait_time'] / max(stats_copy['requests_made'], 1)
+        })
+        return stats_copy
     
     def get_shared_data(self) -> Dict[str, Any]:
         """
@@ -182,8 +230,10 @@ class SharedRateLimiter:
         """
         return {
             'shared_state': self.shared_state,
+            'stats': self.stats,
             'request_lock': self.request_lock,
             'active_lock': self.active_lock,
+            'stats_lock': self.stats_lock,
             'config': {
                 'requests_per_minute': self.requests_per_minute,
                 'min_request_interval': self.min_request_interval,
@@ -202,6 +252,17 @@ class SharedRateLimiter:
                 'requests_per_second': 0.0,
                 'last_second': int(current_time)
             })
+        with self.stats_lock:
+            self.stats.update({
+                'requests_made': 0,
+                'requests_blocked_rpm': 0,
+                'requests_blocked_interval': 0,
+                'requests_blocked_concurrent': 0,
+                'total_wait_time': 0.0,
+                'longest_wait': 0.0,
+                'start_time': current_time
+            })
+        self.total_requests.value = 0
         logger.info("Rate limiter statistics reset")
 
 
@@ -221,8 +282,10 @@ class WorkerRateLimiter:
             shared_data: Shared data from SharedRateLimiter.get_shared_data()
         """
         self.shared_state = shared_data['shared_state']
+        self.stats = shared_data['stats']
         self.request_lock = shared_data['request_lock']
         self.active_lock = shared_data['active_lock']
+        self.stats_lock = shared_data['stats_lock']
         self.config = shared_data['config']
         
         self.requests_per_minute = self.config['requests_per_minute']
@@ -248,6 +311,13 @@ class WorkerRateLimiter:
                 wait_time = 60 - (current_time - self.shared_state['minute_start_time'])
                 if wait_time > 0:
                     logger.debug(f"Worker RPM limit: waiting {wait_time:.2f}s")
+                    
+                    # Update stats (atomic section)
+                    with self.stats_lock:
+                        self.stats['requests_blocked_rpm'] += 1
+                        self.stats['total_wait_time'] += wait_time
+                        self.stats['longest_wait'] = max(self.stats['longest_wait'], wait_time)
+                    
                     time.sleep(wait_time)
                     # Reset counter after waiting
                     self.shared_state['requests_this_minute'] = 0
@@ -266,6 +336,13 @@ class WorkerRateLimiter:
             if time_since_last < self.min_request_interval:
                 wait_time = self.min_request_interval - time_since_last
                 logger.debug(f"Worker interval limit: waiting {wait_time:.3f}s")
+                
+                # Update stats (atomic section)
+                with self.stats_lock:
+                    self.stats['requests_blocked_interval'] += 1
+                    self.stats['total_wait_time'] += wait_time
+                    self.stats['longest_wait'] = max(self.stats['longest_wait'], wait_time)
+                
                 time.sleep(wait_time)
         
         return wait_time
@@ -292,6 +369,12 @@ class WorkerRateLimiter:
                     self.shared_state['active_requests'] += 1
                 break
         
+        if wait_time > 0:
+            with self.stats_lock:
+                self.stats['requests_blocked_concurrent'] += 1
+                self.stats['total_wait_time'] += wait_time
+                self.stats['longest_wait'] = max(self.stats['longest_wait'], wait_time)
+        
         return wait_time
     
     @contextmanager
@@ -308,6 +391,10 @@ class WorkerRateLimiter:
             self.shared_state['last_request_time'] = current_time
             self.shared_state['requests_this_minute'] += 1
             self.shared_state['total_requests'] += 1
+        
+        # Update stats
+        with self.stats_lock:
+            self.stats['requests_made'] += 1
         
         try:
             yield
