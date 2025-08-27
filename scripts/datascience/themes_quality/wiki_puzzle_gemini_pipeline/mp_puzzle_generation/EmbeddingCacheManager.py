@@ -123,7 +123,7 @@ class EmbeddingCacheManager:
         Context manager for file locking.
         
         Args:
-            mode: File open mode ('r' for read, 'w' for write)
+            mode: File open mode ('r' for read, 'w' for write, None for lock-only)
         """
         lock_acquired = False
         lock_fd = None
@@ -150,11 +150,12 @@ class EmbeddingCacheManager:
                 self.stats['lock_timeouts'] += 1
                 raise TimeoutError(f"Could not acquire file lock within {self.lock_timeout}s")
             
-            # Open the actual cache file
-            if mode == 'w' or not self.cache_file.exists():
-                file_fd = open(self.cache_file, mode, newline='', encoding='utf-8')
-            else:
-                file_fd = open(self.cache_file, mode, encoding='utf-8')
+            # Open the actual cache file only if mode is specified
+            if mode is not None:
+                if mode == 'w' or not self.cache_file.exists():
+                    file_fd = open(self.cache_file, mode, newline='', encoding='utf-8')
+                else:
+                    file_fd = open(self.cache_file, mode, encoding='utf-8')
             
             yield file_fd
             
@@ -233,15 +234,16 @@ class EmbeddingCacheManager:
             logger.debug("Empty cache, skipping save")
             return
         
+        temp_file = None
         try:
             # Create backup if requested
             if backup and self.cache_file.exists():
                 self._create_backup()
             
-            # Write to temporary file first, then move (atomic operation) - ALL within lock
+            # Create temporary file adjacent to cache file
             temp_file = self.cache_file.with_suffix('.tmp')
             
-            with self._file_lock('w'):
+            with self._file_lock(None):  # Lock-only mode, don't open target file
                 # Write to temporary file
                 with open(temp_file, 'w', newline='', encoding='utf-8') as f:
                     # Determine embedding dimension from first entry
@@ -270,9 +272,21 @@ class EmbeddingCacheManager:
                             row[f'embedding_dim_{i+1}'] = value
                         
                         writer.writerow(row)
+                    
+                    # Ensure data is written to disk
+                    f.flush()
+                    os.fsync(f.fileno())
                 
-                # Move temp file to actual cache file (atomic operation) - NOW WITHIN LOCK!
+                # Fsync the directory to ensure the temp file is visible
+                dir_fd = os.open(self.cache_file.parent, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+                
+                # Atomic move while holding the lock
                 shutil.move(str(temp_file), str(self.cache_file))
+                temp_file = None  # Successfully moved, don't clean up
             
             self._dirty = False
             self._last_sync = time.time()
@@ -283,10 +297,12 @@ class EmbeddingCacheManager:
         except Exception as e:
             logger.error(f"Error saving cache to disk: {e}")
             self.stats['errors'] += 1
-            # Clean up temp file if it exists
-            temp_file = self.cache_file.with_suffix('.tmp')
-            if temp_file.exists():
-                temp_file.unlink()
+            # Clean up temp file if it exists and wasn't moved
+            if temp_file and temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except Exception:
+                    pass  # Best effort cleanup
     
     def _create_backup(self):
         """Create a backup of the current cache file."""
