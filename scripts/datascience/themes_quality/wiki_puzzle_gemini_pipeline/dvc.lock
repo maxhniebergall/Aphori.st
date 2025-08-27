@@ -160,3 +160,39 @@ stages:
       hash: md5
       md5: 37ebbc5c238842752d9521b2e097822d
       size: 620
+  convert_to_firebase:
+    cmd: node ../../../puzzle-generation/dist/use-gemini-output.js
+    deps:
+    - path: ../../../puzzle-generation/dist/data-science-bridge.js
+      hash: md5
+      md5: b7673a42d89c2ec9d19f49da9d6cc678
+      size: 15946
+    - path: ../../../puzzle-generation/dist/use-gemini-output.js
+      hash: md5
+      md5: 5571a47d65f7a83cce5f1a5ceb75cca1
+      size: 3178
+    - path: data/outputs/final_puzzles.json
+      hash: md5
+      md5: 91858caa793e6cdf52c8a6e2089e218e
+      size: 108887
+    outs:
+    - path: data/outputs/gemini-puzzles.json
+      hash: md5
+      md5: bb1b8bd9e292571e98704e9ba94b4a94
+      size: 214071
+    - path: data/outputs/gemini-puzzles_firebase.json
+      hash: md5
+      md5: b3f1e65f1094ee34ff30ceb1d5aab69d
+      size: 190842
+  copy_to_puzzle_generation:
+    cmd: cp data/outputs/gemini-puzzles.json ../../../puzzle-generation/ && cp 
+      data/outputs/gemini-puzzles_firebase.json ../../../puzzle-generation/
+    deps:
+    - path: data/outputs/gemini-puzzles.json
+      hash: md5
+      md5: bb1b8bd9e292571e98704e9ba94b4a94
+      size: 214071
+    - path: data/outputs/gemini-puzzles_firebase.json
+      hash: md5
+      md5: b3f1e65f1094ee34ff30ceb1d5aab69d
+      size: 190842
