@@ -46,79 +46,41 @@ jobs:
       with:
         node-version: '18'
 
-    - name: Set up Python for DVC
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Pull puzzle data from DVC
+    - name: Download puzzle data directly from GCS
       run: |
         set -euo pipefail
-        echo "Installing DVC..."
-        python -m pip install 'dvc[gs]'
-        echo "Pulling puzzle data from DVC..."
-        cd scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline
-        dvc pull data/outputs/gemini-puzzles_firebase.json data/outputs/gemini-puzzles.json
-        echo "DVC puzzle data pulled successfully"
+        echo "Creating puzzle data directory..."
+        mkdir -p puzzle-data
+        
+        echo "Downloading puzzle files directly from GCS..."
+        
+        # Download from predictable location in GCS bucket
+        gsutil cp gs://aphorist-themes-quality-dvc/puzzle-data/gemini-puzzles_firebase.json puzzle-data/gemini-puzzles_firebase.json
+        gsutil cp gs://aphorist-themes-quality-dvc/puzzle-data/gemini-puzzles.json puzzle-data/gemini-puzzles.json
+        
+        echo "Puzzle data downloaded successfully"
         echo "Available puzzle files:"
-        ls -la data/outputs/
+        ls -la puzzle-data/
 
     - name: Run Database Migration - Upload Gemini Puzzles
       run: |
-        echo "Discovering puzzle files..."
+        echo "Using downloaded puzzle file from GCS..."
         
-        # Search for puzzle files in expected locations
-        DVC_PUZZLE_FILE=""
+        PUZZLE_FILE="puzzle-data/gemini-puzzles_firebase.json"
         
-        # Priority order for file discovery
-        CANDIDATE_FILES=(
-          "scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline/data/outputs/gemini-puzzles_firebase.json"
-          "scripts/puzzle-generation/gemini-puzzles_firebase.json"
-        )
-        
-        # Also search for any firebase puzzle files in likely locations
-        echo "Searching for puzzle files..."
-        for pattern in "gemini-puzzles_firebase.json" "*puzzles_firebase.json"; do
-          if [ -z "$DVC_PUZZLE_FILE" ]; then
-            found_file=$(find scripts -name "$pattern" -type f 2>/dev/null | head -1)
-            if [ -n "$found_file" ]; then
-              DVC_PUZZLE_FILE="$found_file"
-              break
-            fi
-          fi
-        done
-        
-        # Check candidate files in priority order if not found by search
-        if [ -z "$DVC_PUZZLE_FILE" ]; then
-          for candidate in "${CANDIDATE_FILES[@]}"; do
-            if [ -f "$candidate" ]; then
-              DVC_PUZZLE_FILE="$candidate"
-              break
-            fi
-          done
-        fi
-        
-        if [ -n "$DVC_PUZZLE_FILE" ]; then
-          echo "✅ Found puzzle file: $DVC_PUZZLE_FILE"
+        if [ -f "$PUZZLE_FILE" ]; then
+          echo "✅ Found puzzle file: $PUZZLE_FILE"
           echo "Running gemini puzzle upload to Firebase..."
           cd .database-migration-scripts
           echo "Installing dependencies..."
           npm ci
-          echo "Running migration script with puzzle file: $DVC_PUZZLE_FILE"
+          echo "Running migration script with puzzle file: $PUZZLE_FILE"
           echo "Target name: gemini_50"
-          node upload-puzzles.js --source-file "../$DVC_PUZZLE_FILE" --rename-to gemini_50
+          node upload-puzzles.js --source-file "../$PUZZLE_FILE" --rename-to gemini_50
         else
-          echo "❌ ERROR: No puzzle file found!"
-          echo "Searched for puzzle files in the following locations:"
-          echo "Candidate directories and their contents:"
-          echo "1. scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline/data/outputs/:"
-          ls -la scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline/data/outputs/ 2>/dev/null || echo "   Directory not found"
-          echo "2. scripts/puzzle-generation/:"
-          ls -la scripts/puzzle-generation/ 2>/dev/null || echo "   Directory not found"
-          echo "3. scripts/datascience/themes_quality/puzzle_generation_output/:"
-          ls -la scripts/datascience/themes_quality/puzzle_generation_output/ 2>/dev/null || echo "   Directory not found"
-          echo "All JSON files in scripts/ tree:"
-          find scripts -name "*.json" -type f 2>/dev/null | grep -E "(puzzle|gemini)" || echo "   No puzzle-related JSON files found"
+          echo "❌ ERROR: Puzzle file not found at $PUZZLE_FILE!"
+          echo "Available files in puzzle-data/:"
+          ls -la puzzle-data/ 2>/dev/null || echo "   puzzle-data/ directory not found"
           echo "Deployment failed - puzzle data is required for production deployment"
           exit 1
         fi
