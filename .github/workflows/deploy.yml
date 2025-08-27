@@ -53,14 +53,15 @@ jobs:
 
     - name: Pull puzzle data from DVC
       run: |
+        set -euo pipefail
         echo "Installing DVC..."
-        pip install dvc[gcs]
+        python -m pip install 'dvc[gcs]'
         echo "Pulling puzzle data from DVC..."
-        cd scripts/datascience/themes_quality
-        dvc pull puzzle_generation_output.dvc
+        cd scripts/datascience/themes_quality/wiki_puzzle_gemini_pipeline
+        dvc pull data/outputs/gemini-puzzles_firebase.json data/outputs/gemini-puzzles.json
         echo "DVC puzzle data pulled successfully"
         echo "Available puzzle files:"
-        ls -la puzzle_generation_output/
+        ls -la data/outputs/
 
     - name: Run Database Migration - Upload Gemini Puzzles
       run: |
