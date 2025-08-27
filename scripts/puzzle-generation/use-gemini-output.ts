@@ -12,9 +12,22 @@ import { DataScienceBridge } from './data-science-bridge.js';
 async function main() {
   console.log('🎯 Recommended Approach: Using Proven Gemini Output\n');
   
-  const geminiOutputPath = '../datascience/themes_quality/wiki_puzzle_gemini_pipeline/data/outputs/final_puzzles.json';
-  const outputPath = './gemini-puzzles.json';
+  // Handle different execution contexts (direct run vs DVC pipeline)
+  const isRunFromDVC = process.cwd().includes('wiki_puzzle_gemini_pipeline');
+  
+  const geminiOutputPath = isRunFromDVC 
+    ? './data/outputs/final_puzzles.json'
+    : '../datascience/themes_quality/wiki_puzzle_gemini_pipeline/data/outputs/final_puzzles.json';
+    
+  const outputPath = isRunFromDVC
+    ? './data/outputs/gemini-puzzles.json' 
+    : './gemini-puzzles.json';
+    
   const targetDate = new Date().toISOString().split('T')[0];
+  
+  console.log(`📁 Working directory: ${process.cwd()}`);
+  console.log(`📁 Input path: ${geminiOutputPath}`);
+  console.log(`📁 Output path: ${outputPath}`);
   
   console.log('📊 Quality Comparison:');
   console.log('   ✅ Data Science Pipeline: Coherent themes (Space, Sailing, Clothing)');
