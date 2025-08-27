@@ -8,7 +8,6 @@
 }
 
 .search-bar-input {
-  width: 300px;
   border: none;
   outline: none;
   padding: 8px;
@@ -25,6 +24,12 @@
 @media (max-width: 480px) {
   .search-bar-input {
     width: 120px;
+  }
+}
+
+@media (max-width: 400px) {
+  .search-bar-input {
+    width: 20px;
   }
 }
 
