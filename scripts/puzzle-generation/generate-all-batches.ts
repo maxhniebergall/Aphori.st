@@ -307,9 +307,14 @@ class AllBatchesGenerator {
     console.log(`\n📊 Step 3: Creating comparison analysis...`);
     const comparison = await this.createComparisonAnalysis(wikiResults, geminiResults);
     
-    // Generate unified Firebase format
-    console.log(`\n🔄 Step 4: Creating unified Firebase format...`);
-    await this.createUnifiedFirebaseFormat(wikiOutputDir, geminiOutputDir);
+    // Generate individual Firebase formats
+    console.log(`\n🔄 Step 4: Creating individual Firebase formats...`);
+    await this.createIndividualFirebaseFormats(
+      wikiOutputDir, 
+      geminiOutputDir, 
+      dvcStatus.wikiNeedsUpdate && wikiResults.success,
+      dvcStatus.geminiNeedsUpdate && geminiResults.success
+    );
     
     // Final DVC commit at the themes_quality level to catch any remaining changes
     if (dvcStatus.wikiNeedsUpdate || dvcStatus.geminiNeedsUpdate) {
@@ -483,33 +488,61 @@ class AllBatchesGenerator {
   }
 
   /**
-   * Create unified Firebase format from both batches
+   * Create individual Firebase format files for each algorithm
    */
-  private async createUnifiedFirebaseFormat(
+  private async createIndividualFirebaseFormats(
     wikiOutputDir: string,
-    geminiOutputDir: string
+    geminiOutputDir: string,
+    wikiGenerated: boolean,
+    geminiGenerated: boolean
   ): Promise<void> {
     const converter = new FirebaseFormatConverter();
     const dateStamp = new Date().toISOString().split('T')[0];
-    const wikiSetName = `wiki_batch_${dateStamp}`;
-    const geminiSetName = `gemini_batch_${dateStamp}`;
-    const unifiedOutputPath = path.join(this.baseOutputDir, 'unified-firebase-puzzles.json');
     
-    try {
-      await converter.convertBothBatches(
-        wikiOutputDir,
-        geminiOutputDir,
-        unifiedOutputPath,
-        wikiSetName,
-        geminiSetName
-      );
-      
-      console.log(`🎯 Unified Firebase format created: ${unifiedOutputPath}`);
-      console.log(`🏷️  Set names: ${wikiSetName}, ${geminiSetName}`);
-      
-    } catch (error) {
-      console.error(`⚠️  Firebase format creation failed: ${error}`);
-      console.log(`Individual Firebase formats are still available in each batch directory`);
+    // Create wiki Firebase format if wiki puzzles were generated
+    if (wikiGenerated) {
+      try {
+        const wikiSetName = `wiki_batch_${dateStamp}`;
+        const wikiOutputPath = path.join(this.baseOutputDir, 'wiki_firebase.json');
+        
+        await converter.convertSingleAlgorithmBatch(
+          wikiOutputDir,
+          'wiki_puzzle_pipeline',
+          wikiOutputPath,
+          wikiSetName
+        );
+        
+        console.log(`🎯 Wiki Firebase format created: ${wikiOutputPath}`);
+        console.log(`🏷️  Set name: ${wikiSetName}`);
+        
+      } catch (error) {
+        console.error(`⚠️  Wiki Firebase format creation failed: ${error}`);
+      }
+    }
+    
+    // Create gemini Firebase format if gemini puzzles were generated
+    if (geminiGenerated) {
+      try {
+        const geminiSetName = `gemini_batch_${dateStamp}`;
+        const geminiOutputPath = path.join(this.baseOutputDir, 'gemini_firebase.json');
+        
+        await converter.convertSingleAlgorithmBatch(
+          geminiOutputDir,
+          'wiki_puzzle_gemini_pipeline',
+          geminiOutputPath,
+          geminiSetName
+        );
+        
+        console.log(`🎯 Gemini Firebase format created: ${geminiOutputPath}`);
+        console.log(`🏷️  Set name: ${geminiSetName}`);
+        
+      } catch (error) {
+        console.error(`⚠️  Gemini Firebase format creation failed: ${error}`);
+      }
+    }
+    
+    if (!wikiGenerated && !geminiGenerated) {
+      console.log(`⏭️  No Firebase formats created (no puzzles were generated)`);
     }
   }
 }
