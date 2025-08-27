@@ -78,6 +78,9 @@ class SharedEmbeddingCache:
             'cache_size': 0
         })
         
+        # Protect composite RMW operations on stats
+        self.stats_lock = self.manager.Lock()
+        
         # Load existing cache from CSV
         self._load_from_csv()
         
@@ -131,7 +134,8 @@ class SharedEmbeddingCache:
                         logger.warning(f"Error loading cache entry for word '{row.get('word', 'unknown')}': {e}")
                         continue
             
-            self.stats['cache_size'] = loaded_count
+            with self.stats_lock:
+                self.stats['cache_size'] = loaded_count
             logger.info(f"Loaded {loaded_count} embeddings from cache file")
             
         except Exception as e:
@@ -184,9 +188,10 @@ class SharedEmbeddingCache:
             # Move temp file to actual cache file (atomic operation)
             temp_file.replace(self.cache_file)
             
-            # Update statistics
-            self.stats['backups'] = self.stats.get('backups', 0) + 1
-            self.stats['last_backup'] = time.time()
+            # Update statistics (atomic section)
+            with self.stats_lock:
+                self.stats['backups'] = self.stats.get('backups', 0) + 1
+                self.stats['last_backup'] = time.time()
             
             logger.debug(f"Backed up {len(cache_snapshot)} embeddings to CSV")
             
@@ -211,11 +216,13 @@ class SharedEmbeddingCache:
         
         entry_dict = self.shared_cache.get(cache_key)
         if entry_dict:
-            self.stats['hits'] = self.stats.get('hits', 0) + 1
+            with self.stats_lock:
+                self.stats['hits'] = self.stats.get('hits', 0) + 1
             logger.debug(f"Cache hit for: {word}")
             return entry_dict['embedding']
         else:
-            self.stats['misses'] = self.stats.get('misses', 0) + 1
+            with self.stats_lock:
+                self.stats['misses'] = self.stats.get('misses', 0) + 1
             logger.debug(f"Cache miss for: {word}")
             return None
     
@@ -244,9 +251,10 @@ class SharedEmbeddingCache:
         
         self.shared_cache[cache_key] = entry.to_dict()
         
-        # Update statistics
-        self.stats['writes'] = self.stats.get('writes', 0) + 1
-        self.stats['cache_size'] = len(self.shared_cache)
+        # Update statistics (atomic section)
+        with self.stats_lock:
+            self.stats['writes'] = self.stats.get('writes', 0) + 1
+            self.stats['cache_size'] = len(self.shared_cache)
         
         logger.debug(f"Cached embedding for: {word}")
     
@@ -261,16 +269,23 @@ class SharedEmbeddingCache:
             List of embeddings (None for cache misses)
         """
         results = []
+        hits = 0
+        misses = 0
         
         for word in words:
             cache_key = self._normalize_key(word)
             entry_dict = self.shared_cache.get(cache_key)
             if entry_dict:
                 results.append(entry_dict['embedding'])
-                self.stats['hits'] = self.stats.get('hits', 0) + 1
+                hits += 1
             else:
                 results.append(None)
-                self.stats['misses'] = self.stats.get('misses', 0) + 1
+                misses += 1
+        
+        # Update statistics atomically
+        with self.stats_lock:
+            self.stats['hits'] = self.stats.get('hits', 0) + hits
+            self.stats['misses'] = self.stats.get('misses', 0) + misses
         
         hit_count = len([r for r in results if r is not None])
         logger.debug(f"Batch cache lookup: {hit_count}/{len(words)} hits")
@@ -305,9 +320,10 @@ class SharedEmbeddingCache:
             
             self.shared_cache[cache_key] = entry.to_dict()
         
-        # Update statistics
-        self.stats['writes'] = self.stats.get('writes', 0) + len(embeddings)
-        self.stats['cache_size'] = len(self.shared_cache)
+        # Update statistics (atomic section)
+        with self.stats_lock:
+            self.stats['writes'] = self.stats.get('writes', 0) + len(embeddings)
+            self.stats['cache_size'] = len(self.shared_cache)
         
         logger.debug(f"Batch cached {len(embeddings)} embeddings")
     
@@ -340,13 +356,15 @@ class SharedEmbeddingCache:
         """
         return {
             'shared_cache': self.shared_cache,
-            'stats': self.stats
+            'stats': self.stats,
+            'stats_lock': self.stats_lock
         }
     
     def clear(self):
         """Clear all cached embeddings."""
         self.shared_cache.clear()
-        self.stats['cache_size'] = 0
+        with self.stats_lock:
+            self.stats['cache_size'] = 0
         logger.info("Cache cleared")
 
 
