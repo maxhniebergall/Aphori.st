@@ -44,3 +44,19 @@ stages:
       - gemini
       - output
       - paths
+
+  convert_to_firebase:
+    cmd: node ../../../puzzle-generation/dist/use-gemini-output.js
+    deps:
+      - ../../../puzzle-generation/dist/use-gemini-output.js
+      - ../../../puzzle-generation/dist/data-science-bridge.js
+      - data/outputs/final_puzzles.json
+    outs:
+      - data/outputs/gemini-puzzles.json
+      - data/outputs/gemini-puzzles_firebase.json
+
+  copy_to_puzzle_generation:
+    cmd: cp data/outputs/gemini-puzzles.json ../../../puzzle-generation/ && cp data/outputs/gemini-puzzles_firebase.json ../../../puzzle-generation/
+    deps:
+      - data/outputs/gemini-puzzles.json
+      - data/outputs/gemini-puzzles_firebase.json

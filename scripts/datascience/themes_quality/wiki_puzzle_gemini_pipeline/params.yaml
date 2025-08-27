@@ -55,6 +55,13 @@ output:
   embedding_cache_file: "data/cache/all_embeddings.csv"  # All generated embeddings
   puzzle_embeddings_file: "data/embeddings/puzzle_embeddings.csv"  # Final puzzle words only
 
+# Embeddings cache configuration (independent of DVC pipeline cache)
+embeddings_cache:
+  enabled: true  # Whether to use existing embeddings cache to save API calls
+  use_existing_cache: true  # Set to false to start fresh and ignore existing cache
+  cache_file: "data/cache/all_embeddings.csv"  # Location of embeddings cache
+  save_cache: true  # Whether to save new embeddings to cache
+
 multiprocessing:
   enabled: true  # Enable/disable multiprocessing (set to false to use original sequential processing)
   worker_count: 4  # Reduced worker count to avoid API quota issues (4 threads)
