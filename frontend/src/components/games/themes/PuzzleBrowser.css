@@ -5,12 +5,16 @@
 }
 
 .browser-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid #e9ecef;
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
 }
 
 .back-button {
@@ -37,7 +41,7 @@
 }
 
 .browser-header h2 {
-  margin: 0 0 12px 0;
+  margin: 0;
   font-size: 28px;
   font-weight: 700;
   color: #2c3e50;
@@ -53,7 +57,8 @@
   font-size: 14px;
   color: #5d6d7e;
   font-weight: 500;
-  min-width: 120px;
+  min-width: 280px;
+  flex-shrink: 0;
 }
 
 .progress-bar {
@@ -67,7 +72,8 @@
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 3px;
   transition: width 0.3s ease;
 }
 
@@ -84,7 +90,7 @@
   width: 40px;
   height: 40px;
   border: 4px solid #f3f3f3;
-  border-top: 4px solid #3498db;
+  border-top: 4px solid #667eea;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;
@@ -155,6 +161,7 @@
   transform: translateY(-2px);
 }
 
+/* Progress state styles */
 .puzzle-card.completed {
   border-color: #28a745;
   background: #f8fff9;
@@ -163,6 +170,26 @@
 .puzzle-card.completed:hover {
   border-color: #20c997;
   box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
+}
+
+.puzzle-card.in-progress {
+  border-color: #fd7e14;
+  background: #fff8f0;
+}
+
+.puzzle-card.in-progress:hover {
+  border-color: #e8681a;
+  box-shadow: 0 4px 12px rgba(253, 126, 20, 0.15);
+}
+
+.puzzle-card.not-started {
+  border-color: #e9ecef;
+  background: white;
+}
+
+.puzzle-card.not-started:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
 }
 
 .puzzle-number {
@@ -183,6 +210,44 @@
 
 
 
+/* Progress indicator styles */
+.progress-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.puzzle-card.completed .progress-indicator {
+  background: #28a745;
+  color: white;
+}
+
+.puzzle-card.in-progress .progress-indicator {
+  background: #fd7e14;
+  color: white;
+}
+
+.puzzle-card.not-started .progress-indicator {
+  background: #6c757d;
+  color: white;
+}
+
+.progress-icon {
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.progress-label {
+  font-size: 11px;
+}
+
+/* Legacy completion badge for backward compatibility */
 .completion-badge {
   background: #28a745;
   color: white;
@@ -218,6 +283,22 @@
   background: #218838;
 }
 
+.puzzle-card.in-progress .play-button {
+  background: #fd7e14;
+}
+
+.puzzle-card.in-progress:hover .play-button {
+  background: #e8681a;
+}
+
+.puzzle-card.not-started .play-button {
+  background: #667eea;
+}
+
+.puzzle-card.not-started:hover .play-button {
+  background: #5a6fd8;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
   .puzzle-browser {
@@ -235,6 +316,11 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+  }
+  
+  .progress-text {
+    min-width: auto;
+    font-size: 13px;
   }
   
   .progress-bar {

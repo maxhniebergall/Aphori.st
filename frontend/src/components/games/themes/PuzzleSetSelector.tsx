@@ -94,7 +94,7 @@ export const PuzzleSetSelector: React.FC<PuzzleSetSelectorProps> = ({
     <div className="puzzle-set-selector">
       <h2>Themes Puzzle Sets</h2>
       <p className="selector-description">
-        Each set contains 80 Themes puzzles. Select the 4 words matching the theme. 
+        Select the 4 words matching the theme. 
       </p>
       
       <div className="puzzle-sets-grid">
