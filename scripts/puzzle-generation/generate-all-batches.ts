@@ -7,7 +7,10 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { WikiBatchGenerator, WikiBatchResult } from './generate-batch-wiki.js';
 import { GeminiBatchGenerator, GeminiBatchResult } from './generate-batch-gemini.js';
 import { FirebaseFormatConverter } from './firebase-format-converter.js';
@@ -142,7 +145,7 @@ class AllBatchesGenerator {
    * Check DVC status to determine which pipelines need updates
    */
   private async checkDvcStatus(): Promise<DvcStatusResult> {
-    const themesQualityPath = path.resolve('../datascience/themes_quality');
+    const themesQualityPath = path.resolve(__dirname, '../datascience/themes_quality');
     
     console.log(`🔍 Checking DVC status to determine which pipelines need updates...`);
     
@@ -253,7 +256,7 @@ class AllBatchesGenerator {
         console.log(`✅ Wiki pipeline: ${wikiResults.puzzleCount} puzzles generated`);
         
         // Immediately commit DVC outputs for wiki pipeline
-        const wikiPipelinePath = path.resolve('../datascience/themes_quality/wiki_puzzle_pipeline');
+        const wikiPipelinePath = path.resolve(__dirname, '../datascience/themes_quality/wiki_puzzle_pipeline');
         const wikiStages = ['dvc.yaml:select_themes', 'dvc.yaml:generate_puzzles'];
         await this.commitDvcOutputs('Wiki', wikiPipelinePath, wikiStages);
       }
@@ -286,7 +289,7 @@ class AllBatchesGenerator {
         console.log(`✅ Gemini pipeline: ${geminiResults.puzzleCount} puzzles generated`);
         
         // Immediately commit DVC outputs for gemini pipeline
-        const geminiPipelinePath = path.resolve('../datascience/themes_quality/wiki_puzzle_gemini_pipeline');
+        const geminiPipelinePath = path.resolve(__dirname, '../datascience/themes_quality/wiki_puzzle_gemini_pipeline');
         const geminiStages = ['dvc.yaml:select_themes', 'dvc.yaml:select_candidates', 'dvc.yaml:enhance_with_gemini'];
         await this.commitDvcOutputs('Gemini', geminiPipelinePath, geminiStages);
       }
@@ -319,7 +322,7 @@ class AllBatchesGenerator {
     // Final DVC commit at the themes_quality level to catch any remaining changes
     if (dvcStatus.wikiNeedsUpdate || dvcStatus.geminiNeedsUpdate) {
       console.log(`\n💾 Final DVC commit for overall themes_quality changes...`);
-      const themesQualityPath = path.resolve('../datascience/themes_quality');
+      const themesQualityPath = path.resolve(__dirname, '../datascience/themes_quality');
       // For the parent level, we'll commit all pipeline stages that were executed
       const allStages: string[] = [];
       if (dvcStatus.wikiNeedsUpdate) {
