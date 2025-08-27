@@ -454,6 +454,7 @@ async function main() {
     
     log(`🎯 Successfully uploaded puzzle set '${renameTo}' with ${puzzleData.puzzleCount} puzzles`);
     log('Upload completed successfully!');
+    process.exit(0);
     
   } catch (e) {
     error('Upload failed:', e.message);
