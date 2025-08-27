@@ -228,52 +228,92 @@ class ImprovedGeminiTaskProcessor:
                 future_to_batch[future] = batch
             
             # Collect results as they complete
-            for future in as_completed(future_to_batch.keys(), timeout=self.task_timeout):
-                if self.shutdown_requested:
-                    break
-                
-                batch = future_to_batch[future]
-                try:
-                    batch_results = future.result(timeout=30)
-                    all_results.extend(batch_results)
+            try:
+                for future in as_completed(future_to_batch.keys(), timeout=self.task_timeout):
+                    if self.shutdown_requested:
+                        break
                     
-                    # Update statistics
-                    for result in batch_results:
-                        if result.success:
-                            self.completed_tasks += 1
-                        else:
+                    batch = future_to_batch[future]
+                    try:
+                        # Remove redundant timeout since as_completed yields completed futures
+                        batch_results = future.result()
+                        all_results.extend(batch_results)
+                        
+                        # Update statistics
+                        for result in batch_results:
+                            if result.success:
+                                self.completed_tasks += 1
+                            else:
+                                self.failed_tasks += 1
+                        
+                        # Log progress
+                        total_processed = self.completed_tasks + self.failed_tasks
+                        if total_processed % 20 == 0:  # Log every 20 tasks
+                            progress_pct = (total_processed / self.total_tasks) * 100
+                            elapsed_time = time.time() - self.start_time
+                            rate = total_processed / elapsed_time if elapsed_time > 0 else 0
+                            
+                            logger.info(f"Progress: {total_processed}/{self.total_tasks} ({progress_pct:.1f}%) "
+                                       f"- {self.completed_tasks} successful, {self.failed_tasks} failed "
+                                       f"(rate: {rate:.1f} tasks/sec)")
+                        
+                    except FutureTimeoutError:
+                        logger.error(f"Batch timeout - {len(batch)} tasks failed")
+                        # Create error results for timed-out batch
+                        for task in batch:
+                            error_result = ThemeProcessingResult.create_error_result(
+                                task.task_id, task.theme, "Processing timeout"
+                            )
+                            all_results.append(error_result)
                             self.failed_tasks += 1
-                    
-                    # Log progress
-                    total_processed = self.completed_tasks + self.failed_tasks
-                    if total_processed % 20 == 0:  # Log every 20 tasks
-                        progress_pct = (total_processed / self.total_tasks) * 100
-                        elapsed_time = time.time() - self.start_time
-                        rate = total_processed / elapsed_time if elapsed_time > 0 else 0
+                            
+                    except Exception as e:
+                        logger.error(f"Batch processing error: {e}")
+                        # Create error results for failed batch
+                        for task in batch:
+                            error_result = ThemeProcessingResult.create_error_result(
+                                task.task_id, task.theme, f"Processing error: {str(e)}"
+                            )
+                            all_results.append(error_result)
+                            self.failed_tasks += 1
+                            
+            except concurrent.futures.TimeoutError:
+                # Handle iterator-level timeout - clean up remaining futures to prevent resource leaks
+                logger.error(f"Iterator timeout after {self.task_timeout}s - cancelling remaining futures")
+                
+                # Cancel all pending futures and create error results for their tasks
+                for future in future_to_batch.keys():
+                    if not future.done():
+                        future.cancel()
+                        batch = future_to_batch[future]
+                        logger.warning(f"Cancelled batch with {len(batch)} tasks due to iterator timeout")
                         
-                        logger.info(f"Progress: {total_processed}/{self.total_tasks} ({progress_pct:.1f}%) "
-                                   f"- {self.completed_tasks} successful, {self.failed_tasks} failed "
-                                   f"(rate: {rate:.1f} tasks/sec)")
-                    
-                except FutureTimeoutError:
-                    logger.error(f"Batch timeout - {len(batch)} tasks failed")
-                    # Create error results for timed-out batch
-                    for task in batch:
-                        error_result = ThemeProcessingResult.create_error_result(
-                            task.task_id, task.theme, "Processing timeout"
-                        )
-                        all_results.append(error_result)
-                        self.failed_tasks += 1
+                        # Create error results for cancelled batch
+                        for task in batch:
+                            error_result = ThemeProcessingResult.create_error_result(
+                                task.task_id, task.theme, "Cancelled due to iterator timeout"
+                            )
+                            all_results.append(error_result)
+                            self.failed_tasks += 1
+                            
+            except Exception as e:
+                # Handle any other iterator-level exceptions
+                logger.error(f"Iterator-level exception: {e} - cleaning up remaining futures")
+                
+                # Cancel all pending futures and create error results for their tasks
+                for future in future_to_batch.keys():
+                    if not future.done():
+                        future.cancel()
+                        batch = future_to_batch[future]
+                        logger.warning(f"Cancelled batch with {len(batch)} tasks due to iterator exception")
                         
-                except Exception as e:
-                    logger.error(f"Batch processing error: {e}")
-                    # Create error results for failed batch
-                    for task in batch:
-                        error_result = ThemeProcessingResult.create_error_result(
-                            task.task_id, task.theme, f"Processing error: {str(e)}"
-                        )
-                        all_results.append(error_result)
-                        self.failed_tasks += 1
+                        # Create error results for cancelled batch
+                        for task in batch:
+                            error_result = ThemeProcessingResult.create_error_result(
+                                task.task_id, task.theme, f"Cancelled due to iterator exception: {str(e)}"
+                            )
+                            all_results.append(error_result)
+                            self.failed_tasks += 1
         
         logger.info(f"ProcessPoolExecutor completed: {self.completed_tasks} successful, {self.failed_tasks} failed")
         return all_results
