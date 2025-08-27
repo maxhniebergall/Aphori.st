@@ -6,13 +6,13 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  margin-top:20px;
 }
 
 /* When playing a specific puzzle, constrain the width */
 .themes-game-container:has(.game-grid) {
   max-width: 600px;
   min-height: 100vh;
-  justify-content: center;
 }
 
 .game-header {
@@ -74,6 +74,15 @@
 .puzzle-set,
 .puzzle-number {
   font-weight: 600;
+}
+
+.puzzle-set {
+    font-size: 1.2rem;
+    background: #667eea;
+    border-radius: 12px;
+    padding: 8px 16px;
+    color: white;
+    font-weight: 700;
 }
 
 
@@ -367,7 +376,6 @@
     max-width: 520px;
     padding: 16px;
     min-height: 100vh;
-    justify-content: center;
   }
   
   .game-header {
@@ -388,7 +396,6 @@
     height: 100vh;
     max-height: 100vh;
     overflow: hidden;
-    justify-content: center;
   }
   
   .game-header {
@@ -420,7 +427,6 @@
     height: 100vh;
     max-height: 100vh;
     overflow: hidden;
-    justify-content: center;
   }
   
   .game-header h1 {

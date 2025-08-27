@@ -124,6 +124,7 @@ export const ThemesGame: React.FC = () => {
           <PuzzleSetSelector 
             onSetSelected={handleSetSelected}
             selectedSet={selectedSet}
+            completedPuzzles={completedPuzzles}
           />
         </div>
       </div>
@@ -242,10 +243,6 @@ export const ThemesGame: React.FC = () => {
           ← Back to Puzzles
         </button>
         <div className="header-content">
-          <h1>Themes</h1>
-          <p className="game-description">
-            Find groups of four words that share a common theme.
-          </p>
           <div className="puzzle-info">
             <span className="puzzle-set">{formatSetName(selectedSet || '')}</span>
             <span className="puzzle-number">Puzzle #{currentPuzzleNumber}</span>

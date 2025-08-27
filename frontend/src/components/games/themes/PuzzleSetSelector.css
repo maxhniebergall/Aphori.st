@@ -103,6 +103,10 @@
   cursor: pointer;
   transition: all 0.2s ease;
   background: #f8f9fa;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
 .version-card:hover {
@@ -116,12 +120,6 @@
   box-shadow: 0 2px 12px rgba(102, 126, 234, 0.2);
 }
 
-.version-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
 
 .version-name {
   font-size: 18px;
@@ -139,7 +137,10 @@
 }
 
 .version-details {
-  margin-bottom: 16px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .detail-label {
@@ -168,9 +169,41 @@
   font-weight: 500;
 }
 
+.progress-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.progress-text {
+  font-size: 14px;
+  color: #5d6d7e;
+  font-weight: 500;
+}
+
+.puzzle-set-selector .progress-bar {
+  width: 100%;
+  height: 6px;
+  background: #e9ecef;
+  border-radius: 3px;
+  overflow: hidden;
+  flex: none;
+}
+
+.puzzle-set-selector .progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
 .last-updated {
   font-size: 14px;
   color: #6c757d;
+  text-align: center;
 }
 
 .version-actions {
@@ -189,6 +222,7 @@
   font-weight: 500;
   transition: background 0.2s;
   min-width: 100px;
+  margin-top:0;
 }
 
 .select-set-button:hover {
@@ -234,12 +268,6 @@
   
   .puzzle-set-selector {
     padding: 16px;
-  }
-  
-  .version-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
   }
   
   .size-tags {
