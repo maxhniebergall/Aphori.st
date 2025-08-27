@@ -50,7 +50,15 @@ jobs:
       run: |
         echo "Running puzzle sets migration to Firebase..."
         cd .database-migration-scripts
-        npm install
+        echo "Installing dependencies..."
+        npm ci
+        echo "Checking if firebase-admin is installed..."
+        ls node_modules/ | grep firebase || echo "firebase-admin not found in node_modules"
+        echo "Node.js version:"
+        node --version
+        echo "NPM version:"
+        npm --version
+        echo "Running migration script..."
         node upload-puzzles.js
       env:
         FIREBASE_CREDENTIAL: '${{ secrets.SERVICE_ACCOUNT_KEY }}'
