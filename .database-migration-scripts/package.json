@@ -1,0 +1,26 @@
+{
+  "name": "aphorist-database-migrations",
+  "version": "1.0.0",
+  "description": "Database migration scripts for Aphorist puzzle data",
+  "type": "module",
+  "main": "upload-puzzles.js",
+  "scripts": {
+    "upload-puzzles": "node upload-puzzles.js",
+    "test-local": "FIREBASE_DATABASE_EMULATOR_HOST=localhost:9000 node upload-puzzles.js",
+    "test-with-backup": "node --experimental-json-modules test-migration.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "firebase",
+    "migration",
+    "puzzles",
+    "aphorist"
+  ],
+  "author": "Aphorist Team",
+  "private": true
+}

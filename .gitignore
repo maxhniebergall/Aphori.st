@@ -87,6 +87,10 @@ import_data/
 .gcp/
 *.json
 
+# Exception: Always track package files
+!package.json
+!package-lock.json
+
 # DVC cache and temp files
 **/.dvc/cache/
 **/.dvc/tmp/
