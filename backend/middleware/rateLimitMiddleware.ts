@@ -65,26 +65,26 @@ const anonymousLimiterBaseOptions = {
   // store: new RedisStore({ ... }), // TODO: For production, use a persistent store like Redis
 };
 
-// Layer 1 for Anonymous: 10 requests per minute
+// Layer 1 for Anonymous: requests per minute
 export const anonymousLimiterMinute = rateLimit({
   ...anonymousLimiterBaseOptions,
   windowMs: 1 * 60 * 1000, // 1 minute
-  limit: 30,
+  limit: 300,
   message: 'Too many requests from this IP address (minute limit). Please try again shortly.',
 });
 
-// Layer 2 for Anonymous: 100 requests per hour
+// Layer 2 for Anonymous: requests per hour
 export const anonymousLimiterHour = rateLimit({
   ...anonymousLimiterBaseOptions,
   windowMs: 60 * 60 * 1000, // 1 hour
-  limit: 100,
+  limit: 1000,
   message: 'Too many requests from this IP address (hourly limit). Please try again later.',
 });
 
-// Layer 3 for Anonymous: 200 requests per day
+// Layer 3 for Anonymous: requests per day
 export const anonymousLimiterDay = rateLimit({
   ...anonymousLimiterBaseOptions,
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  limit: 200,
+  limit: 2000,
   message: 'Too many requests from this IP address (daily limit). Please try again tomorrow.',
 });
