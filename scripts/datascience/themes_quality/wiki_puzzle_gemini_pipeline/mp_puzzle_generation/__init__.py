@@ -14,7 +14,7 @@ Main Components:
 - ResultAggregator: Collects and formats results from workers
 
 Usage:
-    from multiprocessing.GeminiTaskProcessor import create_task_processor
+    from mp_puzzle_generation.GeminiTaskProcessor import create_task_processor
     
     processor = create_task_processor(multiprocessing_enabled=True)
     results, embeddings = processor.process_themes(themes, candidates_dict)
@@ -23,7 +23,8 @@ Usage:
 from .ThemeProcessingTask import ThemeProcessingTask, ThemeProcessingResult, TaskGenerator
 from .GeminiTaskProcessor import GeminiTaskProcessor, create_task_processor
 from .ThemeWorker import ThemeWorker, start_worker
-from .RateLimiter import SharedRateLimiter, LocalRateLimiter, create_rate_limiter
+from .RateLimiter import LocalRateLimiter, create_rate_limiter
+from .SharedRateLimiter import SharedRateLimiter
 from .EmbeddingCacheManager import EmbeddingCacheManager, EmbeddingCacheEntry
 from .ResultAggregator import ResultAggregator, SingleProcessResultAggregator
 

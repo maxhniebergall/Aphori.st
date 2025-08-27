@@ -2,6 +2,8 @@
   padding: 20px;
   max-width: 1200px;
   margin: 0 auto;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .puzzle-set-selector h2 {
@@ -199,6 +201,29 @@
 
 .version-card.selected .select-set-button:hover {
   background: #218838;
+}
+
+/* Custom scrollbar styling */
+.puzzle-set-selector::-webkit-scrollbar,
+.puzzle-sets-grid::-webkit-scrollbar {
+  width: 8px;
+}
+
+.puzzle-set-selector::-webkit-scrollbar-track,
+.puzzle-sets-grid::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.puzzle-set-selector::-webkit-scrollbar-thumb,
+.puzzle-sets-grid::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.puzzle-set-selector::-webkit-scrollbar-thumb:hover,
+.puzzle-sets-grid::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 
 /* Responsive design */

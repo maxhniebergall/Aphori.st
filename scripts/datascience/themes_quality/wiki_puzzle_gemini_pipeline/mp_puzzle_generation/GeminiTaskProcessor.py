@@ -23,7 +23,7 @@ sys.path.append(str(Path(__file__).parent))
 
 from ThemeProcessingTask import ThemeProcessingTask, ThemeProcessingResult, TaskGenerator
 from ThemeWorker import start_worker
-from RateLimiter import SharedRateLimiter
+from SimpleRateLimiter import SimpleSharedRateLimiter
 from ResultAggregator import ResultAggregator
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class GeminiTaskProcessor:
         # Shared resources
         self.task_queue: Optional[mp.Queue] = None
         self.result_queue: Optional[mp.Queue] = None
-        self.rate_limiter: Optional[SharedRateLimiter] = None
+        self.rate_limiter: Optional[SimpleSharedRateLimiter] = None
         self.result_aggregator: Optional[ResultAggregator] = None
         
         # Worker management
@@ -113,7 +113,7 @@ class GeminiTaskProcessor:
         
         # Create shared rate limiter
         gemini_config = self.config['gemini']
-        self.rate_limiter = SharedRateLimiter(
+        self.rate_limiter = SimpleSharedRateLimiter(
             requests_per_minute=gemini_config.get('requests_per_minute', 2900),
             min_request_interval=gemini_config.get('min_request_interval', 0.1),
             max_concurrent_requests=self.multiprocessing_config.get('max_concurrent_requests', 10)
@@ -165,15 +165,30 @@ class GeminiTaskProcessor:
                 logger.info("Shutdown requested, stopping task submission")
                 break
             
-            try:
-                self.task_queue.put(task, timeout=10)
-                submitted_count += 1
-                
-                if submitted_count % 10 == 0:
-                    logger.info(f"Submitted {submitted_count}/{len(tasks)} tasks")
+            # Implement backpressure - wait for queue to drain if full
+            retry_count = 0
+            max_retries = 24  # 24 retries for 4 minutes total patience
+            
+            while retry_count < max_retries:
+                try:
+                    self.task_queue.put(task, timeout=3)  # Shorter timeout per attempt
+                    submitted_count += 1
+                    break  # Successfully submitted
                     
-            except Exception as e:
-                logger.error(f"Failed to submit task {task.task_id}: {e}")
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        logger.error(f"Failed to submit task {task.task_id} after {max_retries} attempts (4 min timeout): {e}")
+                        break
+                    else:
+                        # Queue likely full, wait for workers to process tasks
+                        if retry_count == 1:  # Only log on first retry to avoid spam
+                            logger.info(f"Queue backpressure active, waiting for workers to process tasks...")
+                        # Fixed 10s wait time for consistent 4-minute total (24 × 10s = 240s = 4min)
+                        time.sleep(10)
+                        
+            if submitted_count % 10 == 0:
+                logger.info(f"Submitted {submitted_count}/{len(tasks)} tasks")
         
         self.total_tasks = submitted_count
         logger.info(f"Submitted {submitted_count} tasks successfully")

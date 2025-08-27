@@ -52,7 +52,8 @@ export const ThemesGame: React.FC = () => {
   const {
     completedPuzzles,
     markPuzzleCompleted,
-    getCompletionStats
+    getCompletionStats,
+    isLoading: completionsLoading
   } = usePuzzleCompletion(
     selectedSet || '',
     selectedSet || '', // Keep second param for compatibility, but use same value
