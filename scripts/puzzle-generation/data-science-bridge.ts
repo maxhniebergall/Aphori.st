@@ -386,7 +386,11 @@ class DataScienceBridge {
     // Update setIndex with complete information
     firebaseData.setIndex[setName].sizeCounts = sizeCounts;
     firebaseData.setIndex[setName].availableSizes = availableSizes.sort();
-    firebaseData.setIndex[setName].puzzleIds = puzzleIds.sort();
+    firebaseData.setIndex[setName].puzzleIds = puzzleIds.sort((a, b) => {
+      const na = parseInt(a.split('_').pop() ?? '0', 10);
+      const nb = parseInt(b.split('_').pop() ?? '0', 10);
+      return na - nb || a.localeCompare(b);
+    });
     
     return firebaseData;
   }
@@ -467,12 +471,14 @@ Examples:
 Input Format:
   The input should be a JSON file from the data science pipeline with structure:
   {
-    "ThemeName": {
-      "words": ["word1", "word2", "word3", "word4"],
-      "theme_similarity_scores": [0.9, 0.8, 0.7, 0.6],
-      "all_candidates": ["word1", "word2", ...],
-      "all_similarities": [0.9, 0.8, ...]
-    }
+    "puzzle_1": {
+      "themes": ["Space", "Sailing", "Clothing", "Music"],
+      "words": ["orbit", "comet", "navy", "mast", "sock", "blazer", "lyre", "sonata", "...8 more"],
+      "theme_similarity_scores": [0.92, 0.88, 0.85, 0.87],
+      "all_candidates": ["..."],
+      "all_similarities": ["..."]
+    },
+    "puzzle_2": { "..." }
   }
 
 Output:
