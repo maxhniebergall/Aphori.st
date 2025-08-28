@@ -33,66 +33,85 @@ export const WordSquare: React.FC<WordSquareProps> = ({
   const upperCaseWord = useMemo(() => word.toUpperCase(), [word]);
   
 
-  // Get container size from CSS custom property if available
-  const [containerSize, setContainerSize] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return Math.min(window.innerWidth - 32, window.innerHeight - 200, 700);
-    }
-    return 400;
-  });
+  // Get actual cell size from parent grid container
+  const [actualCellSize, setActualCellSize] = useState(100);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    const updateContainerSize = () => {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const availableHeight = vh - 200;
-      const availableWidth = Math.min(vw - 32, 700);
-      setContainerSize(Math.min(availableWidth, availableHeight));
+    const updateCellSize = () => {
+      // Try to get actual container size from DOM
+      const gridContainer = document.querySelector('.game-grid-container') as HTMLElement;
+      const gridElement = document.querySelector('.game-grid') as HTMLElement;
+      
+      if (gridContainer && gridElement) {
+        const containerSize = gridContainer.clientWidth;
+        const gridComputedStyle = window.getComputedStyle(gridElement);
+        const gap = parseFloat(gridComputedStyle.gap) || 6;
+        
+        // Calculate number of grid cells per row/column
+        const gridCols = gridComputedStyle.gridTemplateColumns.split(' ').length;
+        
+        // Account for gaps: (gridCols - 1) gaps between cells
+        const totalGapWidth = gap * (gridCols - 1);
+        const usableWidth = containerSize - totalGapWidth;
+        const cellSize = usableWidth / gridCols;
+        
+        setActualCellSize(Math.max(50, cellSize)); // Minimum 50px cell
+      } else {
+        // Fallback calculation
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const fallbackContainer = Math.min(vw - 40, vh - 200, 700);
+        const fallbackCell = (fallbackContainer * 0.94) / 4; // 94% usable, 4x4 grid
+        setActualCellSize(Math.max(50, fallbackCell));
+      }
     };
     
-    updateContainerSize();
-    window.addEventListener('resize', updateContainerSize);
-    return () => window.removeEventListener('resize', updateContainerSize);
+    // Initial calculation
+    setTimeout(updateCellSize, 0);
+    
+    // Update on resize
+    const handleResize = () => {
+      setTimeout(updateCellSize, 100);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Calculate dynamic font size based on container size and word length
+  // Calculate dynamic font size based on actual cell dimensions and word length
   const dynamicFontSize = useMemo(() => {
-    // Estimate cell size: (containerSize - gaps) / gridSize
-    // Assume 4x4 grid for calculation (most common)
-    const estimatedGapTotal = containerSize * 0.06; // ~6% for gaps
-    const estimatedCellSize = (containerSize - estimatedGapTotal) / 4;
-    
     // Base font size as percentage of cell size
-    let baseFontRatio = 0.22; // 22% of cell size
+    let baseFontRatio = 0.25; // 25% of cell size
     let minSize = 8;
-    let maxSize = Math.max(16, Math.round(estimatedCellSize * 0.4));
+    let maxSize = Math.max(16, Math.round(actualCellSize * 0.5));
     
-    // Adjust for smaller containers
-    if (containerSize < 300) {
-      baseFontRatio = 0.18;
+    // Adjust ratio for very small cells
+    if (actualCellSize < 60) {
+      baseFontRatio = 0.22;
       minSize = 6;
-    } else if (containerSize < 400) {
-      baseFontRatio = 0.20;
+    } else if (actualCellSize < 80) {
+      baseFontRatio = 0.23;
       minSize = 7;
     }
     
     // Calculate base size from cell dimensions
-    let baseSize = Math.round(estimatedCellSize * baseFontRatio);
+    let baseSize = Math.round(actualCellSize * baseFontRatio);
     
-    // Scale down based on word length
+    // Scale down based on word length to ensure fit
     let lengthFactor = 1;
-    if (word.length > 3) {
-      const excessLength = word.length - 3;
-      lengthFactor = Math.max(0.2, 1 - (excessLength * 0.08));
+    if (word.length > 4) {
+      const excessLength = word.length - 4;
+      // More aggressive scaling for longer words
+      lengthFactor = Math.max(0.3, 1 - (excessLength * 0.1));
     }
     
     const calculatedSize = Math.round(baseSize * lengthFactor);
     
     // Clamp to bounds
     return Math.max(minSize, Math.min(maxSize, calculatedSize));
-  }, [word, containerSize]);
+  }, [word, actualCellSize]);
 
   const handleClick = () => {
     if (!disabled) {
