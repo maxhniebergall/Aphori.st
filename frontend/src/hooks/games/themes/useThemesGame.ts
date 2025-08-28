@@ -38,6 +38,7 @@ export interface GameState {
   shakingWords: string[];
   gridWords: GridWord[];
   animatingWords: string[];
+  showDuplicateModal: boolean;
 }
 
 export interface UseThemesGameReturn {
@@ -50,6 +51,7 @@ export interface UseThemesGameReturn {
   randomizeGrid: () => void;
   loadPuzzleFromSet: (setName: string, version: string, puzzleNumber: number) => Promise<void>;
   resetGame: () => void;
+  dismissDuplicateModal: () => void;
 }
 
 const WORDS_PER_CATEGORY = 4;
@@ -77,7 +79,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
     isComplete: false,
     shakingWords: [],
     gridWords: [],
-    animatingWords: []
+    animatingWords: [],
+    showDuplicateModal: false
   });
 
   // TanStack Query hooks
@@ -184,7 +187,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
           isComplete,
           shakingWords: [],
           gridWords: initializeGridWords(puzzle, completedCategories),
-          animatingWords: []
+          animatingWords: [],
+          showDuplicateModal: false
         });
       } else {
         // No previous attempts, start fresh
@@ -196,7 +200,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
           isComplete: false,
           shakingWords: [],
           gridWords: initializeGridWords(puzzle),
-          animatingWords: []
+          animatingWords: [],
+          showDuplicateModal: false
         });
       }
     }
@@ -295,7 +300,12 @@ export const useThemesGame = (): UseThemesGameReturn => {
           ...prev
         };
 
-        if (result.attempt.result === 'correct') {
+        if (result.attempt.result === 'duplicate') {
+          // Show duplicate modal but don't change anything else
+          newState.showDuplicateModal = true;
+          // Keep the selected words so user can see what they tried
+          return newState;
+        } else if (result.attempt.result === 'correct') {
           // Found a complete category - find which category was solved
           const correctCategory = puzzle.categories.find(cat => {
             const categoryWordSet = new Set(cat.words);
@@ -436,6 +446,14 @@ export const useThemesGame = (): UseThemesGameReturn => {
     }));
   }, [puzzle, shuffleArray]);
 
+  // Dismiss duplicate modal
+  const dismissDuplicateModal = useCallback(() => {
+    setGameState(prev => ({
+      ...prev,
+      showDuplicateModal: false
+    }));
+  }, []);
+
   // Reset game
   const resetGame = useCallback(() => {
     if (!puzzle) return;
@@ -448,7 +466,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
       isComplete: false,
       shakingWords: [],
       gridWords: initializeGridWords(puzzle),
-      animatingWords: []
+      animatingWords: [],
+      showDuplicateModal: false
     });
   }, [puzzle, initializeGridWords]);
 
@@ -461,6 +480,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
     submitSelection,
     randomizeGrid,
     loadPuzzleFromSet,
-    resetGame
+    resetGame,
+    dismissDuplicateModal
   };
 };

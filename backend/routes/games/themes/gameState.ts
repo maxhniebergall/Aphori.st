@@ -376,6 +376,37 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // First, check if this is a duplicate submission
+    // Get user's previous attempts for this puzzle
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
+    const existingAttempts = await dbClient.getRawPath(attemptsPath) || {};
+    
+    // Check if the selected words match any previous attempt
+    const selectedWordSet = new Set(selectedWords.map(w => w.toLowerCase().trim()));
+    const isDuplicate = Object.values(existingAttempts).some((attempt: any) => {
+      if (attempt.puzzleId === puzzleId) {
+        const attemptWordSet = new Set(attempt.selectedWords.map((w: string) => w.toLowerCase().trim()));
+        return selectedWordSet.size === attemptWordSet.size && 
+               [...selectedWordSet].every(word => attemptWordSet.has(word));
+      }
+      return false;
+    });
+
+    // If duplicate, return early without creating a new attempt or incrementing counter
+    if (isDuplicate) {
+      res.json({
+        success: true,
+        data: {
+          attempt: {
+            result: 'duplicate'
+          },
+          puzzleCompleted: false,
+          message: "You've already tried those words!"
+        }
+      });
+      return;
+    }
+
     // Validate attempt (check if selected words form a complete category)
     let result: 'correct' | 'incorrect' = 'incorrect';
     let distance = selectedWords.length; // Default to maximum distance
@@ -401,9 +432,7 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
 
     // Check if puzzle is completed (all categories found)
     if (result === 'correct') {
-      // Get user's previous attempts for this puzzle
-      const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
-      const existingAttempts = await dbClient.getRawPath(attemptsPath) || {};
+      // We already have existingAttempts from the duplicate check above
       
       // Track distinct solved categories by creating a Set of unique category identifiers
       const solvedCategories = new Set<string>();

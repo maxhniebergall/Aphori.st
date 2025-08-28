@@ -23,7 +23,7 @@ interface SubmitAttemptRequest {
 
 interface SubmitAttemptResponse {
   attempt: {
-    result: 'correct' | 'incorrect';
+    result: 'correct' | 'incorrect' | 'duplicate';
   };
 }
 
