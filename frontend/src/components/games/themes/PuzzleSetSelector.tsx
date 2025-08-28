@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import './PuzzleSetSelector.css';
+import { useThemeSets } from '../../../hooks/games/themes/queries';
 
 export interface PuzzleSet {
   name: string;
@@ -25,37 +26,12 @@ export const PuzzleSetSelector: React.FC<PuzzleSetSelectorProps> = ({
   selectedSet,
   completedPuzzles = new Set()
 }) => {
-  const [puzzleSets, setPuzzleSets] = useState<PuzzleSet[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    loadPuzzleSets();
-  }, []);
-
-  const loadPuzzleSets = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${baseURL}/api/games/themes/sets`, {
-        credentials: 'include'
-      });
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to load puzzle sets');
-      }
-      
-      setPuzzleSets(data.data.sets);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load puzzle sets');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { 
+    data: puzzleSets = [], 
+    isLoading: loading, 
+    error, 
+    refetch: loadPuzzleSets 
+  } = useThemeSets();
 
   const formatSetName = (name: string) => {
     return name.charAt(0).toUpperCase() + name.slice(1);
@@ -81,8 +57,8 @@ export const PuzzleSetSelector: React.FC<PuzzleSetSelectorProps> = ({
       <div className="puzzle-set-selector">
         <div className="error-state">
           <h3>Failed to load puzzle sets</h3>
-          <p>{error}</p>
-          <button onClick={loadPuzzleSets} className="retry-button">
+          <p>{error instanceof Error ? error.message : 'Failed to load puzzle sets'}</p>
+          <button onClick={() => loadPuzzleSets()} className="retry-button">
             Try Again
           </button>
         </div>
@@ -104,7 +80,7 @@ export const PuzzleSetSelector: React.FC<PuzzleSetSelectorProps> = ({
             
             <div className="set-versions">
               {set.versions.map((version) => {
-                const completedCount = Array.from(completedPuzzles).filter(puzzleNum => 
+                const completedCount = Array.from(completedPuzzles).filter((puzzleNum: number) => 
                   puzzleNum >= 1 && puzzleNum <= version.totalCount
                 ).length;
                 

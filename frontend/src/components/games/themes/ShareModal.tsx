@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useShareableResults } from '../../../hooks/games/themes/useShareableResults';
 import { FeedbackForm } from './FeedbackForm';
 import './ShareModal.css';
@@ -12,17 +12,8 @@ interface ShareModalProps {
 }
 
 export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, setName, puzzleNumber, puzzleId }) => {
-  const { shareableData, loading, error, fetchShareableResults, copyToClipboard } = useShareableResults();
+  const { shareableData, loading, error, copyToClipboard } = useShareableResults(setName, puzzleNumber, isOpen);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [lastFetchedKey, setLastFetchedKey] = useState<string | null>(null);
-
-  useEffect(() => {
-    const currentKey = `${setName}:${puzzleNumber}`;
-    if (isOpen && lastFetchedKey !== currentKey) {
-      fetchShareableResults(setName, puzzleNumber);
-      setLastFetchedKey(currentKey);
-    }
-  }, [isOpen, setName, puzzleNumber, lastFetchedKey, fetchShareableResults]);
 
 
   const handleCopy = async () => {
@@ -54,7 +45,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, setName
           {error && (
             <div className="error-state">
               <p>Error: {error}</p>
-              <button onClick={() => fetchShareableResults(setName, puzzleNumber)}>Try Again</button>
             </div>
           )}
 
