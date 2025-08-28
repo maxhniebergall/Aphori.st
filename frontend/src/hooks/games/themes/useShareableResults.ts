@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
+import { useThemeShareableResults } from './queries';
 
 export interface ShareableResults {
   date: string;
@@ -18,34 +19,12 @@ interface ShareablePuzzle {
   emojiRows: string[];
 }
 
-export const useShareableResults = () => {
-  const [shareableData, setShareableData] = useState<ShareableResults | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchShareableResults = useCallback(async (setName: string, puzzleNumber: number) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${baseURL}/api/games/themes/state/shareable/${setName}/${puzzleNumber}`, {
-        credentials: 'include'
-      });
-      
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to fetch shareable results');
-      }
-
-      setShareableData(data.data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch shareable results');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+export const useShareableResults = (setName: string, puzzleNumber: number, enabled = true) => {
+  const { 
+    data: shareableData, 
+    isLoading: loading, 
+    error 
+  } = useThemeShareableResults(setName, puzzleNumber, enabled);
 
   const copyToClipboard = useCallback(async () => {
     if (!shareableData?.shareableText) return false;
@@ -98,8 +77,7 @@ export const useShareableResults = () => {
   return {
     shareableData,
     loading,
-    error,
-    fetchShareableResults,
+    error: error?.message || null,
     copyToClipboard,
     shareNative
   };

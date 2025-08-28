@@ -4,6 +4,7 @@
  */
 
 import { useCallback } from 'react';
+import { useTrackPuzzleView, useSubmitFeedback } from './mutations';
 
 interface UserFingerprint {
   screenResolution: string;
@@ -20,6 +21,9 @@ interface PuzzleFeedback {
 }
 
 export function usePuzzleAnalytics() {
+  const trackViewMutation = useTrackPuzzleView();
+  const submitFeedbackMutation = useSubmitFeedback();
+
   /**
    * Collect browser fingerprint data
    */
@@ -44,36 +48,20 @@ export function usePuzzleAnalytics() {
   ): Promise<boolean> => {
     try {
       const fingerprint = collectFingerprint();
-      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
       
-      const response = await fetch(`${baseURL}/api/games/themes/analytics/view`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies for temp user ID
-        body: JSON.stringify({
-          puzzleId,
-          setName,
-          puzzleNumber,
-          fingerprint
-        }),
+      await trackViewMutation.mutateAsync({
+        puzzleId,
+        setName,
+        puzzleNumber,
+        fingerprint
       });
 
-      const data = await response.json();
-      
-      if (!data.success) {
-        console.warn('Failed to track puzzle view:', data.error);
-        return false;
-      }
-
-      console.debug('Puzzle view tracked successfully:', data.data?.viewId);
       return true;
     } catch (error) {
-      console.error('Error tracking puzzle view:', error);
+      // Error already logged by mutation's onError handler
       return false;
     }
-  }, [collectFingerprint]);
+  }, [collectFingerprint, trackViewMutation]);
 
   /**
    * Submit puzzle feedback
@@ -85,36 +73,20 @@ export function usePuzzleAnalytics() {
     feedback: PuzzleFeedback
   ): Promise<boolean> => {
     try {
-      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${baseURL}/api/games/themes/analytics/feedback`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies for temp user ID
-        body: JSON.stringify({
-          puzzleId,
-          setName,
-          puzzleNumber,
-          rating: feedback.rating,
-          comment: feedback.comment
-        }),
+      await submitFeedbackMutation.mutateAsync({
+        puzzleId,
+        setName,
+        puzzleNumber,
+        rating: feedback.rating,
+        comment: feedback.comment
       });
 
-      const data = await response.json();
-      
-      if (!data.success) {
-        console.error('Failed to submit feedback:', data.error);
-        return false;
-      }
-
-      console.log('Feedback submitted successfully:', data.data?.feedbackId);
       return true;
     } catch (error) {
-      console.error('Error submitting feedback:', error);
+      // Error already logged by mutation's onError handler
       return false;
     }
-  }, []);
+  }, [submitFeedbackMutation]);
 
   return {
     trackPuzzleView,

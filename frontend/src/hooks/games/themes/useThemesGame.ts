@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { GridWord } from '../../../components/games/themes/GameGrid';
+import { useThemePuzzle, useThemeAttempts } from './queries';
+import { useSubmitAttempt } from './mutations';
 
 export interface ThemesPuzzle {
   id: string;
@@ -54,8 +56,13 @@ const WORDS_PER_CATEGORY = 4;
 const MAX_ATTEMPTS = 4;
 
 export const useThemesGame = (): UseThemesGameReturn => {
-  const [puzzle, setPuzzle] = useState<ThemesPuzzle | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
+  // State for tracking current puzzle parameters to enable/disable queries
+  const [currentPuzzleParams, setCurrentPuzzleParams] = useState<{
+    setName: string;
+    version: string;
+    puzzleNumber: number;
+  } | null>(null);
+  
   const [error, setError] = useState<string | null>(null);
   const shakeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -73,17 +80,38 @@ export const useThemesGame = (): UseThemesGameReturn => {
     animatingWords: []
   });
 
-  // Cleanup timeouts on unmount
+  // TanStack Query hooks
+  const puzzleQuery = useThemePuzzle(
+    currentPuzzleParams?.setName || '',
+    currentPuzzleParams?.version || '',
+    currentPuzzleParams?.puzzleNumber || 0,
+    !!currentPuzzleParams
+  );
+
+  const puzzleId = currentPuzzleParams 
+    ? `${currentPuzzleParams.setName}_${currentPuzzleParams.puzzleNumber}` 
+    : '';
+    
+  const attemptsQuery = useThemeAttempts(
+    puzzleId,
+    !!currentPuzzleParams
+  );
+
+  const submitAttemptMutation = useSubmitAttempt();
+
+  // Derived state from queries
+  const puzzle = puzzleQuery.data || null;
+  const loading = puzzleQuery.isLoading || attemptsQuery.isLoading || submitAttemptMutation.isPending;
+  const queryError = puzzleQuery.error || attemptsQuery.error || submitAttemptMutation.error;
+
+  // Update error state from queries
   useEffect(() => {
-    return () => {
-      if (shakeTimeoutRef.current) {
-        clearTimeout(shakeTimeoutRef.current);
-      }
-      if (animationTimeoutRef.current) {
-        clearTimeout(animationTimeoutRef.current);
-      }
-    };
-  }, []);
+    if (queryError) {
+      setError(queryError instanceof Error ? queryError.message : 'Unknown error');
+    } else {
+      setError(null);
+    }
+  }, [queryError]);
 
   // Shuffle array utility
   const shuffleArray = useCallback(<T,>(array: T[]): T[] => {
@@ -119,49 +147,22 @@ export const useThemesGame = (): UseThemesGameReturn => {
     return shuffleArray(gridWords);
   }, [shuffleArray]);
 
-
-  // Load puzzle from a specific set
-  const loadPuzzleFromSet = useCallback(async (setName: string, version: string, puzzleNumber: number) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
+  // Reconstruct game state when puzzle and attempts data are loaded
+  useEffect(() => {
+    if (puzzle && attemptsQuery.data && !attemptsQuery.isLoading) {
+      const attempts = attemptsQuery.data;
       
-      // Load the puzzle
-      const response = await fetch(`${baseURL}/api/games/themes/sets/${setName}/${version}/puzzle/${puzzleNumber}`, {
-        credentials: 'include'
-      });
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to load puzzle');
-      }
-
-      const targetPuzzle = data.data.puzzle;
-      setPuzzle(targetPuzzle);
-
-      // Load previous attempts for this puzzle
-      const puzzleId = `${setName}_${puzzleNumber}`;
-      const attemptsResponse = await fetch(`${baseURL}/api/games/themes/state/attempts/${puzzleId}`, {
-        credentials: 'include'
-      });
-      const attemptsData = await attemptsResponse.json();
-
-      // Reconstruct game state from attempts
-      if (attemptsData.success && attemptsData.data.attempts.length > 0) {
-        const attempts = attemptsData.data.attempts;
-        
+      if (attempts.length > 0) {
         // Find completed categories from correct attempts
         const completedCategories: string[] = [];
         for (const attempt of attempts) {
           if (attempt.result === 'correct') {
             // Find which category this attempt solved
-            const solvedCategory = targetPuzzle.categories.find((cat: ThemeCategory) => {
+            const solvedCategory = puzzle.categories.find((cat: ThemeCategory) => {
               const categoryWordSet = new Set(cat.words.map((w: string) => w.toLowerCase().trim()));
               const selectedWordSet = new Set(attempt.selectedWords.map((w: string) => w.toLowerCase().trim()));
               return categoryWordSet.size === selectedWordSet.size && 
-                     [...categoryWordSet].every(word => selectedWordSet.has(word));
+                     Array.from(categoryWordSet).every(word => selectedWordSet.has(word));
             });
             if (solvedCategory && !completedCategories.includes(solvedCategory.id)) {
               completedCategories.push(solvedCategory.id);
@@ -170,10 +171,14 @@ export const useThemesGame = (): UseThemesGameReturn => {
         }
 
         // Check if puzzle is complete
-        const isComplete = completedCategories.length >= targetPuzzle.categories.length;
+        const isComplete = completedCategories.length >= puzzle.categories.length;
         
         // Count only incorrect attempts for the attempts counter
-        const incorrectAttempts = attempts.filter((attempt: any) => attempt.result === 'incorrect').length;
+        interface AttemptResult {
+          result: 'correct' | 'incorrect';
+          selectedWords: string[];
+        }
+        const incorrectAttempts = attempts.filter((attempt: AttemptResult) => attempt.result === 'incorrect').length;
         
         setGameState({
           selectedWords: [],
@@ -182,7 +187,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
           attempts: incorrectAttempts,
           isComplete,
           shakingWords: [],
-          gridWords: initializeGridWords(targetPuzzle, completedCategories),
+          gridWords: initializeGridWords(puzzle, completedCategories),
           animatingWords: []
         });
       } else {
@@ -194,16 +199,33 @@ export const useThemesGame = (): UseThemesGameReturn => {
           attempts: 0,
           isComplete: false,
           shakingWords: [],
-          gridWords: initializeGridWords(targetPuzzle),
+          gridWords: initializeGridWords(puzzle),
           animatingWords: []
         });
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
     }
-  }, [initializeGridWords]);
+  }, [puzzle, attemptsQuery.data, attemptsQuery.isLoading, initializeGridWords]);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (shakeTimeoutRef.current) {
+        clearTimeout(shakeTimeoutRef.current);
+      }
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Load puzzle from a specific set
+  const loadPuzzleFromSet = useCallback(async (setName: string, version: string, puzzleNumber: number) => {
+    // Clear any existing error
+    setError(null);
+    
+    // Set the puzzle parameters to trigger the queries
+    setCurrentPuzzleParams({ setName, version, puzzleNumber });
+  }, []);
 
   // Select/deselect word
   const selectWord = useCallback((word: string) => {
@@ -265,27 +287,11 @@ export const useThemesGame = (): UseThemesGameReturn => {
     const currentSelectionOrder = gameState.selectionOrder;
 
     try {
-      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${baseURL}/api/games/themes/state/attempt`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          puzzleId: puzzle.id,
-          selectedWords: currentSelectedWords,
-          selectionOrder: currentSelectionOrder
-        })
+      const result = await submitAttemptMutation.mutateAsync({
+        puzzleId: puzzle.id,
+        selectedWords: currentSelectedWords,
+        selectionOrder: currentSelectionOrder
       });
-
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to submit attempt');
-      }
-
-      const result = data.data;
 
       setGameState(prev => {
         const newState = {
@@ -298,7 +304,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
             const categoryWordSet = new Set(cat.words);
             const selectedWordSet = new Set(currentSelectedWords);
             return categoryWordSet.size === selectedWordSet.size && 
-                   [...categoryWordSet].every(word => selectedWordSet.has(word));
+                   Array.from(categoryWordSet).every(word => selectedWordSet.has(word));
           });
           
           if (correctCategory && !prev.completedCategories.includes(correctCategory.id)) {
@@ -418,7 +424,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
       // Always reset submission flag, even if there's an error
       submissionInProgressRef.current = false;
     }
-  }, [puzzle, gameState.selectedWords, gameState.selectionOrder]);
+  }, [puzzle, gameState.selectedWords, gameState.selectionOrder, submitAttemptMutation]);
 
   // Randomize grid
   const randomizeGrid = useCallback(() => {

@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useThemeCompletedPuzzles, themeGameKeys } from './queries';
 
 export interface PuzzleCompletionData {
   setName: string;
@@ -25,14 +27,21 @@ export const usePuzzleCompletion = (
   version: string, 
   totalPuzzles: number = 100
 ): UsePuzzleCompletionReturn => {
+  const queryClient = useQueryClient();
   const [completionData, setCompletionData] = useState<PuzzleCompletionData>({
     setName,
     version,
     completedPuzzles: new Set(),
     completionDate: {}
   });
-  const [isLoading, setIsLoading] = useState(false);
   const [hasSyncedOnMount, setHasSyncedOnMount] = useState(false);
+
+  // Use TanStack Query for backend data
+  const { 
+    data: backendCompletedPuzzles, 
+    isLoading, 
+    refetch: refetchCompletedPuzzles 
+  } = useThemeCompletedPuzzles(setName, !!setName);
 
   const storageKey = `${STORAGE_KEY_PREFIX}${setName}_${version}`;
 
@@ -69,6 +78,37 @@ export const usePuzzleCompletion = (
     }
   }, [setName, version, storageKey]);
 
+  // Merge backend data with local data when backend data becomes available
+  useEffect(() => {
+    if (backendCompletedPuzzles && !hasSyncedOnMount) {
+      const backendCompletedPuzzlesSet = new Set<number>(backendCompletedPuzzles);
+      
+      setCompletionData(prev => {
+        // Merge backend data with local data
+        const mergedCompletions = new Set([
+          ...prev.completedPuzzles,
+          ...backendCompletedPuzzlesSet
+        ]);
+        
+        // Add completion dates for backend puzzles (using current date if not available)
+        const mergedDates = { ...prev.completionDate };
+        backendCompletedPuzzlesSet.forEach(puzzleNum => {
+          if (!mergedDates[puzzleNum]) {
+            mergedDates[puzzleNum] = new Date().toISOString();
+          }
+        });
+        
+        return {
+          ...prev,
+          completedPuzzles: mergedCompletions,
+          completionDate: mergedDates
+        };
+      });
+      
+      setHasSyncedOnMount(true);
+    }
+  }, [backendCompletedPuzzles, hasSyncedOnMount]);
+
   // Save completion data to localStorage whenever it changes (only after initial sync)
   useEffect(() => {
     // Only save to localStorage after we've synced with backend on mount
@@ -85,53 +125,17 @@ export const usePuzzleCompletion = (
     }
   }, [completionData, storageKey, hasSyncedOnMount]);
 
-  // Fetch completion data from backend
+  // Sync completion data with backend using TanStack Query refetch
   const syncWithBackend = useCallback(async () => {
     if (!setName) return;
     
-    setIsLoading(true);
     try {
-      const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${baseURL}/api/games/themes/state/completed-puzzles/${encodeURIComponent(setName)}`, {
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          const backendCompletedPuzzles = new Set<number>(result.data.completedPuzzles);
-          
-          setCompletionData(prev => {
-            // Merge backend data with local data
-            const mergedCompletions = new Set([
-              ...prev.completedPuzzles,
-              ...backendCompletedPuzzles
-            ]);
-            
-            // Add completion dates for backend puzzles (using current date if not available)
-            const mergedDates = { ...prev.completionDate };
-            backendCompletedPuzzles.forEach(puzzleNum => {
-              if (!mergedDates[puzzleNum]) {
-                mergedDates[puzzleNum] = new Date().toISOString();
-              }
-            });
-            
-            return {
-              ...prev,
-              completedPuzzles: mergedCompletions,
-              completionDate: mergedDates
-            };
-          });
-        }
-      }
+      await refetchCompletedPuzzles();
     } catch (error) {
       console.error('Failed to sync with backend:', error);
       // Continue with local data on error
-    } finally {
-      setIsLoading(false);
-      setHasSyncedOnMount(true); // Mark that we've completed initial sync
     }
-  }, [setName]);
+  }, [setName, refetchCompletedPuzzles]);
 
   const markPuzzleCompleted = useCallback((puzzleNumber: number) => {
     setCompletionData(prev => {
@@ -153,11 +157,14 @@ export const usePuzzleCompletion = (
       };
     });
     
-    // Optionally sync with backend after a short delay to confirm completion
+    // Invalidate the completed puzzles query to trigger a refetch
+    // This will sync with backend after a short delay to confirm completion
     setTimeout(() => {
-      syncWithBackend();
+      queryClient.invalidateQueries({ 
+        queryKey: themeGameKeys.completedPuzzles(setName) 
+      });
     }, 1000);
-  }, [syncWithBackend]);
+  }, [queryClient, setName]);
 
   const isPuzzleCompleted = useCallback((puzzleNumber: number): boolean => {
     return completionData.completedPuzzles.has(puzzleNumber);
@@ -185,13 +192,6 @@ export const usePuzzleCompletion = (
       completionDate: {}
     }));
   }, []);
-
-  // Auto-sync with backend on mount
-  useEffect(() => {
-    if (setName && version) {
-      syncWithBackend();
-    }
-  }, [setName, version, syncWithBackend]);
 
   return {
     completedPuzzles: completionData.completedPuzzles,
