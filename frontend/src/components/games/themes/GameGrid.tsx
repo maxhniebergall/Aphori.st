@@ -39,30 +39,63 @@ export const GameGrid: React.FC<GameGridProps> = ({
   // Calculate optimal container size for square grid
   const [containerSize, setContainerSize] = useState(() => {
     if (typeof window !== 'undefined') {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      // Reserve space for header, controls, and padding
-      const availableHeight = vh - 200; // ~200px for header/controls/padding
-      const availableWidth = Math.min(vw - 32, 700); // Max 700px width with 32px padding
-      return Math.min(availableWidth, availableHeight);
+      return calculateOptimalSize();
     }
     return 400; // Default fallback
   });
+
+  // Dynamic calculation function
+  function calculateOptimalSize(): number {
+    if (typeof window === 'undefined') return 400;
+    
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    
+    // Get actual element heights dynamically
+    const headerHeight = document.querySelector('.app-header')?.clientHeight || 60;
+    const gameHeaderHeight = document.querySelector('.game-header')?.clientHeight || 80;
+    const controlsHeight = document.querySelector('.game-controls')?.clientHeight || 100;
+    const containerPadding = 40; // Total vertical padding/margins
+    
+    // Calculate actual UI space used
+    const totalUIHeight = headerHeight + gameHeaderHeight + controlsHeight + containerPadding;
+    
+    // Available space for grid
+    const availableHeight = vh - totalUIHeight - 20; // 20px safety margin
+    const availableWidth = vw - 40; // 40px horizontal margins
+    
+    // Calculate optimal square size
+    const maxSize = Math.min(availableHeight, availableWidth);
+    
+    // Apply reasonable limits based on screen size
+    let optimalSize;
+    if (vw < 400) {
+      // Small phones: use most of available space
+      optimalSize = Math.min(maxSize, vw - 20);
+    } else if (vw < 768) {
+      // Larger phones/small tablets: slightly constrained
+      optimalSize = Math.min(maxSize, 500);
+    } else if (vw < 1366) {
+      // Tablets/small laptops: moderate constraint
+      optimalSize = Math.min(maxSize, 600);
+    } else {
+      // Desktop: comfortable maximum
+      optimalSize = Math.min(maxSize, 700);
+    }
+    
+    // Ensure minimum viable size
+    return Math.max(240, optimalSize);
+  }
 
   // Update container size on window resize
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    const calculateOptimalSize = () => {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const availableHeight = vh - 200;
-      const availableWidth = Math.min(vw - 32, 700);
-      return Math.min(availableWidth, availableHeight);
-    };
-    
     const handleResize = () => {
-      setContainerSize(calculateOptimalSize());
+      // Debounce resize calculations for performance
+      setTimeout(() => {
+        setContainerSize(calculateOptimalSize());
+      }, 100);
     };
 
     // Set initial size and add listener
@@ -117,8 +150,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
         width: `${containerSize}px`,
         height: `${containerSize}px`,
         '--container-size': `${containerSize}px`,
-        '--grid-size': gridSize,
-        '--gap-size': `${Math.max(2, Math.round(containerSize * 0.015))}px`
+        '--grid-size': gridSize
       } as React.CSSProperties & { [key: string]: string | number }}
     >
       <div 
@@ -127,7 +159,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
         style={{
           gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
           gridTemplateRows: `repeat(${gridSize}, 1fr)`,
-          gap: `var(--gap-size)`
+          gap: `clamp(1px, ${(1.5 / gridSize)}cqi, ${Math.max(2, Math.round(containerSize * 0.015))}px)`
         }}
       >
         <AnimatePresence>
