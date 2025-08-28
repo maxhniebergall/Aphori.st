@@ -1,10 +1,24 @@
 .game-grid-container {
+  /* Much more conservative CSS fallback to ensure full grid visibility */
+  --ui-space: 360px; /* Increased for safety */
+  --scrollbar: 20px;
+  --available-height: calc(100vh - var(--ui-space));
+  --available-width: calc(100vw - var(--scrollbar) - 60px);
+  
+  /* Use smaller dimension with much more conservative maximum */
+  width: min(var(--available-height), var(--available-width), 480px);
+  height: min(var(--available-height), var(--available-width), 480px);
+  
+  /* JavaScript will override with precise calculation via --calculated-size */
+  width: var(--calculated-size, min(var(--available-height), var(--available-width), 480px));
+  height: var(--calculated-size, min(var(--available-height), var(--available-width), 480px));
+  
   margin: 0 auto;
   display: flex;
   justify-content: center;
   align-items: center;
   box-sizing: border-box;
-  /* Width and height are set via inline styles for dynamic sizing */
+  aspect-ratio: 1; /* Ensures perfect square */
 }
 
 .game-grid {
@@ -13,7 +27,9 @@
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  /* Grid template is set via inline styles, gap uses container queries */
+  /* Grid template is set via inline styles */
+  /* Dynamic gap based on container size */
+  gap: max(1px, min(2%, 10px));
 }
 
 /* Responsive adjustments are now handled dynamically via JavaScript */
@@ -27,10 +43,9 @@
   }
 }
 
-/* Ensure we don't exceed viewport bounds */
+/* Ensure we don't exceed viewport bounds on very short landscape screens */
 @media (orientation: landscape) and (max-height: 500px) {
   .game-grid-container {
-    max-height: calc(100vh - 150px);
-    max-width: calc(100vh - 150px);
+    --ui-space: 200px; /* Reduced but still conservative for short screens */
   }
 }

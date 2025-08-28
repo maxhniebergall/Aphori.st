@@ -44,64 +44,101 @@ export const GameGrid: React.FC<GameGridProps> = ({
     return 400; // Default fallback
   });
 
-  // Dynamic calculation function
+  // Enhanced calculation function for always-visible square grid
   function calculateOptimalSize(): number {
     if (typeof window === 'undefined') return 400;
     
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     
-    // Get actual element heights dynamically
+    // Get actual UI heights (with fallbacks)
     const headerHeight = document.querySelector('.app-header')?.clientHeight || 60;
     const gameHeaderHeight = document.querySelector('.game-header')?.clientHeight || 80;
     const controlsHeight = document.querySelector('.game-controls')?.clientHeight || 100;
-    const containerPadding = 40; // Total vertical padding/margins
     
-    // Calculate actual UI space used
-    const totalUIHeight = headerHeight + gameHeaderHeight + controlsHeight + containerPadding;
+    // Account for container padding and margins
+    const containerPadding = 32; // 16px top + 16px bottom from .themes-game-container
+    const additionalMargins = 20; // margin-top from container
+    const scrollbarWidth = 20; // Conservative estimate for scrollbar
     
-    // Available space for grid
-    const availableHeight = vh - totalUIHeight - 20; // 20px safety margin
-    const availableWidth = vw - 40; // 40px horizontal margins
+    // Much more conservative safety margin to ensure full visibility
+    const safetyMargin = vh < 700 ? 25 : 40;
     
-    // Calculate optimal square size
-    const maxSize = Math.min(availableHeight, availableWidth);
+    // Calculate true available space
+    const totalUIHeight = headerHeight + gameHeaderHeight + controlsHeight + containerPadding + additionalMargins;
+    const availableHeight = vh - totalUIHeight - safetyMargin;
+    const availableWidth = vw - containerPadding - scrollbarWidth;
     
-    // Apply reasonable limits based on screen size
-    let optimalSize;
-    if (vw < 400) {
-      // Small phones: use most of available space
-      optimalSize = Math.min(maxSize, vw - 20);
-    } else if (vw < 768) {
-      // Larger phones/small tablets: slightly constrained
-      optimalSize = Math.min(maxSize, 500);
-    } else if (vw < 1366) {
-      // Tablets/small laptops: moderate constraint
-      optimalSize = Math.min(maxSize, 600);
-    } else {
-      // Desktop: comfortable maximum
-      optimalSize = Math.min(maxSize, 700);
+    // Maximum square that fits in available space
+    const maxPossibleSize = Math.min(availableHeight, availableWidth);
+    
+    // Special case for landscape laptops (1000-1200x650-800px)
+    if (vw >= 1000 && vw <= 1200 && vh >= 650 && vh <= 800) {
+      const landscapeAvailable = vh - totalUIHeight - 30; // More conservative
+      const landscapeOptimal = Math.min(landscapeAvailable, vw * 0.45); // Much more conservative
+      return Math.max(240, Math.floor(landscapeOptimal));
     }
     
-    // Ensure minimum viable size
-    return Math.max(240, optimalSize);
+    // Apply much more conservative constraints to ensure full grid visibility
+    let optimalSize;
+    if (maxPossibleSize < 300) {
+      // Very small screens: use most available space
+      optimalSize = maxPossibleSize * 0.85; // More conservative
+    } else if (maxPossibleSize < 500) {
+      // Medium screens: much more padding for comfort
+      optimalSize = maxPossibleSize * 0.80; // Much more conservative
+    } else {
+      // Large screens: cap at reasonable maximum
+      optimalSize = Math.min(maxPossibleSize * 0.82, 480); // Much more conservative
+    }
+    
+    return Math.max(240, Math.floor(optimalSize));
   }
 
-  // Update container size on window resize
+  // Update container size with ResizeObserver for more accurate updates
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    const handleResize = () => {
-      // Debounce resize calculations for performance
-      setTimeout(() => {
-        setContainerSize(calculateOptimalSize());
-      }, 100);
+    const updateSize = () => {
+      setContainerSize(calculateOptimalSize());
     };
-
-    // Set initial size and add listener
-    setContainerSize(calculateOptimalSize());
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    
+    // Set initial size
+    updateSize();
+    
+    // Use ResizeObserver for more accurate updates, with fallback
+    const handleResize = () => {
+      setTimeout(updateSize, 100);
+    };
+    
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver((_entries) => {
+        // Debounce updates for performance
+        setTimeout(updateSize, 50);
+      });
+      
+      // Observe all UI elements that affect available space
+      const selectors = ['.app-header', '.game-header', '.game-controls', '.themes-game-container'];
+      
+      selectors.forEach(selector => {
+        const element = document.querySelector(selector);
+        if (element) {
+          resizeObserver.observe(element);
+        }
+      });
+      
+      // Also listen to window resize as backup
+      window.addEventListener('resize', handleResize);
+      
+      return () => {
+        resizeObserver.disconnect();
+        window.removeEventListener('resize', handleResize);
+      };
+    } else {
+      // Fallback to window resize for older browsers
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
   }, []);
 
   // Effect to handle completed category animations
@@ -150,6 +187,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
         width: `${containerSize}px`,
         height: `${containerSize}px`,
         '--container-size': `${containerSize}px`,
+        '--calculated-size': `${containerSize}px`,
         '--grid-size': gridSize
       } as React.CSSProperties & { [key: string]: string | number }}
     >
