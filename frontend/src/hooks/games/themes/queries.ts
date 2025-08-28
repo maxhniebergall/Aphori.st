@@ -82,9 +82,10 @@ export const useThemeSets = () => {
 export const useThemePuzzlesInSet = (setName: string, version: string, enabled = true) => {
   return useQuery({
     queryKey: themeGameKeys.puzzles(setName, version),
-    queryFn: async (): Promise<ThemesPuzzle[]> => {
-      const response = await fetch(`${baseURL}/api/games/themes/sets/${setName}/${version}`, {
-        credentials: 'include'
+    queryFn: async ({ signal }): Promise<ThemesPuzzle[]> => {
+      const response = await fetch(`${baseURL}/api/games/themes/sets/${encodeURIComponent(setName)}/${encodeURIComponent(version)}`, {
+        credentials: 'include',
+        signal
       });
       
       if (!response.ok) {
@@ -112,9 +113,10 @@ export const useThemePuzzlesInSet = (setName: string, version: string, enabled =
 export const useThemePuzzle = (setName: string, version: string, puzzleNumber: number, enabled = true) => {
   return useQuery({
     queryKey: themeGameKeys.puzzle(setName, version, puzzleNumber),
-    queryFn: async (): Promise<ThemesPuzzle> => {
-      const response = await fetch(`${baseURL}/api/games/themes/sets/${setName}/${version}/puzzle/${puzzleNumber}`, {
-        credentials: 'include'
+    queryFn: async ({ signal }): Promise<ThemesPuzzle> => {
+      const response = await fetch(`${baseURL}/api/games/themes/sets/${encodeURIComponent(setName)}/${encodeURIComponent(version)}/puzzle/${encodeURIComponent(String(puzzleNumber))}`, {
+        credentials: 'include',
+        signal
       });
       
       if (!response.ok) {
@@ -142,9 +144,10 @@ export const useThemePuzzle = (setName: string, version: string, puzzleNumber: n
 export const useThemeAttempts = (puzzleId: string, enabled = true) => {
   return useQuery({
     queryKey: themeGameKeys.attempts(puzzleId),
-    queryFn: async (): Promise<any[]> => {
-      const response = await fetch(`${baseURL}/api/games/themes/state/attempts/${puzzleId}`, {
-        credentials: 'include'
+    queryFn: async ({ signal }): Promise<any[]> => {
+      const response = await fetch(`${baseURL}/api/games/themes/state/attempts/${encodeURIComponent(puzzleId)}`, {
+        credentials: 'include',
+        signal
       });
       
       if (!response.ok) {
@@ -172,9 +175,10 @@ export const useThemeAttempts = (puzzleId: string, enabled = true) => {
 export const useThemeCompletedPuzzles = (setName: string, enabled = true) => {
   return useQuery({
     queryKey: themeGameKeys.completedPuzzles(setName),
-    queryFn: async (): Promise<number[]> => {
-      const response = await fetch(`${baseURL}/api/games/themes/state/completed-puzzles/${setName}`, {
-        credentials: 'include'
+    queryFn: async ({ signal }): Promise<number[]> => {
+      const response = await fetch(`${baseURL}/api/games/themes/state/completed-puzzles/${encodeURIComponent(setName)}`, {
+        credentials: 'include',
+        signal
       });
       
       if (!response.ok) {
@@ -202,9 +206,10 @@ export const useThemeCompletedPuzzles = (setName: string, enabled = true) => {
 export const useThemeShareableResults = (setName: string, puzzleNumber: number, enabled = true) => {
   return useQuery({
     queryKey: themeGameKeys.shareable(setName, puzzleNumber),
-    queryFn: async (): Promise<ShareableResults> => {
-      const response = await fetch(`${baseURL}/api/games/themes/state/shareable/${setName}/${puzzleNumber}`, {
-        credentials: 'include'
+    queryFn: async ({ signal }): Promise<ShareableResults> => {
+      const response = await fetch(`${baseURL}/api/games/themes/state/shareable/${encodeURIComponent(setName)}/${encodeURIComponent(String(puzzleNumber))}`, {
+        credentials: 'include',
+        signal
       });
       
       if (!response.ok) {

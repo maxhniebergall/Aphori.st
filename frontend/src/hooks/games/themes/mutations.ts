@@ -16,6 +16,7 @@ interface ApiResponse<T> {
 
 interface SubmitAttemptRequest {
   puzzleId: string;
+  setName: string;
   selectedWords: string[];
   selectionOrder: number[];
 }
@@ -94,14 +95,10 @@ export const useSubmitAttempt = () => {
       });
 
       // If the attempt was correct, also invalidate completed puzzles
-      if (data.attempt.result === 'correct') {
-        // Extract set name from puzzleId (assuming format: setName_puzzleNumber)
-        const setName = variables.puzzleId.split('_')[0];
-        if (setName) {
-          queryClient.invalidateQueries({ 
-            queryKey: themeGameKeys.completedPuzzles(setName) 
-          });
-        }
+      if (data.attempt.result === 'correct' && variables.setName) {
+        queryClient.invalidateQueries({ 
+          queryKey: themeGameKeys.completedPuzzles(variables.setName) 
+        });
       }
     },
     onError: (error: Error) => {
