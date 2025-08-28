@@ -267,7 +267,7 @@ export const PuzzleBrowser: React.FC<PuzzleBrowserProps> = ({
           <button onClick={onBackToSetSelection} className="back-button">
             ← Back to Sets
           </button>
-          <h2>{formatSetName(setName)}</h2>
+          <div className="puzzleSet-name"><h2>{formatSetName(setName)}</h2></div>
         </div>
         <div className="header-content">
           <div className="progress-summary">
