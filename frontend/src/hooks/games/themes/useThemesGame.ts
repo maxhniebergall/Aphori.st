@@ -172,11 +172,14 @@ export const useThemesGame = (): UseThemesGameReturn => {
         // Check if puzzle is complete
         const isComplete = completedCategories.length >= targetPuzzle.categories.length;
         
+        // Count only incorrect attempts for the attempts counter
+        const incorrectAttempts = attempts.filter((attempt: any) => attempt.result === 'incorrect').length;
+        
         setGameState({
           selectedWords: [],
           selectionOrder: [],
           completedCategories,
-          attempts: attempts.length,
+          attempts: incorrectAttempts,
           isComplete,
           shakingWords: [],
           gridWords: initializeGridWords(targetPuzzle, completedCategories),
@@ -286,8 +289,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
 
       setGameState(prev => {
         const newState = {
-          ...prev,
-          attempts: prev.attempts + 1
+          ...prev
         };
 
         if (result.attempt.result === 'correct') {
@@ -381,7 +383,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
             newState.isComplete = true;
           }
         } else {
-          // Incorrect selection - trigger shake animation
+          // Incorrect selection - increment attempts and trigger shake animation
+          newState.attempts = prev.attempts + 1;
           newState.shakingWords = currentSelectedWords;
           newState.selectedWords = [];
           newState.selectionOrder = [];
