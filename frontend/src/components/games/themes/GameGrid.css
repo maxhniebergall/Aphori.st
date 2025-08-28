@@ -1,128 +1,35 @@
-.game-grid {
-  --grid-gap: 6px;
-  --grid-padding: 12px;
-  --mobile-max-width: 100%;
-  
-  display: grid;
-  gap: var(--grid-gap);
+.game-grid-container {
   margin: 0 auto;
-  padding: var(--grid-padding);
+  display: flex;
   justify-content: center;
-  align-content: center;
-  width: 100%;
-  max-width: min(100%, 600px);
+  align-items: center;
   box-sizing: border-box;
+  /* Width and height are set via inline styles for dynamic sizing */
 }
 
-/* Grid size variants using data attributes - removed max-width constraints */
+.game-grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  /* Grid template and gap are set via inline styles for dynamic sizing */
+}
 
-/* Responsive adjustments using custom properties */
+/* Responsive adjustments are now handled dynamically via JavaScript */
+/* The container size and gaps are calculated based on viewport dimensions */
+
+/* Ensure minimum sizes for very small screens */
 @media (max-width: 320px) {
-  .game-grid {
-    --grid-gap: 3px;
-    --grid-padding: 8px;
-    max-width: min(100%, 300px);
+  .game-grid-container {
+    min-width: 280px;
+    min-height: 280px;
   }
 }
 
-@media (min-width: 321px) and (max-width: 375px) {
-  .game-grid {
-    --grid-gap: 3px;
-    --grid-padding: 10px;
-    max-width: min(100%, 350px);
-  }
-}
-
-@media (min-width: 376px) and (max-width: 480px) {
-  .game-grid {
-    --grid-gap: 4px;
-    --grid-padding: 12px;
-    max-width: min(100%, 440px);
-  }
-}
-
-@media (min-width: 481px) and (max-width: 640px) {
-  .game-grid {
-    --grid-gap: 5px;
-    --grid-padding: 14px;
-    max-width: min(100%, 550px);
-  }
-}
-
-@media (min-width: 641px) and (max-width: 767px) {
-  .game-grid {
-    --grid-gap: 8px;
-    --grid-padding: 16px;
-    max-width: min(100%, 600px);
-  }
-}
-
-@media (min-width: 768px) and (max-width: 1023px) {
-  .game-grid {
-    --grid-gap: 8px;
-    --grid-padding: 16px;
-    max-width: min(calc(100% - 32px), 800px);
-  }
-}
-
-@media (min-width: 1024px) and (max-width: 1366px) {
-  .game-grid {
-    --grid-gap: 10px;
-    --grid-padding: 20px;
-    max-width: min(calc(100% - 40px), 650px);
-  }
-}
-
-@media (min-width: 1367px) {
-  .game-grid {
-    --grid-gap: 12px;
-    --grid-padding: 24px;
-    max-width: min(calc(100% - 48px), 700px);
-  }
-}
-
-@media (max-height: 800px) and (min-width: 1024px) {
-  .game-grid {
-    --grid-gap: 8px;
-    --grid-padding: 16px;
-    max-width: min(100%, 500px);
-  }
-}
-
-/* Landscape orientation optimizations for tablets and laptops */
-@media (orientation: landscape) and (min-width: 768px) and (max-width: 1366px) and (max-height: 1024px) {
-  .game-grid {
-    --grid-gap: 4px;
-    --grid-padding: 8px;
-    max-width: min(100%, 420px);
-    margin-top: 0;
-    margin-bottom: 0;
-  }
-}
-
-/* Specific landscape adjustments for common laptop resolutions */
-@media (orientation: landscape) and (min-width: 1024px) and (max-width: 1366px) and (max-height: 800px) {
-  .game-grid {
-    --grid-gap: 3px;
-    --grid-padding: 6px;
-    max-width: min(100%, 380px);
-  }
-}
-
-/* Very short landscape screens (like 13" laptops) */
-@media (orientation: landscape) and (max-height: 768px) and (min-width: 1024px) {
-  .game-grid {
-    --grid-gap: 2px;
-    --grid-padding: 3px;
-    max-width: min(100%, 320px);
-  }
-}
-
-/* Extra small for very constrained heights */
-@media (orientation: landscape) and (max-height: 600px) and (min-width: 1024px) {
-  .game-grid {
-    --grid-gap: 1px;
-    --grid-padding: 2px;
-    max-width: min(100%, 280px);
+/* Ensure we don't exceed viewport bounds */
+@media (orientation: landscape) and (max-height: 500px) {
+  .game-grid-container {
+    max-height: calc(100vh - 150px);
+    max-width: calc(100vh - 150px);
   }
 }

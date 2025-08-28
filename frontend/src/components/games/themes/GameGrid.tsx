@@ -35,6 +35,41 @@ export const GameGrid: React.FC<GameGridProps> = ({
 }) => {
   // State for managing animation sequences
   const [localAnimatingWords, setLocalAnimatingWords] = useState<string[]>([]);
+  
+  // Calculate optimal container size for square grid
+  const [containerSize, setContainerSize] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      // Reserve space for header, controls, and padding
+      const availableHeight = vh - 200; // ~200px for header/controls/padding
+      const availableWidth = Math.min(vw - 32, 700); // Max 700px width with 32px padding
+      return Math.min(availableWidth, availableHeight);
+    }
+    return 400; // Default fallback
+  });
+
+  // Update container size on window resize
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const calculateOptimalSize = () => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const availableHeight = vh - 200;
+      const availableWidth = Math.min(vw - 32, 700);
+      return Math.min(availableWidth, availableHeight);
+    };
+    
+    const handleResize = () => {
+      setContainerSize(calculateOptimalSize());
+    };
+
+    // Set initial size and add listener
+    setContainerSize(calculateOptimalSize());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Effect to handle completed category animations
   useEffect(() => {
@@ -77,27 +112,40 @@ export const GameGrid: React.FC<GameGridProps> = ({
 
   return (
     <div 
-      className="game-grid"
-      data-grid-size={`${gridSize}x${gridSize}`}
+      className="game-grid-container"
       style={{
-        gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`
-      }}
+        width: `${containerSize}px`,
+        height: `${containerSize}px`,
+        '--container-size': `${containerSize}px`,
+        '--grid-size': gridSize,
+        '--gap-size': `${Math.max(2, Math.round(containerSize * 0.015))}px`
+      } as React.CSSProperties & { [key: string]: string | number }}
     >
-      <AnimatePresence>
-        {sortedWords.map((gridWord) => (
-          <WordSquare
-            key={gridWord.id}
-            word={gridWord.word}
-            isSelected={selectedWords.includes(gridWord.word)}
-            isShaking={shakingWords.includes(gridWord.word)}
-            onClick={() => onWordClick(gridWord.word)}
-            disabled={disabled}
-            isCompleted={gridWord.isCompleted}
-            difficulty={gridWord.difficulty}
-            isAnimating={localAnimatingWords.includes(gridWord.word)}
-          />
-        ))}
-      </AnimatePresence>
+      <div 
+        className="game-grid"
+        data-grid-size={`${gridSize}x${gridSize}`}
+        style={{
+          gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
+          gridTemplateRows: `repeat(${gridSize}, 1fr)`,
+          gap: `var(--gap-size)`
+        }}
+      >
+        <AnimatePresence>
+          {sortedWords.map((gridWord) => (
+            <WordSquare
+              key={gridWord.id}
+              word={gridWord.word}
+              isSelected={selectedWords.includes(gridWord.word)}
+              isShaking={shakingWords.includes(gridWord.word)}
+              onClick={() => onWordClick(gridWord.word)}
+              disabled={disabled}
+              isCompleted={gridWord.isCompleted}
+              difficulty={gridWord.difficulty}
+              isAnimating={localAnimatingWords.includes(gridWord.word)}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };
