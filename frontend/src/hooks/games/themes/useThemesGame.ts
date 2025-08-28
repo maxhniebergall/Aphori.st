@@ -88,13 +88,9 @@ export const useThemesGame = (): UseThemesGameReturn => {
     !!currentPuzzleParams
   );
 
-  const puzzleId = currentPuzzleParams 
-    ? `${currentPuzzleParams.setName}_${currentPuzzleParams.puzzleNumber}` 
-    : '';
-    
   const attemptsQuery = useThemeAttempts(
-    puzzleId,
-    !!currentPuzzleParams
+    puzzleQuery.data?.id || '',
+    !!puzzleQuery.data
   );
 
   const submitAttemptMutation = useSubmitAttempt();
@@ -289,6 +285,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
     try {
       const result = await submitAttemptMutation.mutateAsync({
         puzzleId: puzzle.id,
+        setName: puzzle.setName,
         selectedWords: currentSelectedWords,
         selectionOrder: currentSelectionOrder
       });
