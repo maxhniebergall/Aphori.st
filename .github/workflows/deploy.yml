@@ -13,6 +13,7 @@ env:
   BACKEND_URL: "https://backend-132704325993.us-central1.run.app"
   FRONTEND_URL: "https://frontend-132704325993.us-central1.run.app"
   RUN_MIGRATION: true
+  RUN_PUZZLE_RENAME_MIGRATION: true
 
 jobs:
   setup-build-publish-deploy:
@@ -87,6 +88,29 @@ jobs:
     #   env:
     #     FIREBASE_CREDENTIAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_APHORIST }}
     #     THEMES_FIREBASE_DATABASE_URL: 'https://aphorist-themes-default-rtdb.firebaseio.com/?ns=aphorist-themes'
+
+    - name: Run Database Migration - Rename Puzzle Sets
+      if: ${{ env.RUN_PUZZLE_RENAME_MIGRATION == 'true' }}
+      run: |
+        echo "Running puzzle set rename migration..."
+        cd .database-migration-scripts
+        echo "Installing dependencies..."
+        npm ci
+        
+        echo "Running migration in dry-run mode first..."
+        node rename-puzzle-sets.js --dry-run
+        
+        if [ $? -eq 0 ]; then
+          echo "Dry run successful. Running actual migration..."
+          node rename-puzzle-sets.js
+          echo "✅ Migration completed successfully"
+        else
+          echo "❌ Dry run failed. Skipping migration."
+          exit 1
+        fi
+      env:
+        FIREBASE_CREDENTIAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_APHORIST }}
+        THEMES_FIREBASE_DATABASE_URL: 'https://aphorist-themes-default-rtdb.firebaseio.com/?ns=aphorist-themes'
 
     - name: Build Frontend Docker image
       run: |
