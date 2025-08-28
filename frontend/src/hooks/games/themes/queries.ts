@@ -9,6 +9,42 @@ import { ShareableResults } from './useShareableResults';
 
 const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5050';
 
+// Exponential backoff retry function
+const retryWithBackoff = (failureCount: number, error: Error) => {
+  // Check if error is rate limit related
+  const isRateLimit = error.message.includes('rate limit') || 
+                     error.message.includes('429') ||
+                     (error as any).status === 429;
+  
+  // Check if error is server error (5xx)
+  const isServerError = error.message.includes('500') ||
+                       error.message.includes('502') ||
+                       error.message.includes('503') ||
+                       error.message.includes('504') ||
+                       (error as any).status >= 500;
+  
+  // Only retry on rate limits and server errors
+  if (!isRateLimit && !isServerError) {
+    return false;
+  }
+  
+  // Max 5 retries
+  if (failureCount >= 5) {
+    return false;
+  }
+  
+  return true;
+};
+
+const retryDelay = (attemptIndex: number) => {
+  // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+  const baseDelay = 1000;
+  const backoffMultiplier = Math.pow(2, attemptIndex);
+  const jitter = Math.random() * 0.1; // Add 10% jitter to prevent thundering herd
+  
+  return baseDelay * backoffMultiplier * (1 + jitter);
+};
+
 // Response types for API calls
 interface ApiResponse<T> {
   success: boolean;
@@ -72,7 +108,8 @@ export const useThemeSets = () => {
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
-    retry: 3,
+    retry: retryWithBackoff,
+    retryDelay,
   });
 };
 
@@ -103,7 +140,8 @@ export const useThemePuzzlesInSet = (setName: string, version: string, enabled =
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
-    retry: 3,
+    retry: retryWithBackoff,
+    retryDelay,
   });
 };
 
@@ -134,7 +172,8 @@ export const useThemePuzzle = (setName: string, version: string, puzzleNumber: n
     enabled,
     staleTime: Infinity, // Permanent during session
     gcTime: Infinity, // Keep in cache permanently during session
-    retry: 3,
+    retry: retryWithBackoff,
+    retryDelay,
   });
 };
 
@@ -165,7 +204,8 @@ export const useThemeAttempts = (puzzleId: string, enabled = true) => {
     enabled,
     staleTime: 1 * 60 * 1000, // 1 minute (short cache for frequently changing data)
     gcTime: 5 * 60 * 1000, // 5 minutes
-    retry: 2,
+    retry: retryWithBackoff,
+    retryDelay,
   });
 };
 
@@ -196,7 +236,8 @@ export const useThemeCompletedPuzzles = (setName: string, enabled = true) => {
     enabled,
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
-    retry: 3,
+    retry: retryWithBackoff,
+    retryDelay,
   });
 };
 
@@ -227,6 +268,7 @@ export const useThemeShareableResults = (setName: string, puzzleNumber: number, 
     enabled,
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
-    retry: 3,
+    retry: retryWithBackoff,
+    retryDelay,
   });
 };
