@@ -373,7 +373,7 @@
 /* Desktop adjustments */
 @media (min-width: 1024px) {
   .themes-game-container:has(.game-grid) {
-    max-width: 520px;
+    max-width: 580px;
     padding: 16px;
     min-height: 100vh;
   }
@@ -391,11 +391,10 @@
 /* Landscape orientation specific fixes for tablets and laptops */
 @media (orientation: landscape) and (min-width: 768px) and (max-width: 1366px) and (max-height: 1024px) {
   .themes-game-container:has(.game-grid) {
-    max-width: 480px;
+    max-width: 580px;
     padding: 4px;
     height: 100vh;
     max-height: 100vh;
-    overflow: hidden;
   }
   
   .game-header {
@@ -422,11 +421,10 @@
 /* Specific adjustments for common laptop landscape resolutions */
 @media (orientation: landscape) and (min-width: 1024px) and (max-width: 1366px) and (max-height: 800px) {
   .themes-game-container:has(.game-grid) {
-    max-width: 400px;
+    max-width: 520px;
     padding: 4px;
     height: 100vh;
     max-height: 100vh;
-    overflow: hidden;
   }
   
   .game-header h1 {

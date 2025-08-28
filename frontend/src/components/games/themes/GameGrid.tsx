@@ -56,6 +56,10 @@ export const GameGrid: React.FC<GameGridProps> = ({
     const gameHeaderHeight = document.querySelector('.game-header')?.clientHeight || 80;
     const controlsHeight = document.querySelector('.game-controls')?.clientHeight || 100;
     
+    // Check parent container width to respect CSS max-width constraints
+    const parentContainer = document.querySelector('.themes-game-container');
+    const parentMaxWidth = parentContainer ? parentContainer.clientWidth : vw;
+    
     // Account for container padding and margins
     const containerPadding = 32; // 16px top + 16px bottom from .themes-game-container
     const additionalMargins = 20; // margin-top from container
@@ -67,7 +71,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
     // Calculate true available space
     const totalUIHeight = headerHeight + gameHeaderHeight + controlsHeight + containerPadding + additionalMargins;
     const availableHeight = vh - totalUIHeight - safetyMargin;
-    const availableWidth = vw - containerPadding - scrollbarWidth;
+    const availableWidth = Math.min(parentMaxWidth - 16, vw - containerPadding - scrollbarWidth); // Respect parent container width
     
     // Maximum square that fits in available space
     const maxPossibleSize = Math.min(availableHeight, availableWidth);
@@ -75,7 +79,7 @@ export const GameGrid: React.FC<GameGridProps> = ({
     // Special case for landscape laptops (1000-1200x650-800px)
     if (vw >= 1000 && vw <= 1200 && vh >= 650 && vh <= 800) {
       const landscapeAvailable = vh - totalUIHeight - 30; // More conservative
-      const landscapeOptimal = Math.min(landscapeAvailable, vw * 0.45); // Much more conservative
+      const landscapeOptimal = Math.min(landscapeAvailable, availableWidth * 0.95); // Respect container width
       return Math.max(240, Math.floor(landscapeOptimal));
     }
     
