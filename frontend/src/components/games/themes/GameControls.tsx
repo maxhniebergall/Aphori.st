@@ -72,7 +72,10 @@ export const GameControls: React.FC<GameControlsProps> = ({
           disabled={!canSubmit || isSubmitting}
           type="button"
         >
-          {isSubmitting ? 'Checking...' : 'Submit'}
+          <span className="submit-button-content">
+            Submit
+            {isSubmitting && <div className="inline-spinner"></div>}
+          </span>
         </button>
       </div>
     </div>
