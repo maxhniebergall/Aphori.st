@@ -45,6 +45,7 @@ export interface UseThemesGameReturn {
   gameState: GameState;
   puzzle: ThemesPuzzle | null;
   loading: boolean;
+  isSubmitting: boolean;
   error: string | null;
   selectWord: (word: string) => void;
   submitSelection: () => Promise<void>;
@@ -100,7 +101,8 @@ export const useThemesGame = (): UseThemesGameReturn => {
 
   // Derived state from queries
   const puzzle = puzzleQuery.data || null;
-  const loading = puzzleQuery.isLoading || attemptsQuery.isLoading || submitAttemptMutation.isPending;
+  const loading = puzzleQuery.isLoading || attemptsQuery.isLoading; // Only initial loading, not submission
+  const isSubmitting = submitAttemptMutation.isPending;
   const queryError = puzzleQuery.error || attemptsQuery.error || submitAttemptMutation.error;
 
   // Update error state from queries
@@ -475,6 +477,7 @@ export const useThemesGame = (): UseThemesGameReturn => {
     gameState,
     puzzle,
     loading,
+    isSubmitting,
     error,
     selectWord,
     submitSelection,
