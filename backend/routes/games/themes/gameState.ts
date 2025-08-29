@@ -4,6 +4,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { createHash } from 'node:crypto';
 import { getThemesServices } from './index.js';
 import { optionalAuthMiddleware } from '../../../middleware/optionalAuthMiddleware.js';
 
@@ -48,7 +49,7 @@ async function handleTempUser(req: Request, res: Response, next: NextFunction) {
 
     // Handle temporary user
     const existingTempId = req.cookies?.temp_user_id;
-    logger.info(`Temp user middleware: existingTempId=${existingTempId}, cookies=${JSON.stringify(req.cookies)}`);
+    logger.info(`Temp user middleware: hasTempId=${Boolean(existingTempId)}`);
     const tempUser = await tempUserService.getOrCreateTempUser(existingTempId);
     
     // Set cookie for temporary user (60 days)
@@ -75,6 +76,23 @@ async function handleTempUser(req: Request, res: Response, next: NextFunction) {
 router.use(handleTempUser);
 
 /**
+ * Generate canonical signature for idempotency
+ * Creates deterministic hash from normalized word selection
+ */
+function generateAttemptSignature(puzzleId: string, selectedWords: string[]): string {
+  // Normalize words: case-insensitive, trimmed, sorted for consistent ordering
+  const normalizedWords = selectedWords
+    .map(w => w.toLowerCase().trim())
+    .sort();
+  
+  // Create canonical representation with separator that won't appear in words
+  const canonical = `${puzzleId}|${normalizedWords.join('\u0001')}`;
+  
+  // Generate SHA-256 hash
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+/**
  * Helper function to create completion metrics
  */
 async function createCompletionMetrics(
@@ -85,28 +103,38 @@ async function createCompletionMetrics(
   puzzleId: string
 ): Promise<void> {
   try {
-    // Get all user attempts for this puzzle
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
-    const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
+    // Get attempt IDs from the new index
+    const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}`;
+    const attemptIds = await dbClient.getRawPath(attemptIndexPath) || {};
     
-    const puzzleAttempts = Object.values(allAttempts).filter(
-      (attempt: any) => attempt.puzzleId === puzzleId
-    ) as ThemesAttempt[];
+    if (Object.keys(attemptIds).length === 0) return;
+
+    // Hydrate only the specific attempts for this puzzle
+    const puzzleAttempts: ThemesAttempt[] = [];
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
+    
+    for (const attemptId of Object.keys(attemptIds)) {
+      const attemptPath = `${attemptsPath}/${attemptId}`;
+      const attempt = await dbClient.getRawPath(attemptPath);
+      if (attempt && attempt.puzzleId === puzzleId) {
+        puzzleAttempts.push(attempt as ThemesAttempt);
+      }
+    }
 
     if (puzzleAttempts.length === 0) return;
 
     // Sort attempts by timestamp
     puzzleAttempts.sort((a, b) => a.timestamp - b.timestamp);
 
-    // Get first view time (from puzzle views)
+    // Get first view time by scanning all matching view timestamps and taking minimum
     const userViewsPath = THEMES_DB_PATHS.USER_PUZZLE_VIEWS(userId);
     const userViews = await dbClient.getRawPath(userViewsPath) || {};
     
     let firstViewTime = puzzleAttempts[0].timestamp; // Fallback to first attempt
+    // Scan all view timestamps for this puzzle and take the minimum
     for (const viewData of Object.values(userViews) as any[]) {
       if (viewData.puzzleId === puzzleId && viewData.timestamp < firstViewTime) {
         firstViewTime = viewData.timestamp;
-        break;
       }
     }
 
@@ -142,9 +170,13 @@ async function createCompletionMetrics(
       attempt.selectedWords.forEach(word => uniqueWords.add(word));
     });
 
-    // Extract set and puzzle number from puzzle ID
+    // Extract set name by trimming only the final numeric suffix
     const puzzleIdParts = puzzleId.split('_');
-    const setName = puzzleIdParts[0] || 'unknown';
+    const lastPart = puzzleIdParts[puzzleIdParts.length - 1];
+    const isLastPartNumeric = /^\d+$/.test(lastPart);
+    const setName = isLastPartNumeric 
+      ? puzzleIdParts.slice(0, -1).join('_') 
+      : puzzleId;
     const puzzleNumber = puzzle.puzzleNumber || 0;
 
     // Create completion record
@@ -197,14 +229,24 @@ router.get('/attempts/:puzzleId', async (req: Request, res: Response): Promise<v
     const { dbClient } = getThemesServices();
     const userId = (req as TempUserRequest).effectiveUserId;
     
-    // Get all attempts for this user
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
-    const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
+    // Get attempt IDs from the new index
+    const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}`;
+    const attemptIds = await dbClient.getRawPath(attemptIndexPath) || {};
     
-    // Filter for the specific puzzle
-    const puzzleAttempts = Object.values(allAttempts)
-      .filter((attempt: any) => attempt.puzzleId === puzzleId)
-      .sort((a: any, b: any) => a.timestamp - b.timestamp);
+    // Hydrate only the specific attempts for this puzzle
+    const puzzleAttempts: any[] = [];
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
+    
+    for (const attemptId of Object.keys(attemptIds)) {
+      const attemptPath = `${attemptsPath}/${attemptId}`;
+      const attempt = await dbClient.getRawPath(attemptPath);
+      if (attempt && attempt.puzzleId === puzzleId) {
+        puzzleAttempts.push(attempt);
+      }
+    }
+    
+    // Sort attempts by timestamp
+    puzzleAttempts.sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
     
     res.json({
       success: true,
@@ -341,9 +383,12 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
       return;
     }
     
-    // For puzzle sets, the format is setName_puzzleNumber (e.g., "wiki_batch_2025-08-20_1")
-    // Extract set name by joining all parts except the last one
-    const setName = puzzleIdParts.slice(0, -1).join('_');
+    // Extract set name by checking if last part is numeric and trimming only final numeric suffix
+    const lastPart = puzzleIdParts[puzzleIdParts.length - 1];
+    const isLastPartNumeric = /^\d+$/.test(lastPart);
+    const setName = isLastPartNumeric 
+      ? puzzleIdParts.slice(0, -1).join('_') 
+      : puzzleId;
 
     // Get the puzzle from puzzle sets to validate the attempt
     let puzzle = null;
@@ -565,21 +610,24 @@ router.get('/shareable/:setName/:puzzleNumber', async (req: Request, res: Respon
     // Construct the specific puzzle ID
     const puzzleId = `${setName}_${puzzleNum}`;
 
-    // Get all user attempts and filter for this specific puzzle
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
-    logger.info(`Looking for attempts at path: ${attemptsPath}`);
-    const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
-    logger.info(`Found ${Object.keys(allAttempts).length} total attempts for user`);
+    // Get attempt IDs from the new index
+    const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}`;
+    const attemptIds = await dbClient.getRawPath(attemptIndexPath) || {};
+    logger.info(`Looking for attempts using index: ${attemptIndexPath}`);
+    logger.info(`Found ${Object.keys(attemptIds).length} attempt IDs for puzzle ${puzzleId}`);
     
-    // Filter attempts for this specific puzzle
+    // Hydrate only the specific attempts for this puzzle
     const puzzleAttempts: Record<string, any> = {};
-    for (const [attemptId, attempt] of Object.entries(allAttempts)) {
-      if (attempt && typeof attempt === 'object' && 
-          (attempt as any).puzzleId === puzzleId) {
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
+    
+    for (const attemptId of Object.keys(attemptIds)) {
+      const attemptPath = `${attemptsPath}/${attemptId}`;
+      const attempt = await dbClient.getRawPath(attemptPath);
+      if (attempt && attempt.puzzleId === puzzleId) {
         puzzleAttempts[attemptId] = attempt;
       }
     }
-    logger.info(`Found ${Object.keys(puzzleAttempts).length} attempts for puzzle ${puzzleId}`);
+    logger.info(`Hydrated ${Object.keys(puzzleAttempts).length} attempts for puzzle ${puzzleId}`);
     
     // Get the specific puzzle from the puzzle set
     const puzzlesPath = `puzzleSets/${setName}`;
