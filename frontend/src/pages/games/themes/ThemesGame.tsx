@@ -42,6 +42,7 @@ export const ThemesGame: React.FC = () => {
     gameState,
     puzzle,
     loading,
+    isSubmitting,
     error,
     selectWord,
     submitSelection,
@@ -335,7 +336,7 @@ export const ThemesGame: React.FC = () => {
             onSubmit={handleSubmit}
             onRandomize={randomizeGrid}
             canSubmit={canSubmit}
-            isSubmitting={loading}
+            isSubmitting={isSubmitting}
             selectedCount={gameState.selectedWords.length}
             requiredCount={4}
             currentPuzzle={currentPuzzleNumber || 0}
