@@ -155,8 +155,8 @@ export const THEMES_DB_PATHS = {
   TEMP_USER_PROGRESS: (tempUserId: string) => `tempUserGameState/themes/${tempUserId}`,
   
   // Attempts (permanent storage)
-  USER_ATTEMPTS: (userId: string, date: string) => `gameAttempts/themes/${userId}/${date}`,
-  ATTEMPT: (userId: string, date: string, attemptId: string) => `gameAttempts/themes/${userId}/${date}/${attemptId}`,
+  USER_ATTEMPTS: (userId: string) => `gameAttempts/themes/${userId}`,
+  ATTEMPT: (userId: string, attemptId: string) => `gameAttempts/themes/${userId}/${attemptId}`,
   
   // Temporary users
   TEMP_USERS: 'tempUsers',

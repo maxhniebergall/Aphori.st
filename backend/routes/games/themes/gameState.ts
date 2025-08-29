@@ -82,12 +82,11 @@ async function createCompletionMetrics(
   userId: string,
   userType: 'logged_in' | 'temporary',
   puzzle: any,
-  puzzleId: string,
-  currentDate: string
+  puzzleId: string
 ): Promise<void> {
   try {
     // Get all user attempts for this puzzle
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
     const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
     
     const puzzleAttempts = Object.values(allAttempts).filter(
@@ -197,10 +196,9 @@ router.get('/attempts/:puzzleId', async (req: Request, res: Response): Promise<v
     const { puzzleId } = req.params;
     const { dbClient } = getThemesServices();
     const userId = (req as TempUserRequest).effectiveUserId;
-    const currentDate = getCurrentDateString();
     
-    // Get all attempts for this user and date
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
+    // Get all attempts for this user
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
     const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
     
     // Filter for the specific puzzle
@@ -346,7 +344,6 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
     // For puzzle sets, the format is setName_puzzleNumber (e.g., "wiki_batch_2025-08-20_1")
     // Extract set name by joining all parts except the last one
     const setName = puzzleIdParts.slice(0, -1).join('_');
-    const currentDate = getCurrentDateString();
 
     // Get the puzzle from puzzle sets to validate the attempt
     let puzzle = null;
@@ -378,7 +375,7 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
 
     // First, check if this is a duplicate submission
     // Get user's previous attempts for this puzzle
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
     const existingAttempts = await dbClient.getRawPath(attemptsPath) || {};
     
     // Check if the selected words match any previous attempt
@@ -484,7 +481,7 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
     };
 
     // Store attempt
-    const attemptPath = THEMES_DB_PATHS.ATTEMPT(userId, currentDate, attemptId);
+    const attemptPath = THEMES_DB_PATHS.ATTEMPT(userId, attemptId);
     await dbClient.setRawPath(attemptPath, attempt);
 
     // Update user progress if puzzle completed
@@ -493,6 +490,7 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
         ? THEMES_DB_PATHS.USER_PROGRESS(userId)
         : THEMES_DB_PATHS.TEMP_USER_PROGRESS(userId);
       
+      const currentDate = getCurrentDateString();
       const currentProgress = await dbClient.getRawPath(progressPath) || {
         userId,
         userType,
@@ -514,7 +512,7 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
       await dbClient.setRawPath(progressPath, currentProgress);
       
       // Create enhanced completion metrics
-      await createCompletionMetrics(dbClient, userId, userType, puzzle, puzzleId, currentDate);
+      await createCompletionMetrics(dbClient, userId, userType, puzzle, puzzleId);
     }
 
     res.json({
@@ -568,8 +566,7 @@ router.get('/shareable/:setName/:puzzleNumber', async (req: Request, res: Respon
     const puzzleId = `${setName}_${puzzleNum}`;
 
     // Get all user attempts and filter for this specific puzzle
-    const currentDate = getCurrentDateString();
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
     logger.info(`Looking for attempts at path: ${attemptsPath}`);
     const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
     logger.info(`Found ${Object.keys(allAttempts).length} total attempts for user`);

@@ -181,18 +181,20 @@ export class TemporaryUserService {
 
       let totalMigratedAttempts = 0;
 
+      // Get existing permanent user attempts
+      const permanentAttemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(permanentUserId);
+      const existingPermanentAttempts = await this.firebaseClient.getRawPath(permanentAttemptsPath) || {};
+      
+      // Start with existing permanent attempts
+      const migratedAttempts: Record<string, any> = { ...existingPermanentAttempts };
+
       // Iterate over all date keys and migrate each date's attempts
       for (const [dateKey, dateAttempts] of Object.entries(tempUserAttempts)) {
         if (!dateAttempts || typeof dateAttempts !== 'object') {
           continue;
         }
-
-        const permanentAttemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(permanentUserId, dateKey);
-        const existingPermanentAttempts = await this.firebaseClient.getRawPath(permanentAttemptsPath) || {};
         
-        // Update user IDs in attempt records and merge with existing
-        const migratedAttempts: Record<string, any> = { ...existingPermanentAttempts };
-        
+        // Process all attempts from this date
         for (const [attemptId, attemptData] of Object.entries(dateAttempts)) {
           if (attemptData && typeof attemptData === 'object') {
             // Only add if not already present (avoid overwriting existing permanent attempts)
@@ -207,10 +209,11 @@ export class TemporaryUserService {
             }
           }
         }
-
-        await this.firebaseClient.setRawPath(permanentAttemptsPath, migratedAttempts);
-        logger.debug(`Migrated attempts for date ${dateKey} from ${tempId} to ${permanentUserId}`);
+        logger.debug(`Processed attempts for date ${dateKey} from ${tempId} to ${permanentUserId}`);
       }
+
+      // Store all attempts under the permanent user (without date grouping)
+      await this.firebaseClient.setRawPath(permanentAttemptsPath, migratedAttempts);
 
       logger.info(`Migrated ${totalMigratedAttempts} total attempts from ${tempId} to ${permanentUserId}`);
     } catch (error) {
@@ -300,7 +303,6 @@ export class TemporaryUserService {
       }
 
       const users = Object.values(allTempUsers) as TemporaryUserId[];
-      const now = Date.now();
       
       let active = 0;
       let expired = 0;
