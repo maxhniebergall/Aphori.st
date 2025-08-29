@@ -418,21 +418,52 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // First, check if this is a duplicate submission
-    // Get user's previous attempts for this puzzle
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
-    const existingAttempts = await dbClient.getRawPath(attemptsPath) || {};
+    // Compute canonical signature for idempotency (case/trim-insensitive, order-insensitive)
+    const signature = generateAttemptSignature(puzzleId, selectedWords);
     
-    // Check if the selected words match any previous attempt
-    const selectedWordSet = new Set(selectedWords.map(w => w.toLowerCase().trim()));
-    const isDuplicate = Object.values(existingAttempts).some((attempt: any) => {
-      if (attempt.puzzleId === puzzleId) {
-        const attemptWordSet = new Set(attempt.selectedWords.map((w: string) => w.toLowerCase().trim()));
-        return selectedWordSet.size === attemptWordSet.size && 
-               [...selectedWordSet].every(word => attemptWordSet.has(word));
+    // Fast path: check signature index to short-circuit obvious duplicates
+    const sigPath = `/indexes/themesAttemptSignatures/${userId}/${puzzleId}/${signature}`;
+    const existingSig = await dbClient.getRawPath(sigPath);
+    let isDuplicate = Boolean(existingSig);
+    
+    if (!isDuplicate) {
+      // Transactionally reserve the signature; if it already exists, another request beat us
+      try {
+        const reservationResult = await dbClient.runTransaction(sigPath, (currentValue: any) => {
+          if (currentValue) {
+            // Signature already exists, this is a duplicate
+            return currentValue;
+          } else {
+            // Reserve the signature with timestamp
+            return { ts: Date.now(), reserved: true };
+          }
+        });
+        
+        // If transaction succeeded and committed, check if we reserved it or it already existed
+        if (reservationResult.committed && reservationResult.snapshot) {
+          // If the returned value doesn't have our reservation flag, someone else got there first
+          isDuplicate = !reservationResult.snapshot.reserved;
+        }
+      } catch (error) {
+        logger.error('Error in signature reservation transaction:', error);
+        // Fall back to traditional duplicate check on transaction failure
       }
-      return false;
-    });
+    }
+    
+    // Fallback scan for backward compatibility (kept until all writers use signatures)
+    if (!isDuplicate) {
+      const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
+      const existingAttempts = await dbClient.getRawPath(attemptsPath) || {};
+      const selectedWordSet = new Set(selectedWords.map(w => w.toLowerCase().trim()));
+      isDuplicate = Object.values(existingAttempts).some((attempt: any) => {
+        if (attempt.puzzleId === puzzleId) {
+          const attemptWordSet = new Set(attempt.selectedWords.map((w: string) => w.toLowerCase().trim()));
+          return selectedWordSet.size === attemptWordSet.size && 
+                 [...selectedWordSet].every(word => attemptWordSet.has(word));
+        }
+        return false;
+      });
+    }
 
     // If duplicate, return early without creating a new attempt or incrementing counter
     if (isDuplicate) {
@@ -528,6 +559,15 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
     // Store attempt
     const attemptPath = THEMES_DB_PATHS.ATTEMPT(userId, attemptId);
     await dbClient.setRawPath(attemptPath, attempt);
+    
+    // Maintain per-puzzle attempt index for performance
+    const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}/${attemptId}`;
+    await dbClient.setRawPath(attemptIndexPath, { ts: attempt.timestamp });
+    
+    // Ensure signature index is set (in case transaction logic didn't set it)
+    if (!existingSig) {
+      await dbClient.setRawPath(sigPath, { ts: attempt.timestamp, attemptId });
+    }
 
     // Update user progress if puzzle completed
     if (completedPuzzle) {
