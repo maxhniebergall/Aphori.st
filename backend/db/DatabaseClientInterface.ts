@@ -83,6 +83,7 @@ export abstract class DatabaseClientInterface {
 
   // --- Semantic Methods: Low-Level Generic ---
   abstract getRawPath(_path: string): Promise<any | null>;
+  abstract getRawPaths(_paths: string[]): Promise<(any | null)[]>;
   abstract setRawPath(_path: string, _value: any): Promise<void>;
   abstract updateRawPaths(_updates: Record<string, any>): Promise<void>;
   abstract removeRawPath(_path: string): Promise<void>;
