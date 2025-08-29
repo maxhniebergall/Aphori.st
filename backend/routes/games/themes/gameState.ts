@@ -564,10 +564,8 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
     const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}/${attemptId}`;
     await dbClient.setRawPath(attemptIndexPath, { ts: attempt.timestamp });
     
-    // Ensure signature index is set (in case transaction logic didn't set it)
-    if (!existingSig) {
-      await dbClient.setRawPath(sigPath, { ts: attempt.timestamp, attemptId });
-    }
+    // Ensure signature index is set with final attempt data
+    await dbClient.setRawPath(sigPath, { ts: attempt.timestamp, attemptId });
 
     // Update user progress if puzzle completed
     if (completedPuzzle) {
