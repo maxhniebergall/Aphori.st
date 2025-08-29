@@ -22,9 +22,13 @@ interface SubmitAttemptRequest {
 }
 
 interface SubmitAttemptResponse {
+  duplicate?: boolean;
   attempt: {
-    result: 'correct' | 'incorrect' | 'duplicate';
-  };
+    result: 'correct' | 'incorrect';
+  } | null;
+  duplicateOfAttemptId?: string;
+  puzzleCompleted: boolean;
+  message: string;
 }
 
 interface UserFingerprint {
@@ -95,7 +99,7 @@ export const useSubmitAttempt = () => {
       });
 
       // If the attempt was correct, also invalidate completed puzzles
-      if (data.attempt.result === 'correct' && variables.setName) {
+      if (data.attempt && data.attempt.result === 'correct' && variables.setName) {
         queryClient.invalidateQueries({ 
           queryKey: themeGameKeys.completedPuzzles(variables.setName) 
         });

@@ -300,12 +300,12 @@ export const useThemesGame = (): UseThemesGameReturn => {
           ...prev
         };
 
-        if (result.attempt.result === 'duplicate') {
+        if (result.duplicate) {
           // Show duplicate modal but don't change anything else
           newState.showDuplicateModal = true;
           // Keep the selected words so user can see what they tried
           return newState;
-        } else if (result.attempt.result === 'correct') {
+        } else if (result.attempt && result.attempt.result === 'correct') {
           // Found a complete category - find which category was solved
           const correctCategory = puzzle.categories.find(cat => {
             const categoryWordSet = new Set(cat.words);
