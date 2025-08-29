@@ -88,7 +88,7 @@ function initializeFirebase() {
   if (process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
     log('Connecting to Firebase emulator');
     const emulatorHost = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
-    appOptions.databaseURL = `http://${emulatorHost}?ns=${namespace}`;
+    appOptions.databaseURL = `http://${emulatorHost}/?ns=${namespace}`;
     
     // Initialize without credentials for emulator
     try {
