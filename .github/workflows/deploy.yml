@@ -14,6 +14,7 @@ env:
   FRONTEND_URL: "https://frontend-132704325993.us-central1.run.app"
   RUN_MIGRATION: true
   RUN_PUZZLE_RENAME_MIGRATION: true
+  RUN_GAME_ATTEMPTS_MIGRATION: true
 
 jobs:
   setup-build-publish-deploy:
@@ -103,6 +104,29 @@ jobs:
         if [ $? -eq 0 ]; then
           echo "Dry run successful. Running actual migration..."
           node rename-puzzle-sets.js
+          echo "✅ Migration completed successfully"
+        else
+          echo "❌ Dry run failed. Skipping migration."
+          exit 1
+        fi
+      env:
+        FIREBASE_CREDENTIAL: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_APHORIST }}
+        THEMES_FIREBASE_DATABASE_URL: 'https://aphorist-themes-default-rtdb.firebaseio.com/?ns=aphorist-themes'
+
+    - name: Run Database Migration - Remove Date from Game Attempts
+      if: ${{ env.RUN_GAME_ATTEMPTS_MIGRATION == 'true' }}
+      run: |
+        echo "Running game attempts date removal migration..."
+        cd .database-migration-scripts
+        echo "Installing dependencies..."
+        npm ci
+        
+        echo "Running migration in dry-run mode first..."
+        node migrate-attempts-remove-date.js --dry-run
+        
+        if [ $? -eq 0 ]; then
+          echo "Dry run successful. Running actual migration..."
+          node migrate-attempts-remove-date.js
           echo "✅ Migration completed successfully"
         else
           echo "❌ Dry run failed. Skipping migration."
