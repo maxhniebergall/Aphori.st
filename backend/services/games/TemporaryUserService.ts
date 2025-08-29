@@ -171,7 +171,7 @@ export class TemporaryUserService {
   private async migrateUserAttempts(tempId: string, permanentUserId: string): Promise<void> {
     try {
       // Get all attempts for the temp user by reading the temp user's attempts root
-      const tempUserAttemptsRootPath = `gameAttempts/themes/${tempId}`;
+      const tempUserAttemptsRootPath = THEMES_DB_PATHS.USER_ATTEMPTS(tempId);
       const tempUserAttempts = await this.firebaseClient.getRawPath(tempUserAttemptsRootPath);
 
       if (!tempUserAttempts || Object.keys(tempUserAttempts).length === 0) {
@@ -188,28 +188,54 @@ export class TemporaryUserService {
       // Start with existing permanent attempts
       const migratedAttempts: Record<string, any> = { ...existingPermanentAttempts };
 
-      // Iterate over all date keys and migrate each date's attempts
-      for (const [dateKey, dateAttempts] of Object.entries(tempUserAttempts)) {
-        if (!dateAttempts || typeof dateAttempts !== 'object') {
+      // Helper function to check if a key looks like a date (YYYY-MM-DD)
+      const isDateKey = (key: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(key);
+
+      // Process attempts - handle both date-grouped and flat structures
+      for (const [key, value] of Object.entries(tempUserAttempts)) {
+        if (!value || typeof value !== 'object') {
           continue;
         }
-        
-        // Process all attempts from this date
-        for (const [attemptId, attemptData] of Object.entries(dateAttempts)) {
-          if (attemptData && typeof attemptData === 'object') {
+
+        if (isDateKey(key)) {
+          // Date-grouped structure: key is date, value contains attempts
+          for (const [attemptId, attemptData] of Object.entries(value)) {
+            if (!attemptData || typeof attemptData !== 'object') {
+              continue;
+            }
+            
             // Only add if not already present (avoid overwriting existing permanent attempts)
             if (!migratedAttempts[attemptId]) {
               migratedAttempts[attemptId] = {
                 ...attemptData,
                 userId: permanentUserId,
                 userType: 'logged_in',
-                originalTempId: tempId
+                originalTempId: tempId,
+                migratedAt: Date.now(),
+                migratedFromDate: key
               };
               totalMigratedAttempts++;
             }
           }
+          logger.debug(`Processed date-grouped attempts for date ${key} from ${tempId} to ${permanentUserId}`);
+        } else {
+          // Already-flat structure: key is attemptId, value is attemptData
+          const attemptId = key;
+          const attemptData = value as Record<string, any>;
+          
+          // Only add if not already present (avoid overwriting existing permanent attempts)
+          if (!migratedAttempts[attemptId]) {
+            migratedAttempts[attemptId] = {
+              ...attemptData,
+              userId: permanentUserId,
+              userType: 'logged_in',
+              originalTempId: tempId,
+              migratedAt: Date.now()
+            };
+            totalMigratedAttempts++;
+          }
+          logger.debug(`Processed flat attempt ${attemptId} from ${tempId} to ${permanentUserId}`);
         }
-        logger.debug(`Processed attempts for date ${dateKey} from ${tempId} to ${permanentUserId}`);
       }
 
       // Store all attempts under the permanent user (without date grouping)
