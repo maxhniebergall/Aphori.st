@@ -505,14 +505,19 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
 
     // Check if puzzle is completed (all categories found)
     if (result === 'correct') {
-      // We already have existingAttempts from the duplicate check above
+      // Use the efficient index to get previous attempts for this puzzle
+      const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}`;
+      const attemptIds = await dbClient.getRawPath(attemptIndexPath) || {};
       
       // Track distinct solved categories by creating a Set of unique category identifiers
       const solvedCategories = new Set<string>();
       
-      // Add categories from previous correct attempts
-      Object.values(existingAttempts).forEach((attempt: any) => {
-        if (attempt.puzzleId === puzzleId && attempt.result === 'correct') {
+      // Hydrate and check previous correct attempts for this puzzle
+      const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
+      for (const attemptId of Object.keys(attemptIds)) {
+        const attemptPath = `${attemptsPath}/${attemptId}`;
+        const attempt = await dbClient.getRawPath(attemptPath);
+        if (attempt && attempt.puzzleId === puzzleId && attempt.result === 'correct') {
           // Find which category this attempt solved
           const solvedCategory = puzzle.categories.find((cat: any) => {
             const categoryWordSet = new Set(cat.words as string[]);
@@ -524,7 +529,7 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
             solvedCategories.add(solvedCategory.id);
           }
         }
-      });
+      }
       
       // Add the current attempt's category
       const currentSolvedCategory = puzzle.categories.find((cat: any) => {
