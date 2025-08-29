@@ -130,6 +130,9 @@ export class RedisClient extends DatabaseClientInterface {
   getRawPath(path: string): Promise<any | null> {
     throw new Error('Method not implemented.');
   }
+  getRawPaths(paths: string[]): Promise<(any | null)[]> {
+    throw new Error('Method not implemented.');
+  }
   setRawPath(path: string, value: any): Promise<void> {
     throw new Error('Method not implemented.');
   }

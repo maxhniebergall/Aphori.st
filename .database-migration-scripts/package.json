@@ -6,6 +6,10 @@
   "main": "upload-puzzles.js",
   "scripts": {
     "upload-puzzles": "node upload-puzzles.js",
+    "migrate-attempts": "node migrate-attempts-remove-date.js",
+    "migrate-attempts-dry": "node migrate-attempts-remove-date.js --dry-run",
+    "migrate-attempts-local": "FIREBASE_DATABASE_EMULATOR_HOST=localhost:9000 node migrate-attempts-remove-date.js",
+    "migrate-attempts-local-dry": "FIREBASE_DATABASE_EMULATOR_HOST=localhost:9000 node migrate-attempts-remove-date.js --dry-run",
     "test-local": "FIREBASE_DATABASE_EMULATOR_HOST=localhost:9000 node upload-puzzles.js",
     "test-with-backup": "node --experimental-json-modules test-migration.js"
   },

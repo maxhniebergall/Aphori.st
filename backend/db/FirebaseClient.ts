@@ -711,6 +711,25 @@ export class FirebaseClient extends DatabaseClientInterface {
     return snapshot.exists() ? snapshot.val() : null;
   }
 
+  async getRawPaths(paths: string[]): Promise<(any | null)[]> {
+    // Validate paths for forbidden characters
+    const forbiddenPathChars = /[.#$[\]]/;
+    for (const path of paths) {
+      if (forbiddenPathChars.test(path)) {
+        console.warn(`FirebaseClient: getRawPaths called with path ("${path}") containing forbidden characters . # $ [ ]. Firebase paths should not contain these characters.`);
+      }
+    }
+    
+    // Fetch all paths in parallel using Promise.all
+    const promises = paths.map(path => 
+      this.db.ref(path).once('value').then(snapshot => 
+        snapshot.exists() ? snapshot.val() : null
+      )
+    );
+    
+    return Promise.all(promises);
+  }
+
   async setRawPath(path: string, value: any): Promise<void> {
     // setRawPath accepts full Firebase paths which can contain '/' characters
     const forbiddenPathChars = /[.#$[\]]/;

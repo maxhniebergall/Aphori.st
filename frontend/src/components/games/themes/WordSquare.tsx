@@ -32,116 +32,86 @@ export const WordSquare: React.FC<WordSquareProps> = ({
   
   const upperCaseWord = useMemo(() => word.toUpperCase(), [word]);
   
-  // Track viewport width for responsive font sizing with SSR compatibility
-  const [viewportWidth, setViewportWidth] = useState(() => {
-    // Safely access window in client-side only
-    if (typeof window !== 'undefined') {
-      return window.innerWidth;
-    }
-    return 1024; // Default fallback for SSR
-  });
-  
+
+  // Get actual cell size from parent grid container
+  const [actualCellSize, setActualCellSize] = useState(100);
+
   useEffect(() => {
-    // Only add resize listeners on client-side
     if (typeof window === 'undefined') return;
     
-    const handleResize = () => {
-      setViewportWidth(window.innerWidth);
+    const updateCellSize = () => {
+      // Try to get actual container size from DOM
+      const gridContainer = document.querySelector('.game-grid-container') as HTMLElement;
+      const gridElement = document.querySelector('.game-grid') as HTMLElement;
+      
+      if (gridContainer && gridElement) {
+        const containerSize = gridContainer.clientWidth;
+        const gridComputedStyle = window.getComputedStyle(gridElement);
+        const gap = parseFloat(gridComputedStyle.gap) || 6;
+        
+        // Calculate number of grid cells per row/column
+        const gridCols = gridComputedStyle.gridTemplateColumns.split(' ').length;
+        
+        // Account for gaps: (gridCols - 1) gaps between cells
+        const totalGapWidth = gap * (gridCols - 1);
+        const usableWidth = containerSize - totalGapWidth;
+        const cellSize = usableWidth / gridCols;
+        
+        setActualCellSize(Math.max(50, cellSize)); // Minimum 50px cell
+      } else {
+        // Fallback calculation
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const fallbackContainer = Math.min(vw - 40, vh - 200, 700);
+        const fallbackCell = (fallbackContainer * 0.94) / 4; // 94% usable, 4x4 grid
+        setActualCellSize(Math.max(50, fallbackCell));
+      }
     };
     
-    // Set initial value once mounted on client-side
-    setViewportWidth(window.innerWidth);
+    // Initial calculation
+    setTimeout(updateCellSize, 0);
+    
+    // Update on resize
+    const handleResize = () => {
+      setTimeout(updateCellSize, 100);
+    };
     
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Calculate dynamic font size based on word length and screen size
+  // Calculate dynamic font size based on actual cell dimensions and word length
   const dynamicFontSize = useMemo(() => {
+    // Base font size as percentage of cell size
+    let baseFontRatio = 0.25; // 25% of cell size
+    let minSize = 8;
+    let maxSize = Math.max(16, Math.round(actualCellSize * 0.5));
     
-    // Define scaling parameters based on device categories
-    let baseSize, minSize, maxSize, scalingFactor;
-    
-    if (viewportWidth <= 320) {
-      // iPhone SE and smaller
-      baseSize = 18;
+    // Adjust ratio for very small cells
+    if (actualCellSize < 60) {
+      baseFontRatio = 0.22;
       minSize = 6;
-      maxSize = 22;
-      scalingFactor = 0.15;
-    } else if (viewportWidth <= 375) {
-      // iPhone 12 mini, iPhone 13 mini
-      baseSize = 20;
+    } else if (actualCellSize < 80) {
+      baseFontRatio = 0.23;
       minSize = 7;
-      maxSize = 24;
-      scalingFactor = 0.15;
-    } else if (viewportWidth <= 480) {
-      // Standard mobile phones
-      baseSize = 24;
-      minSize = 8;
-      maxSize = 28;
-      scalingFactor = 0.16;
-    } else if (viewportWidth <= 640) {
-      // Large phones
-      baseSize = 28;
-      minSize = 9;
-      maxSize = 32;
-      scalingFactor = 0.17;
-    } else if (viewportWidth <= 768) {
-      // iPad mini and small tablets
-      baseSize = 32;
-      minSize = 10;
-      maxSize = 36;
-      scalingFactor = 0.17;
-    } else if (viewportWidth <= 1024) {
-      // iPad and larger tablets
-      baseSize = 34;
-      minSize = 10;
-      maxSize = 38;
-      scalingFactor = 0.19;
-    } else if (viewportWidth <= 1366) {
-      // Small laptops
-      baseSize = 28;
-      minSize = 9;
-      maxSize = 32;
-      scalingFactor = 0.17;
-    } else {
-      // Desktop and larger screens
-      baseSize = 30;
-      minSize = 10;
-      maxSize = 34;
-      scalingFactor = 0.18;
     }
     
-    // Adjust for smaller screens in landscape mode (SSR-safe)
-    if (typeof window !== 'undefined' && window.innerHeight < 800 && viewportWidth >= 1024) {
-      baseSize = Math.round(baseSize * 0.85);
-      minSize = Math.round(minSize * 0.85);
-      maxSize = Math.round(maxSize * 0.85);
-    }
+    // Calculate base size from cell dimensions
+    let baseSize = Math.round(actualCellSize * baseFontRatio);
     
-    // Very aggressive scaling based on word length to ensure single line fit
-    // Apply exponential scaling for longer words with stricter minimum sizes
-    let lengthFactor;
-    if (word.length <= 3) {
-      lengthFactor = 1;
-    } else if (word.length <= 5) {
-      lengthFactor = Math.max(0.7, 1 - (word.length - 3) * scalingFactor * 0.8);
-    } else if (word.length <= 7) {
-      lengthFactor = Math.max(0.5, 0.7 - (word.length - 5) * scalingFactor * 1.2);
-    } else if (word.length <= 10) {
-      lengthFactor = Math.max(0.3, 0.5 - (word.length - 7) * scalingFactor * 1.5);
-    } else if (word.length <= 13) {
-      lengthFactor = Math.max(0.2, 0.3 - (word.length - 10) * scalingFactor * 1.8);
-    } else {
-      // Very long words get extremely small
-      lengthFactor = Math.max(0.15, 0.2 - (word.length - 13) * scalingFactor * 2.0);
+    // Scale down based on word length to ensure fit
+    let lengthFactor = 1;
+    if (word.length > 4) {
+      const excessLength = word.length - 4;
+      // More aggressive scaling for longer words
+      lengthFactor = Math.max(0.3, 1 - (excessLength * 0.1));
     }
     
     const calculatedSize = Math.round(baseSize * lengthFactor);
     
-    // Clamp to min/max bounds
+    // Clamp to bounds
     return Math.max(minSize, Math.min(maxSize, calculatedSize));
-  }, [word, viewportWidth]);
+  }, [word, actualCellSize]);
 
   const handleClick = () => {
     if (!disabled) {

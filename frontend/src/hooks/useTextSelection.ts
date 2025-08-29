@@ -326,8 +326,8 @@ const throttledAnimationLoop = throttle(
   (
     event: MouseEvent | TouchEvent, 
     container: React.RefObject<HTMLDivElement | null>, 
-    startOffsetRef: React.RefObject<number>, // Pass refs explicitly
-    endOffsetRef: React.RefObject<number>,   // Pass refs explicitly
+    startOffsetRef: React.MutableRefObject<number>, // Pass refs explicitly
+    endOffsetRef: React.MutableRefObject<number>,   // Pass refs explicitly
     startHandleRef: React.RefObject<HTMLSpanElement | null>,
     endHandleRef: React.RefObject<HTMLSpanElement | null>,
     activeHandleRef: React.RefObject<'start' | 'end' | null>
@@ -410,8 +410,8 @@ export function useTextSelection({
   selectedQuote,
 }: UseTextSelectionProps): UseTextSelectionReturn {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const startOffsetRef = useRef<number>(0);
-  const endOffsetRef = useRef<number>(0);
+  const startOffsetRef = useRef(0);
+  const endOffsetRef = useRef(0);
   const mouseDownRef = useRef<boolean>(false); // Still useful to track overall down state
   const isDraggingHandleRef = useRef<boolean>(false); // Track if a handle drag is active
   const [containerText, setContainerText] = useState<string>('');

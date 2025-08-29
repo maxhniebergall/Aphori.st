@@ -270,6 +270,11 @@ export class LoggedDatabaseClient implements DatabaseClientInterface {
         this.logger.debug(logPayload, 'Executing DB command: getRawPath'); // READ = debug
         try { return this.underlyingClient.getRawPath(path); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: getRawPath'); throw e; }
     }
+    async getRawPaths(paths: string[], context?: LogContext): Promise<(any | null)[]> {
+        const logPayload = this.createLogPayload('getRawPaths', `[${paths.length} paths]`, { pathCount: paths.length }, context);
+        this.logger.debug(logPayload, 'Executing DB command: getRawPaths'); // READ = debug
+        try { return this.underlyingClient.getRawPaths(paths); } catch (e: any) { this.logger.error({ ...logPayload, err: e}, 'Cmd Failed: getRawPaths'); throw e; }
+    }
     async setRawPath(path: string, value: any, context?: LogContext): Promise<void> {
         const logPayload = this.createLogPayload('setRawPath', path, { valueType: typeof value }, context);
         this.logger.info(logPayload, 'Executing DB command: setRawPath'); // WRITE = info

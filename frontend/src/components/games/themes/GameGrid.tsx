@@ -35,6 +35,115 @@ export const GameGrid: React.FC<GameGridProps> = ({
 }) => {
   // State for managing animation sequences
   const [localAnimatingWords, setLocalAnimatingWords] = useState<string[]>([]);
+  
+  // Calculate optimal container size for square grid
+  const [containerSize, setContainerSize] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return calculateOptimalSize();
+    }
+    return 400; // Default fallback
+  });
+
+  // Enhanced calculation function for always-visible square grid
+  function calculateOptimalSize(): number {
+    if (typeof window === 'undefined') return 400;
+    
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    
+    // Get actual UI heights (with fallbacks)
+    const headerHeight = document.querySelector('.app-header')?.clientHeight || 60;
+    const gameHeaderHeight = document.querySelector('.game-header')?.clientHeight || 80;
+    const controlsHeight = document.querySelector('.game-controls')?.clientHeight || 100;
+    
+    // Check parent container width to respect CSS max-width constraints
+    const parentContainer = document.querySelector('.themes-game-container');
+    const parentMaxWidth = parentContainer ? parentContainer.clientWidth : vw;
+    
+    // Account for container padding and margins
+    const containerPadding = 32; // 16px top + 16px bottom from .themes-game-container
+    const additionalMargins = 20; // margin-top from container
+    const scrollbarWidth = 20; // Conservative estimate for scrollbar
+    
+    // Much more conservative safety margin to ensure full visibility
+    const safetyMargin = vh < 700 ? 25 : 40;
+    
+    // Calculate true available space
+    const totalUIHeight = headerHeight + gameHeaderHeight + controlsHeight + containerPadding + additionalMargins;
+    const availableHeight = vh - totalUIHeight - safetyMargin;
+    const availableWidth = Math.min(parentMaxWidth - 16, vw - containerPadding - scrollbarWidth); // Respect parent container width
+    
+    // Maximum square that fits in available space
+    const maxPossibleSize = Math.min(availableHeight, availableWidth);
+    
+    // Special case for landscape laptops (1000-1200x650-800px)
+    if (vw >= 1000 && vw <= 1200 && vh >= 650 && vh <= 800) {
+      const landscapeAvailable = vh - totalUIHeight - 30; // More conservative
+      const landscapeOptimal = Math.min(landscapeAvailable, availableWidth * 0.95); // Respect container width
+      return Math.max(240, Math.floor(landscapeOptimal));
+    }
+    
+    // Apply much more conservative constraints to ensure full grid visibility
+    let optimalSize;
+    if (maxPossibleSize < 300) {
+      // Very small screens: use most available space
+      optimalSize = maxPossibleSize * 0.85; // More conservative
+    } else if (maxPossibleSize < 500) {
+      // Medium screens: much more padding for comfort
+      optimalSize = maxPossibleSize * 0.80; // Much more conservative
+    } else {
+      // Large screens: cap at reasonable maximum
+      optimalSize = Math.min(maxPossibleSize * 0.82, 480); // Much more conservative
+    }
+    
+    return Math.max(240, Math.floor(optimalSize));
+  }
+
+  // Update container size with ResizeObserver for more accurate updates
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const updateSize = () => {
+      setContainerSize(calculateOptimalSize());
+    };
+    
+    // Set initial size
+    updateSize();
+    
+    // Use ResizeObserver for more accurate updates, with fallback
+    const handleResize = () => {
+      setTimeout(updateSize, 100);
+    };
+    
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver((_entries) => {
+        // Debounce updates for performance
+        setTimeout(updateSize, 50);
+      });
+      
+      // Observe all UI elements that affect available space
+      const selectors = ['.app-header', '.game-header', '.game-controls', '.themes-game-container'];
+      
+      selectors.forEach(selector => {
+        const element = document.querySelector(selector);
+        if (element) {
+          resizeObserver.observe(element);
+        }
+      });
+      
+      // Also listen to window resize as backup
+      window.addEventListener('resize', handleResize);
+      
+      return () => {
+        resizeObserver.disconnect();
+        window.removeEventListener('resize', handleResize);
+      };
+    } else {
+      // Fallback to window resize for older browsers
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, []);
 
   // Effect to handle completed category animations
   useEffect(() => {
@@ -77,27 +186,40 @@ export const GameGrid: React.FC<GameGridProps> = ({
 
   return (
     <div 
-      className="game-grid"
-      data-grid-size={`${gridSize}x${gridSize}`}
+      className="game-grid-container"
       style={{
-        gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`
-      }}
+        width: `${containerSize}px`,
+        height: `${containerSize}px`,
+        '--container-size': `${containerSize}px`,
+        '--calculated-size': `${containerSize}px`,
+        '--grid-size': gridSize
+      } as React.CSSProperties & { [key: string]: string | number }}
     >
-      <AnimatePresence>
-        {sortedWords.map((gridWord) => (
-          <WordSquare
-            key={gridWord.id}
-            word={gridWord.word}
-            isSelected={selectedWords.includes(gridWord.word)}
-            isShaking={shakingWords.includes(gridWord.word)}
-            onClick={() => onWordClick(gridWord.word)}
-            disabled={disabled}
-            isCompleted={gridWord.isCompleted}
-            difficulty={gridWord.difficulty}
-            isAnimating={localAnimatingWords.includes(gridWord.word)}
-          />
-        ))}
-      </AnimatePresence>
+      <div 
+        className="game-grid"
+        data-grid-size={`${gridSize}x${gridSize}`}
+        style={{
+          gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
+          gridTemplateRows: `repeat(${gridSize}, 1fr)`,
+          gap: `clamp(1px, ${(1.5 / gridSize)}cqi, ${Math.max(2, Math.round(containerSize * 0.015))}px)`
+        }}
+      >
+        <AnimatePresence>
+          {sortedWords.map((gridWord) => (
+            <WordSquare
+              key={gridWord.id}
+              word={gridWord.word}
+              isSelected={selectedWords.includes(gridWord.word)}
+              isShaking={shakingWords.includes(gridWord.word)}
+              onClick={() => onWordClick(gridWord.word)}
+              disabled={disabled}
+              isCompleted={gridWord.isCompleted}
+              difficulty={gridWord.difficulty}
+              isAnimating={localAnimatingWords.includes(gridWord.word)}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

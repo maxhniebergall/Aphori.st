@@ -4,6 +4,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { createHash } from 'node:crypto';
 import { getThemesServices } from './index.js';
 import { optionalAuthMiddleware } from '../../../middleware/optionalAuthMiddleware.js';
 
@@ -48,7 +49,7 @@ async function handleTempUser(req: Request, res: Response, next: NextFunction) {
 
     // Handle temporary user
     const existingTempId = req.cookies?.temp_user_id;
-    logger.info(`Temp user middleware: existingTempId=${existingTempId}, cookies=${JSON.stringify(req.cookies)}`);
+    logger.info(`Temp user middleware: hasTempId=${Boolean(existingTempId)}`);
     const tempUser = await tempUserService.getOrCreateTempUser(existingTempId);
     
     // Set cookie for temporary user (60 days)
@@ -75,6 +76,23 @@ async function handleTempUser(req: Request, res: Response, next: NextFunction) {
 router.use(handleTempUser);
 
 /**
+ * Generate canonical signature for idempotency
+ * Creates deterministic hash from normalized word selection
+ */
+function generateAttemptSignature(puzzleId: string, selectedWords: string[]): string {
+  // Normalize words: case-insensitive, trimmed, sorted for consistent ordering
+  const normalizedWords = selectedWords
+    .map(w => w.toLowerCase().trim())
+    .sort();
+  
+  // Create canonical representation with separator that won't appear in words
+  const canonical = `${puzzleId}|${normalizedWords.join('\u0001')}`;
+  
+  // Generate SHA-256 hash
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+/**
  * Helper function to create completion metrics
  */
 async function createCompletionMetrics(
@@ -82,32 +100,38 @@ async function createCompletionMetrics(
   userId: string,
   userType: 'logged_in' | 'temporary',
   puzzle: any,
-  puzzleId: string,
-  currentDate: string
+  puzzleId: string
 ): Promise<void> {
   try {
-    // Get all user attempts for this puzzle
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
-    const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
+    // Get attempt IDs from the new index
+    const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}`;
+    const attemptIds = await dbClient.getRawPath(attemptIndexPath) || {};
     
-    const puzzleAttempts = Object.values(allAttempts).filter(
-      (attempt: any) => attempt.puzzleId === puzzleId
-    ) as ThemesAttempt[];
+    if (Object.keys(attemptIds).length === 0) return;
+
+    // Hydrate only the specific attempts for this puzzle using parallel fetching
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
+    const attemptPaths = Object.keys(attemptIds).map(attemptId => `${attemptsPath}/${attemptId}`);
+    
+    const attemptResults = await dbClient.getRawPaths(attemptPaths);
+    const puzzleAttempts: ThemesAttempt[] = attemptResults
+      .filter((attempt: any) => attempt && attempt.puzzleId === puzzleId)
+      .map((attempt: any) => attempt as ThemesAttempt);
 
     if (puzzleAttempts.length === 0) return;
 
     // Sort attempts by timestamp
     puzzleAttempts.sort((a, b) => a.timestamp - b.timestamp);
 
-    // Get first view time (from puzzle views)
+    // Get first view time by scanning all matching view timestamps and taking minimum
     const userViewsPath = THEMES_DB_PATHS.USER_PUZZLE_VIEWS(userId);
     const userViews = await dbClient.getRawPath(userViewsPath) || {};
     
     let firstViewTime = puzzleAttempts[0].timestamp; // Fallback to first attempt
+    // Scan all view timestamps for this puzzle and take the minimum
     for (const viewData of Object.values(userViews) as any[]) {
       if (viewData.puzzleId === puzzleId && viewData.timestamp < firstViewTime) {
         firstViewTime = viewData.timestamp;
-        break;
       }
     }
 
@@ -143,9 +167,13 @@ async function createCompletionMetrics(
       attempt.selectedWords.forEach(word => uniqueWords.add(word));
     });
 
-    // Extract set and puzzle number from puzzle ID
+    // Extract set name by trimming only the final numeric suffix
     const puzzleIdParts = puzzleId.split('_');
-    const setName = puzzleIdParts[0] || 'unknown';
+    const lastPart = puzzleIdParts[puzzleIdParts.length - 1];
+    const isLastPartNumeric = /^\d+$/.test(lastPart);
+    const setName = isLastPartNumeric 
+      ? puzzleIdParts.slice(0, -1).join('_') 
+      : puzzleId;
     const puzzleNumber = puzzle.puzzleNumber || 0;
 
     // Create completion record
@@ -197,16 +225,21 @@ router.get('/attempts/:puzzleId', async (req: Request, res: Response): Promise<v
     const { puzzleId } = req.params;
     const { dbClient } = getThemesServices();
     const userId = (req as TempUserRequest).effectiveUserId;
-    const currentDate = getCurrentDateString();
     
-    // Get all attempts for this user and date
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
-    const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
+    // Get attempt IDs from the new index
+    const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}`;
+    const attemptIds = await dbClient.getRawPath(attemptIndexPath) || {};
     
-    // Filter for the specific puzzle
-    const puzzleAttempts = Object.values(allAttempts)
-      .filter((attempt: any) => attempt.puzzleId === puzzleId)
-      .sort((a: any, b: any) => a.timestamp - b.timestamp);
+    // Hydrate only the specific attempts for this puzzle using parallel fetching
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
+    const attemptPaths = Object.keys(attemptIds).map(attemptId => `${attemptsPath}/${attemptId}`);
+    
+    const attemptResults = await dbClient.getRawPaths(attemptPaths);
+    const puzzleAttempts: any[] = attemptResults
+      .filter(attempt => attempt && attempt.puzzleId === puzzleId);
+    
+    // Sort attempts by timestamp
+    puzzleAttempts.sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
     
     res.json({
       success: true,
@@ -343,10 +376,12 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
       return;
     }
     
-    // For puzzle sets, the format is setName_puzzleNumber (e.g., "wiki_batch_2025-08-20_1")
-    // Extract set name by joining all parts except the last one
-    const setName = puzzleIdParts.slice(0, -1).join('_');
-    const currentDate = getCurrentDateString();
+    // Extract set name by checking if last part is numeric and trimming only final numeric suffix
+    const lastPart = puzzleIdParts[puzzleIdParts.length - 1];
+    const isLastPartNumeric = /^\d+$/.test(lastPart);
+    const setName = isLastPartNumeric 
+      ? puzzleIdParts.slice(0, -1).join('_') 
+      : puzzleId;
 
     // Get the puzzle from puzzle sets to validate the attempt
     let puzzle = null;
@@ -376,6 +411,60 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // Compute canonical signature for idempotency (case/trim-insensitive, order-insensitive)
+    const signature = generateAttemptSignature(puzzleId, selectedWords);
+    
+    // Fast path: check signature index to short-circuit obvious duplicates
+    const sigPath = `/indexes/themesAttemptSignatures/${userId}/${puzzleId}/${signature}`;
+    const existingSig = await dbClient.getRawPath(sigPath);
+    let isDuplicate = Boolean(existingSig);
+    
+    if (!isDuplicate) {
+      // Transactionally reserve the signature; if it already exists, another request beat us
+      try {
+        const reservationResult = await dbClient.runTransaction(sigPath, (currentValue: any) => {
+          if (currentValue) {
+            // Signature already exists, this is a duplicate
+            return currentValue;
+          } else {
+            // Reserve the signature with timestamp
+            return { ts: Date.now(), reserved: true };
+          }
+        });
+        
+        // If transaction succeeded and committed, check if we reserved it or it already existed
+        if (reservationResult.committed && reservationResult.snapshot) {
+          // If the returned value doesn't have our reservation flag, someone else got there first
+          isDuplicate = !reservationResult.snapshot.reserved;
+        }
+      } catch (error) {
+        logger.error('Error in signature reservation transaction:', error);
+        // Fall back to traditional duplicate check on transaction failure
+      }
+    }
+    
+
+    // If duplicate, return early without creating a new attempt or incrementing counter
+    if (isDuplicate) {
+      // Check if we have signature data with attemptId for better UX
+      let duplicateOfAttemptId;
+      if (existingSig && existingSig.attemptId) {
+        duplicateOfAttemptId = existingSig.attemptId;
+      }
+
+      res.json({
+        success: true,
+        data: {
+          duplicate: true,
+          attempt: null,
+          ...(duplicateOfAttemptId && { duplicateOfAttemptId }),
+          puzzleCompleted: false,
+          message: "You've already tried those words!"
+        }
+      });
+      return;
+    }
+
     // Validate attempt (check if selected words form a complete category)
     let result: 'correct' | 'incorrect' = 'incorrect';
     let distance = selectedWords.length; // Default to maximum distance
@@ -401,28 +490,33 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
 
     // Check if puzzle is completed (all categories found)
     if (result === 'correct') {
-      // Get user's previous attempts for this puzzle
-      const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
-      const existingAttempts = await dbClient.getRawPath(attemptsPath) || {};
+      // Use the efficient index to get previous attempts for this puzzle
+      const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}`;
+      const attemptIds = await dbClient.getRawPath(attemptIndexPath) || {};
       
       // Track distinct solved categories by creating a Set of unique category identifiers
       const solvedCategories = new Set<string>();
       
-      // Add categories from previous correct attempts
-      Object.values(existingAttempts).forEach((attempt: any) => {
-        if (attempt.puzzleId === puzzleId && attempt.result === 'correct') {
-          // Find which category this attempt solved
-          const solvedCategory = puzzle.categories.find((cat: any) => {
-            const categoryWordSet = new Set(cat.words as string[]);
-            const selectedWordSet = new Set(attempt.selectedWords);
-            return categoryWordSet.size === selectedWordSet.size && 
-                   [...categoryWordSet].every(word => selectedWordSet.has(word as string));
-          });
-          if (solvedCategory && solvedCategory.id) {
-            solvedCategories.add(solvedCategory.id);
-          }
+      // Hydrate and check previous correct attempts for this puzzle using parallel fetching
+      const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
+      const attemptPaths = Object.keys(attemptIds).map(attemptId => `${attemptsPath}/${attemptId}`);
+      
+      const attemptResults = await dbClient.getRawPaths(attemptPaths);
+      const correctAttempts = attemptResults
+        .filter(attempt => attempt && attempt.puzzleId === puzzleId && attempt.result === 'correct');
+      
+      for (const attempt of correctAttempts) {
+        // Find which category this attempt solved
+        const solvedCategory = puzzle.categories.find((cat: any) => {
+          const categoryWordSet = new Set(cat.words as string[]);
+          const selectedWordSet = new Set(attempt.selectedWords);
+          return categoryWordSet.size === selectedWordSet.size && 
+                 [...categoryWordSet].every(word => selectedWordSet.has(word as string));
+        });
+        if (solvedCategory && solvedCategory.id) {
+          solvedCategories.add(solvedCategory.id);
         }
-      });
+      }
       
       // Add the current attempt's category
       const currentSolvedCategory = puzzle.categories.find((cat: any) => {
@@ -454,9 +548,18 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
       completedPuzzle
     };
 
-    // Store attempt
-    const attemptPath = THEMES_DB_PATHS.ATTEMPT(userId, currentDate, attemptId);
-    await dbClient.setRawPath(attemptPath, attempt);
+    // Store attempt, per-puzzle index, and signature atomically to prevent partial state
+    // TODO: Add TTL/cleanup job for themesAttemptSignatures to cap growth
+    const attemptPath = THEMES_DB_PATHS.ATTEMPT(userId, attemptId);
+    const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}/${attemptId}`;
+    
+    const updates = {
+      [attemptPath]: attempt,
+      [attemptIndexPath]: { ts: attempt.timestamp },
+      [sigPath]: { ts: attempt.timestamp, attemptId }
+    };
+    
+    await dbClient.updateRawPaths(updates);
 
     // Update user progress if puzzle completed
     if (completedPuzzle) {
@@ -464,6 +567,7 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
         ? THEMES_DB_PATHS.USER_PROGRESS(userId)
         : THEMES_DB_PATHS.TEMP_USER_PROGRESS(userId);
       
+      const currentDate = getCurrentDateString();
       const currentProgress = await dbClient.getRawPath(progressPath) || {
         userId,
         userType,
@@ -485,7 +589,7 @@ router.post('/attempt', async (req: Request, res: Response): Promise<void> => {
       await dbClient.setRawPath(progressPath, currentProgress);
       
       // Create enhanced completion metrics
-      await createCompletionMetrics(dbClient, userId, userType, puzzle, puzzleId, currentDate);
+      await createCompletionMetrics(dbClient, userId, userType, puzzle, puzzleId);
     }
 
     res.json({
@@ -538,22 +642,26 @@ router.get('/shareable/:setName/:puzzleNumber', async (req: Request, res: Respon
     // Construct the specific puzzle ID
     const puzzleId = `${setName}_${puzzleNum}`;
 
-    // Get all user attempts and filter for this specific puzzle
-    const currentDate = getCurrentDateString();
-    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId, currentDate);
-    logger.info(`Looking for attempts at path: ${attemptsPath}`);
-    const allAttempts = await dbClient.getRawPath(attemptsPath) || {};
-    logger.info(`Found ${Object.keys(allAttempts).length} total attempts for user`);
+    // Get attempt IDs from the new index
+    const attemptIndexPath = `/indexes/themesUserAttemptsByPuzzle/${userId}/${puzzleId}`;
+    const attemptIds = await dbClient.getRawPath(attemptIndexPath) || {};
+    logger.info(`Looking for attempts using index: ${attemptIndexPath}`);
+    logger.info(`Found ${Object.keys(attemptIds).length} attempt IDs for puzzle ${puzzleId}`);
     
-    // Filter attempts for this specific puzzle
+    // Hydrate only the specific attempts for this puzzle using parallel fetching
+    const attemptsPath = THEMES_DB_PATHS.USER_ATTEMPTS(userId);
+    const attemptPaths = Object.keys(attemptIds).map(attemptId => `${attemptsPath}/${attemptId}`);
+    
+    const attemptResults = await dbClient.getRawPaths(attemptPaths);
     const puzzleAttempts: Record<string, any> = {};
-    for (const [attemptId, attempt] of Object.entries(allAttempts)) {
-      if (attempt && typeof attempt === 'object' && 
-          (attempt as any).puzzleId === puzzleId) {
+    
+    Object.keys(attemptIds).forEach((attemptId, index) => {
+      const attempt = attemptResults[index];
+      if (attempt && attempt.puzzleId === puzzleId) {
         puzzleAttempts[attemptId] = attempt;
       }
-    }
-    logger.info(`Found ${Object.keys(puzzleAttempts).length} attempts for puzzle ${puzzleId}`);
+    });
+    logger.info(`Hydrated ${Object.keys(puzzleAttempts).length} attempts for puzzle ${puzzleId}`);
     
     // Get the specific puzzle from the puzzle set
     const puzzlesPath = `puzzleSets/${setName}`;

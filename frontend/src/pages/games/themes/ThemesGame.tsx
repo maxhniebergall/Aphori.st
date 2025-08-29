@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { GameGrid } from '../../../components/games/themes/GameGrid';
 import { GameControls } from '../../../components/games/themes/GameControls';
 import { ShareModal } from '../../../components/games/themes/ShareModal';
+import { DuplicateAttemptModal } from '../../../components/games/themes/DuplicateAttemptModal';
 import { PuzzleSetSelector } from '../../../components/games/themes/PuzzleSetSelector';
 import { PuzzleBrowser } from '../../../components/games/themes/PuzzleBrowser';
 import { useThemesGame } from '../../../hooks/games/themes/useThemesGame';
@@ -46,7 +47,8 @@ export const ThemesGame: React.FC = () => {
     submitSelection,
     randomizeGrid,
     loadPuzzleFromSet,
-    resetGame
+    resetGame,
+    dismissDuplicateModal
   } = useThemesGame();
 
   const {
@@ -105,7 +107,7 @@ export const ThemesGame: React.FC = () => {
     if (puzzle && selectedSet && currentPuzzleNumber) {
       trackPuzzleView(puzzle.id, selectedSet, currentPuzzleNumber);
     }
-  }, [puzzle, selectedSet, currentPuzzleNumber, trackPuzzleView]);
+  }, [puzzle, selectedSet, currentPuzzleNumber]);
 
   const handleSubmit = async () => {
     await submitSelection();
@@ -365,6 +367,11 @@ export const ThemesGame: React.FC = () => {
         setName={selectedSet || ''}
         puzzleNumber={currentPuzzleNumber || 0}
         puzzleId={puzzle?.id}
+      />
+
+      <DuplicateAttemptModal
+        isOpen={gameState.showDuplicateModal}
+        onClose={dismissDuplicateModal}
       />
       </div>
     </div>
