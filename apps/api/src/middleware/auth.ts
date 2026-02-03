@@ -162,7 +162,7 @@ export function generateAuthToken(
   };
 
   return jwt.sign(payload, config.jwt.secret, {
-    expiresIn: config.jwt.expiresIn,
+    expiresIn: config.jwt.expiresIn as jwt.SignOptions['expiresIn'],
   });
 }
 

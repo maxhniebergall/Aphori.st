@@ -14,7 +14,7 @@ import {
 } from '../middleware/auth.js';
 import type { ApiError } from '@chitin/shared';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 // Rate limiter for magic link requests
 const magicLinkLimiter = rateLimit({

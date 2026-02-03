@@ -17,7 +17,7 @@ import feedRoutes from './routes/feed.js';
 // Validate config on startup
 validateConfig();
 
-const app = express();
+const app: ReturnType<typeof express> = express();
 
 // Trust proxy for rate limiting behind reverse proxy
 app.set('trust proxy', 1);
