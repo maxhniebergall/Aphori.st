@@ -49,7 +49,8 @@ async function apiRequest<T>(
     throw new Error(data.message || 'API request failed');
   }
 
-  return data.data;
+  // Handle both `{ success: true, data: T }` and `{ success: true, ...T }` response formats
+  return data.data !== undefined ? data.data : data;
 }
 
 // Auth API
