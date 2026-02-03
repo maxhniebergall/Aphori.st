@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { query, withTransaction } from '../pool.js';
+import { query } from '../pool.js';
 import type { Post, PostWithAuthor, AnalysisStatus, CreatePostInput, PaginatedResponse, FeedSortType } from '@chitin/shared';
 
 interface PostRow {
@@ -31,9 +31,9 @@ function rowToPost(row: PostRow): Post {
     analysis_status: row.analysis_status,
     score: row.score,
     reply_count: row.reply_count,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    deleted_at: row.deleted_at,
+    created_at: (row.created_at as Date).toISOString(),
+    updated_at: (row.updated_at as Date).toISOString(),
+    deleted_at: row.deleted_at ? (row.deleted_at as Date).toISOString() : null,
   };
 }
 
@@ -161,10 +161,10 @@ export const PostRepo = {
       switch (sort) {
         case 'new':
         case 'hot':
-          nextCursor = lastItem.created_at.toISOString();
+          nextCursor = lastItem.created_at;
           break;
         case 'top':
-          nextCursor = `${lastItem.score}_${lastItem.created_at.toISOString()}`;
+          nextCursor = `${lastItem.score}_${lastItem.created_at}`;
           break;
       }
     }

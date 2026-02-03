@@ -18,8 +18,8 @@ function rowToVote(row: VoteRow): Vote {
     target_type: row.target_type,
     target_id: row.target_id,
     value: row.value as VoteValue,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    created_at: (row.created_at as Date).toISOString(),
+    updated_at: (row.updated_at as Date).toISOString(),
   };
 }
 
@@ -69,7 +69,7 @@ export const VoteRepo = {
 
     const result = await query<{ target_id: string; value: number }>(
       `SELECT target_id, value FROM votes
-       WHERE user_id = $1 AND target_type = $2 AND target_id = ANY($3)`,
+       WHERE user_id = $1 AND target_type = $2 AND target_id = ANY($3::uuid[])`,
       [userId, targetType, targetIds]
     );
 

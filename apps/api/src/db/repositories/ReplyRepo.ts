@@ -39,9 +39,9 @@ function rowToReply(row: ReplyRow): Reply {
     path: row.path,
     score: row.score,
     reply_count: row.reply_count,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    deleted_at: row.deleted_at,
+    created_at: (row.created_at as Date).toISOString(),
+    updated_at: (row.updated_at as Date).toISOString(),
+    deleted_at: row.deleted_at ? (row.deleted_at as Date).toISOString() : null,
   };
 }
 
@@ -158,7 +158,7 @@ export const ReplyRepo = {
 
     if (cursor) {
       cursorCondition = 'AND r.created_at < $3';
-      params.push(new Date(cursor));
+      params.push(cursor);
     }
 
     const result = await query<ReplyWithAuthorRow>(
@@ -166,7 +166,7 @@ export const ReplyRepo = {
        FROM replies r
        JOIN users u ON r.author_id = u.id
        WHERE r.post_id = $1 AND r.deleted_at IS NULL ${cursorCondition}
-       ORDER BY r.path, r.created_at ASC
+       ORDER BY r.created_at DESC
        LIMIT $2`,
       params
     );
@@ -175,7 +175,7 @@ export const ReplyRepo = {
     const items = result.rows.slice(0, limit).map(rowToReplyWithAuthor);
 
     const nextCursor = hasMore && items.length > 0
-      ? items[items.length - 1]!.created_at.toISOString()
+      ? items[items.length - 1]!.created_at
       : null;
 
     return {

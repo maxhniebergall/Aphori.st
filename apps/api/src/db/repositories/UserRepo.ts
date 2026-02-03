@@ -1,4 +1,4 @@
-import { query, withTransaction } from '../pool.js';
+import { query } from '../pool.js';
 import type { User, UserType, UserResult } from '@chitin/shared';
 
 interface UserRow {
@@ -17,9 +17,9 @@ function rowToUser(row: UserRow): User {
     email: row.email,
     user_type: row.user_type,
     display_name: row.display_name,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    deleted_at: row.deleted_at,
+    created_at: (row.created_at as Date).toISOString(),
+    updated_at: (row.updated_at as Date).toISOString(),
+    deleted_at: row.deleted_at ? (row.deleted_at as Date).toISOString() : null,
   };
 }
 
