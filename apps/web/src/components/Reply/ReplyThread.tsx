@@ -32,12 +32,7 @@ export function ReplyThread({ postId, initialReplies }: ReplyThreadProps) {
   }
 
   // Build a tree structure from flat replies
-  const replyMap = new Map<string, ReplyWithAuthor>();
   const rootReplies: ReplyWithAuthor[] = [];
-
-  for (const reply of replies) {
-    replyMap.set(reply.id, reply);
-  }
 
   for (const reply of replies) {
     if (!reply.parent_reply_id) {
@@ -45,6 +40,8 @@ export function ReplyThread({ postId, initialReplies }: ReplyThreadProps) {
     }
   }
 
+  // TODO: Optimize rendering from O(n²) to O(n) by building a Map<parentId, children[]> once
+  // and using it in getChildren() instead of filtering all replies for every node
   const getChildren = (parentId: string): ReplyWithAuthor[] => {
     return replies.filter((r) => r.parent_reply_id === parentId);
   };
