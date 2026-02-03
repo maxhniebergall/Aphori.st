@@ -3,9 +3,10 @@ import { z } from 'zod';
 import logger from '../logger.js';
 import { VoteRepo, PostRepo, ReplyRepo } from '../db/repositories/index.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { voteLimiter } from '../middleware/rateLimit.js';
 import type { ApiError } from '@chitin/shared';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 // Validation schemas
 const createVoteSchema = z.object({
@@ -23,7 +24,7 @@ const deleteVoteSchema = z.object({
  * POST /votes
  * Create or update a vote
  */
-router.post('/', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+router.post('/', authenticateToken, voteLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const input = createVoteSchema.parse(req.body);
 

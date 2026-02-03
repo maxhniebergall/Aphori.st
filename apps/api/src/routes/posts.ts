@@ -3,9 +3,10 @@ import { z } from 'zod';
 import logger from '../logger.js';
 import { PostRepo, ReplyRepo } from '../db/repositories/index.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.js';
+import { postLimiter, replyLimiter } from '../middleware/rateLimit.js';
 import type { ApiError } from '@chitin/shared';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 // Validation schemas
 const createPostSchema = z.object({
@@ -28,7 +29,7 @@ const paginationSchema = z.object({
  * POST /posts
  * Create a new post
  */
-router.post('/', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+router.post('/', authenticateToken, postLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const input = createPostSchema.parse(req.body);
 
@@ -112,7 +113,7 @@ router.get('/:id', optionalAuth, async (req: Request<{ id: string }>, res: Respo
  * POST /posts/:id/replies
  * Create a reply to a post
  */
-router.post('/:id/replies', authenticateToken, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
+router.post('/:id/replies', authenticateToken, replyLimiter, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
     const { id: postId } = req.params;
 
