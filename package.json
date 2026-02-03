@@ -1,0 +1,25 @@
+{
+  "name": "chitin-social",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:api": "pnpm --filter @chitin/api dev",
+    "dev:web": "pnpm --filter @chitin/web dev",
+    "dev:discourse": "pnpm --filter @chitin/discourse-engine dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "db:migrate": "pnpm --filter @chitin/api db:migrate",
+    "db:rollback": "pnpm --filter @chitin/api db:rollback",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
