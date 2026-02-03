@@ -12,8 +12,7 @@ import {
   verifyAuthToken,
   authenticateToken,
 } from '../middleware/auth.js';
-import { AppError } from '../middleware/errorHandler.js';
-import type { ApiError, User } from '@chitin/shared';
+import type { ApiError } from '@chitin/shared';
 
 const router = Router();
 
@@ -66,10 +65,8 @@ router.post('/send-magic-link', magicLinkLimiter, async (req: Request, res: Resp
 
     logger.info('Magic link request', { email: lowerEmail, isSignup: shouldSignup });
 
-    // Generate token (use dev token in non-production)
-    const token = config.env === 'production'
-      ? generateMagicToken(lowerEmail)
-      : 'dev_token';
+    // Generate token
+    const token = generateMagicToken(lowerEmail);
 
     // Build magic link
     const baseUrl = shouldSignup
@@ -272,7 +269,9 @@ router.get('/check-user-id/:id', async (req: Request<{ id: string }>, res: Respo
 
     res.json({
       success: true,
-      available,
+      data: {
+        available,
+      },
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
