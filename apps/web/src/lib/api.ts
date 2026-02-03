@@ -35,12 +35,18 @@ async function apiRequest<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const fetchOptions: RequestInit = {
+  const fetchOptions: RequestInit & { next?: { revalidate?: number } } = {
     method,
     headers,
-    ...(body && { body: JSON.stringify(body) }),
-    ...(revalidate !== undefined && { next: { revalidate } }),
   };
+
+  if (body) {
+    fetchOptions.body = JSON.stringify(body);
+  }
+
+  if (revalidate !== undefined) {
+    fetchOptions.next = { revalidate };
+  }
 
   const response = await fetch(`${config.apiUrl}${endpoint}`, fetchOptions);
   const data = await response.json();

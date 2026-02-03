@@ -12,7 +12,7 @@
   "dependencies": {
     "@chitin/shared": "workspace:*",
     "@tanstack/react-query": "^5.62.0",
-    "next": "14.2.20",
+    "next": "16.1.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-virtuoso": "^4.12.0"
