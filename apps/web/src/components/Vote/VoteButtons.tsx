@@ -20,11 +20,17 @@ export function VoteButtons({ targetType, targetId, score }: VoteButtonsProps) {
   const queryClient = useQueryClient();
   const previousVoteRef = useRef<VoteValue | null>(null);
   const previousScoreRef = useRef(score);
+  const isMutatingRef = useRef(false);
 
   const voteMutation = useMutation({
     mutationFn: async (value: VoteValue) => {
       if (!token) throw new Error('Not authenticated');
 
+      // Prevent concurrent mutations (mutex)
+      if (isMutatingRef.current) return;
+      isMutatingRef.current = true;
+
+      // Capture state BEFORE any async operation
       const previousVote = currentVote;
       previousVoteRef.current = previousVote;
       previousScoreRef.current = optimisticScore;
@@ -50,6 +56,7 @@ export function VoteButtons({ targetType, targetId, score }: VoteButtonsProps) {
       toast.error('Failed to save vote. Please try again.');
     },
     onSettled: () => {
+      isMutatingRef.current = false;
       queryClient.invalidateQueries({ queryKey: ['feed'] });
     },
   });
