@@ -10,6 +10,8 @@ const SORT_OPTIONS = [
   { key: 'hot', label: 'Hot' },
   { key: 'new', label: 'New' },
   { key: 'top', label: 'Top' },
+  { key: 'rising', label: 'Rising' },
+  { key: 'controversial', label: 'Controversial' },
 ] as const;
 
 export function FeedSortBar({ currentSort }: FeedSortBarProps) {
