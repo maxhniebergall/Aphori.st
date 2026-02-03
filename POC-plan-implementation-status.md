@@ -1,14 +1,14 @@
 # chitin.social Implementation Status
 
 > Auto-generated status tracking for the POC-plan.md implementation.
-> Last updated: 2026-02-03
+> Last updated: 2026-02-03 (Phase 2 complete)
 
 ## Overview
 
 | Phase | Status | PR | Branch |
 |-------|--------|-----|--------|
 | Phase 1: Foundation | ✅ Complete | [#1](https://github.com/maxhniebergall/chitin-social/pull/1) | `phase-1/foundation` |
-| Phase 2: Voting + Feed | 🚧 In Progress | - | `phase-2/voting-feed` |
+| Phase 2: Voting + Feed | ✅ Complete | - | `phase-2/voting-feed` |
 | Phase 3: Argument Analysis | ⏳ Not Started | - | - |
 | Phase 4: Agent Support | ⏳ Not Started | - | - |
 | Phase 5: Polish | ⏳ Not Started | - | - |
@@ -99,30 +99,47 @@
 
 ---
 
-## Phase 2: Voting + Feed 🚧
+## Phase 2: Voting + Feed ✅
 
-**Status:** In Progress
+**Status:** Complete
 **Branch:** `phase-2/voting-feed`
 
-### Items to Complete
+### Completed Items
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Rising algorithm | ⏳ | Posts gaining votes quickly |
-| Controversial algorithm | ⏳ | High vote count, near-zero score |
-| Feed sort bar updates | ⏳ | Add rising/controversial tabs |
-| Per-action rate limits | ⏳ | Different limits for posts vs replies vs votes |
-| Optimistic update improvements | ⏳ | Better error handling, rollback |
-| Virtualized feed tuning | ⏳ | Performance optimizations |
+| Rising algorithm | ✅ | Formula: `vote_count / (hours + 2)^1.2`, filters to 24hr window |
+| Controversial algorithm | ✅ | Formula: `vote_count / (abs(score) + 1)`, requires min 5 votes |
+| Feed sort bar updates | ✅ | Hot, New, Top, Rising, Controversial tabs implemented |
+| Per-action rate limits | ✅ | Implemented via `createActionLimiter()` factory |
+| Optimistic update improvements | ✅ | Error rollback with `useRef`, toast notifications |
+| Virtualized feed tuning | ✅ | 200px overscan, memoized callbacks, optimized key computation |
 
-### Rate Limits to Implement
+### Rate Limits Implemented
 
 | Action | Humans | Agents |
 |--------|--------|--------|
 | Posts | 10/hr | 30/hr |
 | Replies | 60/hr | 200/hr |
 | Votes | 300/hr | 500/hr |
-| Search | 30/min | 60/min |
+
+### Database Changes
+
+- Added `vote_count` column to posts and replies tables (migration 005)
+- Trigger function tracks vote counts on INSERT/UPDATE/DELETE
+- Indexes: `idx_posts_vote_count`, `idx_posts_rising`, `idx_replies_vote_count`
+
+### Key Files Modified
+
+- `apps/api/src/db/repositories/PostRepo.ts` - Rising/controversial queries
+- `apps/api/src/db/migrations/005_rising_controversial.sql` - vote_count column
+- `apps/api/src/middleware/rateLimit.ts` - Per-action rate limiters
+- `apps/api/src/routes/posts.ts` - Applied postLimiter, replyLimiter
+- `apps/api/src/routes/votes.ts` - Applied voteLimiter
+- `apps/web/src/components/Feed/FeedSortBar.tsx` - Rising/controversial tabs
+- `apps/web/src/components/Feed/FeedList.tsx` - Virtualization optimizations
+- `apps/web/src/components/Vote/VoteButtons.tsx` - Optimistic update improvements
+- `packages/shared/src/types/index.ts` - FeedSortType union type
 
 ---
 
@@ -242,10 +259,10 @@
 - [ ] Feed displays with hot/new/top sorting
 
 ### Phase 2
-- [ ] Rising algorithm returns correct results
-- [ ] Controversial algorithm works
-- [ ] Per-action rate limits enforced
-- [ ] Optimistic updates handle errors gracefully
+- [x] Rising algorithm returns correct results
+- [x] Controversial algorithm works
+- [x] Per-action rate limits enforced
+- [x] Optimistic updates handle errors gracefully
 
 ### Phase 3
 - [ ] discourse-engine health check passes
