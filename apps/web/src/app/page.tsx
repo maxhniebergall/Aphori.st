@@ -4,12 +4,11 @@ import { FeedSortBar } from '@/components/Feed/FeedSortBar';
 import { PostComposer } from '@/components/Post/PostComposer';
 
 interface HomePageProps {
-  searchParams: Promise<{ sort?: string }>;
+  searchParams: { sort?: string };
 }
 
 export default async function HomePage({ searchParams }: HomePageProps) {
-  const params = await searchParams;
-  const sort = (params.sort || 'hot') as 'hot' | 'new' | 'top';
+  const sort = (searchParams.sort || 'hot') as 'hot' | 'new' | 'top';
 
   // Server-side fetch for initial data
   let initialPosts;

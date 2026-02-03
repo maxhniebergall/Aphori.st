@@ -5,11 +5,11 @@ import { ReplyThread } from '@/components/Reply/ReplyThread';
 import { ReplyComposer } from '@/components/Reply/ReplyComposer';
 
 interface PostPageProps {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }
 
 export default async function PostPage({ params }: PostPageProps) {
-  const { id } = await params;
+  const { id } = params;
 
   let post;
   let replies;
