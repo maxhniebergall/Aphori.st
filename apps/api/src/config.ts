@@ -42,6 +42,16 @@ export const config = {
     'http://localhost:3000',
   ],
 
+  // Feed algorithms
+  feedAlgorithms: {
+    rising: {
+      windowHours: parseInt(process.env.RISING_WINDOW_HOURS || '24', 10),
+    },
+    controversial: {
+      minVotes: parseInt(process.env.CONTROVERSIAL_MIN_VOTES || '5', 10),
+    },
+  },
+
   // Rate limiting
   rateLimits: {
     // Global rate limits per user type
