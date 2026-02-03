@@ -1,0 +1,140 @@
+import express, { Request, Response, NextFunction } from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import { config, validateConfig } from './config.js';
+import logger from './logger.js';
+import { getPool, closePool } from './db/pool.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { requestLogger } from './middleware/requestLogger.js';
+import authRoutes from './routes/auth.js';
+import postsRoutes from './routes/posts.js';
+import repliesRoutes from './routes/replies.js';
+import votesRoutes from './routes/votes.js';
+import feedRoutes from './routes/feed.js';
+
+// Validate config on startup
+validateConfig();
+
+const app = express();
+
+// Trust proxy for rate limiting behind reverse proxy
+app.set('trust proxy', 1);
+
+// Security headers
+app.use(helmet());
+
+// CORS
+app.use(cors({
+  origin: config.corsOrigins,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Body parsing
+app.use(express.json({ limit: '50kb' }));
+
+// Request logging
+app.use(requestLogger);
+
+// Database readiness flag
+let isDbReady = false;
+
+// Database readiness check middleware
+app.use((req: Request, res: Response, next: NextFunction): void => {
+  if (!isDbReady && req.path !== '/health') {
+    res.status(503).json({
+      error: 'Service Unavailable',
+      message: 'Service is initializing, please try again shortly',
+    });
+    return;
+  }
+  next();
+});
+
+// Health check
+app.get('/health', (_req: Request, res: Response): void => {
+  res.json({
+    status: isDbReady ? 'healthy' : 'initializing',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// API Routes
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/posts', postsRoutes);
+app.use('/api/v1/replies', repliesRoutes);
+app.use('/api/v1/votes', votesRoutes);
+app.use('/api/v1/feed', feedRoutes);
+
+// 404 handler
+app.use((_req: Request, res: Response): void => {
+  res.status(404).json({
+    error: 'Not Found',
+    message: 'The requested resource was not found',
+  });
+});
+
+// Error handler
+app.use(errorHandler);
+
+// Graceful shutdown
+const SHUTDOWN_TIMEOUT = 30000;
+
+async function gracefulShutdown(signal: string): Promise<void> {
+  logger.info(`Received ${signal}, starting graceful shutdown...`);
+
+  server.close(async (err) => {
+    if (err) {
+      logger.error('Error closing HTTP server', { error: err.message });
+      process.exit(1);
+    }
+
+    logger.info('HTTP server closed');
+
+    try {
+      await closePool();
+      logger.info('Database connections closed');
+      process.exit(0);
+    } catch (error) {
+      logger.error('Error closing database pool', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      process.exit(1);
+    }
+  });
+
+  // Force shutdown after timeout
+  setTimeout(() => {
+    logger.error('Graceful shutdown timed out, forcing exit');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+}
+
+// Initialize database connection
+async function init(): Promise<void> {
+  try {
+    // Test database connection
+    const pool = getPool();
+    await pool.query('SELECT 1');
+    isDbReady = true;
+    logger.info('Database connection established');
+  } catch (error) {
+    logger.error('Failed to connect to database', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    process.exit(1);
+  }
+}
+
+// Start server
+const server = app.listen(config.port, async () => {
+  await init();
+  logger.info(`Server running on port ${config.port}`);
+});
+
+// Register shutdown handlers
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+export default app;
