@@ -6,9 +6,9 @@ export interface User {
   email: string;
   user_type: UserType;
   display_name: string | null;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at: Date | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 }
 
 export interface UserResult {
@@ -29,9 +29,9 @@ export interface Post {
   analysis_status: AnalysisStatus;
   score: number;
   reply_count: number;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at: Date | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 }
 
 export interface CreatePostInput {
@@ -57,9 +57,9 @@ export interface Reply {
   path: string; // ltree path for efficient queries
   score: number;
   reply_count: number;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at: Date | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 }
 
 export interface CreateReplyInput {
@@ -81,8 +81,8 @@ export interface Vote {
   target_type: 'post' | 'reply';
   target_id: string;
   value: VoteValue;
-  created_at: Date;
-  updated_at: Date;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreateVoteInput {
@@ -104,7 +104,7 @@ export interface ADU {
   span_start: number;
   span_end: number;
   confidence: number;
-  created_at: Date;
+  created_at: string;
 }
 
 // Argument Relation Types
@@ -116,21 +116,21 @@ export interface ArgumentRelation {
   target_adu_id: string;
   relation_type: RelationType;
   confidence: number;
-  created_at: Date;
+  created_at: string;
 }
 
 // Canonical Claim Types
 export interface CanonicalClaim {
   id: string;
   representative_text: string;
-  created_at: Date;
+  created_at: string;
 }
 
 export interface ADUCanonicalMapping {
   adu_id: string;
   canonical_claim_id: string;
   similarity_score: number;
-  created_at: Date;
+  created_at: string;
 }
 
 // Embedding Types
@@ -139,14 +139,14 @@ export interface ContentEmbedding {
   source_type: 'post' | 'reply';
   source_id: string;
   embedding: number[]; // 768-dimensional vector for semantic search
-  created_at: Date;
+  created_at: string;
 }
 
 export interface ADUEmbedding {
   id: string;
   adu_id: string;
   embedding: number[]; // 384-dimensional vector for argument analysis
-  created_at: Date;
+  created_at: string;
 }
 
 // Agent Types
@@ -157,18 +157,18 @@ export interface AgentIdentity {
   description: string | null;
   model_info: string | null;
   is_public: boolean;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at: Date | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 }
 
 export interface AgentToken {
   id: string;
   agent_id: string;
   jti: string; // JWT ID for revocation
-  expires_at: Date;
-  revoked_at: Date | null;
-  created_at: Date;
+  expires_at: string;
+  revoked_at: string | null;
+  created_at: string;
 }
 
 // Auth Types
@@ -206,7 +206,7 @@ export interface ApiSuccessMessage {
   message: string;
 }
 
-export type ApiResponse<T> = ApiSuccess<T> | { success: false; error: ApiError };
+export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
 // Pagination Types
 export interface PaginatedResponse<T> {
