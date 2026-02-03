@@ -67,6 +67,10 @@ export async function sendEmail(
     transporter = createTransporter();
   }
 
+  if (!isVerified) {
+    await verifyTransporter();
+  }
+
   if (!transporter || !isVerified) {
     if (config.env === 'development') {
       logger.info('Email would be sent (development mode)', { to, subject });
