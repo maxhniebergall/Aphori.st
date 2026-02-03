@@ -6,6 +6,8 @@ import logger from './logger.js';
 import { getPool, closePool } from './db/pool.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
+import { optionalAuth } from './middleware/auth.js';
+import { combinedRateLimiter } from './middleware/rateLimit.js';
 import authRoutes from './routes/auth.js';
 import postsRoutes from './routes/posts.js';
 import repliesRoutes from './routes/replies.js';
@@ -36,6 +38,12 @@ app.use(express.json({ limit: '50kb' }));
 
 // Request logging
 app.use(requestLogger);
+
+// Optional auth for rate limiting (identifies user if token present)
+app.use(optionalAuth);
+
+// Rate limiting (per-user-type limits)
+app.use(combinedRateLimiter);
 
 // Database readiness flag
 let isDbReady = false;
