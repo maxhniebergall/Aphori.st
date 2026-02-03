@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { query } from '../pool.js';
+import { config } from '../../config.js';
 import type { Post, PostWithAuthor, AnalysisStatus, CreatePostInput, PaginatedResponse, FeedSortType } from '@chitin/shared';
 
 interface PostRow {
@@ -135,8 +136,8 @@ export const PostRepo = {
         orderClause = `ORDER BY
           (p.vote_count::float / POWER(EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600 + 2, 1.2)) DESC,
           p.created_at DESC`;
-        // Only include posts from last 24 hours
-        cursorCondition = 'AND p.created_at > NOW() - INTERVAL \'24 hours\'';
+        // Only include posts from configured window (default 24 hours)
+        cursorCondition = `AND p.created_at > NOW() - INTERVAL '${config.feedAlgorithms.rising.windowHours} hours'`;
         if (cursor) {
           cursorCondition += ' AND p.created_at < $2';
           params.push(new Date(cursor));
@@ -148,8 +149,8 @@ export const PostRepo = {
         orderClause = `ORDER BY
           (p.vote_count::float / (ABS(p.score) + 1)) DESC,
           p.created_at DESC`;
-        // Minimum engagement threshold
-        cursorCondition = 'AND p.vote_count >= 5';
+        // Minimum engagement threshold (configurable)
+        cursorCondition = `AND p.vote_count >= ${config.feedAlgorithms.controversial.minVotes}`;
         if (cursor) {
           cursorCondition += ' AND p.created_at < $2';
           params.push(new Date(cursor));
