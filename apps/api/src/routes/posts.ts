@@ -3,7 +3,7 @@ import { z } from 'zod';
 import logger from '../logger.js';
 import { PostRepo, ReplyRepo } from '../db/repositories/index.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.js';
-import type { ApiError, CreatePostInput } from '@chitin/shared';
+import type { ApiError } from '@chitin/shared';
 
 const router = Router();
 
