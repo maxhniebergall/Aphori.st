@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { query } from '../pool.js';
+import { config } from '../../config.js';
 import type { Post, PostWithAuthor, AnalysisStatus, CreatePostInput, PaginatedResponse, FeedSortType } from '@chitin/shared';
 
 interface PostRow {
@@ -10,6 +11,7 @@ interface PostRow {
   content_hash: string;
   analysis_status: AnalysisStatus;
   score: number;
+  vote_count: number;
   reply_count: number;
   created_at: Date;
   updated_at: Date;
@@ -128,6 +130,32 @@ export const PostRepo = {
           params.push(parseInt(score!, 10), new Date(createdAt!));
         }
         break;
+      case 'rising':
+        // Rising: high vote velocity in recent hours
+        // Formula: vote_count / (hours_since_creation + 2)^1.2
+        orderClause = `ORDER BY
+          (p.vote_count::float / POWER(EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600 + 2, 1.2)) DESC,
+          p.created_at DESC`;
+        // Only include posts from configured window (default 24 hours)
+        cursorCondition = `AND p.created_at > NOW() - INTERVAL '${config.feedAlgorithms.rising.windowHours} hours'`;
+        if (cursor) {
+          cursorCondition += ' AND p.created_at < $2';
+          params.push(new Date(cursor));
+        }
+        break;
+      case 'controversial':
+        // Controversial: high vote_count, low absolute score
+        // Formula: vote_count / (abs(score) + 1)
+        orderClause = `ORDER BY
+          (p.vote_count::float / (ABS(p.score) + 1)) DESC,
+          p.created_at DESC`;
+        // Minimum engagement threshold (configurable)
+        cursorCondition = `AND p.vote_count >= ${config.feedAlgorithms.controversial.minVotes}`;
+        if (cursor) {
+          cursorCondition += ' AND p.created_at < $2';
+          params.push(new Date(cursor));
+        }
+        break;
       case 'hot':
       default:
         // Hot ranking: score / (hours + 2)^1.8
@@ -161,6 +189,8 @@ export const PostRepo = {
       switch (sort) {
         case 'new':
         case 'hot':
+        case 'rising':
+        case 'controversial':
           nextCursor = lastItem.created_at;
           break;
         case 'top':

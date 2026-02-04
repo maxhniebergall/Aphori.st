@@ -15,6 +15,21 @@ test.describe('Feed Aggregation', () => {
     await expect(feedContainer).toBeVisible({ timeout: 5000 });
   });
 
+  test('should display all sort tabs including rising and controversial', async ({ page }) => {
+    await page.goto('/');
+
+    // Look for sort tabs
+    const sortBar = page.locator('[class*="sort"], nav, [role="tablist"]').first();
+    await expect(sortBar).toBeVisible({ timeout: 5000 });
+
+    // Check for all sort options
+    const sortOptions = ['Hot', 'New', 'Top', 'Rising', 'Controversial'];
+    for (const option of sortOptions) {
+      const tab = page.locator(`text="${option}"`).first();
+      await expect(tab).toBeVisible({ timeout: 5000 });
+    }
+  });
+
   test('should fetch feed data from API', async ({ page }) => {
     const response = await page.request.get('http://localhost:3001/api/v1/feed', {
       headers: { 'Authorization': 'Bearer dev_token' },

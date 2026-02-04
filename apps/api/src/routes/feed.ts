@@ -5,7 +5,7 @@ import { PostRepo } from '../db/repositories/index.js';
 import { optionalAuth } from '../middleware/auth.js';
 import type { ApiError, FeedSortType } from '@chitin/shared';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 // Validation schema
 const feedSchema = z.object({
@@ -22,11 +22,7 @@ router.get('/', optionalAuth, async (req: Request, res: Response): Promise<void>
   try {
     const { sort, limit, cursor } = feedSchema.parse(req.query);
 
-    // Note: Rising and controversial are more complex and not fully implemented
-    // For now, they fall back to hot
-    const effectiveSort: FeedSortType = ['rising', 'controversial'].includes(sort) ? 'hot' : sort as FeedSortType;
-
-    const result = await PostRepo.getFeed(effectiveSort, limit, cursor);
+    const result = await PostRepo.getFeed(sort as FeedSortType, limit, cursor);
 
     res.json({
       success: true,

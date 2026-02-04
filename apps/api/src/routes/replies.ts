@@ -4,7 +4,7 @@ import { ReplyRepo } from '../db/repositories/index.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.js';
 import type { ApiError } from '@chitin/shared';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 /**
  * GET /replies/:id

@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { votesApi } from '@/lib/api';
 import type { VoteValue } from '@chitin/shared';
@@ -17,12 +18,22 @@ export function VoteButtons({ targetType, targetId, score }: VoteButtonsProps) {
   const [currentVote, setCurrentVote] = useState<VoteValue | null>(null);
   const [optimisticScore, setOptimisticScore] = useState(score);
   const queryClient = useQueryClient();
+  const previousVoteRef = useRef<VoteValue | null>(null);
+  const previousScoreRef = useRef(score);
+  const isMutatingRef = useRef(false);
 
   const voteMutation = useMutation({
     mutationFn: async (value: VoteValue) => {
       if (!token) throw new Error('Not authenticated');
 
+      // Prevent concurrent mutations (mutex)
+      if (isMutatingRef.current) return;
+      isMutatingRef.current = true;
+
+      // Capture state BEFORE any async operation
       const previousVote = currentVote;
+      previousVoteRef.current = previousVote;
+      previousScoreRef.current = optimisticScore;
 
       // Optimistic update
       if (previousVote === value) {
@@ -40,10 +51,12 @@ export function VoteButtons({ targetType, targetId, score }: VoteButtonsProps) {
     },
     onError: () => {
       // Revert optimistic update
-      setCurrentVote(currentVote);
-      setOptimisticScore(score);
+      setCurrentVote(previousVoteRef.current);
+      setOptimisticScore(previousScoreRef.current);
+      toast.error('Failed to save vote. Please try again.');
     },
     onSettled: () => {
+      isMutatingRef.current = false;
       queryClient.invalidateQueries({ queryKey: ['feed'] });
     },
   });

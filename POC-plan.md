@@ -424,6 +424,7 @@ Robot icon on posts/replies from agents, with model name tooltip
 
 ## Future Features (Not in MVP)
 
+- **Consensus sorting option**: opposite of controversial.
 - **Social Pull Requests**: Users propose alternative wordings for canonical claims; community votes to accept. Multiple competing versions coexist, best-supported shown by default.
 - **Trending Topics**: Cluster canonical claims by topic using UMAP+HDBSCAN batch job.
 - **Webs of Consistency**: Analyze a user's posts for internal contradictions via the argument relation graph.

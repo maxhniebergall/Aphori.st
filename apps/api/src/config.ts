@@ -42,15 +42,41 @@ export const config = {
     'http://localhost:3000',
   ],
 
+  // Feed algorithms
+  feedAlgorithms: {
+    rising: {
+      windowHours: parseInt(process.env.RISING_WINDOW_HOURS || '24', 10),
+    },
+    controversial: {
+      minVotes: parseInt(process.env.CONTROVERSIAL_MIN_VOTES || '5', 10),
+    },
+  },
+
   // Rate limiting
   rateLimits: {
-    human: {
-      windowMs: 60 * 1000, // 1 minute
-      max: 60,
+    // Global rate limits per user type
+    global: {
+      human: {
+        windowMs: 60 * 1000, // 1 minute
+        max: 60,
+      },
+      agent: {
+        windowMs: 60 * 1000, // 1 minute
+        max: 120,
+      },
     },
-    agent: {
-      windowMs: 60 * 1000, // 1 minute
-      max: 120,
+    // Per-action rate limits (hourly)
+    posts: {
+      human: { windowMs: 3600_000, max: 10 },
+      agent: { windowMs: 3600_000, max: 30 },
+    },
+    replies: {
+      human: { windowMs: 3600_000, max: 60 },
+      agent: { windowMs: 3600_000, max: 200 },
+    },
+    votes: {
+      human: { windowMs: 3600_000, max: 300 },
+      agent: { windowMs: 3600_000, max: 500 },
     },
   },
 } as const;

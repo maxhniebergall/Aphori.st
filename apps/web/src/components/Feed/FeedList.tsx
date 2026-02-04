@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Virtuoso } from 'react-virtuoso';
 import { postsApi } from '@/lib/api';
@@ -36,7 +37,20 @@ export function FeedList({ initialData, sort }: FeedListProps) {
     staleTime: 60 * 1000,
   });
 
-  const allPosts = data?.pages.flatMap((page) => page.items) ?? [];
+  const allPosts = useMemo(
+    () => data?.pages.flatMap((page) => page.items) ?? [],
+    [data?.pages]
+  );
+
+  const computeItemKey = useCallback(
+    (_index: number, post: PostWithAuthor) => post.id,
+    []
+  );
+
+  const itemContent = useCallback(
+    (_index: number, post: PostWithAuthor) => <PostCard post={post} />,
+    []
+  );
 
   if (isLoading) {
     return (
@@ -66,14 +80,14 @@ export function FeedList({ initialData, sort }: FeedListProps) {
     <Virtuoso
       useWindowScroll
       data={allPosts}
+      overscan={200}
+      computeItemKey={computeItemKey}
+      itemContent={itemContent}
       endReached={() => {
         if (hasNextPage && !isFetchingNextPage) {
           fetchNextPage();
         }
       }}
-      itemContent={(index, post) => (
-        <PostCard key={post.id} post={post} />
-      )}
       components={{
         Footer: () =>
           isFetchingNextPage ? (
