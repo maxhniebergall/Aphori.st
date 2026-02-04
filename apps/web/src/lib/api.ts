@@ -10,6 +10,34 @@ import type {
   VoteValue,
 } from '@chitin/shared';
 
+// Argument types
+export interface ADU {
+  id: string;
+  source_type: 'post' | 'reply';
+  source_id: string;
+  adu_type: 'claim' | 'premise';
+  text: string;
+  span_start: number;
+  span_end: number;
+  confidence: number;
+  created_at: string;
+}
+
+export interface CanonicalClaim {
+  id: string;
+  representative_text: string;
+  adu_count: number;
+  discussion_count: number;
+  author_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SearchResult {
+  query: string;
+  results: PostWithAuthor[];
+}
+
 type ApiResponse<T> =
   | { success: true; data: T }
   | { success: false; error: { error: string; message: string } };
@@ -192,5 +220,25 @@ export const votesApi = {
       target_ids: targetIds.join(','),
     });
     return apiRequest(`/api/v1/votes/user?${params}`, { token });
+  },
+};
+
+// Arguments API
+export const argumentApi = {
+  async getPostADUs(postId: string, token?: string): Promise<ADU[]> {
+    return apiRequest(`/api/v1/arguments/posts/${postId}/adus`, { token });
+  },
+
+  async getCanonicalClaim(claimId: string, token?: string): Promise<CanonicalClaim> {
+    return apiRequest(`/api/v1/arguments/claims/${claimId}`, { token });
+  },
+
+  async semanticSearch(query: string, limit = 20, token?: string): Promise<SearchResult> {
+    const params = new URLSearchParams({
+      q: query,
+      type: 'semantic',
+      limit: limit.toString(),
+    });
+    return apiRequest(`/api/v1/search?${params}`, { token });
   },
 };
