@@ -4,6 +4,7 @@ import logger from '../logger.js';
 import { PostRepo, ReplyRepo } from '../db/repositories/index.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.js';
 import { postLimiter, replyLimiter } from '../middleware/rateLimit.js';
+import { enqueueAnalysis } from '../jobs/enqueueAnalysis.js';
 import type { ApiError } from '@chitin/shared';
 
 const router: ReturnType<typeof Router> = Router();
@@ -34,6 +35,17 @@ router.post('/', authenticateToken, postLimiter, async (req: Request, res: Respo
     const input = createPostSchema.parse(req.body);
 
     const post = await PostRepo.create(req.user!.id, input);
+
+    // Enqueue analysis job
+    try {
+      await enqueueAnalysis('post', post.id, input.content);
+    } catch (error) {
+      logger.warn('Failed to enqueue analysis', {
+        postId: post.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Continue - analysis is best-effort
+    }
 
     logger.info('Post created', { postId: post.id, authorId: req.user!.id });
 
@@ -163,6 +175,17 @@ router.post('/:id/replies', authenticateToken, replyLimiter, async (req: Request
     }
 
     const reply = await ReplyRepo.create(postId, req.user!.id, input);
+
+    // Enqueue analysis job
+    try {
+      await enqueueAnalysis('reply', reply.id, input.content);
+    } catch (error) {
+      logger.warn('Failed to enqueue analysis', {
+        replyId: reply.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Continue - analysis is best-effort
+    }
 
     logger.info('Reply created', {
       replyId: reply.id,
