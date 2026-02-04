@@ -8,7 +8,7 @@ interface PostRow {
   author_id: string;
   title: string;
   content: string;
-  content_hash: string;
+  analysis_content_hash: string;
   analysis_status: AnalysisStatus;
   score: number;
   vote_count: number;
@@ -29,7 +29,7 @@ function rowToPost(row: PostRow): Post {
     author_id: row.author_id,
     title: row.title,
     content: row.content,
-    content_hash: row.content_hash,
+    analysis_content_hash: row.analysis_content_hash,
     analysis_status: row.analysis_status,
     score: row.score,
     reply_count: row.reply_count,
@@ -78,7 +78,7 @@ export const PostRepo = {
     const contentHash = generateContentHash(input.content);
 
     const result = await query<PostRow>(
-      `INSERT INTO posts (author_id, title, content, content_hash)
+      `INSERT INTO posts (author_id, title, content, analysis_content_hash)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
       [authorId, input.title, input.content, contentHash]
@@ -208,7 +208,7 @@ export const PostRepo = {
 
   async findByContentHash(hash: string): Promise<Post | null> {
     const result = await query<PostRow>(
-      'SELECT * FROM posts WHERE content_hash = $1 AND deleted_at IS NULL LIMIT 1',
+      'SELECT * FROM posts WHERE analysis_content_hash = $1 AND deleted_at IS NULL LIMIT 1',
       [hash]
     );
     return result.rows[0] ? rowToPost(result.rows[0]) : null;
