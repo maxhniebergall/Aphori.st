@@ -147,9 +147,9 @@ test.describe('Feed Sorting Algorithms', () => {
       const firstJson = await firstResponse.json();
 
       // If there's a next cursor, use it
-      if (firstJson.data.nextCursor) {
+      if (firstJson.data.cursor) {
         const secondResponse = await request.get(
-          `http://localhost:3001/api/v1/feed?limit=5&cursor=${firstJson.data.nextCursor}`,
+          `http://localhost:3001/api/v1/feed?limit=5&cursor=${firstJson.data.cursor}`,
           { headers: { 'Authorization': 'Bearer dev_token' } }
         );
 

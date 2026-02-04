@@ -26,11 +26,7 @@ test.describe('Feed Aggregation', () => {
     const sortOptions = ['Hot', 'New', 'Top', 'Rising', 'Controversial'];
     for (const option of sortOptions) {
       const tab = page.locator(`text="${option}"`).first();
-      const isVisible = await tab.isVisible().catch(() => false);
-      // At least some should be visible
-      if (isVisible) {
-        expect(isVisible).toBeTruthy();
-      }
+      await expect(tab).toBeVisible({ timeout: 5000 });
     }
   });
 
