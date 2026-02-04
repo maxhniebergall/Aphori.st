@@ -32,6 +32,31 @@ services:
       timeout: 5s
       retries: 5
 
+  discourse-engine:
+    build:
+      context: ../discourse-engine
+      dockerfile: chitin_wrapper/Dockerfile
+      args:
+        - GCS_MODELS_BUCKET=${GCS_MODELS_BUCKET:-chitin-discourse-models}
+    container_name: chitin-discourse-engine
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GCS_MODELS_BUCKET=${GCS_MODELS_BUCKET}
+    volumes:
+      # Mount GCP credentials for GCS access (if using service account)
+      - ~/.config/gcloud:/root/.config/gcloud:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      - redis
+
 volumes:
   postgres_data:
   redis_data:
