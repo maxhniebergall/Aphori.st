@@ -33,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setToken(null);
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('chitin_post_draft');
   }, []);
 
   const refreshUser = useCallback(async () => {
