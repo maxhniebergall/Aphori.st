@@ -25,7 +25,7 @@ export interface Post {
   author_id: string;
   title: string;
   content: string;
-  content_hash: string;
+  analysis_content_hash: string;
   analysis_status: AnalysisStatus;
   score: number;
   reply_count: number;
@@ -51,7 +51,7 @@ export interface Reply {
   parent_reply_id: string | null;
   target_adu_id: string | null;
   content: string;
-  content_hash: string;
+  analysis_content_hash: string;
   analysis_status: AnalysisStatus;
   depth: number;
   path: string; // ltree path for efficient queries
