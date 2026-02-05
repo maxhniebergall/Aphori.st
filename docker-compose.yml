@@ -33,6 +33,8 @@ services:
       retries: 5
 
   discourse-engine:
+    # NOTE: Build context is relative (../discourse-engine). When deploying to production,
+    # ensure this path is correct or use absolute paths.
     build:
       context: ../discourse-engine
       dockerfile: chitin_wrapper/Dockerfile
@@ -49,6 +51,7 @@ services:
       # Mount GCP credentials for GCS access (if using service account)
       - ~/.config/gcloud:/root/.config/gcloud:ro
     healthcheck:
+      # NOTE: Verify the health check port (8001) matches DISCOURSE_ENGINE_PORT environment variable
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s

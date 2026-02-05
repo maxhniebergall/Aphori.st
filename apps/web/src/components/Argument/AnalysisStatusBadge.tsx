@@ -64,6 +64,7 @@ export function AnalysisStatusBadge({ status }: AnalysisStatusBadgeProps) {
   return (
     <div
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded ${config.color}`}
+      data-testid="analysis-status"
     >
       {config.spinner && <SpinnerIcon />}
       {config.label}

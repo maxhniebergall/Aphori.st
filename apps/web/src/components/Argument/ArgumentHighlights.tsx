@@ -42,6 +42,8 @@ function segmentText(
   }
 
   // Sort ADUs by span_start, split text into segments
+  // NOTE: This function assumes non-overlapping ADU spans. If overlapping spans are introduced
+  // in the future, this logic will need to be updated to handle them correctly.
   const sorted = [...adus].sort((a, b) => a.span_start - b.span_start);
   const segments: Segment[] = [];
   let pos = 0;
@@ -165,7 +167,7 @@ export function ArgumentHighlights({
         }
 
         return (
-          <span key={idx}>
+          <span key={`segment-${idx}-${seg.adu?.id || 'text'}`}>
             <span
               className={`
                 border-b-2 transition-colors
@@ -179,6 +181,7 @@ export function ArgumentHighlights({
                     : 'border-green-500/40 hover:bg-green-50/50 dark:border-green-400/40 dark:hover:bg-green-900/15'
                 }
               `}
+              data-testid={isClaim ? 'highlight-claim' : 'highlight-premise'}
               onClick={() => handleClaimClick(seg.adu!, seg.canonicalMapping)}
               onMouseEnter={() => setHoveredADU(seg.adu!.id)}
               onMouseLeave={() => setHoveredADU(null)}

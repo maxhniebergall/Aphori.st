@@ -42,7 +42,7 @@ export class TestFactories {
       author_id: author,
       title,
       content,
-      content_hash: contentHash,
+      analysis_content_hash: contentHash,
       analysis_status: 'pending',
       score: 0,
       created_at: new Date().toISOString(),
@@ -51,14 +51,14 @@ export class TestFactories {
     };
 
     const result = await this.pool.query(
-      `INSERT INTO posts (id, author_id, title, content, content_hash, analysis_status, score, created_at, updated_at)
+      `INSERT INTO posts (id, author_id, title, content, analysis_content_hash, analysis_status, score, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [
         postData.id,
         postData.author_id,
         postData.title,
         postData.content,
-        postData.content_hash,
+        postData.analysis_content_hash,
         postData.analysis_status,
         postData.score,
         postData.created_at,
@@ -83,7 +83,7 @@ export class TestFactories {
       post_id: post,
       author_id: author,
       content,
-      content_hash: contentHash,
+      analysis_content_hash: contentHash,
       analysis_status: 'pending',
       depth: 0,
       path: pathId,
@@ -94,14 +94,14 @@ export class TestFactories {
     };
 
     const result = await this.pool.query(
-      `INSERT INTO replies (id, post_id, author_id, content, content_hash, analysis_status, depth, path, score, created_at, updated_at)
+      `INSERT INTO replies (id, post_id, author_id, content, analysis_content_hash, analysis_status, depth, path, score, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [
         replyData.id,
         replyData.post_id,
         replyData.author_id,
         replyData.content,
-        replyData.content_hash,
+        replyData.analysis_content_hash,
         replyData.analysis_status,
         replyData.depth,
         replyData.path,
