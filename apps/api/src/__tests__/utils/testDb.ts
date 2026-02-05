@@ -37,11 +37,13 @@ export class TestDatabase {
         database: this.testDbName,
       });
 
-      // Enable pgvector extension
+      // Enable required extensions
       try {
         await this.pool.query('CREATE EXTENSION IF NOT EXISTS vector');
+        await this.pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+        await this.pool.query('CREATE EXTENSION IF NOT EXISTS ltree');
       } catch (e) {
-        console.warn('pgvector extension not available, some tests may fail', e);
+        console.warn('Some extensions not available, tests may fail', e);
       }
 
       // Run migrations in order

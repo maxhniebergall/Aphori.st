@@ -7,21 +7,21 @@ export class TestFactories {
   constructor(private pool: Pool) {}
 
   async createUser(overrides?: Partial<any>): Promise<any> {
-    const userId = uuidv4();
+    const userId = overrides?.id || `testuser_${uuidv4().substring(0, 8)}`;
     const userData = {
       id: userId,
-      username: `testuser_${userId.substring(0, 8)}`,
-      email: `test_${userId.substring(0, 8)}@example.com`,
-      password_hash: 'hashed_password',
+      email: `test_${uuidv4().substring(0, 8)}@example.com`,
+      user_type: 'human',
+      display_name: `Test User ${userId.substring(0, 8)}`,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       ...overrides,
     };
 
     const result = await this.pool.query(
-      `INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
+      `INSERT INTO users (id, email, user_type, display_name, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [userData.id, userData.username, userData.email, userData.password_hash, userData.created_at, userData.updated_at]
+      [userData.id, userData.email, userData.user_type, userData.display_name, userData.created_at, userData.updated_at]
     );
 
     return result.rows[0];
@@ -34,28 +34,33 @@ export class TestFactories {
     const author = authorId || (await this.createUser()).id;
     const postId = uuidv4();
     const content = overrides?.content || 'This is a test post with claims and premises.';
+    const title = overrides?.title || 'Test Post Title';
     const contentHash = crypto.createHash('sha256').update(content).digest('hex');
 
     const postData = {
       id: postId,
       author_id: author,
+      title,
       content,
-      analysis_content_hash: contentHash,
+      content_hash: contentHash,
       analysis_status: 'pending',
+      score: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       ...overrides,
     };
 
     const result = await this.pool.query(
-      `INSERT INTO posts (id, author_id, content, analysis_content_hash, analysis_status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      `INSERT INTO posts (id, author_id, title, content, content_hash, analysis_status, score, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [
         postData.id,
         postData.author_id,
+        postData.title,
         postData.content,
-        postData.analysis_content_hash,
+        postData.content_hash,
         postData.analysis_status,
+        postData.score,
         postData.created_at,
         postData.updated_at,
       ]
@@ -70,29 +75,37 @@ export class TestFactories {
     const replyId = uuidv4();
     const content = overrides?.content || 'This is a reply to the post.';
     const contentHash = crypto.createHash('sha256').update(content).digest('hex');
+    // Generate a path for ltree - just use the reply ID with dots replaced by underscores
+    const pathId = replyId.replace(/-/g, '_');
 
     const replyData = {
       id: replyId,
       post_id: post,
       author_id: author,
       content,
-      analysis_content_hash: contentHash,
+      content_hash: contentHash,
       analysis_status: 'pending',
+      depth: 0,
+      path: pathId,
+      score: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       ...overrides,
     };
 
     const result = await this.pool.query(
-      `INSERT INTO replies (id, post_id, author_id, content, analysis_content_hash, analysis_status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      `INSERT INTO replies (id, post_id, author_id, content, content_hash, analysis_status, depth, path, score, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [
         replyData.id,
         replyData.post_id,
         replyData.author_id,
         replyData.content,
-        replyData.analysis_content_hash,
+        replyData.content_hash,
         replyData.analysis_status,
+        replyData.depth,
+        replyData.path,
+        replyData.score,
         replyData.created_at,
         replyData.updated_at,
       ]
@@ -195,6 +208,27 @@ export class TestFactories {
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (source_adu_id, target_adu_id, relation_type) DO UPDATE SET confidence = $4`,
       [sourceAduId, targetAduId, relationType, confidence]
+    );
+  }
+
+  async linkADUToCanonical(
+    aduId: string,
+    canonicalId: string,
+    similarityScore: number = 0.9
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO adu_canonical_map (adu_id, canonical_claim_id, similarity_score)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (adu_id, canonical_claim_id) DO UPDATE SET similarity_score = $3`,
+      [aduId, canonicalId, similarityScore]
+    );
+
+    // Update adu_count on canonical claim
+    await this.pool.query(
+      `UPDATE canonical_claims
+       SET adu_count = (SELECT COUNT(*) FROM adu_canonical_map WHERE canonical_claim_id = $1)
+       WHERE id = $1`,
+      [canonicalId]
     );
   }
 }
