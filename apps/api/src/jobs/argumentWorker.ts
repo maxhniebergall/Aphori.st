@@ -98,8 +98,12 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
       const claimIndex = createdADUs.findIndex(adu => adu.id === claim.id);
       const embedding = aduEmbeddingsResponse.embeddings_768[claimIndex]!;
 
-      // Step 8a: Retrieve top-5 similar canonical claims (cosine > 0.75)
-      const similarClaims = await argumentRepo.findSimilarCanonicalClaims(embedding, 0.75, 5);
+      // Step 8a: Retrieve top-5 similar canonical claims using configured threshold
+      const similarClaims = await argumentRepo.findSimilarCanonicalClaims(
+        embedding,
+        config.argumentAnalysis.claimDeduplicationThreshold,
+        5
+      );
 
       if (similarClaims.length > 0) {
         // Step 8b: Fetch full canonical claim texts
@@ -230,6 +234,12 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
 export const argumentWorker = new Worker('argument-analysis', processAnalysis, {
   connection,
   concurrency: 2,
+  settings: {
+    // Exponential backoff retry: 1s, 2s, 4s, 8s, 16s
+    backoffStrategy: async (attemptsMade: number) => {
+      return Math.pow(2, Math.min(attemptsMade, 4)) * 1000;
+    },
+  },
 });
 
 argumentWorker.on('completed', job => {

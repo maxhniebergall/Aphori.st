@@ -11,8 +11,15 @@ export async function enqueueAnalysis(
 
   const jobId = `${sourceType}-${sourceId}-${contentHash.substring(0, 8)}`;
 
+  // Retry on transient failures with exponential backoff
+  // Max 5 attempts: immediate, 1s, 2s, 4s, 8s delays
   await argumentQueue.add('analyze', { sourceType, sourceId, contentHash }, {
     jobId,
+    attempts: 5,
+    backoff: {
+      type: 'exponential',
+      delay: 1000, // 1 second base delay
+    },
   });
 
   logger.info(`Enqueued analysis job: ${jobId}`, { sourceType, sourceId });
