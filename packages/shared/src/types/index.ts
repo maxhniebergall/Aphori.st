@@ -138,7 +138,7 @@ export interface ContentEmbedding {
   id: string;
   source_type: 'post' | 'reply';
   source_id: string;
-  embedding: number[]; // 768-dimensional vector for semantic search
+  embedding: number[]; // 1536-dimensional vector for semantic search
   created_at: string;
 }
 
@@ -280,5 +280,5 @@ export interface EmbedContentRequest {
 }
 
 export interface EmbedContentResponse {
-  embeddings_768: number[][];
+  embeddings_1536: number[][];
 }
