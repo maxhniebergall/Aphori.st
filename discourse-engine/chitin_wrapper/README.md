@@ -32,13 +32,13 @@ Analyzes relationships between extracted ADUs, identifying support and attack re
 - **Method**: Cosine similarity on embeddings + heuristic rules
 
 ### 3. Embeddings Service
-Generates 768-dimensional dense vector embeddings using the Gemini API. These embeddings are used for:
+Generates 1536-dimensional dense vector embeddings using the Gemini API. These embeddings are used for:
 - Semantic search
 - Similarity matching for canonical claim deduplication
 - Relation detection
 
-- **Model**: Gemini 1.5 Flash (768-dim embeddings)
-- **Dimension**: 768
+- **Model**: Gemini text-embedding-004 (1536-dim embeddings)
+- **Dimension**: 1536
 - **Usage**: RAG retrieval, semantic search, similarity matching
 
 ### 4. RAG Validator (LLM Validation)
@@ -125,7 +125,7 @@ Detects support and attack relations between ADUs. Uses embeddings to measure se
     }
   ],
   "embeddings": [
-    [0.1, 0.2, 0.3, ...],  // 768 dimensions
+    [0.1, 0.2, 0.3, ...],  // 1536 dimensions
     [0.15, 0.25, 0.35, ...]
   ]
 }
@@ -147,12 +147,12 @@ Detects support and attack relations between ADUs. Uses embeddings to measure se
 
 **Notes:**
 - Requires pre-computed embeddings for each ADU
-- Embeddings must be 768-dimensional vectors
+- Embeddings must be 1536-dimensional vectors
 - Relations are directional (source → target)
 
 ### POST /embed/content
 
-Generates 768-dimensional embeddings for text using Gemini API. Used for:
+Generates 1536-dimensional embeddings for text using Gemini API. Used for:
 - ADU embeddings (for relation detection)
 - Content embeddings (for semantic search)
 - Canonical claim embeddings (for similarity matching)
@@ -170,15 +170,15 @@ Generates 768-dimensional embeddings for text using Gemini API. Used for:
 **Response:**
 ```json
 {
-  "embeddings_768": [
-    [0.1234, 0.5678, ..., 0.9012],  // 768 values
+  "embeddings_1536": [
+    [0.1234, 0.5678, ..., 0.9012],  // 1536 values
     [0.2345, 0.6789, ..., 0.0123]
   ]
 }
 ```
 
 **Notes:**
-- Returns exactly 768-dimensional vectors
+- Returns exactly 1536-dimensional vectors
 - Vectors are normalized (L2)
 - All requests are cached in GCS for cost optimization
 
