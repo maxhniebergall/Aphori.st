@@ -14,18 +14,45 @@ UPDATE users SET canonical_claims_count = 0;
 CREATE OR REPLACE FUNCTION update_user_canonical_claims_count()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF TG_OP = 'INSERT' AND NEW.author_id IS NOT NULL THEN
-        UPDATE users
-        SET canonical_claims_count = canonical_claims_count + 1
-        WHERE id = NEW.author_id;
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.author_id IS NOT NULL THEN
+            UPDATE users
+            SET canonical_claims_count = canonical_claims_count + 1
+            WHERE id = NEW.author_id;
+        END IF;
+    ELSIF TG_OP = 'DELETE' THEN
+        IF OLD.author_id IS NOT NULL THEN
+            UPDATE users
+            SET canonical_claims_count = canonical_claims_count - 1
+            WHERE id = OLD.author_id;
+        END IF;
+    ELSIF TG_OP = 'UPDATE' THEN
+        -- Only adjust counts if the author_id actually changed
+        IF OLD.author_id IS DISTINCT FROM NEW.author_id THEN
+            IF OLD.author_id IS NOT NULL THEN
+                UPDATE users
+                SET canonical_claims_count = canonical_claims_count - 1
+                WHERE id = OLD.author_id;
+            END IF;
+
+            IF NEW.author_id IS NOT NULL THEN
+                UPDATE users
+                SET canonical_claims_count = canonical_claims_count + 1
+                WHERE id = NEW.author_id;
+            END IF;
+        END IF;
     END IF;
 
-    RETURN NEW;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    ELSE
+        RETURN NEW;
+    END IF;
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger to auto-update count when new canonical claim created
+-- Trigger to auto-update count when canonical claims are created, deleted, or reassigned
 CREATE TRIGGER update_canonical_claims_count
-    AFTER INSERT ON canonical_claims
+    AFTER INSERT OR DELETE OR UPDATE OF author_id ON canonical_claims
     FOR EACH ROW
     EXECUTE FUNCTION update_user_canonical_claims_count();
