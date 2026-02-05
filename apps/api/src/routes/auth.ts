@@ -215,6 +215,20 @@ router.post('/verify-token', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // Check if agent token is revoked
+    if (decoded.jti) {
+      const { AgentRepo } = await import('../db/repositories/index.js');
+      const isValid = await AgentRepo.isTokenValid(decoded.jti);
+      if (!isValid) {
+        const apiError: ApiError = {
+          error: 'Bad Request',
+          message: 'Token has been revoked',
+        };
+        res.status(400).json(apiError);
+        return;
+      }
+    }
+
     // Verify user still exists
     const user = await UserRepo.findById(decoded.id);
     if (!user) {
