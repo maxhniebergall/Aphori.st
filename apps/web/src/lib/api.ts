@@ -38,6 +38,28 @@ export interface SearchResult {
   results: PostWithAuthor[];
 }
 
+export interface ADUCanonicalMapping {
+  adu_id: string;
+  canonical_claim_id: string;
+  similarity_score: number;
+  representative_text: string;
+  adu_count: number;
+}
+
+export interface RelatedSource {
+  source_type: 'post' | 'reply';
+  source_id: string;
+  title: string | null;
+  content: string;
+  author_id: string;
+  author_display_name: string | null;
+  author_user_type: string;
+  created_at: string;
+  score: number;
+  adu_text: string;
+  similarity_score: number;
+}
+
 type ApiResponse<T> =
   | { success: true; data: T }
   | { success: false; error: { error: string; message: string } };
@@ -240,5 +262,22 @@ export const argumentApi = {
       limit: limit.toString(),
     });
     return apiRequest(`/api/v1/search?${params}`, { token });
+  },
+
+  async getCanonicalMappingsForPost(postId: string, token?: string): Promise<ADUCanonicalMapping[]> {
+    return apiRequest(`/api/v1/arguments/posts/${postId}/canonical-mappings`, { token });
+  },
+
+  async getRelatedPostsForCanonicalClaim(
+    canonicalClaimId: string,
+    limit = 10,
+    excludeSourceId?: string,
+    token?: string
+  ): Promise<RelatedSource[]> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      ...(excludeSourceId && { exclude_source_id: excludeSourceId }),
+    });
+    return apiRequest(`/api/v1/arguments/canonical-claims/${canonicalClaimId}/related-posts?${params}`, { token });
   },
 };
