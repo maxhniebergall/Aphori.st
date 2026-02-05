@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { DiscourseEngineService } from '../argumentService.js';
 import type { ADUResponse, RelationResponse } from '../argumentService.js';
 
 // Simple implementation for testing
@@ -25,11 +24,11 @@ class TestDiscourseEngineService {
       });
 
       if (!response.ok) {
-        const error = await response.text();
+        await response.text();
         throw new Error(`discourse-engine error: ${response.status}`);
       }
 
-      return response.json();
+      return response.json() as Promise<T>;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error('discourse-engine timeout');
@@ -48,7 +47,7 @@ class TestDiscourseEngineService {
     return this.request<{ adus: ADUResponse[] }>('/analyze/adus', 'POST', { texts });
   }
 
-  async analyzeRelations(adus: Array<{ id: string; text: string }>, embeddings: number[][]) {
+  async analyzeRelations(adus: Array<{ id: string; text: string; source_comment_id?: string }>, embeddings: number[][]) {
     return this.request<{ relations: RelationResponse[] }>('/analyze/relations', 'POST', {
       adus,
       embeddings,
