@@ -1,9 +1,11 @@
-import { Queue, QueueEvents, Worker } from 'bullmq';
-import Redis from 'ioredis';
+import { Queue, QueueEvents } from 'bullmq';
+import { Redis } from 'ioredis';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 
-const connection = new Redis(config.redis.url);
+const connection = new Redis(config.redis.url, {
+  maxRetriesPerRequest: null,
+});
 
 export const argumentQueue = new Queue('argument-analysis', {
   connection,

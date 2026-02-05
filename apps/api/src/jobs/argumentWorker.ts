@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import crypto from 'crypto';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
@@ -13,7 +13,9 @@ interface AnalysisJobData {
   contentHash: string;
 }
 
-const connection = new Redis(config.redis.url);
+const connection = new Redis(config.redis.url, {
+  maxRetriesPerRequest: null,
+});
 
 async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
   const { sourceType, sourceId, contentHash } = job.data;
@@ -105,14 +107,19 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
           similarClaims.map(c => c.canonical_claim_id)
         );
 
+        // Create mapping from id to similarity (order might not match)
+        const similarityMap = new Map(
+          similarClaims.map(c => [c.canonical_claim_id, c.similarity])
+        );
+
         // Step 8c: Validate with Gemini Flash LLM
         try {
           const validation = await argumentService.validateClaimEquivalence(
             claim.text,
-            canonicalTexts.map((c, idx) => ({
+            canonicalTexts.map(c => ({
               id: c.id,
               text: c.representative_text,
-              similarity: similarClaims[idx]!.similarity,
+              similarity: similarityMap.get(c.id) ?? 0,
             }))
           );
 
@@ -179,7 +186,11 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     await job.updateProgress(70);
     if (createdADUs.length >= 2) {
       const relations = await argumentService.analyzeRelations(
-        createdADUs.map(adu => ({ id: adu.id, text: adu.text })),
+        createdADUs.map(adu => ({
+          id: adu.id,
+          text: adu.text,
+          source_comment_id: adu.source_id, // Python code expects this field name
+        })),
         aduEmbeddingsResponse.embeddings_768
       );
       await argumentRepo.createRelations(relations.relations);

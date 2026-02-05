@@ -1,11 +1,12 @@
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { getPool } from '../db/pool.js';
-import { createArgumentRepo } from '../db/repositories/ArgumentRepo.js';
-import { createPostRepo } from '../db/repositories/PostRepo.js';
-import { createReplyRepo } from '../db/repositories/ReplyRepo.js';
+import { createArgumentRepo, type SearchResult } from '../db/repositories/ArgumentRepo.js';
+import { PostRepo } from '../db/repositories/PostRepo.js';
+import { ReplyRepo } from '../db/repositories/ReplyRepo.js';
 import { getArgumentService } from '../services/argumentService.js';
+import type { PostWithAuthor, ReplyWithAuthor } from '@chitin/shared';
 
-const router = Router();
+const router: RouterType = Router();
 
 // GET /api/v1/search?q=...&type=semantic
 router.get('/', async (req, res) => {
@@ -13,7 +14,8 @@ router.get('/', async (req, res) => {
     const { q, type = 'semantic', limit = '20' } = req.query;
 
     if (!q || typeof q !== 'string') {
-      return res.status(400).json({ success: false, error: 'Query parameter required' });
+      res.status(400).json({ success: false, error: 'Query parameter required' });
+      return;
     }
 
     const limitNum = Math.min(Math.max(1, parseInt(limit as string) || 20), 100);
@@ -22,15 +24,14 @@ router.get('/', async (req, res) => {
       const argumentService = getArgumentService();
       const pool = getPool();
       const argumentRepo = createArgumentRepo(pool);
-      const postRepo = createPostRepo(pool);
-      const replyRepo = createReplyRepo(pool);
 
       // Generate query embedding
       const embeddingResponse = await argumentService.embedContent([q]);
       const queryEmbedding = embeddingResponse.embeddings_768[0];
 
       if (!queryEmbedding) {
-        return res.status(500).json({ success: false, error: 'Failed to generate embedding' });
+        res.status(500).json({ success: false, error: 'Failed to generate embedding' });
+        return;
       }
 
       // Search with pgvector
@@ -38,11 +39,11 @@ router.get('/', async (req, res) => {
 
       // Enrich with full content
       const enriched = await Promise.all(
-        results.map(async r => {
+        results.map(async (r: SearchResult) => {
           if (r.source_type === 'post') {
-            return postRepo.findByIdWithAuthor(r.source_id);
+            return PostRepo.findByIdWithAuthor(r.source_id);
           } else {
-            return replyRepo.findByIdWithAuthor(r.source_id);
+            return ReplyRepo.findByIdWithAuthor(r.source_id);
           }
         })
       );
@@ -51,7 +52,7 @@ router.get('/', async (req, res) => {
         success: true,
         data: {
           query: q,
-          results: enriched.filter(r => r !== null),
+          results: enriched.filter((r: PostWithAuthor | ReplyWithAuthor | null) => r !== null),
         },
       });
     } else {
