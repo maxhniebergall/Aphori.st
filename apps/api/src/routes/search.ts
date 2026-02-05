@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
 
       // Generate query embedding
       const embeddingResponse = await argumentService.embedContent([q]);
-      const queryEmbedding = embeddingResponse.embeddings_768[0];
+      const queryEmbedding = embeddingResponse.embeddings_1536[0];
 
       if (!queryEmbedding) {
         res.status(500).json({ success: false, error: 'Failed to generate embedding' });

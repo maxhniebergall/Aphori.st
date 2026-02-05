@@ -72,7 +72,7 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
       return;
     }
 
-    // 5. Generate embeddings for ADUs (768-dim Gemini)
+    // 5. Generate embeddings for ADUs (1536-dim Gemini)
     await job.updateProgress(30);
     const aduTexts = aduResponse.adus.map(adu => adu.text);
     const aduEmbeddingsResponse = await argumentService.embedContent(aduTexts);
@@ -85,7 +85,7 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     await argumentRepo.createADUEmbeddings(
       createdADUs.map((adu, idx) => ({
         adu_id: adu.id,
-        embedding: aduEmbeddingsResponse.embeddings_768[idx]!,
+        embedding: aduEmbeddingsResponse.embeddings_1536[idx]!,
       }))
     );
 
@@ -96,7 +96,7 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     for (let i = 0; i < claims.length; i++) {
       const claim = claims[i]!;
       const claimIndex = createdADUs.findIndex(adu => adu.id === claim.id);
-      const embedding = aduEmbeddingsResponse.embeddings_768[claimIndex]!;
+      const embedding = aduEmbeddingsResponse.embeddings_1536[claimIndex]!;
 
       // Step 8a: Retrieve top-5 similar canonical claims using configured threshold
       const similarClaims = await argumentRepo.findSimilarCanonicalClaims(
@@ -195,15 +195,15 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
           text: adu.text,
           source_comment_id: adu.source_id, // Python code expects this field name
         })),
-        aduEmbeddingsResponse.embeddings_768
+        aduEmbeddingsResponse.embeddings_1536
       );
       await argumentRepo.createRelations(relations.relations);
     }
 
-    // 10. Generate content embedding for semantic search (768-dim Gemini)
+    // 10. Generate content embedding for semantic search (1536-dim Gemini)
     await job.updateProgress(80);
     const contentEmbed = await argumentService.embedContent([content.content]);
-    await argumentRepo.createContentEmbedding(sourceType, sourceId, contentEmbed.embeddings_768[0]!);
+    await argumentRepo.createContentEmbedding(sourceType, sourceId, contentEmbed.embeddings_1536[0]!);
 
     // 11. Mark as completed
     await job.updateProgress(100);

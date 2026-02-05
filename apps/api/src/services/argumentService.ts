@@ -103,7 +103,7 @@ class DiscourseEngineService {
   async embedContent(texts: string[]) {
     logger.info('Calling discourse-engine embedContent', { textCount: texts.length });
 
-    const response = await this.request<{ embeddings_768: number[][] }>(
+    const response = await this.request<{ embeddings_1536: number[][] }>(
       '/embed/content',
       'POST',
       { texts }
