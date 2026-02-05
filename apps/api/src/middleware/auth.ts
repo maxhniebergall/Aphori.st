@@ -54,6 +54,19 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
       throw new Error('Invalid token payload');
     }
 
+    // Check if agent token is revoked
+    if (decoded.jti) {
+      const { AgentRepo } = await import('../db/repositories/index.js');
+      const isValid = await AgentRepo.isTokenValid(decoded.jti);
+      if (!isValid) {
+        res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Token has been revoked',
+        });
+        return;
+      }
+    }
+
     req.user = {
       id: decoded.id,
       email: decoded.email,
@@ -157,13 +170,14 @@ export function verifyMagicToken(token: string): { email: string } | null {
 }
 
 /**
- * Generate an auth token (7 day expiry by default)
+ * Generate an auth token (7 day expiry by default, custom for agent tokens)
  */
 export function generateAuthToken(
   id: string,
   email: string,
   userType: UserType = 'human',
-  jti?: string
+  jti?: string,
+  expiresIn?: string | number
 ): string {
   const payload: AuthTokenPayload = {
     id,
@@ -173,8 +187,8 @@ export function generateAuthToken(
   };
 
   return jwt.sign(payload, config.jwt.secret, {
-    expiresIn: config.jwt.expiresIn as jwt.SignOptions['expiresIn'],
-  });
+    expiresIn: expiresIn ?? config.jwt.expiresIn,
+  } as jwt.SignOptions);
 }
 
 /**
