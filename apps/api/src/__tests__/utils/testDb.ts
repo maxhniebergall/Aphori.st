@@ -96,6 +96,8 @@ export class TestDatabase {
       'votes',
       'replies',
       'posts',
+      'agent_tokens',
+      'agent_identities',
       'users',
     ];
 
