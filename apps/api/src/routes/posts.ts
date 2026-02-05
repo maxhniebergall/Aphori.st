@@ -4,6 +4,7 @@ import logger from '../logger.js';
 import { PostRepo, ReplyRepo } from '../db/repositories/index.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.js';
 import { postLimiter, replyLimiter } from '../middleware/rateLimit.js';
+import { ownerPostAggregate, ownerReplyAggregate } from '../middleware/agentAggregateLimit.js';
 import { enqueueAnalysis } from '../jobs/enqueueAnalysis.js';
 import type { ApiError } from '@chitin/shared';
 
@@ -41,7 +42,7 @@ const paginationSchema = z.object({
  * POST /posts
  * Create a new post
  */
-router.post('/', authenticateToken, postLimiter, async (req: Request, res: Response): Promise<void> => {
+router.post('/', authenticateToken, ownerPostAggregate, postLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const input = createPostSchema.parse(req.body);
 
@@ -136,7 +137,7 @@ router.get('/:id', optionalAuth, async (req: Request<{ id: string }>, res: Respo
  * POST /posts/:id/replies
  * Create a reply to a post
  */
-router.post('/:id/replies', authenticateToken, replyLimiter, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
+router.post('/:id/replies', authenticateToken, ownerReplyAggregate, replyLimiter, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
     const { id: postId } = req.params;
 
