@@ -87,11 +87,11 @@ describe('ArgumentRepo', () => {
       const similar = await repo.findSimilarCanonicalClaims(queryEmbedding, 0.75, 5);
 
       expect(similar.length).toBeGreaterThan(0);
-      expect(similar[0]).toMatchObject({
+      expect(similar[0]!).toMatchObject({
         canonical_claim_id: canonical.id,
         representative_text: 'Climate change is real',
       });
-      expect(similar[0].similarity).toBeGreaterThan(0.75);
+      expect(similar[0]!.similarity).toBeGreaterThan(0.75);
     });
 
     it('should exclude claims below similarity threshold', async () => {
@@ -228,8 +228,8 @@ describe('ArgumentRepo', () => {
       const results = await repo.semanticSearch(queryEmbedding, 10);
 
       expect(results.length).toBeGreaterThan(0);
-      expect(results[0].source_id).toBe(post1.id);
-      expect(results[0].similarity).toBeGreaterThan(results[1]?.similarity || 0);
+      expect(results[0]!.source_id).toBe(post1.id);
+      expect(results[0]!.similarity).toBeGreaterThan(results[1]?.similarity || 0);
     });
 
     it('should respect limit parameter', async () => {
@@ -244,6 +244,147 @@ describe('ArgumentRepo', () => {
       const results = await repo.semanticSearch(queryEmbedding, 2);
 
       expect(results.length).toBeLessThanOrEqual(2);
+    });
+  });
+
+  describe('Canonical mapping operations', () => {
+    describe('getCanonicalMappingsForADUs', () => {
+      it('should return canonical mappings for multiple ADUs', async () => {
+        const post = await factories.createPost();
+        const adu1 = await factories.createADU('post', post.id, { text: 'Claim 1' });
+        const adu2 = await factories.createADU('post', post.id, { text: 'Claim 2' });
+        const canonical = await factories.createCanonicalClaim(null, 'Canonical claim text');
+
+        // Link both ADUs to the same canonical claim
+        await factories.linkADUToCanonical(adu1.id, canonical.id, 0.95);
+        await factories.linkADUToCanonical(adu2.id, canonical.id, 0.88);
+
+        const mappings = await repo.getCanonicalMappingsForADUs([adu1.id, adu2.id]);
+
+        expect(mappings).toHaveLength(2);
+        expect(mappings[0]).toMatchObject({
+          canonical_claim_id: canonical.id,
+          representative_text: 'Canonical claim text',
+          adu_count: 2,
+        });
+      });
+
+      it('should return empty array for empty input', async () => {
+        const mappings = await repo.getCanonicalMappingsForADUs([]);
+        expect(mappings).toHaveLength(0);
+      });
+
+      it('should return empty array for ADUs without canonical mappings', async () => {
+        const post = await factories.createPost();
+        const adu = await factories.createADU('post', post.id);
+
+        const mappings = await repo.getCanonicalMappingsForADUs([adu.id]);
+        expect(mappings).toHaveLength(0);
+      });
+    });
+
+    describe('getEnrichedSourcesForCanonicalClaim', () => {
+      it('should return enriched sources with author info for posts', async () => {
+        const author = await factories.createUser();
+        const post = await factories.createPost(author.id, {
+          title: 'Test Post Title',
+          content: 'This is the post content.',
+        });
+        const adu = await factories.createADU('post', post.id, { text: 'A claim' });
+        const canonical = await factories.createCanonicalClaim(null, 'Canonical text');
+        await factories.linkADUToCanonical(adu.id, canonical.id, 0.92);
+
+        const sources = await repo.getEnrichedSourcesForCanonicalClaim(canonical.id, 10);
+
+        expect(sources).toHaveLength(1);
+        expect(sources[0]).toMatchObject({
+          source_type: 'post',
+          source_id: post.id,
+          title: 'Test Post Title',
+          content: 'This is the post content.',
+          author_id: author.id,
+          adu_text: 'A claim',
+          similarity_score: 0.92,
+        });
+      });
+
+      it('should return enriched sources for replies', async () => {
+        const author = await factories.createUser();
+        const post = await factories.createPost();
+        const reply = await factories.createReply(post.id, author.id, {
+          content: 'This is a reply.',
+        });
+        const adu = await factories.createADU('reply', reply.id, { text: 'Reply claim' });
+        const canonical = await factories.createCanonicalClaim(null, 'Canonical text');
+        await factories.linkADUToCanonical(adu.id, canonical.id, 0.85);
+
+        const sources = await repo.getEnrichedSourcesForCanonicalClaim(canonical.id, 10);
+
+        expect(sources).toHaveLength(1);
+        expect(sources[0]).toMatchObject({
+          source_type: 'reply',
+          source_id: reply.id,
+          title: null,
+          content: 'This is a reply.',
+          author_id: author.id,
+          adu_text: 'Reply claim',
+        });
+      });
+
+      it('should exclude specified source ID', async () => {
+        const post1 = await factories.createPost(undefined, { content: 'Post 1' });
+        const post2 = await factories.createPost(undefined, { content: 'Post 2' });
+        const adu1 = await factories.createADU('post', post1.id);
+        const adu2 = await factories.createADU('post', post2.id);
+        const canonical = await factories.createCanonicalClaim();
+        await factories.linkADUToCanonical(adu1.id, canonical.id, 0.95);
+        await factories.linkADUToCanonical(adu2.id, canonical.id, 0.90);
+
+        // Exclude post1
+        const sources = await repo.getEnrichedSourcesForCanonicalClaim(canonical.id, 10, post1.id);
+
+        expect(sources).toHaveLength(1);
+        expect(sources[0]!.source_id).toBe(post2.id);
+      });
+
+      it('should order results by similarity score descending', async () => {
+        const post1 = await factories.createPost();
+        const post2 = await factories.createPost();
+        const adu1 = await factories.createADU('post', post1.id);
+        const adu2 = await factories.createADU('post', post2.id);
+        const canonical = await factories.createCanonicalClaim();
+        await factories.linkADUToCanonical(adu1.id, canonical.id, 0.75);
+        await factories.linkADUToCanonical(adu2.id, canonical.id, 0.95);
+
+        const sources = await repo.getEnrichedSourcesForCanonicalClaim(canonical.id, 10);
+
+        expect(sources).toHaveLength(2);
+        expect(sources[0]!.similarity_score).toBe(0.95);
+        expect(sources[1]!.similarity_score).toBe(0.75);
+      });
+
+      it('should respect limit parameter', async () => {
+        const canonical = await factories.createCanonicalClaim();
+
+        // Create 5 posts with ADUs linked to the same canonical claim
+        for (let i = 0; i < 5; i++) {
+          const post = await factories.createPost();
+          const adu = await factories.createADU('post', post.id);
+          await factories.linkADUToCanonical(adu.id, canonical.id, 0.9 - i * 0.01);
+        }
+
+        const sources = await repo.getEnrichedSourcesForCanonicalClaim(canonical.id, 2);
+
+        expect(sources).toHaveLength(2);
+      });
+
+      it('should return empty array for canonical claim with no linked ADUs', async () => {
+        const canonical = await factories.createCanonicalClaim();
+
+        const sources = await repo.getEnrichedSourcesForCanonicalClaim(canonical.id, 10);
+
+        expect(sources).toHaveLength(0);
+      });
     });
   });
 });
