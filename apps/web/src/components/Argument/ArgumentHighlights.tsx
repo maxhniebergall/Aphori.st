@@ -70,11 +70,11 @@ export function ArgumentHighlights({
               cursor-pointer border-b-2 transition-colors
               ${isClaim
                 ? isHovered
-                  ? 'border-blue-600 bg-blue-100 dark:border-blue-400 dark:bg-blue-900/30'
-                  : 'border-blue-500 hover:bg-blue-50 dark:border-blue-400 dark:hover:bg-blue-900/20'
+                  ? 'border-blue-600/70 bg-blue-100/30 dark:border-blue-400/70 dark:bg-blue-900/20'
+                  : 'border-blue-500/40 hover:bg-blue-50/30 dark:border-blue-400/40 dark:hover:bg-blue-900/15'
                 : isHovered
-                  ? 'border-green-600 bg-green-100 dark:border-green-400 dark:bg-green-900/30'
-                  : 'border-green-500 hover:bg-green-50 dark:border-green-400 dark:hover:bg-green-900/20'
+                  ? 'border-green-600/70 bg-green-100/50 dark:border-green-400/70 dark:bg-green-900/20'
+                  : 'border-green-500/40 hover:bg-green-50/50 dark:border-green-400/40 dark:hover:bg-green-900/15'
               }
             `}
             onClick={() => onADUClick?.(seg.adu!)}
