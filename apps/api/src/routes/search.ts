@@ -37,16 +37,23 @@ router.get('/', async (req, res) => {
       // Search with pgvector
       const results = await argumentRepo.semanticSearch(queryEmbedding, limitNum);
 
-      // Enrich with full content
-      const enriched = await Promise.all(
-        results.map(async (r: SearchResult) => {
-          if (r.source_type === 'post') {
-            return PostRepo.findByIdWithAuthor(r.source_id);
-          } else {
-            return ReplyRepo.findByIdWithAuthor(r.source_id);
-          }
-        })
-      );
+      // Enrich with full content, batching queries to limit concurrent DB operations
+      const batchSize = 10;
+      const enriched: Array<PostWithAuthor | ReplyWithAuthor | null> = [];
+
+      for (let i = 0; i < results.length; i += batchSize) {
+        const batch = results.slice(i, i + batchSize);
+        const batchEnriched = await Promise.all(
+          batch.map(async (r: SearchResult) => {
+            if (r.source_type === 'post') {
+              return PostRepo.findByIdWithAuthor(r.source_id);
+            } else {
+              return ReplyRepo.findByIdWithAuthor(r.source_id);
+            }
+          })
+        );
+        enriched.push(...batchEnriched);
+      }
 
       res.json({
         success: true,

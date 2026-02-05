@@ -81,7 +81,7 @@ router.get('/canonical-claims/:id/related-posts', async (req, res) => {
     const pool = getPool();
     const argumentRepo = createArgumentRepo(pool);
 
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 10), 100);
     const excludeSourceId = req.query.exclude_source_id as string | undefined;
 
     const relatedPosts = await argumentRepo.getEnrichedSourcesForCanonicalClaim(

@@ -49,9 +49,9 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     }
 
     // 3. Update status to processing
-    const statusColumn = sourceType === 'post' ? 'posts' : 'replies';
+    const statusTable = sourceType === 'post' ? 'posts' : 'replies';
     await pool.query(
-      `UPDATE ${statusColumn} SET analysis_status = 'processing' WHERE id = $1`,
+      `UPDATE ${statusTable} SET analysis_status = 'processing' WHERE id = $1`,
       [sourceId]
     );
 
@@ -66,7 +66,7 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     if (aduResponse.adus.length === 0) {
       logger.info(`No ADUs found in ${sourceId}`);
       await pool.query(
-        `UPDATE ${statusColumn} SET analysis_status = 'completed' WHERE id = $1`,
+        `UPDATE ${statusTable} SET analysis_status = 'completed' WHERE id = $1`,
         [sourceId]
       );
       return;
@@ -208,7 +208,7 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     // 11. Mark as completed
     await job.updateProgress(100);
     await pool.query(
-      `UPDATE ${statusColumn} SET analysis_status = 'completed' WHERE id = $1`,
+      `UPDATE ${statusTable} SET analysis_status = 'completed' WHERE id = $1`,
       [sourceId]
     );
 
@@ -220,9 +220,8 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     logger.error(`Analysis failed for ${sourceId}`, { error });
 
     // Update status to failed
-    const statusColumn = sourceType === 'post' ? 'posts' : 'replies';
     await pool.query(
-      `UPDATE ${statusColumn} SET analysis_status = 'failed' WHERE id = $1`,
+      `UPDATE ${statusTable} SET analysis_status = 'failed' WHERE id = $1`,
       [sourceId]
     ).catch(e => logger.error('Failed to update status to failed', { error: e }));
 
