@@ -109,7 +109,8 @@ export const createArgumentRepo = (pool: Pool) => ({
         .join(',');
 
       await client.query(
-        `INSERT INTO adu_embeddings (adu_id, embedding) VALUES ${values}`,
+        `INSERT INTO adu_embeddings (adu_id, embedding) VALUES ${values}
+         ON CONFLICT (adu_id) DO UPDATE SET embedding = EXCLUDED.embedding`,
         embeddings.flatMap(e => [e.adu_id, JSON.stringify(e.embedding)])
       );
     } finally {
@@ -251,6 +252,9 @@ export const createArgumentRepo = (pool: Pool) => ({
     const client = await pool.connect();
     try {
       // Batch insert all relations in a single query for efficiency
+      // NOTE: Current UNIQUE constraint is (source_adu_id, target_adu_id, relation_type).
+      // When support for both 'support' AND 'attack' relations between the same ADU pair is added,
+      // this constraint should be updated to (source_adu_id, target_adu_id) to allow multiple relation types.
       const values = relations
         .map((_, i) => `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4})`)
         .join(',');
