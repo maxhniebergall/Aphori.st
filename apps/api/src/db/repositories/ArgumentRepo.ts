@@ -1,6 +1,4 @@
 import { Pool } from 'pg';
-import { v4 as uuidv4 } from 'uuid';
-import { logger } from '../../utils/logger.js';
 
 export interface ADU {
   id: string;
@@ -45,6 +43,28 @@ export interface SearchResult {
   similarity: number;
 }
 
+export interface ADUCanonicalMapping {
+  adu_id: string;
+  canonical_claim_id: string;
+  similarity_score: number;
+  representative_text: string;
+  adu_count: number;
+}
+
+export interface EnrichedSource {
+  source_type: 'post' | 'reply';
+  source_id: string;
+  title: string | null;
+  content: string;
+  author_id: string;
+  author_display_name: string | null;
+  author_user_type: string;
+  created_at: string;
+  score: number;
+  adu_text: string;
+  similarity_score: number;
+}
+
 export const createArgumentRepo = (pool: Pool) => ({
   // ADU operations
   async createADUs(
@@ -58,7 +78,7 @@ export const createArgumentRepo = (pool: Pool) => ({
         `INSERT INTO adus (source_type, source_id, adu_type, text, span_start, span_end, confidence)
          VALUES ${adus.map((_, i) => `($1, $2, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5}, $${i * 5 + 6}, $${i * 5 + 7})`).join(',')}
          RETURNING *`,
-        adus.flatMap((adu, i) => [sourceType, sourceId, adu.adu_type, adu.text, adu.span_start, adu.span_end, adu.confidence])
+        [sourceType, sourceId, ...adus.flatMap(adu => [adu.adu_type, adu.text, adu.span_start, adu.span_end, adu.confidence])]
       );
 
       return result.rows;
@@ -252,6 +272,85 @@ export const createArgumentRepo = (pool: Pool) => ({
        ORDER BY similarity DESC
        LIMIT $2`,
       [JSON.stringify(queryEmbedding), limit]
+    );
+
+    return result.rows;
+  },
+
+  // Canonical mapping operations for deduplication UI
+  async getCanonicalMappingsForADUs(aduIds: string[]): Promise<ADUCanonicalMapping[]> {
+    if (aduIds.length === 0) return [];
+
+    const placeholders = aduIds.map((_, i) => `$${i + 1}`).join(',');
+    const result = await pool.query(
+      `SELECT
+        acm.adu_id,
+        acm.canonical_claim_id,
+        acm.similarity_score,
+        cc.representative_text,
+        cc.adu_count
+       FROM adu_canonical_map acm
+       JOIN canonical_claims cc ON acm.canonical_claim_id = cc.id
+       WHERE acm.adu_id IN (${placeholders})`,
+      aduIds
+    );
+
+    return result.rows;
+  },
+
+  async getEnrichedSourcesForCanonicalClaim(
+    canonicalClaimId: string,
+    limit: number = 10,
+    excludeSourceId?: string
+  ): Promise<EnrichedSource[]> {
+    const result = await pool.query(
+      `WITH linked_adus AS (
+        SELECT
+          a.id AS adu_id,
+          a.source_type,
+          a.source_id,
+          a.text AS adu_text,
+          acm.similarity_score
+        FROM adu_canonical_map acm
+        JOIN adus a ON acm.adu_id = a.id
+        WHERE acm.canonical_claim_id = $1
+      )
+      SELECT
+        la.source_type,
+        la.source_id,
+        CASE
+          WHEN la.source_type = 'post' THEN p.title
+          ELSE NULL
+        END AS title,
+        CASE
+          WHEN la.source_type = 'post' THEN p.content
+          ELSE r.content
+        END AS content,
+        u.id AS author_id,
+        u.display_name AS author_display_name,
+        u.user_type AS author_user_type,
+        CASE
+          WHEN la.source_type = 'post' THEN p.created_at
+          ELSE r.created_at
+        END AS created_at,
+        CASE
+          WHEN la.source_type = 'post' THEN p.score
+          ELSE r.score
+        END AS score,
+        la.adu_text,
+        la.similarity_score
+      FROM linked_adus la
+      LEFT JOIN posts p ON la.source_type = 'post' AND la.source_id = p.id AND p.deleted_at IS NULL
+      LEFT JOIN replies r ON la.source_type = 'reply' AND la.source_id = r.id AND r.deleted_at IS NULL
+      LEFT JOIN users u ON u.id = CASE
+        WHEN la.source_type = 'post' THEN p.author_id
+        ELSE r.author_id
+      END
+      WHERE (p.id IS NOT NULL OR r.id IS NOT NULL)
+        AND ($2::uuid IS NULL OR la.source_id != $2)
+      ORDER BY la.similarity_score DESC
+      LIMIT $3`,
+      [canonicalClaimId, excludeSourceId || null, limit]
     );
 
     return result.rows;
