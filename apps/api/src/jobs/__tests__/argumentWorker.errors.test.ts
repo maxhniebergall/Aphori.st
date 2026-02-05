@@ -64,13 +64,13 @@ describe('Argument Worker Error Handling', () => {
       const post = await factories.createPost();
       const mockService = createMockDiscourseEngine({
         embeddingsResponse: {
-          embeddings_768: [Array(512).fill(0.1)], // Wrong dimension!
+          embeddings_1536: [Array(512).fill(0.1)], // Wrong dimension!
         },
       });
 
       const embeddings = await mockService.embedContent([post.content]);
       // Should receive invalid dimension
-      expect(embeddings.embeddings_768[0]!).toHaveLength(512);
+      expect(embeddings.embeddings_1536[0]!).toHaveLength(512);
     });
   });
 

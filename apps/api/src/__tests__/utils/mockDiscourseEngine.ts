@@ -8,7 +8,7 @@ import type {
 export interface MockDiscourseEngineConfig {
   aduResponse?: { adus: ADUResponse[] };
   relationsResponse?: { relations: RelationResponse[] };
-  embeddingsResponse?: { embeddings_768: number[][] };
+  embeddingsResponse?: { embeddings_1536: number[][] };
   validationResponse?: ClaimValidationResult;
   shouldFail?: boolean;
   failureError?: Error;
@@ -66,7 +66,7 @@ export function createMockDiscourseEngine(config?: MockDiscourseEngineConfig) {
 
     return (
       defaultConfig.embeddingsResponse || {
-        embeddings_768: texts.map(() => Array(768).fill(0.1)),
+        embeddings_1536: texts.map(() => Array(1536).fill(0.1)),
       }
     );
   });

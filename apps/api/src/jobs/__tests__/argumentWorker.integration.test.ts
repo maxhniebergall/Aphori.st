@@ -68,7 +68,7 @@ async function processArgumentAnalysis(
   await argumentRepo.createADUEmbeddings(
     createdADUs.map((adu: any, idx: number) => ({
       adu_id: adu.id,
-      embedding: aduEmbeddingsResponse.embeddings_768[idx]!,
+      embedding: aduEmbeddingsResponse.embeddings_1536[idx]!,
     }))
   );
 
@@ -78,7 +78,7 @@ async function processArgumentAnalysis(
   for (let i = 0; i < claims.length; i++) {
     const claim = claims[i]!;
     const claimIndex = createdADUs.findIndex((adu: any) => adu.id === claim.id);
-    const embedding = aduEmbeddingsResponse.embeddings_768[claimIndex]!;
+    const embedding = aduEmbeddingsResponse.embeddings_1536[claimIndex]!;
 
     // Step 8a: Retrieve similar canonical claims
     const similarClaims = await argumentRepo.findSimilarCanonicalClaims(embedding, 0.75, 5);
@@ -136,14 +136,14 @@ async function processArgumentAnalysis(
         text: adu.text,
         source_comment_id: adu.source_id,
       })),
-      aduEmbeddingsResponse.embeddings_768
+      aduEmbeddingsResponse.embeddings_1536
     );
     await argumentRepo.createRelations(relations.relations);
   }
 
   // 10. Generate content embedding (REAL Gemini embeddings)
   const contentEmbed = await argumentService.embedContent([content.content]);
-  await argumentRepo.createContentEmbedding(sourceType, sourceId, contentEmbed.embeddings_768[0]!);
+  await argumentRepo.createContentEmbedding(sourceType, sourceId, contentEmbed.embeddings_1536[0]!);
 
   // 11. Mark as completed
   await pool.query(`UPDATE ${statusColumn} SET analysis_status = 'completed' WHERE id = $1`, [sourceId]);

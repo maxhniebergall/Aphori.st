@@ -55,7 +55,7 @@ class TestDiscourseEngineService {
   }
 
   async embedContent(texts: string[]) {
-    return this.request<{ embeddings_768: number[][] }>('/embed/content', 'POST', { texts });
+    return this.request<{ embeddings_1536: number[][] }>('/embed/content', 'POST', { texts });
   }
 
   async validateClaimEquivalence(
@@ -193,8 +193,8 @@ describe('DiscourseEngineService', () => {
         { id: 'adu_2', text: 'Claim 2' },
       ];
       const embeddings = [
-        Array(768).fill(0.1),
-        Array(768).fill(0.2),
+        Array(1536).fill(0.1),
+        Array(1536).fill(0.2),
       ];
 
       const result = await service.analyzeRelations(adus, embeddings);
@@ -208,9 +208,9 @@ describe('DiscourseEngineService', () => {
   });
 
   describe('embedContent', () => {
-    it('should request 768-dimensional embeddings', async () => {
+    it('should request 1536-dimensional embeddings', async () => {
       const mockResponse = {
-        embeddings_768: [Array(768).fill(0.1), Array(768).fill(0.2)],
+        embeddings_1536: [Array(1536).fill(0.1), Array(1536).fill(0.2)],
       };
 
       vi.stubGlobal(
@@ -227,9 +227,9 @@ describe('DiscourseEngineService', () => {
 
       const result = await service.embedContent(['Text 1', 'Text 2']);
 
-      expect(result.embeddings_768).toHaveLength(2);
-      expect(result.embeddings_768[0]).toHaveLength(768);
-      expect(result.embeddings_768[1]).toHaveLength(768);
+      expect(result.embeddings_1536).toHaveLength(2);
+      expect(result.embeddings_1536[0]).toHaveLength(1536);
+      expect(result.embeddings_1536[1]).toHaveLength(1536);
     });
   });
 

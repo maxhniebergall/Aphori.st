@@ -72,8 +72,8 @@ describe('Search Routes Integration Tests', () => {
       const embeddings2 = await argumentService.embedContent([post2.content]);
 
       // Store the embeddings
-      await factories.createContentEmbedding('post', post1.id, embeddings1.embeddings_768[0]);
-      await factories.createContentEmbedding('post', post2.id, embeddings2.embeddings_768[0]);
+      await factories.createContentEmbedding('post', post1.id, embeddings1.embeddings_1536[0]);
+      await factories.createContentEmbedding('post', post2.id, embeddings2.embeddings_1536[0]);
 
       // Search for climate-related content
       const response = await request(app)
@@ -102,7 +102,7 @@ describe('Search Routes Integration Tests', () => {
       for (let i = 0; i < 5; i++) {
         const post = await factories.createPost(undefined, { content: `Test post number ${i}` });
         const embeddings = await argumentService.embedContent([post.content]);
-        await factories.createContentEmbedding('post', post.id, embeddings.embeddings_768[0]);
+        await factories.createContentEmbedding('post', post.id, embeddings.embeddings_1536[0]);
       }
 
       const response = await request(app)
@@ -140,8 +140,8 @@ describe('Search Routes Integration Tests', () => {
       const embeddings1 = await argumentService.embedContent([post1.content]);
       const embeddings2 = await argumentService.embedContent([post2.content]);
 
-      await factories.createContentEmbedding('post', post1.id, embeddings1.embeddings_768[0]);
-      await factories.createContentEmbedding('post', post2.id, embeddings2.embeddings_768[0]);
+      await factories.createContentEmbedding('post', post1.id, embeddings1.embeddings_1536[0]);
+      await factories.createContentEmbedding('post', post2.id, embeddings2.embeddings_1536[0]);
 
       const response = await request(app)
         .get('/api/v1/search')
