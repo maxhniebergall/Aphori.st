@@ -42,6 +42,13 @@ export const config = {
     'http://localhost:3000',
   ],
 
+  // Argument Analysis
+  argumentAnalysis: {
+    embeddingDimension: 768, // Gemini embedding dimension
+    semanticSearchThreshold: 0.5, // Min similarity for search results
+    claimDeduplicationThreshold: 0.75, // Min similarity for canonical claim matching
+  },
+
   // Feed algorithms
   feedAlgorithms: {
     rising: {
