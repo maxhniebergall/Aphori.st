@@ -45,8 +45,8 @@ export function createMockDiscourseEngine(config?: MockDiscourseEngineConfig) {
   });
 
   const analyzeRelations = vi.fn(async (
-    adus: Array<{ id: string; text: string }>,
-    embeddings: number[][]
+    _adus: Array<{ id: string; text: string; source_comment_id?: string }>,
+    _embeddings: number[][]
   ) => {
     if (defaultConfig.shouldFail) {
       throw defaultConfig.failureError || new Error('discourse-engine error');
@@ -72,8 +72,8 @@ export function createMockDiscourseEngine(config?: MockDiscourseEngineConfig) {
   });
 
   const validateClaimEquivalence = vi.fn(async (
-    newClaim: string,
-    candidates: Array<{ id: string; text: string; similarity: number }>
+    _newClaim: string,
+    _candidates: Array<{ id: string; text: string; similarity: number }>
   ) => {
     if (defaultConfig.shouldFail) {
       throw defaultConfig.failureError || new Error('discourse-engine error');

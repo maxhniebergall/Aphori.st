@@ -149,7 +149,7 @@ export class TestFactories {
     );
   }
 
-  async createCanonicalClaim(authorId?: string, text?: string): Promise<CanonicalClaim> {
+  async createCanonicalClaim(authorId?: string | null, text?: string): Promise<CanonicalClaim> {
     const claimId = uuidv4();
     const author = authorId || null;
     const claimText = text || 'This is a canonical claim.';
