@@ -99,14 +99,19 @@ export const createArgumentRepo = (pool: Pool) => ({
   async createADUEmbeddings(
     embeddings: Array<{ adu_id: string; embedding: number[] }>
   ): Promise<void> {
+    if (embeddings.length === 0) return;
+
     const client = await pool.connect();
     try {
-      for (const emb of embeddings) {
-        await client.query(
-          `INSERT INTO adu_embeddings (adu_id, embedding) VALUES ($1, $2)`,
-          [emb.adu_id, JSON.stringify(emb.embedding)]
-        );
-      }
+      // Batch insert all embeddings in a single query for efficiency
+      const values = embeddings
+        .map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`)
+        .join(',');
+
+      await client.query(
+        `INSERT INTO adu_embeddings (adu_id, embedding) VALUES ${values}`,
+        embeddings.flatMap(e => [e.adu_id, JSON.stringify(e.embedding)])
+      );
     } finally {
       client.release();
     }
@@ -201,6 +206,9 @@ export const createArgumentRepo = (pool: Pool) => ({
   ): Promise<void> {
     const client = await pool.connect();
     try {
+      await client.query('BEGIN');
+
+      // Insert or update the mapping
       await client.query(
         `INSERT INTO adu_canonical_map (adu_id, canonical_claim_id, similarity_score)
          VALUES ($1, $2, $3)
@@ -208,13 +216,18 @@ export const createArgumentRepo = (pool: Pool) => ({
         [aduId, canonicalId, similarity]
       );
 
-      // Update ADU count on canonical claim
+      // Update ADU count on canonical claim (atomic with insert)
       await client.query(
         `UPDATE canonical_claims
          SET adu_count = (SELECT COUNT(*) FROM adu_canonical_map WHERE canonical_claim_id = $1)
          WHERE id = $1`,
         [canonicalId]
       );
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
     } finally {
       client.release();
     }
@@ -237,14 +250,17 @@ export const createArgumentRepo = (pool: Pool) => ({
 
     const client = await pool.connect();
     try {
-      for (const rel of relations) {
-        await client.query(
-          `INSERT INTO argument_relations (source_adu_id, target_adu_id, relation_type, confidence)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (source_adu_id, target_adu_id, relation_type) DO UPDATE SET confidence = $4`,
-          [rel.source_adu_id, rel.target_adu_id, rel.relation_type, rel.confidence]
-        );
-      }
+      // Batch insert all relations in a single query for efficiency
+      const values = relations
+        .map((_, i) => `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4})`)
+        .join(',');
+
+      await client.query(
+        `INSERT INTO argument_relations (source_adu_id, target_adu_id, relation_type, confidence)
+         VALUES ${values}
+         ON CONFLICT (source_adu_id, target_adu_id, relation_type) DO UPDATE SET confidence = EXCLUDED.confidence`,
+        relations.flatMap(r => [r.source_adu_id, r.target_adu_id, r.relation_type, r.confidence])
+      );
     } finally {
       client.release();
     }
@@ -261,17 +277,22 @@ export const createArgumentRepo = (pool: Pool) => ({
     return result.rows;
   },
 
-  // Semantic search
-  async semanticSearch(queryEmbedding: number[], limit: number = 20): Promise<SearchResult[]> {
+  // Semantic search with optional similarity threshold
+  async semanticSearch(
+    queryEmbedding: number[],
+    limit: number = 20,
+    threshold: number = 0.5
+  ): Promise<SearchResult[]> {
     const result = await pool.query(
       `SELECT
         source_type,
         source_id,
         (1 - (embedding <=> $1::vector)) as similarity
        FROM content_embeddings
+       WHERE (1 - (embedding <=> $1::vector)) > $2
        ORDER BY similarity DESC
-       LIMIT $2`,
-      [JSON.stringify(queryEmbedding), limit]
+       LIMIT $3`,
+      [JSON.stringify(queryEmbedding), threshold, limit]
     );
 
     return result.rows;
