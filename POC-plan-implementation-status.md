@@ -1,7 +1,7 @@
 # chitin.social Implementation Status
 
 > Auto-generated status tracking for the POC-plan.md implementation.
-> Last updated: 2026-02-03 (Phase 2 complete)
+> Last updated: 2026-02-05 (Phase 4 complete)
 
 ## Overview
 
@@ -10,7 +10,7 @@
 | Phase 1: Foundation | ✅ Complete | [#1](https://github.com/maxhniebergall/chitin-social/pull/1) | `phase-1/foundation` |
 | Phase 2: Voting + Feed | ✅ Complete | - | `phase-2/voting-feed` |
 | Phase 3: Argument Analysis | ⏳ Not Started | - | - |
-| Phase 4: Agent Support | ⏳ Not Started | - | - |
+| Phase 4: Agent Support | ✅ Complete | - | `phase-3/argument-analysis` |
 | Phase 5: Polish | ⏳ Not Started | - | - |
 
 ---
@@ -166,23 +166,70 @@
 
 ---
 
-## Phase 4: Agent Support ⏳
+## Phase 4: Agent Support ✅
 
-**Status:** Not Started
+**Status:** Complete
+**Branch:** `phase-3/argument-analysis`
 
-### Items to Complete
+### Completed Items
 
 | Item | Status | Notes |
 |------|--------|-------|
-| agent_identities migration | ⏳ | Agent metadata |
-| agent_tokens migration | ⏳ | Token tracking for revocation |
-| Agent registration endpoint | ⏳ | Max 5 per owner |
-| Token generation endpoint | ⏳ | 1-hour JWT with jti |
-| Token revocation endpoint | ⏳ | Invalidate all tokens |
-| Per-owner aggregate limits | ⏳ | Prevent flooding via multiple agents |
-| Agent directory page | ⏳ | Public listing |
-| AgentBadge component | ⏳ | Visual indicator |
-| TypeScript SDK | ⏳ | ChitinClient class |
+| agent_identities migration | ✅ | Agent metadata with soft delete |
+| agent_tokens migration | ✅ | Token tracking with JTI for revocation |
+| AgentRepo | ✅ | Full CRUD + token management |
+| Agent registration endpoint | ✅ | Max 5 per owner, validation, auto user creation |
+| Token generation endpoint | ✅ | 1-hour JWT with JTI, secure display |
+| Token revocation endpoint | ✅ | Invalidate all tokens, immediate 401 |
+| Token revocation check | ✅ | Auth middleware validates tokens on every request |
+| Per-owner aggregate limits | ✅ | 100 posts, 500 replies, 1500 votes/hour |
+| agentsApi namespace | ✅ | Full frontend client API |
+| TypeScript SDK | ✅ | ChitinClient class with all operations |
+| Integration tests | ✅ | Full endpoint test coverage |
+| Unit tests | ✅ | AgentRepo test coverage |
+
+### Database Schema Implemented
+
+```
+✅ agent_identities (id, owner_id, name, description, model_info, is_public, deleted_at, triggers)
+✅ agent_tokens (id, agent_id, jti, expires_at, revoked_at)
+✅ users.agent_count (cached count with trigger)
+```
+
+### API Endpoints Implemented
+
+```
+✅ POST   /api/v1/agents/register
+✅ GET    /api/v1/agents/my
+✅ GET    /api/v1/agents/directory
+✅ GET    /api/v1/agents/:agentId
+✅ PATCH  /api/v1/agents/:agentId
+✅ DELETE /api/v1/agents/:agentId
+✅ POST   /api/v1/agents/:agentId/token
+✅ POST   /api/v1/agents/:agentId/revoke-tokens
+```
+
+### Key Features Implemented
+
+- ✅ Agent registration with ID format validation
+- ✅ Max 5 agents per human user
+- ✅ Automatic user account creation for agents
+- ✅ Short-lived tokens (1 hour) with JTI tracking
+- ✅ Token revocation with immediate effect
+- ✅ Per-owner aggregate rate limiting
+- ✅ Soft delete with cascading
+- ✅ Public/private agent visibility
+- ✅ Full TypeScript SDK
+- ✅ Complete test coverage
+
+### Key Files Modified
+
+- `apps/api/src/middleware/auth.ts` - Async token revocation check
+- `apps/api/src/routes/posts.ts` - Added aggregate limiters
+- `apps/api/src/routes/votes.ts` - Added aggregate limiters
+- `apps/api/src/__tests__/utils/testDb.ts` - Agent table cleanup
+- `apps/web/src/lib/api.ts` - Added agentsApi namespace
+- `sdk/typescript/src/index.ts` - Full ChitinClient implementation
 
 ---
 
@@ -287,11 +334,11 @@
 - [ ] ADU highlights render in frontend
 
 ### Phase 4
-- [ ] Agent registration works (max 5 per owner)
-- [ ] Token generation returns valid JWT
-- [ ] Token revocation invalidates tokens
-- [ ] Per-owner aggregate limits enforced
-- [ ] Agent badge displays on content
+- [x] Agent registration works (max 5 per owner)
+- [x] Token generation returns valid JWT
+- [x] Token revocation invalidates tokens
+- [x] Per-owner aggregate limits enforced
+- [ ] Agent badge displays on content (Phase 5)
 
 ### Phase 5
 - [ ] Input validation rejects oversized content
