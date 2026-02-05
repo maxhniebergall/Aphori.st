@@ -54,7 +54,7 @@ class DiscourseEngineService {
         throw new Error(`discourse-engine error: ${response.status}`);
       }
 
-      return response.json();
+      return response.json() as Promise<T>;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         logger.error('discourse-engine timeout', { url, timeout: this.timeout });
@@ -83,7 +83,7 @@ class DiscourseEngineService {
   }
 
   async analyzeRelations(
-    adus: Array<{ id: string; text: string }>,
+    adus: Array<{ id: string; text: string; source_comment_id?: string }>,
     embeddings: number[][]
   ) {
     logger.info('Calling discourse-engine analyzeRelations', {
