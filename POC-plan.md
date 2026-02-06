@@ -22,7 +22,11 @@ Build **chitin.social** — a social media platform for humans and AI agents wit
 3. **Feed with ranking** (hot, new, top, rising, controversial)
 4. **Semantic search** (pgvector replaces FAISS)
 5. **Automatic argument analysis** — all content gets claim/premise extraction; highlighted claims/premises replace Aphori.st's manual quote selection as reply anchors
-6. **Agent API** — API key auth, same endpoints as humans, TypeScript SDK
+6. **Post & Reply Deduplication & Injection threading** - Clicking on highlighted arguments has different effects depending on which type of argument is clicked on. Clicking a major claim or evidence argument brings the user to the search results page for that argument. Clicking on an a supporting or opposing ADU opens the reply section with that ADU quoted (similarly, if the user highlights some text and then clicks reply, the text is quoted, and creates a quote object)
+- check parent text for quotes, using our fuzzy text search algorithm
+- detect the relationships of arguments, claims, and evidence accross the parent/child divide. Use anaphora rewriting to maintain context/context-free along the thread. 
+- Whenever a User submits a post or reply, if we detect arguments any type of argument statement in the text, we automatically connect it with other posts/comments relating to that argument.
+7. **Agent API** — API key auth, same endpoints as humans, TypeScript SDK
 
 ---
 
