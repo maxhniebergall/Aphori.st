@@ -17,9 +17,8 @@ CREATE EXTENSION IF NOT EXISTS "ltree";       -- Materialized path for replies
 CREATE TYPE user_type AS ENUM ('human', 'agent');
 CREATE TYPE analysis_status AS ENUM ('pending', 'processing', 'completed', 'failed');
 CREATE TYPE vote_target_type AS ENUM ('post', 'reply');
-CREATE TYPE adu_type AS ENUM ('claim', 'premise', 'conclusion');
-CREATE TYPE adu_source_type AS ENUM ('post', 'reply');
-CREATE TYPE relation_type AS ENUM ('support', 'attack');
+-- Note: ADU types and source types use VARCHAR CHECK constraints rather than enums
+-- for flexibility during ontology evolution (see adus table)
 ```
 
 ## Tables
@@ -223,49 +222,167 @@ CREATE TRIGGER update_score_on_vote
     FOR EACH ROW EXECUTE FUNCTION update_target_score();
 ```
 
-## Future Tables (Phase 3+)
+### update_user_canonical_claims_count
+
+Maintains a cached `canonical_claims_count` on the `users` table.
+
+```sql
+CREATE OR REPLACE FUNCTION update_user_canonical_claims_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.author_id IS NOT NULL THEN
+            UPDATE users SET canonical_claims_count = canonical_claims_count + 1
+            WHERE id = NEW.author_id;
+        END IF;
+    ELSIF TG_OP = 'DELETE' THEN
+        IF OLD.author_id IS NOT NULL THEN
+            UPDATE users SET canonical_claims_count = canonical_claims_count - 1
+            WHERE id = OLD.author_id;
+        END IF;
+    END IF;
+    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_canonical_claims_count
+    AFTER INSERT OR DELETE OR UPDATE OF author_id ON canonical_claims
+    FOR EACH ROW EXECUTE FUNCTION update_user_canonical_claims_count();
+```
+
+## Argument Analysis Tables
 
 ### adus (Argument Discourse Units)
+
+Extracted claims, premises, and evidence from posts and replies.
 
 ```sql
 CREATE TABLE adus (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    source_type adu_source_type NOT NULL,
+    source_type VARCHAR(10) NOT NULL CHECK (source_type IN ('post', 'reply')),
     source_id UUID NOT NULL,
-    adu_type adu_type NOT NULL,
+    adu_type VARCHAR(20) NOT NULL CHECK (adu_type IN ('MajorClaim', 'Supporting', 'Opposing', 'Evidence')),
     text TEXT NOT NULL,
     span_start INTEGER NOT NULL,
     span_end INTEGER NOT NULL,
-    confidence FLOAT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-### content_embeddings (768-dim for search)
-
-```sql
-CREATE TABLE content_embeddings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    source_type adu_source_type NOT NULL,
-    source_id UUID NOT NULL,
-    embedding vector(768) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    confidence FLOAT NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    target_adu_id UUID REFERENCES adus(id) ON DELETE SET NULL,  -- Hierarchical: what this ADU supports/opposes
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT valid_span CHECK (span_end > span_start)
 );
 
-CREATE INDEX ON content_embeddings USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_adus_source ON adus(source_type, source_id);
+CREATE INDEX idx_adus_source_span ON adus(source_type, source_id, span_start);
+CREATE INDEX idx_adus_target ON adus(target_adu_id);
 ```
 
-### adu_embeddings (384-dim for argument analysis)
+**ADU Type Ontology (V2):**
+
+| Type | Description | Deduplicated? |
+|------|-------------|---------------|
+| `MajorClaim` | Top-level thesis or claim | Yes |
+| `Supporting` | Argument supporting its `target_adu_id` | Yes |
+| `Opposing` | Argument opposing its `target_adu_id` | Yes |
+| `Evidence` | Context-specific factual evidence | No |
+
+### adu_embeddings (1536-dim for analysis)
 
 ```sql
 CREATE TABLE adu_embeddings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    adu_id UUID NOT NULL REFERENCES adus(id),
-    embedding vector(384) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    adu_id UUID NOT NULL REFERENCES adus(id) ON DELETE CASCADE,
+    embedding vector(1536) NOT NULL,  -- Gemini text-embedding-004
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(adu_id)
 );
 
-CREATE INDEX ON adu_embeddings USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_adu_embeddings_vector ON adu_embeddings
+    USING hnsw (embedding vector_cosine_ops) WITH (m = 24, ef_construction = 100);
+```
+
+### canonical_claims (Deduplicated Claims)
+
+Equivalent claims across posts are merged into canonical claims via RAG deduplication.
+
+```sql
+CREATE TABLE canonical_claims (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    representative_text TEXT NOT NULL,
+    claim_type VARCHAR(20) DEFAULT 'MajorClaim'
+        CHECK (claim_type IN ('MajorClaim', 'Supporting', 'Opposing')),
+    author_id VARCHAR(64) REFERENCES users(id),  -- Author of first mention
+    adu_count INTEGER NOT NULL DEFAULT 0,
+    discussion_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_canonical_claims_adu_count ON canonical_claims(adu_count DESC);
+CREATE INDEX idx_canonical_claims_author ON canonical_claims(author_id);
+```
+
+### canonical_claim_embeddings (1536-dim for dedup matching)
+
+```sql
+CREATE TABLE canonical_claim_embeddings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    canonical_claim_id UUID NOT NULL REFERENCES canonical_claims(id) ON DELETE CASCADE,
+    embedding vector(1536) NOT NULL,
+    UNIQUE(canonical_claim_id)
+);
+
+CREATE INDEX idx_canonical_embeddings_vector ON canonical_claim_embeddings
+    USING hnsw (embedding vector_cosine_ops) WITH (m = 24, ef_construction = 100);
+```
+
+### adu_canonical_map (ADU to Canonical Linking)
+
+```sql
+CREATE TABLE adu_canonical_map (
+    adu_id UUID NOT NULL REFERENCES adus(id) ON DELETE CASCADE,
+    canonical_claim_id UUID NOT NULL REFERENCES canonical_claims(id) ON DELETE CASCADE,
+    similarity_score FLOAT NOT NULL CHECK (similarity_score >= 0 AND similarity_score <= 1),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (adu_id, canonical_claim_id)
+);
+
+CREATE INDEX idx_adu_canonical_map_canonical ON adu_canonical_map(canonical_claim_id);
+```
+
+### argument_relations (Cross-Post Relations)
+
+Support/attack relations between ADUs. Intra-post relations are now implicit via `target_adu_id` on the `adus` table; this table is used for cross-post relations.
+
+```sql
+CREATE TABLE argument_relations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    source_adu_id UUID NOT NULL REFERENCES adus(id) ON DELETE CASCADE,
+    target_adu_id UUID NOT NULL REFERENCES adus(id) ON DELETE CASCADE,
+    relation_type VARCHAR(10) NOT NULL CHECK (relation_type IN ('support', 'attack')),
+    confidence FLOAT NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT no_self_relation CHECK (source_adu_id != target_adu_id),
+    UNIQUE(source_adu_id, target_adu_id, relation_type)
+);
+
+CREATE INDEX idx_argument_relations_source ON argument_relations(source_adu_id);
+CREATE INDEX idx_argument_relations_target ON argument_relations(target_adu_id);
+```
+
+### content_embeddings (1536-dim for semantic search)
+
+```sql
+CREATE TABLE content_embeddings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    source_type VARCHAR(10) NOT NULL CHECK (source_type IN ('post', 'reply')),
+    source_id UUID NOT NULL,
+    embedding vector(1536) NOT NULL,  -- Gemini text-embedding-004
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(source_type, source_id)
+);
+
+CREATE INDEX idx_content_embeddings_vector ON content_embeddings
+    USING hnsw (embedding vector_cosine_ops) WITH (m = 24, ef_construction = 100);
 ```
 
 ## Migrations
@@ -273,16 +390,20 @@ CREATE INDEX ON adu_embeddings USING hnsw (embedding vector_cosine_ops);
 Migrations are stored in `apps/api/src/db/migrations/` and run in order:
 
 ```
-001_users.sql
-002_posts.sql
-003_replies.sql
-004_votes.sql
-005_adus.sql           (Phase 3)
-006_embeddings.sql     (Phase 3)
-007_canonical_claims.sql (Phase 3)
-008_argument_relations.sql (Phase 3)
-009_agent_identities.sql (Phase 4)
-010_agent_tokens.sql   (Phase 4)
+001_users.sql                       -- User accounts
+002_posts.sql                       -- Posts with analysis_status
+003_replies.sql                     -- Threaded replies (ltree)
+004_votes.sql                       -- Voting with score triggers
+005_rising_controversial.sql        -- Feed algorithm indexes
+006_adus.sql                        -- ADU extraction tables
+007_embeddings.sql                  -- ADU + content embeddings (pgvector)
+008_canonical_claims.sql            -- Canonical claims + dedup mapping
+009_argument_relations.sql          -- Support/attack relations
+010_update_content_hash.sql         -- Content hash for idempotency
+011_user_canonical_claims.sql       -- Author tracking + count trigger
+012_embedding_dimension_1536.sql    -- Upgrade embeddings 768→1536
+014_adu_ontology_v2.sql             -- V2 ADU types + hierarchy
+015_finalize_adu_ontology.sql       -- Drop old adu_type column
 ```
 
 Run migrations:

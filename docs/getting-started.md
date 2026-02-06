@@ -6,8 +6,10 @@ This guide will help you set up your local development environment for Chitin So
 
 - **Node.js** 22+ (see `.nvmrc`)
 - **pnpm** 9.15+ (`npm install -g pnpm`)
+- **Python** 3.11+ (for discourse-engine ML service)
 - **Docker** and Docker Compose
 - **Git**
+- **Google API Key** (for Gemini embeddings — argument analysis)
 
 ## Quick Start
 
@@ -38,13 +40,16 @@ pnpm db:migrate
 ### 4. Start Development Servers
 
 ```bash
-# Start all services
+# Start all services (API + Web + discourse-engine)
 pnpm dev
 
 # Or start individually:
-pnpm dev:api   # API on http://localhost:3001
-pnpm dev:web   # Frontend on http://localhost:3000
+pnpm dev:api        # API on http://localhost:3001
+pnpm dev:web        # Frontend on http://localhost:3000
+pnpm dev:discourse  # ML service on http://localhost:8001
 ```
+
+The API server will start even if discourse-engine is unavailable — argument analysis jobs will retry when the service comes up.
 
 ## Environment Configuration
 
@@ -62,6 +67,8 @@ Key environment variables:
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
 | `JWT_SECRET` | Secret for signing JWTs | `dev-secret-change-in-production` |
 | `MAGIC_LINK_SECRET` | Secret for magic link tokens | `dev-magic-link-secret` |
+| `DISCOURSE_ENGINE_URL` | ML service URL | `http://localhost:8001` |
+| `GOOGLE_API_KEY` | Gemini API key for embeddings | *(required for argument analysis)* |
 
 ## Development Authentication
 

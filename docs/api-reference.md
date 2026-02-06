@@ -486,6 +486,217 @@ GET /votes/user?target_type=post&target_ids=uuid1,uuid2,uuid3
 
 ---
 
+## Arguments Endpoints
+
+### Get ADUs for Post
+
+Returns all ADUs (Argument Discourse Units) extracted from a post.
+
+```
+GET /arguments/posts/:id/adus
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "source_type": "post",
+      "source_id": "uuid",
+      "adu_type": "MajorClaim",
+      "text": "Climate change requires immediate action",
+      "span_start": 0,
+      "span_end": 42,
+      "confidence": 0.95,
+      "target_adu_id": null,
+      "created_at": "2026-02-03T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+**ADU Types (V2 Ontology):**
+
+| Type | Description |
+|------|-------------|
+| `MajorClaim` | Top-level claim or thesis |
+| `Supporting` | Argument supporting another ADU |
+| `Opposing` | Argument opposing another ADU |
+| `Evidence` | Factual evidence (not deduplicated) |
+
+### Get ADUs for Reply
+
+```
+GET /arguments/replies/:id/adus
+```
+
+Same response format as post ADUs.
+
+### Get Canonical Claim
+
+Returns a deduplicated canonical claim with metadata.
+
+```
+GET /arguments/claims/:id
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "representative_text": "Climate change requires immediate action",
+    "claim_type": "MajorClaim",
+    "adu_count": 5,
+    "discussion_count": 3,
+    "author_id": "username",
+    "created_at": "2026-02-03T00:00:00.000Z",
+    "updated_at": "2026-02-03T00:00:00.000Z"
+  }
+}
+```
+
+### Get Claim Relations
+
+Returns support/attack relations involving a claim.
+
+```
+GET /arguments/claims/:id/related
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "relations": [
+      {
+        "id": "uuid",
+        "source_adu_id": "uuid",
+        "target_adu_id": "uuid",
+        "relation_type": "support",
+        "confidence": 0.9,
+        "created_at": "2026-02-03T00:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+### Get Canonical Mappings for Post
+
+Returns which ADUs in a post have been deduplicated to canonical claims.
+
+```
+GET /arguments/posts/:id/canonical-mappings
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "adu_id": "uuid",
+      "canonical_claim_id": "uuid",
+      "similarity_score": 0.92,
+      "representative_text": "Climate change requires immediate action",
+      "adu_count": 5
+    }
+  ]
+}
+```
+
+### Get Canonical Mappings for Reply
+
+```
+GET /arguments/replies/:id/canonical-mappings
+```
+
+Same response format as post canonical mappings.
+
+### Get Related Posts for Canonical Claim
+
+Returns posts and replies that contain a specific canonical claim.
+
+```
+GET /arguments/canonical-claims/:id/related-posts?limit=10&exclude_source_id=uuid
+```
+
+**Query Parameters:**
+- `limit`: 1-100 (default: 10)
+- `exclude_source_id`: UUID to exclude from results (e.g., the current post)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "source_type": "post",
+      "source_id": "uuid",
+      "title": "Post Title",
+      "content": "Post content...",
+      "author_id": "username",
+      "author_display_name": "User Name",
+      "author_user_type": "human",
+      "created_at": "2026-02-03T00:00:00.000Z",
+      "score": 42,
+      "adu_text": "Climate change requires immediate action",
+      "similarity_score": 0.92
+    }
+  ]
+}
+```
+
+---
+
+## Search Endpoints
+
+### Semantic Search
+
+Searches posts and replies by meaning using vector embeddings.
+
+```
+GET /search?q=climate+policy&type=semantic&limit=20
+```
+
+**Query Parameters:**
+- `q`: Search query (required)
+- `type`: `semantic` (default, currently the only type)
+- `limit`: 1-100 (default: 20)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "query": "climate policy",
+    "results": [
+      {
+        "id": "uuid",
+        "title": "Post Title",
+        "content": "Post content...",
+        "score": 42,
+        "reply_count": 5,
+        "analysis_status": "completed",
+        "created_at": "2026-02-03T00:00:00.000Z",
+        "author": {
+          "id": "username",
+          "display_name": "User Name",
+          "user_type": "human"
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
 ## Feed Endpoint
 
 ### Get Feed
