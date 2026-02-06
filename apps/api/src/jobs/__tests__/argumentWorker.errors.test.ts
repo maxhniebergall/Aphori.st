@@ -44,7 +44,7 @@ describe('Argument Worker Error Handling', () => {
 
     it('should fallback to new canonical claim when LLM validation fails', async () => {
       const post = await factories.createPost();
-      const claim = await factories.createADU('post', post.id, { adu_type: 'claim' });
+      const claim = await factories.createADU('post', post.id, { adu_type: 'MajorClaim' });
       const mockService = createMockDiscourseEngine({
         shouldFail: true,
       });
@@ -134,17 +134,17 @@ describe('Argument Worker Error Handling', () => {
 
       await Promise.all(promises);
 
-      // Final state should have exactly one mapping with last similarity
+      // Final state should have exactly one mapping (concurrent upserts, last writer wins)
       const mappings = await argumentRepo.getCanonicalMappingsForADUs([adu.id]);
       expect(mappings).toHaveLength(1);
-      expect(mappings[0]!.similarity_score).toBe(0.95);
+      expect([0.9, 0.85, 0.95]).toContain(mappings[0]!.similarity_score);
     });
 
     it('should handle concurrent batch embeddings for same ADU', async () => {
       const adu = await factories.createADU('post', (await factories.createPost()).id);
 
       // Try to insert embedding twice (should conflict on UNIQUE constraint)
-      const embedding = Array(768).fill(0.1);
+      const embedding = Array(1536).fill(0.1);
 
       // This will be handled by the INSERT ... ON CONFLICT clause
       // Both should succeed without error
@@ -158,25 +158,27 @@ describe('Argument Worker Error Handling', () => {
       const post1 = await factories.createPost();
       const post2 = await factories.createPost();
 
-      // Create embeddings
-      const embed1 = Array(768).fill(0.1);
-      const embed2 = Array(768).fill(0.15);
+      // Create 1536-dim embeddings - orthogonal vectors for low cosine similarity
+      const embed1 = Array.from({ length: 1536 }, (_, i) => i < 768 ? 0.1 : 0);
+      const embed2 = Array.from({ length: 1536 }, (_, i) => i >= 768 ? 0.1 : 0);
 
       await argumentRepo.createContentEmbedding('post', post1.id, embed1);
       await argumentRepo.createContentEmbedding('post', post2.id, embed2);
 
-      // Search with high threshold (0.9) should return nothing
+      // Search embed1 with high threshold should not find embed2 (orthogonal → similarity ≈ 0)
       const results = await argumentRepo.semanticSearch(embed1, 20, 0.9);
-      expect(results).toHaveLength(0);
+      // Should find post1 (exact match) but not post2 (orthogonal)
+      const otherPost = results.find(r => r.source_id === post2.id);
+      expect(otherPost).toBeUndefined();
 
-      // Search with low threshold (0.1) should return results
-      const resultsLow = await argumentRepo.semanticSearch(embed1, 20, 0.1);
+      // Search with low threshold should return both
+      const resultsLow = await argumentRepo.semanticSearch(embed1, 20, 0.01);
       expect(resultsLow.length).toBeGreaterThan(0);
     });
 
     it('should default to 0.5 threshold when not specified', async () => {
       const post = await factories.createPost();
-      const embedding = Array(768).fill(0.1);
+      const embedding = Array(1536).fill(0.1);
 
       await argumentRepo.createContentEmbedding('post', post.id, embedding);
 
@@ -200,17 +202,69 @@ describe('Argument Worker Error Handling', () => {
   });
 
   describe('Analysis status tracking', () => {
-    it('should mark analysis as completed on success', async () => {
+    it('should transition from pending to processing to completed', async () => {
       const post = await factories.createPost();
+      const pool = globalThis.testDb.getPool();
       expect(post.analysis_status).toBe('pending');
-      // Would be set to 'processing' then 'completed' during actual analysis
+
+      // Transition to processing
+      await pool.query("UPDATE posts SET analysis_status = 'processing' WHERE id = $1", [post.id]);
+      const processing = await pool.query('SELECT analysis_status FROM posts WHERE id = $1', [post.id]);
+      expect(processing.rows[0].analysis_status).toBe('processing');
+
+      // Transition to completed
+      await pool.query("UPDATE posts SET analysis_status = 'completed' WHERE id = $1", [post.id]);
+      const completed = await pool.query('SELECT analysis_status FROM posts WHERE id = $1', [post.id]);
+      expect(completed.rows[0].analysis_status).toBe('completed');
     });
 
-    it('should mark analysis as failed on error', async () => {
+    it('should transition to failed on error', async () => {
       const post = await factories.createPost();
-      // Simulate failure scenario
-      expect(post.analysis_status).toBe('pending');
-      // Would be set to 'failed' if analysis throws
+      const pool = globalThis.testDb.getPool();
+
+      await pool.query("UPDATE posts SET analysis_status = 'processing' WHERE id = $1", [post.id]);
+      await pool.query("UPDATE posts SET analysis_status = 'failed' WHERE id = $1", [post.id]);
+      const failed = await pool.query('SELECT analysis_status FROM posts WHERE id = $1', [post.id]);
+      expect(failed.rows[0].analysis_status).toBe('failed');
+    });
+  });
+
+  describe('V2 ontology specific', () => {
+    it('should only deduplicate non-Evidence types', async () => {
+      const post = await factories.createPost();
+      const majorClaim = await factories.createADU('post', post.id, { adu_type: 'MajorClaim', text: 'Main thesis' });
+      const supporting = await factories.createADU('post', post.id, { adu_type: 'Supporting', text: 'A reason', target_adu_id: majorClaim.id });
+      await factories.createADU('post', post.id, { adu_type: 'Opposing', text: 'A counter', target_adu_id: majorClaim.id });
+      await factories.createADU('post', post.id, { adu_type: 'Evidence', text: 'A fact', target_adu_id: supporting.id });
+
+      // All types should be insertable
+      const adus = await argumentRepo.findBySource('post', post.id);
+      expect(adus).toHaveLength(4);
+
+      const deduplicatableTypes = ['MajorClaim', 'Supporting', 'Opposing'];
+      const deduplicatable = adus.filter(a => deduplicatableTypes.includes(a.adu_type));
+      expect(deduplicatable).toHaveLength(3);
+      expect(adus.find(a => a.adu_type === 'Evidence')).toBeDefined();
+    });
+
+    it('should create ADUs with hierarchy via createADUsWithHierarchy', async () => {
+      const post = await factories.createPost();
+      const created = await argumentRepo.createADUsWithHierarchy('post', post.id, [
+        { adu_type: 'MajorClaim', text: 'Main claim', span_start: 0, span_end: 10, confidence: 0.9, target_index: null },
+        { adu_type: 'Supporting', text: 'Support', span_start: 11, span_end: 18, confidence: 0.85, target_index: 0 },
+        { adu_type: 'Evidence', text: 'Evidence', span_start: 19, span_end: 27, confidence: 0.8, target_index: 1 },
+      ]);
+
+      expect(created).toHaveLength(3);
+      expect(created[0]!.target_adu_id).toBeNull();
+      expect(created[1]!.target_adu_id).toBe(created[0]!.id);
+      expect(created[2]!.target_adu_id).toBe(created[1]!.id);
+    });
+
+    it('should handle empty ADU list in createADUsWithHierarchy', async () => {
+      const post = await factories.createPost();
+      const created = await argumentRepo.createADUsWithHierarchy('post', post.id, []);
+      expect(created).toHaveLength(0);
     });
   });
 });

@@ -3,9 +3,21 @@ import { Redis } from 'ioredis';
 import crypto from 'crypto';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import { createArgumentRepo } from '../db/repositories/ArgumentRepo.js';
+import { createArgumentRepo, type ADUType, type CanonicalClaimType } from '../db/repositories/ArgumentRepo.js';
 import { getArgumentService } from '../services/argumentService.js';
 import { getPool } from '../db/pool.js';
+
+// ADU types that can be deduplicated into canonical claims
+// Evidence is NOT deduplicated as it's context-specific
+const DEDUPLICATABLE_TYPES: ADUType[] = ['MajorClaim', 'Supporting', 'Opposing'];
+
+// Map ADU type to canonical claim type
+function toCanonicalClaimType(aduType: ADUType): CanonicalClaimType {
+  if (aduType === 'Evidence') {
+    throw new Error('Evidence cannot be converted to canonical claim type');
+  }
+  return aduType;
+}
 
 interface AnalysisJobData {
   sourceType: 'post' | 'reply';
@@ -24,6 +36,8 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
   const argumentService = getArgumentService();
 
   logger.info(`Processing analysis job ${job.id}`, { sourceType, sourceId });
+
+  const statusTable = sourceType === 'post' ? 'posts' : 'replies';
 
   try {
     // 1. Get the content from database
@@ -49,13 +63,12 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     }
 
     // 3. Update status to processing
-    const statusTable = sourceType === 'post' ? 'posts' : 'replies';
     await pool.query(
       `UPDATE ${statusTable} SET analysis_status = 'processing' WHERE id = $1`,
       [sourceId]
     );
 
-    // 4. Extract ADUs from text
+    // 4. Extract ADUs with V2 ontology (hierarchical types)
     await job.updateProgress(10);
     logger.info(`Extracting ADUs from ${sourceId}`);
 
@@ -73,13 +86,25 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     }
 
     // 5. Generate embeddings for ADUs (1536-dim Gemini)
+    // Use rewritten_text for embedding if available (anaphora-resolved)
     await job.updateProgress(30);
-    const aduTexts = aduResponse.adus.map(adu => adu.text);
+    const aduTexts = aduResponse.adus.map(adu => adu.rewritten_text || adu.text);
     const aduEmbeddingsResponse = await argumentService.embedContent(aduTexts);
 
-    // 6. Store ADUs in database
+    // 6. Store ADUs with hierarchy (two-pass: create then link)
     await job.updateProgress(40);
-    const createdADUs = await argumentRepo.createADUs(sourceType, sourceId, aduResponse.adus);
+    const createdADUs = await argumentRepo.createADUsWithHierarchy(
+      sourceType,
+      sourceId,
+      aduResponse.adus.map(adu => ({
+        adu_type: adu.adu_type,
+        text: adu.text,
+        span_start: adu.span_start,
+        span_end: adu.span_end,
+        confidence: adu.confidence,
+        target_index: adu.target_index,
+      }))
+    );
 
     // 7. Store ADU embeddings
     await argumentRepo.createADUEmbeddings(
@@ -89,14 +114,17 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
       }))
     );
 
-    // 8. Canonical claim deduplication with RAG pipeline (claims only)
+    // 8. Canonical claim deduplication with RAG pipeline
+    // Deduplicate MajorClaim, Supporting, Opposing - but NOT Evidence
     await job.updateProgress(50);
-    const claims = createdADUs.filter(adu => adu.adu_type === 'claim');
+    const deduplicatableADUs = createdADUs.filter(
+      adu => DEDUPLICATABLE_TYPES.includes(adu.adu_type)
+    );
 
-    for (let i = 0; i < claims.length; i++) {
-      const claim = claims[i]!;
-      const claimIndex = createdADUs.findIndex(adu => adu.id === claim.id);
-      const embedding = aduEmbeddingsResponse.embeddings_1536[claimIndex]!;
+    for (let i = 0; i < deduplicatableADUs.length; i++) {
+      const adu = deduplicatableADUs[i]!;
+      const aduIndex = createdADUs.findIndex(a => a.id === adu.id);
+      const embedding = aduEmbeddingsResponse.embeddings_1536[aduIndex]!;
 
       // Step 8a: Retrieve top-5 similar canonical claims using configured threshold
       const similarClaims = await argumentRepo.findSimilarCanonicalClaims(
@@ -119,7 +147,7 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
         // Step 8c: Validate with Gemini Flash LLM
         try {
           const validation = await argumentService.validateClaimEquivalence(
-            claim.text,
+            adu.text,
             canonicalTexts.map(c => ({
               id: c.id,
               text: c.representative_text,
@@ -133,72 +161,69 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
               similarClaims.find(s => s.canonical_claim_id === validation.canonical_claim_id)
                 ?.similarity || 1.0;
 
-            await argumentRepo.linkADUToCanonical(claim.id, validation.canonical_claim_id, matchedSimilarity);
+            await argumentRepo.linkADUToCanonical(adu.id, validation.canonical_claim_id, matchedSimilarity);
 
-            logger.info('Linked claim to canonical (LLM-validated)', {
-              claimId: claim.id,
+            logger.info('Linked ADU to canonical (LLM-validated)', {
+              aduId: adu.id,
+              aduType: adu.adu_type,
               canonicalId: validation.canonical_claim_id,
               explanation: validation.explanation,
             });
           } else {
             // LLM said not equivalent, create new canonical claim
             const canonical = await argumentRepo.createCanonicalClaim(
-              claim.text,
+              adu.text,
               embedding,
-              content.author_id
+              content.author_id,
+              toCanonicalClaimType(adu.adu_type)
             );
-            await argumentRepo.linkADUToCanonical(claim.id, canonical.id, 1.0);
+            await argumentRepo.linkADUToCanonical(adu.id, canonical.id, 1.0);
 
             logger.info('Created new canonical claim (no LLM match)', {
-              claimId: claim.id,
+              aduId: adu.id,
+              aduType: adu.adu_type,
               canonicalId: canonical.id,
               authorId: content.author_id,
             });
           }
         } catch (error) {
           logger.error('LLM validation failed, creating new canonical claim', {
-            claimId: claim.id,
+            aduId: adu.id,
             error,
           });
 
           // Fallback: create new canonical claim
           const canonical = await argumentRepo.createCanonicalClaim(
-            claim.text,
+            adu.text,
             embedding,
-            content.author_id
+            content.author_id,
+            toCanonicalClaimType(adu.adu_type)
           );
-          await argumentRepo.linkADUToCanonical(claim.id, canonical.id, 1.0);
+          await argumentRepo.linkADUToCanonical(adu.id, canonical.id, 1.0);
         }
       } else {
         // No similar claims found in vector search, create new
         const canonical = await argumentRepo.createCanonicalClaim(
-          claim.text,
+          adu.text,
           embedding,
-          content.author_id
+          content.author_id,
+          toCanonicalClaimType(adu.adu_type)
         );
-        await argumentRepo.linkADUToCanonical(claim.id, canonical.id, 1.0);
+        await argumentRepo.linkADUToCanonical(adu.id, canonical.id, 1.0);
 
         logger.info('Created new canonical claim (no vector matches)', {
-          claimId: claim.id,
+          aduId: adu.id,
+          aduType: adu.adu_type,
           canonicalId: canonical.id,
           authorId: content.author_id,
         });
       }
     }
 
-    // 9. Detect argument relations using ADU embeddings
+    // 9. Skip relation detection - relations are now implicit in ADU types
+    // (Supporting = support relation to target, Opposing = attack relation to target)
+    // The argument_relations table is kept for cross-post relations only
     await job.updateProgress(70);
-    if (createdADUs.length >= 2) {
-      const relations = await argumentService.analyzeRelations(
-        createdADUs.map(adu => ({
-          id: adu.id,
-          text: adu.text,
-          source_comment_id: adu.source_id, // Python code expects this field name
-        })),
-        aduEmbeddingsResponse.embeddings_1536
-      );
-      await argumentRepo.createRelations(relations.relations);
-    }
 
     // 10. Generate content embedding for semantic search (1536-dim Gemini)
     await job.updateProgress(80);
@@ -214,7 +239,8 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
 
     logger.info(`Analysis completed for ${sourceId}`, {
       aduCount: createdADUs.length,
-      claimCount: claims.length,
+      deduplicatedCount: deduplicatableADUs.length,
+      evidenceCount: createdADUs.length - deduplicatableADUs.length,
     });
   } catch (error) {
     logger.error(`Analysis failed for ${sourceId}`, { error });

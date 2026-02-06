@@ -1,15 +1,20 @@
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 
+export type ADUType = 'MajorClaim' | 'Supporting' | 'Opposing' | 'Evidence';
+
 export interface ADUResponse {
-  id: string;
-  adu_type: 'claim' | 'premise';
+  source_id: string;
+  adu_type: ADUType;
   text: string;
   span_start: number;
   span_end: number;
   confidence: number;
+  target_index: number | null; // Array index of parent ADU
+  rewritten_text?: string; // Anaphora-resolved version
 }
 
+// Legacy relation response - kept for cross-post relations
 export interface RelationResponse {
   source_adu_id: string;
   target_adu_id: string;
@@ -70,6 +75,10 @@ class DiscourseEngineService {
     return this.request('/health', 'GET');
   }
 
+  /**
+   * Analyze text to extract ADUs with V2 ontology (hierarchical types)
+   * Returns ADUs with target_index for building argument trees
+   */
   async analyzeADUs(texts: Array<{ id: string; text: string }>) {
     logger.info('Calling discourse-engine analyzeADUs', { textCount: texts.length });
 
@@ -103,13 +112,14 @@ class DiscourseEngineService {
   async embedContent(texts: string[]) {
     logger.info('Calling discourse-engine embedContent', { textCount: texts.length });
 
-    const response = await this.request<{ embeddings_1536: number[][] }>(
+    const response = await this.request<{ embeddings: number[][] }>(
       '/embed/content',
       'POST',
       { texts }
     );
 
-    return response;
+    // Normalize field name from discourse-engine response
+    return { embeddings_1536: response.embeddings };
   }
 
   async validateClaimEquivalence(

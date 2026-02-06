@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import crypto from 'crypto';
-import { createArgumentRepo } from '../../db/repositories/ArgumentRepo.js';
+import { createArgumentRepo, type ADUType, type CanonicalClaimType } from '../../db/repositories/ArgumentRepo.js';
 import { createFactories } from '../../__tests__/utils/factories.js';
 import { getArgumentService } from '../../services/argumentService.js';
 
 /**
- * Integration tests for the argument analysis pipeline.
+ * Integration tests for the argument analysis pipeline (V2 ontology).
  *
  * These tests use the REAL discourse-engine service (not mocks).
  * Requires:
@@ -15,7 +15,20 @@ import { getArgumentService } from '../../services/argumentService.js';
  * Run with: npm run test:integration
  */
 
-// Process argument analysis using real services
+// ADU types that can be deduplicated into canonical claims (matches argumentWorker.ts)
+const DEDUPLICATABLE_TYPES: ADUType[] = ['MajorClaim', 'Supporting', 'Opposing'];
+
+function toCanonicalClaimType(aduType: ADUType): CanonicalClaimType {
+  if (aduType === 'Evidence') {
+    throw new Error('Evidence cannot be converted to canonical claim type');
+  }
+  return aduType;
+}
+
+/**
+ * Mirrors the actual argumentWorker.ts processAnalysis pipeline (V2 ontology).
+ * Uses real discourse-engine + Gemini calls.
+ */
 async function processArgumentAnalysis(
   pool: any,
   sourceType: 'post' | 'reply',
@@ -46,39 +59,52 @@ async function processArgumentAnalysis(
   }
 
   // 3. Update status to processing
-  const statusColumn = sourceType === 'post' ? 'posts' : 'replies';
-  await pool.query(`UPDATE ${statusColumn} SET analysis_status = 'processing' WHERE id = $1`, [sourceId]);
+  const statusTable = sourceType === 'post' ? 'posts' : 'replies';
+  await pool.query(`UPDATE ${statusTable} SET analysis_status = 'processing' WHERE id = $1`, [sourceId]);
 
-  // 4. Extract ADUs from text (REAL discourse-engine call)
+  // 4. Extract ADUs with V2 ontology (hierarchical types) - REAL discourse-engine call
   const aduResponse = await argumentService.analyzeADUs([{ id: sourceId, text: content.content }]);
 
   if (aduResponse.adus.length === 0) {
-    await pool.query(`UPDATE ${statusColumn} SET analysis_status = 'completed' WHERE id = $1`, [sourceId]);
-    return { completed: true, aduCount: 0 };
+    await pool.query(`UPDATE ${statusTable} SET analysis_status = 'completed' WHERE id = $1`, [sourceId]);
+    return { completed: true, aduCount: 0, deduplicatedCount: 0, evidenceCount: 0 };
   }
 
-  // 5. Generate embeddings for ADUs (REAL Gemini embeddings)
-  const aduTexts = aduResponse.adus.map((adu: any) => adu.text);
+  // 5. Generate embeddings (use rewritten_text if available for anaphora-resolved version)
+  const aduTexts = aduResponse.adus.map(adu => adu.rewritten_text || adu.text);
   const aduEmbeddingsResponse = await argumentService.embedContent(aduTexts);
 
-  // 6. Store ADUs in database
-  const createdADUs = await argumentRepo.createADUs(sourceType, sourceId, aduResponse.adus);
+  // 6. Store ADUs with hierarchy (two-pass: create then link target_adu_id)
+  const createdADUs = await argumentRepo.createADUsWithHierarchy(
+    sourceType,
+    sourceId,
+    aduResponse.adus.map(adu => ({
+      adu_type: adu.adu_type as ADUType,
+      text: adu.text,
+      span_start: adu.span_start,
+      span_end: adu.span_end,
+      confidence: adu.confidence,
+      target_index: adu.target_index,
+    }))
+  );
 
   // 7. Store ADU embeddings
   await argumentRepo.createADUEmbeddings(
-    createdADUs.map((adu: any, idx: number) => ({
+    createdADUs.map((adu, idx) => ({
       adu_id: adu.id,
       embedding: aduEmbeddingsResponse.embeddings_1536[idx]!,
     }))
   );
 
-  // 8. Canonical claim deduplication (claims only)
-  const claims = createdADUs.filter((adu: any) => adu.adu_type === 'claim');
+  // 8. Canonical claim deduplication - deduplicate MajorClaim, Supporting, Opposing but NOT Evidence
+  const deduplicatableADUs = createdADUs.filter(
+    adu => DEDUPLICATABLE_TYPES.includes(adu.adu_type)
+  );
 
-  for (let i = 0; i < claims.length; i++) {
-    const claim = claims[i]!;
-    const claimIndex = createdADUs.findIndex((adu: any) => adu.id === claim.id);
-    const embedding = aduEmbeddingsResponse.embeddings_1536[claimIndex]!;
+  for (let i = 0; i < deduplicatableADUs.length; i++) {
+    const adu = deduplicatableADUs[i]!;
+    const aduIndex = createdADUs.findIndex(a => a.id === adu.id);
+    const embedding = aduEmbeddingsResponse.embeddings_1536[aduIndex]!;
 
     // Step 8a: Retrieve similar canonical claims
     const similarClaims = await argumentRepo.findSimilarCanonicalClaims(embedding, 0.75, 5);
@@ -86,19 +112,18 @@ async function processArgumentAnalysis(
     if (similarClaims.length > 0) {
       // Step 8b: Fetch full canonical claim texts
       const canonicalTexts = await argumentRepo.getCanonicalClaimsByIds(
-        similarClaims.map((c: any) => c.canonical_claim_id)
+        similarClaims.map(c => c.canonical_claim_id)
       );
 
-      // Create mapping from id to similarity
       const similarityMap = new Map(
-        similarClaims.map((c: any) => [c.canonical_claim_id, c.similarity])
+        similarClaims.map(c => [c.canonical_claim_id, c.similarity])
       );
 
       // Step 8c: Validate with LLM (REAL Gemini call)
       try {
         const validation = await argumentService.validateClaimEquivalence(
-          claim.text,
-          canonicalTexts.map((c: any) => ({
+          adu.text,
+          canonicalTexts.map(c => ({
             id: c.id,
             text: c.representative_text,
             similarity: similarityMap.get(c.id) ?? 0,
@@ -106,52 +131,46 @@ async function processArgumentAnalysis(
         );
 
         if (validation.is_equivalent && validation.canonical_claim_id) {
-          // Link to existing canonical claim
           const matchedSimilarity =
-            similarClaims.find((s: any) => s.canonical_claim_id === validation.canonical_claim_id)?.similarity || 1.0;
-
-          await argumentRepo.linkADUToCanonical(claim.id, validation.canonical_claim_id, matchedSimilarity);
+            similarClaims.find(s => s.canonical_claim_id === validation.canonical_claim_id)?.similarity || 1.0;
+          await argumentRepo.linkADUToCanonical(adu.id, validation.canonical_claim_id, matchedSimilarity);
         } else {
-          // Create new canonical claim
-          const canonical = await argumentRepo.createCanonicalClaim(claim.text, embedding, content.author_id);
-          await argumentRepo.linkADUToCanonical(claim.id, canonical.id, 1.0);
+          const canonical = await argumentRepo.createCanonicalClaim(
+            adu.text, embedding, content.author_id, toCanonicalClaimType(adu.adu_type)
+          );
+          await argumentRepo.linkADUToCanonical(adu.id, canonical.id, 1.0);
         }
       } catch (error) {
         // Fallback: create new canonical claim
-        const canonical = await argumentRepo.createCanonicalClaim(claim.text, embedding, content.author_id);
-        await argumentRepo.linkADUToCanonical(claim.id, canonical.id, 1.0);
+        const canonical = await argumentRepo.createCanonicalClaim(
+          adu.text, embedding, content.author_id, toCanonicalClaimType(adu.adu_type)
+        );
+        await argumentRepo.linkADUToCanonical(adu.id, canonical.id, 1.0);
       }
     } else {
       // No similar claims found, create new
-      const canonical = await argumentRepo.createCanonicalClaim(claim.text, embedding, content.author_id);
-      await argumentRepo.linkADUToCanonical(claim.id, canonical.id, 1.0);
+      const canonical = await argumentRepo.createCanonicalClaim(
+        adu.text, embedding, content.author_id, toCanonicalClaimType(adu.adu_type)
+      );
+      await argumentRepo.linkADUToCanonical(adu.id, canonical.id, 1.0);
     }
   }
 
-  // 9. Detect argument relations (REAL discourse-engine call)
-  if (createdADUs.length >= 2) {
-    const relations = await argumentService.analyzeRelations(
-      createdADUs.map((adu: any) => ({
-        id: adu.id,
-        text: adu.text,
-        source_comment_id: adu.source_id,
-      })),
-      aduEmbeddingsResponse.embeddings_1536
-    );
-    await argumentRepo.createRelations(relations.relations);
-  }
+  // 9. Skip relation detection - relations are now implicit in ADU types
+  // (Supporting = support, Opposing = attack, via target_adu_id)
 
-  // 10. Generate content embedding (REAL Gemini embeddings)
+  // 10. Generate content embedding for semantic search (1536-dim Gemini)
   const contentEmbed = await argumentService.embedContent([content.content]);
   await argumentRepo.createContentEmbedding(sourceType, sourceId, contentEmbed.embeddings_1536[0]!);
 
   // 11. Mark as completed
-  await pool.query(`UPDATE ${statusColumn} SET analysis_status = 'completed' WHERE id = $1`, [sourceId]);
+  await pool.query(`UPDATE ${statusTable} SET analysis_status = 'completed' WHERE id = $1`, [sourceId]);
 
   return {
     completed: true,
     aduCount: createdADUs.length,
-    claimCount: claims.length,
+    deduplicatedCount: deduplicatableADUs.length,
+    evidenceCount: createdADUs.length - deduplicatableADUs.length,
   };
 }
 
@@ -187,7 +206,7 @@ describe('Argument Worker Integration Tests', () => {
   });
 
   describe('Full pipeline with real discourse-engine', () => {
-    it('should extract ADUs, embeddings, claims, and relations', async () => {
+    it('should extract ADUs with V2 hierarchy, embeddings, and canonical claims', async () => {
       if (!discourseEngineAvailable) {
         console.log('Skipping: discourse-engine not available');
         return;
@@ -204,19 +223,43 @@ describe('Argument Worker Integration Tests', () => {
       expect(result.completed).toBe(true);
       expect(result.aduCount).toBeGreaterThan(0);
 
-      // Verify ADUs were created
+      // Verify ADUs were created with V2 ontology types
       const argumentRepo = createArgumentRepo(pool);
       const adus = await argumentRepo.findBySource('post', post.id);
       expect(adus.length).toBe(result.aduCount);
 
-      // Verify each ADU has an embedding
+      // All ADU types should be from V2 ontology
+      const validTypes = ['MajorClaim', 'Supporting', 'Opposing', 'Evidence'];
+      for (const adu of adus) {
+        expect(validTypes).toContain(adu.adu_type);
+      }
+
+      // Should have at least one MajorClaim (root)
+      const majorClaims = adus.filter(a => a.adu_type === 'MajorClaim');
+      expect(majorClaims.length).toBeGreaterThan(0);
+
+      // MajorClaims should have null target_adu_id (they are roots)
+      for (const mc of majorClaims) {
+        expect(mc.target_adu_id).toBeNull();
+      }
+
+      // Non-root ADUs should have target_adu_id referencing another ADU
+      const nonRoots = adus.filter(a => a.adu_type !== 'MajorClaim');
+      for (const nr of nonRoots) {
+        if (nr.target_adu_id !== null) {
+          const target = adus.find(a => a.id === nr.target_adu_id);
+          expect(target).toBeDefined();
+        }
+      }
+
+      // Verify each ADU has a 1536-dim embedding
       for (const adu of adus) {
         const embeddingResult = await pool.query(
           'SELECT embedding FROM adu_embeddings WHERE adu_id = $1',
           [adu.id]
         );
         expect(embeddingResult.rows).toHaveLength(1);
-        expect(embeddingResult.rows[0].embedding).toHaveLength(768);
+        expect(embeddingResult.rows[0].embedding).toHaveLength(1536);
       }
 
       // Verify post status is completed
@@ -229,7 +272,25 @@ describe('Argument Worker Integration Tests', () => {
         ['post', post.id]
       );
       expect(contentEmbedding.rows).toHaveLength(1);
-      expect(contentEmbedding.rows[0].embedding).toHaveLength(768);
+      expect(contentEmbedding.rows[0].embedding).toHaveLength(1536);
+
+      // Verify Evidence is NOT deduplicated (no canonical mapping)
+      const evidenceADUs = adus.filter(a => a.adu_type === 'Evidence');
+      for (const ev of evidenceADUs) {
+        const mapping = await pool.query(
+          'SELECT * FROM adu_canonical_map WHERE adu_id = $1', [ev.id]
+        );
+        expect(mapping.rows).toHaveLength(0);
+      }
+
+      // Verify deduplicatable types HAVE canonical mappings
+      const deduplicatable = adus.filter(a => ['MajorClaim', 'Supporting', 'Opposing'].includes(a.adu_type));
+      for (const d of deduplicatable) {
+        const mapping = await pool.query(
+          'SELECT * FROM adu_canonical_map WHERE adu_id = $1', [d.id]
+        );
+        expect(mapping.rows.length).toBeGreaterThan(0);
+      }
     }, 60000); // 60s timeout for real API calls
 
     it('should detect relations between ADUs from different comments', async () => {
@@ -369,17 +430,22 @@ describe('Argument Worker Integration Tests', () => {
 
       // Verify canonical claim has correct author
       const adus = await argumentRepo.findBySource('post', post.id);
-      const claimAdu = adus.find((a: any) => a.adu_type === 'claim');
+      // Find a deduplicatable ADU (MajorClaim, Supporting, or Opposing)
+      const deduplicatableAdu = adus.find(a =>
+        ['MajorClaim', 'Supporting', 'Opposing'].includes(a.adu_type)
+      );
 
-      if (claimAdu) {
+      if (deduplicatableAdu) {
         const mapping = await pool.query(
           'SELECT canonical_claim_id FROM adu_canonical_map WHERE adu_id = $1',
-          [claimAdu.id]
+          [deduplicatableAdu.id]
         );
 
         if (mapping.rows.length > 0) {
           const canonical = await argumentRepo.findCanonicalClaimById(mapping.rows[0].canonical_claim_id);
           expect(canonical?.author_id).toBe(author.id);
+          // Verify canonical claim_type matches ADU type
+          expect(canonical?.claim_type).toBe(deduplicatableAdu.adu_type);
         }
       }
     }, 60000);
