@@ -13,29 +13,62 @@ describe('ArgumentRepo', () => {
   });
 
   describe('ADU operations', () => {
-    it('should create multiple ADUs with correct span offsets', async () => {
+    it('should create multiple ADUs with V2 ontology types', async () => {
       const post = await factories.createPost();
 
       const adus = await repo.createADUs('post', post.id, [
-        { adu_type: 'claim', text: 'First claim', span_start: 0, span_end: 11, confidence: 0.9 },
-        { adu_type: 'premise', text: 'First premise', span_start: 12, span_end: 25, confidence: 0.85 },
+        { adu_type: 'MajorClaim', text: 'First claim', span_start: 0, span_end: 11, confidence: 0.9 },
+        { adu_type: 'Supporting', text: 'First premise', span_start: 12, span_end: 25, confidence: 0.85 },
+        { adu_type: 'Opposing', text: 'Counter argument', span_start: 26, span_end: 42, confidence: 0.8 },
+        { adu_type: 'Evidence', text: 'Study shows', span_start: 43, span_end: 54, confidence: 0.75 },
       ]);
 
-      expect(adus).toHaveLength(2);
+      expect(adus).toHaveLength(4);
       expect(adus[0]).toMatchObject({
         source_type: 'post',
         source_id: post.id,
-        adu_type: 'claim',
+        adu_type: 'MajorClaim',
         text: 'First claim',
         span_start: 0,
         span_end: 11,
         confidence: 0.9,
+        target_adu_id: null,
       });
       expect(adus[1]).toMatchObject({
-        adu_type: 'premise',
+        adu_type: 'Supporting',
         text: 'First premise',
-        span_start: 12,
-        span_end: 25,
+      });
+      expect(adus[2]).toMatchObject({
+        adu_type: 'Opposing',
+      });
+      expect(adus[3]).toMatchObject({
+        adu_type: 'Evidence',
+      });
+    });
+
+    it('should create ADUs with target_adu_id for hierarchy', async () => {
+      const post = await factories.createPost();
+      const majorClaim = await factories.createADU('post', post.id, {
+        adu_type: 'MajorClaim',
+        text: 'Main claim',
+        span_start: 0,
+        span_end: 10,
+      });
+
+      const supporting = await repo.createADUs('post', post.id, [
+        {
+          adu_type: 'Supporting',
+          text: 'Support',
+          span_start: 11,
+          span_end: 18,
+          confidence: 0.85,
+          target_adu_id: majorClaim.id,
+        },
+      ]);
+
+      expect(supporting[0]).toMatchObject({
+        adu_type: 'Supporting',
+        target_adu_id: majorClaim.id,
       });
     });
 
@@ -45,15 +78,25 @@ describe('ArgumentRepo', () => {
       // PostgreSQL should enforce CHECK constraint on span_end > span_start
       await expect(
         repo.createADUs('post', post.id, [
-          { adu_type: 'claim', text: 'Invalid', span_start: 10, span_end: 5, confidence: 0.9 },
+          { adu_type: 'MajorClaim', text: 'Invalid', span_start: 10, span_end: 5, confidence: 0.9 },
         ])
       ).rejects.toThrow();
     });
 
     it('should find ADUs by source (post or reply)', async () => {
       const post = await factories.createPost();
-      const adu1 = await factories.createADU('post', post.id, { text: 'Claim 1', span_start: 0, span_end: 7 });
-      const adu2 = await factories.createADU('post', post.id, { text: 'Claim 2', span_start: 8, span_end: 15 });
+      const adu1 = await factories.createADU('post', post.id, {
+        text: 'Claim 1',
+        span_start: 0,
+        span_end: 7,
+        adu_type: 'MajorClaim',
+      });
+      const adu2 = await factories.createADU('post', post.id, {
+        text: 'Claim 2',
+        span_start: 8,
+        span_end: 15,
+        adu_type: 'Supporting',
+      });
 
       const found = await repo.findBySource('post', post.id);
 
@@ -69,18 +112,102 @@ describe('ArgumentRepo', () => {
 
       expect(found).toHaveLength(0);
     });
+
+    it('should return empty array when creating with empty input', async () => {
+      const post = await factories.createPost();
+
+      const adus = await repo.createADUs('post', post.id, []);
+
+      expect(adus).toHaveLength(0);
+    });
+  });
+
+  describe('ADU hierarchy operations', () => {
+    it('should create ADUs with hierarchy using target_index', async () => {
+      const post = await factories.createPost();
+
+      const adus = await repo.createADUsWithHierarchy('post', post.id, [
+        { adu_type: 'MajorClaim', text: 'Main thesis', span_start: 0, span_end: 11, confidence: 0.95, target_index: null },
+        { adu_type: 'Supporting', text: 'Because X', span_start: 12, span_end: 21, confidence: 0.9, target_index: 0 },
+        { adu_type: 'Evidence', text: 'Study Y', span_start: 22, span_end: 29, confidence: 0.85, target_index: 1 },
+        { adu_type: 'Opposing', text: 'However Z', span_start: 30, span_end: 39, confidence: 0.8, target_index: 0 },
+      ]);
+
+      expect(adus).toHaveLength(4);
+      // MajorClaim has no target
+      expect(adus[0]!.target_adu_id).toBeNull();
+      // Supporting targets MajorClaim
+      expect(adus[1]!.target_adu_id).toBe(adus[0]!.id);
+      // Evidence targets Supporting
+      expect(adus[2]!.target_adu_id).toBe(adus[1]!.id);
+      // Opposing targets MajorClaim
+      expect(adus[3]!.target_adu_id).toBe(adus[0]!.id);
+    });
+
+    it('should handle out-of-bounds target_index gracefully', async () => {
+      const post = await factories.createPost();
+
+      const adus = await repo.createADUsWithHierarchy('post', post.id, [
+        { adu_type: 'MajorClaim', text: 'Claim', span_start: 0, span_end: 5, confidence: 0.9, target_index: null },
+        { adu_type: 'Supporting', text: 'Support', span_start: 6, span_end: 13, confidence: 0.85, target_index: 99 }, // Invalid index
+      ]);
+
+      expect(adus).toHaveLength(2);
+      expect(adus[0]!.target_adu_id).toBeNull();
+      expect(adus[1]!.target_adu_id).toBeNull(); // Invalid index results in null
+    });
+
+    it('should return empty array for empty hierarchy input', async () => {
+      const post = await factories.createPost();
+
+      const adus = await repo.createADUsWithHierarchy('post', post.id, []);
+
+      expect(adus).toHaveLength(0);
+    });
+
+    it('should find ADUs as tree structure', async () => {
+      const post = await factories.createPost();
+      const majorClaim = await factories.createADU('post', post.id, {
+        adu_type: 'MajorClaim',
+        text: 'Main',
+        span_start: 0,
+        span_end: 4,
+        target_adu_id: null,
+      });
+      await factories.createADU('post', post.id, {
+        adu_type: 'Supporting',
+        text: 'Support',
+        span_start: 5,
+        span_end: 12,
+        target_adu_id: majorClaim.id,
+      });
+      await factories.createADU('post', post.id, {
+        adu_type: 'Opposing',
+        text: 'Counter',
+        span_start: 13,
+        span_end: 20,
+        target_adu_id: majorClaim.id,
+      });
+
+      const tree = await repo.findADUsAsTree('post', post.id);
+
+      expect(tree).toHaveLength(3);
+      // First should be root (MajorClaim)
+      expect(tree[0]!.adu_type).toBe('MajorClaim');
+      expect(tree[0]!.target_adu_id).toBeNull();
+    });
   });
 
   describe('Canonical claims with embeddings', () => {
     it('should find similar canonical claims above similarity threshold using pgvector', async () => {
       // Create a canonical claim with embedding
       const canonical = await factories.createCanonicalClaim(null, 'Climate change is real');
-      const embedding = Array(768).fill(0.5);
+      const embedding = Array(1536).fill(0.5);
       embedding[0] = 1.0; // Make first dimension very high for similarity
       await factories.createCanonicalClaimEmbedding(canonical.id, embedding);
 
       // Create a similar query embedding (high cosine similarity)
-      const queryEmbedding = Array(768).fill(0.5);
+      const queryEmbedding = Array(1536).fill(0.5);
       queryEmbedding[0] = 1.0;
 
       // Find similar claims (threshold 0.75)
@@ -97,15 +224,15 @@ describe('ArgumentRepo', () => {
     it('should exclude claims below similarity threshold', async () => {
       // Create two canonical claims with very different embeddings
       const canonical1 = await factories.createCanonicalClaim(null, 'Climate change is real');
-      const embedding1 = Array(768).fill(0.1);
+      const embedding1 = Array(1536).fill(0.1);
       await factories.createCanonicalClaimEmbedding(canonical1.id, embedding1);
 
       const canonical2 = await factories.createCanonicalClaim(null, 'Earth is flat');
-      const embedding2 = Array(768).fill(0.9);
+      const embedding2 = Array(1536).fill(0.9);
       await factories.createCanonicalClaimEmbedding(canonical2.id, embedding2);
 
       // Query with embedding similar to canonical2
-      const queryEmbedding = Array(768).fill(0.85);
+      const queryEmbedding = Array(1536).fill(0.85);
 
       // Find with high threshold
       const similar = await repo.findSimilarCanonicalClaims(queryEmbedding, 0.8, 5);
@@ -116,13 +243,14 @@ describe('ArgumentRepo', () => {
 
     it('should create canonical claim with embedding and increment user count', async () => {
       const author = await factories.createUser();
-      const embedding = Array(768).fill(0.2);
+      const embedding = Array(1536).fill(0.2);
 
       const canonical = await repo.createCanonicalClaim('Test canonical claim', embedding, author.id);
 
       expect(canonical).toMatchObject({
         representative_text: 'Test canonical claim',
         author_id: author.id,
+        claim_type: 'MajorClaim',
         adu_count: 0,
       });
 
@@ -131,7 +259,28 @@ describe('ArgumentRepo', () => {
         .getPool()
         .query('SELECT embedding FROM canonical_claim_embeddings WHERE canonical_claim_id = $1', [canonical.id]);
       expect(embedResult.rows).toHaveLength(1);
-      expect(JSON.parse(embedResult.rows[0].embedding)).toHaveLength(768);
+      expect(JSON.parse(embedResult.rows[0].embedding)).toHaveLength(1536);
+    });
+
+    it('should create canonical claim with different claim types', async () => {
+      const author = await factories.createUser();
+      const embedding = Array(1536).fill(0.3);
+
+      const supportingCanonical = await repo.createCanonicalClaim(
+        'Supporting premise',
+        embedding,
+        author.id,
+        'Supporting'
+      );
+      const opposingCanonical = await repo.createCanonicalClaim(
+        'Opposing argument',
+        embedding,
+        author.id,
+        'Opposing'
+      );
+
+      expect(supportingCanonical.claim_type).toBe('Supporting');
+      expect(opposingCanonical.claim_type).toBe('Opposing');
     });
 
     it('should get canonical claims by IDs', async () => {
@@ -213,16 +362,16 @@ describe('ArgumentRepo', () => {
       const post2 = await factories.createPost(undefined, { content: 'Sports news' });
 
       // Create embeddings
-      const climateEmbedding = Array(768).fill(0.3);
+      const climateEmbedding = Array(1536).fill(0.3);
       climateEmbedding[0] = 1.0;
       await factories.createContentEmbedding('post', post1.id, climateEmbedding);
 
-      const sportsEmbedding = Array(768).fill(0.7);
+      const sportsEmbedding = Array(1536).fill(0.7);
       sportsEmbedding[1] = 1.0;
       await factories.createContentEmbedding('post', post2.id, sportsEmbedding);
 
       // Search with climate-similar query
-      const queryEmbedding = Array(768).fill(0.3);
+      const queryEmbedding = Array(1536).fill(0.3);
       queryEmbedding[0] = 0.95;
 
       const results = await repo.semanticSearch(queryEmbedding, 10);
@@ -236,11 +385,11 @@ describe('ArgumentRepo', () => {
       // Create multiple posts with embeddings
       for (let i = 0; i < 5; i++) {
         const post = await factories.createPost();
-        const embedding = Array(768).fill(0.5);
+        const embedding = Array(1536).fill(0.5);
         await factories.createContentEmbedding('post', post.id, embedding);
       }
 
-      const queryEmbedding = Array(768).fill(0.5);
+      const queryEmbedding = Array(1536).fill(0.5);
       const results = await repo.semanticSearch(queryEmbedding, 2);
 
       expect(results.length).toBeLessThanOrEqual(2);

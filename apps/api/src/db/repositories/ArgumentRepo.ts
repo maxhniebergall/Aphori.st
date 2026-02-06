@@ -1,20 +1,25 @@
 import { Pool } from 'pg';
 
+export type ADUType = 'MajorClaim' | 'Supporting' | 'Opposing' | 'Evidence';
+export type CanonicalClaimType = 'MajorClaim' | 'Supporting' | 'Opposing';
+
 export interface ADU {
   id: string;
   source_type: 'post' | 'reply';
   source_id: string;
-  adu_type: 'claim' | 'premise';
+  adu_type: ADUType;
   text: string;
   span_start: number;
   span_end: number;
   confidence: number;
+  target_adu_id: string | null;
   created_at: string;
 }
 
 export interface CanonicalClaim {
   id: string;
   representative_text: string;
+  claim_type: CanonicalClaimType;
   adu_count: number;
   discussion_count: number;
   author_id: string | null;
@@ -70,21 +75,146 @@ export const createArgumentRepo = (pool: Pool) => ({
   async createADUs(
     sourceType: 'post' | 'reply',
     sourceId: string,
-    adus: Array<{ adu_type: 'claim' | 'premise'; text: string; span_start: number; span_end: number; confidence: number }>
+    adus: Array<{
+      adu_type: ADUType;
+      text: string;
+      span_start: number;
+      span_end: number;
+      confidence: number;
+      target_adu_id?: string | null;
+    }>
   ): Promise<ADU[]> {
+    if (adus.length === 0) return [];
+
     const client = await pool.connect();
     try {
       const result = await client.query(
-        `INSERT INTO adus (source_type, source_id, adu_type, text, span_start, span_end, confidence)
-         VALUES ${adus.map((_, i) => `($1, $2, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5}, $${i * 5 + 6}, $${i * 5 + 7})`).join(',')}
+        `INSERT INTO adus (source_type, source_id, adu_type, text, span_start, span_end, confidence, target_adu_id)
+         VALUES ${adus.map((_, i) => `($1, $2, $${i * 6 + 3}, $${i * 6 + 4}, $${i * 6 + 5}, $${i * 6 + 6}, $${i * 6 + 7}, $${i * 6 + 8})`).join(',')}
          RETURNING *`,
-        [sourceType, sourceId, ...adus.flatMap(adu => [adu.adu_type, adu.text, adu.span_start, adu.span_end, adu.confidence])]
+        [sourceType, sourceId, ...adus.flatMap(adu => [
+          adu.adu_type,
+          adu.text,
+          adu.span_start,
+          adu.span_end,
+          adu.confidence,
+          adu.target_adu_id ?? null
+        ])]
       );
 
       return result.rows;
     } finally {
       client.release();
     }
+  },
+
+  /**
+   * Create ADUs with hierarchy in two passes:
+   * 1. First pass: create all ADUs with target_adu_id = null
+   * 2. Second pass: update target_adu_id using target_index mapping
+   */
+  async createADUsWithHierarchy(
+    sourceType: 'post' | 'reply',
+    sourceId: string,
+    adus: Array<{
+      adu_type: ADUType;
+      text: string;
+      span_start: number;
+      span_end: number;
+      confidence: number;
+      target_index: number | null;
+    }>
+  ): Promise<ADU[]> {
+    if (adus.length === 0) return [];
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // First pass: insert all ADUs without target_adu_id
+      const insertResult = await client.query(
+        `INSERT INTO adus (source_type, source_id, adu_type, text, span_start, span_end, confidence)
+         VALUES ${adus.map((_, i) => `($1, $2, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5}, $${i * 5 + 6}, $${i * 5 + 7})`).join(',')}
+         RETURNING *`,
+        [sourceType, sourceId, ...adus.flatMap(adu => [
+          adu.adu_type,
+          adu.text,
+          adu.span_start,
+          adu.span_end,
+          adu.confidence
+        ])]
+      );
+
+      const createdADUs: ADU[] = insertResult.rows;
+
+      // Second pass: update target_adu_id for ADUs that have a target_index
+      const updates: Array<{ id: string; target_adu_id: string }> = [];
+      for (let i = 0; i < adus.length; i++) {
+        const targetIndex = adus[i]!.target_index;
+        if (targetIndex !== null && targetIndex >= 0 && targetIndex < createdADUs.length) {
+          updates.push({
+            id: createdADUs[i]!.id,
+            target_adu_id: createdADUs[targetIndex]!.id
+          });
+        }
+      }
+
+      if (updates.length > 0) {
+        // Batch update using a VALUES clause
+        const updateValues = updates
+          .map((_, i) => `($${i * 2 + 1}::uuid, $${i * 2 + 2}::uuid)`)
+          .join(',');
+
+        await client.query(
+          `UPDATE adus AS a
+           SET target_adu_id = u.target_adu_id
+           FROM (VALUES ${updateValues}) AS u(id, target_adu_id)
+           WHERE a.id = u.id`,
+          updates.flatMap(u => [u.id, u.target_adu_id])
+        );
+
+        // Update the returned ADUs with target_adu_id
+        for (const update of updates) {
+          const adu = createdADUs.find(a => a.id === update.id);
+          if (adu) {
+            adu.target_adu_id = update.target_adu_id;
+          }
+        }
+      }
+
+      await client.query('COMMIT');
+      return createdADUs;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Find ADUs for a source and build them into a tree structure
+   */
+  async findADUsAsTree(sourceType: 'post' | 'reply', sourceId: string): Promise<ADU[]> {
+    const result = await pool.query(
+      `WITH RECURSIVE adu_tree AS (
+        -- Base case: root ADUs (MajorClaims with no target)
+        SELECT *, 0 as depth
+        FROM adus
+        WHERE source_type = $1 AND source_id = $2 AND target_adu_id IS NULL
+
+        UNION ALL
+
+        -- Recursive case: ADUs that target other ADUs
+        SELECT a.*, t.depth + 1
+        FROM adus a
+        JOIN adu_tree t ON a.target_adu_id = t.id
+        WHERE a.source_type = $1 AND a.source_id = $2
+      )
+      SELECT * FROM adu_tree ORDER BY depth, span_start`,
+      [sourceType, sourceId]
+    );
+    return result.rows;
   },
 
   async findBySource(sourceType: 'post' | 'reply', sourceId: string): Promise<ADU[]> {
@@ -168,17 +298,18 @@ export const createArgumentRepo = (pool: Pool) => ({
   async createCanonicalClaim(
     text: string,
     embedding: number[],
-    authorId: string | null
+    authorId: string | null,
+    claimType: CanonicalClaimType = 'MajorClaim'
   ): Promise<CanonicalClaim> {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
       const claimResult = await client.query(
-        `INSERT INTO canonical_claims (representative_text, author_id)
-         VALUES ($1, $2)
+        `INSERT INTO canonical_claims (representative_text, author_id, claim_type)
+         VALUES ($1, $2, $3)
          RETURNING *`,
-        [text, authorId]
+        [text, authorId, claimType]
       );
 
       const claim = claimResult.rows[0];
