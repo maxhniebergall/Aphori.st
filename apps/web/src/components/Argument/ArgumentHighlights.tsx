@@ -5,14 +5,42 @@ import { ClaimDeduplicationBadge } from './ClaimDeduplicationBadge';
 import { RelatedPostsList } from './RelatedPostsList';
 import { argumentApi, type ADUCanonicalMapping, type RelatedSource } from '@/lib/api';
 
+// V2 Ontology ADU types
+type ADUType = 'MajorClaim' | 'Supporting' | 'Opposing' | 'Evidence';
+
 interface ADU {
   id: string;
-  adu_type: 'claim' | 'premise';
+  adu_type: ADUType;
   text: string;
   span_start: number;
   span_end: number;
   confidence: number;
+  target_adu_id: string | null;
 }
+
+// Type colors for V2 ontology
+const typeStyles: Record<ADUType, { base: string; hover: string; label: string }> = {
+  MajorClaim: {
+    base: 'border-blue-500/40 dark:border-blue-400/40',
+    hover: 'border-blue-600/70 bg-blue-100/30 dark:border-blue-400/70 dark:bg-blue-900/20',
+    label: 'Major Claim',
+  },
+  Supporting: {
+    base: 'border-green-500/40 dark:border-green-400/40',
+    hover: 'border-green-600/70 bg-green-100/50 dark:border-green-400/70 dark:bg-green-900/20',
+    label: 'Supporting',
+  },
+  Opposing: {
+    base: 'border-red-500/40 dark:border-red-400/40',
+    hover: 'border-red-600/70 bg-red-100/50 dark:border-red-400/70 dark:bg-red-900/20',
+    label: 'Opposing',
+  },
+  Evidence: {
+    base: 'border-yellow-500/40 dark:border-yellow-400/40',
+    hover: 'border-yellow-600/70 bg-yellow-100/50 dark:border-yellow-400/70 dark:bg-yellow-900/20',
+    label: 'Evidence',
+  },
+};
 
 interface Segment {
   text: string;
@@ -85,6 +113,15 @@ export function ArgumentHighlights({
     [text, adus, canonicalMappings]
   );
 
+  // Lookup ADU by ID (for resolving target_adu_id on hover)
+  const aduById = useMemo(() => {
+    const map = new Map<string, ADU>();
+    for (const adu of adus) {
+      map.set(adu.id, adu);
+    }
+    return map;
+  }, [adus]);
+
   // Create a stable lookup map for canonical claim IDs by ADU ID
   const canonicalClaimIdByAduId = useMemo(() => {
     const map = new Map<string, string>();
@@ -155,15 +192,23 @@ export function ArgumentHighlights({
           return <span key={idx}>{seg.text}</span>;
         }
 
-        const isClaim = seg.adu.adu_type === 'claim';
-        const isHovered = hoveredADU === seg.adu.id;
+        const aduType = seg.adu.adu_type;
+        const style = typeStyles[aduType];
+        const hoveredAdu = hoveredADU ? aduById.get(hoveredADU) : undefined;
+        const isHovered = hoveredADU === seg.adu.id
+          || (hoveredAdu?.target_adu_id === seg.adu.id);
         const isExpanded = expandedADU === seg.adu.id;
+        // Evidence is not deduplicated, so it won't have canonical mappings
         const isDeduplicated = seg.canonicalMapping && seg.canonicalMapping.adu_count > 1;
+        const canExpand = isDeduplicated && aduType !== 'Evidence';
 
         // Build tooltip
-        let tooltip = `${isClaim ? 'Claim' : 'Premise'} (${(seg.adu.confidence * 100).toFixed(0)}%)`;
+        let tooltip = `${style.label} (${(seg.adu.confidence * 100).toFixed(0)}%)`;
         if (seg.canonicalMapping && seg.canonicalMapping.representative_text !== seg.text) {
           tooltip += ` - Canonical: "${seg.canonicalMapping.representative_text}"`;
+        }
+        if (seg.adu.target_adu_id) {
+          tooltip += ' - targets another ADU';
         }
 
         return (
@@ -171,17 +216,10 @@ export function ArgumentHighlights({
             <span
               className={`
                 border-b-2 transition-colors
-                ${isDeduplicated ? 'cursor-pointer' : ''}
-                ${isClaim
-                  ? isHovered || isExpanded
-                    ? 'border-blue-600/70 bg-blue-100/30 dark:border-blue-400/70 dark:bg-blue-900/20'
-                    : 'border-blue-500/40 hover:bg-blue-50/30 dark:border-blue-400/40 dark:hover:bg-blue-900/15'
-                  : isHovered
-                    ? 'border-green-600/70 bg-green-100/50 dark:border-green-400/70 dark:bg-green-900/20'
-                    : 'border-green-500/40 hover:bg-green-50/50 dark:border-green-400/40 dark:hover:bg-green-900/15'
-                }
+                ${canExpand ? 'cursor-pointer' : ''}
+                ${isHovered || isExpanded ? style.hover : `${style.base} hover:bg-opacity-50`}
               `}
-              data-testid={isClaim ? 'highlight-claim' : 'highlight-premise'}
+              data-testid={`highlight-${aduType.toLowerCase()}`}
               onClick={() => handleClaimClick(seg.adu!, seg.canonicalMapping)}
               onMouseEnter={() => setHoveredADU(seg.adu!.id)}
               onMouseLeave={() => setHoveredADU(null)}
@@ -189,7 +227,8 @@ export function ArgumentHighlights({
             >
               {seg.text}
             </span>
-            {isClaim && seg.canonicalMapping && (
+            {/* Show deduplication badge for all deduplicatable types (not Evidence) */}
+            {aduType !== 'Evidence' && seg.canonicalMapping && (
               <ClaimDeduplicationBadge
                 aduCount={seg.canonicalMapping.adu_count}
                 isExpanded={isExpanded}

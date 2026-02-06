@@ -10,22 +10,27 @@ import type {
   VoteValue,
 } from '@chitin/shared';
 
-// Argument types
+// Argument types (V2 ontology)
+export type ADUType = 'MajorClaim' | 'Supporting' | 'Opposing' | 'Evidence';
+export type CanonicalClaimType = 'MajorClaim' | 'Supporting' | 'Opposing';
+
 export interface ADU {
   id: string;
   source_type: 'post' | 'reply';
   source_id: string;
-  adu_type: 'claim' | 'premise';
+  adu_type: ADUType;
   text: string;
   span_start: number;
   span_end: number;
   confidence: number;
+  target_adu_id: string | null;
   created_at: string;
 }
 
 export interface CanonicalClaim {
   id: string;
   representative_text: string;
+  claim_type: CanonicalClaimType;
   adu_count: number;
   discussion_count: number;
   author_id: string | null;
@@ -262,6 +267,14 @@ export const argumentApi = {
       limit: limit.toString(),
     });
     return apiRequest(`/api/v1/search?${params}`, { token });
+  },
+
+  async getReplyADUs(replyId: string, token?: string): Promise<ADU[]> {
+    return apiRequest(`/api/v1/arguments/replies/${replyId}/adus`, { token });
+  },
+
+  async getCanonicalMappingsForReply(replyId: string, token?: string): Promise<ADUCanonicalMapping[]> {
+    return apiRequest(`/api/v1/arguments/replies/${replyId}/canonical-mappings`, { token });
   },
 
   async getCanonicalMappingsForPost(postId: string, token?: string): Promise<ADUCanonicalMapping[]> {
