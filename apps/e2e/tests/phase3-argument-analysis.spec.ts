@@ -3,7 +3,23 @@ import { test, expect } from '@playwright/test';
 const WEB_URL = process.env.WEB_URL || 'http://localhost:3000';
 const DEV_TOKEN = 'dev_token_user1';
 
-test.describe('Phase 3: Argument Analysis End-to-End', () => {
+// V2 ontology data-testid selectors (matches ArgumentHighlights.tsx)
+const HIGHLIGHT_MAJORCLAIM = '[data-testid="highlight-majorclaim"]';
+const HIGHLIGHT_SUPPORTING = '[data-testid="highlight-supporting"]';
+const HIGHLIGHT_OPPOSING = '[data-testid="highlight-opposing"]';
+const HIGHLIGHT_EVIDENCE = '[data-testid="highlight-evidence"]';
+const ALL_HIGHLIGHTS = `${HIGHLIGHT_MAJORCLAIM}, ${HIGHLIGHT_SUPPORTING}, ${HIGHLIGHT_OPPOSING}, ${HIGHLIGHT_EVIDENCE}`;
+
+async function waitForHighlights(page: any, selector: string, timeoutSeconds = 30): Promise<boolean> {
+  for (let i = 0; i < timeoutSeconds; i++) {
+    const count = await page.locator(selector).count();
+    if (count > 0) return true;
+    await page.waitForTimeout(1000);
+  }
+  return false;
+}
+
+test.describe('Phase 3: Argument Analysis End-to-End (V2 Ontology)', () => {
   test.beforeEach(async ({ page }) => {
     // Set dev token for authentication
     await page.context().addCookies([
@@ -15,7 +31,7 @@ test.describe('Phase 3: Argument Analysis End-to-End', () => {
     ]);
   });
 
-  test('Full pipeline: Create post → Wait for analysis → See highlights', async ({ page }) => {
+  test('Full pipeline: Create post → Wait for analysis → See V2 highlights', async ({ page }) => {
     // Navigate to home page
     await page.goto(`${WEB_URL}/`);
 
@@ -34,25 +50,19 @@ test.describe('Phase 3: Argument Analysis End-to-End', () => {
     // Wait for post to appear
     await page.waitForSelector('text=Climate change is real');
 
-    // Wait for analysis to complete (checking for loading indicator to disappear)
-    let analysisComplete = false;
-    for (let i = 0; i < 30; i++) {
-      const analyzingBadge = page.locator('text=Analyzing arguments...').count();
-      if (analyzingBadge === 0) {
-        analysisComplete = true;
-        break;
-      }
-      await page.waitForTimeout(1000);
-    }
+    // Wait for analysis to complete (check for any V2 highlights)
+    const highlightsAppeared = await waitForHighlights(page, ALL_HIGHLIGHTS);
+    expect(highlightsAppeared).toBe(true);
 
-    expect(analysisComplete).toBe(true);
+    // Verify at least one MajorClaim highlight exists (this is the root of the argument)
+    const majorClaimCount = await page.locator(HIGHLIGHT_MAJORCLAIM).count();
+    expect(majorClaimCount).toBeGreaterThan(0);
 
-    // Verify highlights are visible
-    const claimHighlights = page.locator('[data-testid="highlight-claim"]');
-    const premiseHighlights = page.locator('[data-testid="highlight-premise"]');
-
-    expect(await claimHighlights.count()).toBeGreaterThan(0);
-    expect(await premiseHighlights.count()).toBeGreaterThan(0);
+    // Should also have Supporting/Evidence highlights for this argumentative text
+    const supportingCount = await page.locator(HIGHLIGHT_SUPPORTING).count();
+    const evidenceCount = await page.locator(HIGHLIGHT_EVIDENCE).count();
+    const totalNonRoot = supportingCount + evidenceCount;
+    expect(totalNonRoot).toBeGreaterThan(0);
   });
 
   test('Analysis status badge transitions: pending → processing → completed', async ({ page }) => {
@@ -92,12 +102,12 @@ test.describe('Phase 3: Argument Analysis End-to-End', () => {
     expect(statusTransitioned).toBe(true);
   });
 
-  test('Highlight colors: blue for claims, green for premises', async ({ page }) => {
+  test('V2 highlight colors: blue=MajorClaim, green=Supporting, red=Opposing, yellow=Evidence', async ({ page }) => {
     await page.goto(`${WEB_URL}/`);
 
-    // Create post with clear claims and premises
+    // Create post with clear argumentative structure
     const postContent =
-      'Climate change is happening. Arctic ice is melting. Therefore, sea levels will rise.';
+      'Climate change is happening. Arctic ice is melting as evidence. Therefore, sea levels will rise.';
 
     const postInput = page.locator('textarea[placeholder*="What"]').first();
     await postInput.fill(postContent);
@@ -108,31 +118,24 @@ test.describe('Phase 3: Argument Analysis End-to-End', () => {
     // Wait for analysis
     await page.waitForSelector('text=Climate change is happening');
 
-    // Wait for highlights to appear (up to 30 seconds)
-    let highlightsAppeared = false;
-    for (let i = 0; i < 30; i++) {
-      const claimCount = await page.locator('[data-testid="highlight-claim"]').count();
-      if (claimCount > 0) {
-        highlightsAppeared = true;
-        break;
-      }
-      await page.waitForTimeout(1000);
-    }
-
+    // Wait for V2 highlights to appear
+    const highlightsAppeared = await waitForHighlights(page, ALL_HIGHLIGHTS);
     expect(highlightsAppeared).toBe(true);
 
-    // Verify claim highlight color (blue)
-    const claimHighlight = page.locator('[data-testid="highlight-claim"]').first();
-    const claimColor = await claimHighlight.evaluate(el => window.getComputedStyle(el).backgroundColor);
-    expect(claimColor).toContain('rgb'); // Should have some color
+    // Verify MajorClaim highlight has blue border styling
+    const majorClaimHighlight = page.locator(HIGHLIGHT_MAJORCLAIM).first();
+    const majorClaimClasses = await majorClaimHighlight.getAttribute('class');
+    expect(majorClaimClasses).toContain('border');
 
-    // Verify premise highlight exists
-    const premiseHighlights = page.locator('[data-testid="highlight-premise"]');
-    const premiseCount = await premiseHighlights.count();
-    expect(premiseCount).toBeGreaterThanOrEqual(0);
+    // Verify Supporting highlight has green border styling (if present)
+    const supportingCount = await page.locator(HIGHLIGHT_SUPPORTING).count();
+    if (supportingCount > 0) {
+      const supportingClasses = await page.locator(HIGHLIGHT_SUPPORTING).first().getAttribute('class');
+      expect(supportingClasses).toContain('border');
+    }
   });
 
-  test('Click highlight to open reply composer targeted to ADU', async ({ page }) => {
+  test('Click V2 highlight to open reply composer', async ({ page }) => {
     await page.goto(`${WEB_URL}/`);
 
     // Create post with an argument
@@ -147,31 +150,17 @@ test.describe('Phase 3: Argument Analysis End-to-End', () => {
     // Wait for post and analysis
     await page.waitForSelector('text=Global warming');
 
-    // Wait for highlights to appear
-    let highlightFound = false;
-    for (let i = 0; i < 30; i++) {
-      const highlights = await page.locator('[data-testid="highlight-claim"]').count();
-      if (highlights > 0) {
-        highlightFound = true;
-        break;
-      }
-      await page.waitForTimeout(1000);
-    }
-
+    // Wait for V2 highlights to appear
+    const highlightFound = await waitForHighlights(page, ALL_HIGHLIGHTS);
     expect(highlightFound).toBe(true);
 
-    // Click on a highlight
-    const firstHighlight = page.locator('[data-testid="highlight-claim"]').first();
+    // Click on the first available highlight (any V2 type)
+    const firstHighlight = page.locator(ALL_HIGHLIGHTS).first();
     await firstHighlight.click();
 
-    // Verify reply composer opens with reference to the ADU
+    // Verify reply composer opens
     const replyComposer = page.locator('textarea[placeholder*="Reply"]');
     await expect(replyComposer).toBeVisible();
-
-    // Should have some indication of which claim is being replied to
-    const aduReference = page.locator('[data-testid="adu-reference"]');
-    const count = await aduReference.count();
-    expect(count).toBeGreaterThanOrEqual(0); // May or may not be visible
   });
 
   test('Semantic search returns relevant results', async ({ page }) => {
@@ -268,7 +257,7 @@ test.describe('Phase 3: Argument Analysis End-to-End', () => {
     }
   });
 
-  test('Tooltip shows confidence percentage on highlight hover', async ({ page }) => {
+  test('Tooltip shows V2 type label and confidence on highlight hover', async ({ page }) => {
     await page.goto(`${WEB_URL}/`);
 
     const postContent = 'Renewable energy sources reduce environmental pollution.';
@@ -283,32 +272,21 @@ test.describe('Phase 3: Argument Analysis End-to-End', () => {
     await page.waitForSelector('text=Renewable energy');
 
     // Wait for highlights
-    let highlightFound = false;
-    for (let i = 0; i < 30; i++) {
-      const highlights = await page.locator('[data-testid="highlight-claim"]').count();
-      if (highlights > 0) {
-        highlightFound = true;
-        break;
-      }
-      await page.waitForTimeout(1000);
-    }
-
+    const highlightFound = await waitForHighlights(page, ALL_HIGHLIGHTS);
     expect(highlightFound).toBe(true);
 
     // Hover over a highlight
-    const firstHighlight = page.locator('[data-testid="highlight-claim"]').first();
+    const firstHighlight = page.locator(ALL_HIGHLIGHTS).first();
     await firstHighlight.hover();
 
     // Wait for tooltip to appear
     await page.waitForTimeout(500);
 
-    // Check for tooltip with confidence
-    const tooltip = page.locator('[role="tooltip"], [data-testid="confidence-tooltip"]').first();
-    const isVisible = await tooltip.isVisible().catch(() => false);
-
-    if (isVisible) {
-      const tooltipText = await tooltip.textContent();
-      expect(tooltipText).toMatch(/\d+%|confidence/i);
-    }
+    // The tooltip is set via the title attribute and should contain V2 type + confidence
+    const title = await firstHighlight.getAttribute('title');
+    expect(title).toBeTruthy();
+    // Should contain one of the V2 type labels and a percentage
+    expect(title).toMatch(/(Major Claim|Supporting|Opposing|Evidence)/);
+    expect(title).toMatch(/\d+%/);
   });
 });

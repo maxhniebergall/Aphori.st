@@ -1,9 +1,34 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import { createArgumentRepo } from '../../db/repositories/ArgumentRepo.js';
-import argumentsRouter from '../arguments.js';
 import { createFactories } from '../../__tests__/utils/factories.js';
+
+// Mock pool module to use the test database
+vi.mock('../../db/pool.js', () => {
+  const getPool = () => globalThis.testDb.getPool();
+  return {
+    getPool,
+    query: async (text: string, params?: unknown[]) => getPool().query(text, params),
+    withTransaction: async (callback: (client: any) => Promise<any>) => {
+      const client = await getPool().connect();
+      try {
+        await client.query('BEGIN');
+        const result = await callback(client);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+  };
+});
+
+// Import router AFTER mocking (so it picks up the mock)
+const { default: argumentsRouter } = await import('../arguments.js');
 
 describe('Arguments Routes Integration Tests', () => {
   let app: express.Application;
@@ -20,10 +45,10 @@ describe('Arguments Routes Integration Tests', () => {
   });
 
   describe('GET /api/v1/arguments/posts/:id/adus', () => {
-    it('should return ADUs for a post', async () => {
+    it('should return ADUs for a post with V2 ontology types', async () => {
       const post = await factories.createPost();
-      await factories.createADU('post', post.id, { text: 'Test claim 1', adu_type: 'claim' });
-      await factories.createADU('post', post.id, { text: 'Test premise 1', adu_type: 'premise' });
+      await factories.createADU('post', post.id, { text: 'Test claim 1', adu_type: 'MajorClaim' });
+      await factories.createADU('post', post.id, { text: 'Test support 1', adu_type: 'Supporting' });
 
       const response = await request(app).get(`/api/v1/arguments/posts/${post.id}/adus`);
 
@@ -32,13 +57,59 @@ describe('Arguments Routes Integration Tests', () => {
       expect(response.body.data).toHaveLength(2);
       expect(response.body.data[0]).toMatchObject({
         source_id: post.id,
-        adu_type: 'claim',
+        adu_type: 'MajorClaim',
         text: 'Test claim 1',
       });
       expect(response.body.data[1]).toMatchObject({
-        adu_type: 'premise',
-        text: 'Test premise 1',
+        adu_type: 'Supporting',
+        text: 'Test support 1',
       });
+    });
+
+    it('should return all V2 ontology types including Opposing and Evidence', async () => {
+      const post = await factories.createPost();
+      const majorClaim = await factories.createADU('post', post.id, {
+        text: 'Main thesis', adu_type: 'MajorClaim', span_start: 0, span_end: 11,
+      });
+      await factories.createADU('post', post.id, {
+        text: 'A supporting reason', adu_type: 'Supporting', span_start: 12, span_end: 31,
+        target_adu_id: majorClaim.id,
+      });
+      await factories.createADU('post', post.id, {
+        text: 'A counter-argument', adu_type: 'Opposing', span_start: 32, span_end: 50,
+        target_adu_id: majorClaim.id,
+      });
+      await factories.createADU('post', post.id, {
+        text: 'A concrete fact', adu_type: 'Evidence', span_start: 51, span_end: 66,
+        target_adu_id: majorClaim.id,
+      });
+
+      const response = await request(app).get(`/api/v1/arguments/posts/${post.id}/adus`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toHaveLength(4);
+
+      const types = response.body.data.map((a: any) => a.adu_type);
+      expect(types).toContain('MajorClaim');
+      expect(types).toContain('Supporting');
+      expect(types).toContain('Opposing');
+      expect(types).toContain('Evidence');
+    });
+
+    it('should include target_adu_id for hierarchical ADUs', async () => {
+      const post = await factories.createPost();
+      const root = await factories.createADU('post', post.id, {
+        text: 'Root claim', adu_type: 'MajorClaim', span_start: 0, span_end: 10,
+      });
+      await factories.createADU('post', post.id, {
+        text: 'Child support', adu_type: 'Supporting', span_start: 11, span_end: 24,
+        target_adu_id: root.id,
+      });
+
+      const response = await request(app).get(`/api/v1/arguments/posts/${post.id}/adus`);
+
+      expect(response.body.data[0].target_adu_id).toBeNull();
+      expect(response.body.data[1].target_adu_id).toBe(root.id);
     });
 
     it('should return empty array for post without ADUs', async () => {
@@ -64,8 +135,8 @@ describe('Arguments Routes Integration Tests', () => {
   });
 
   describe('GET /api/v1/arguments/claims/:id', () => {
-    it('should return canonical claim details', async () => {
-      const claim = await factories.createCanonicalClaim(null, 'Test canonical claim');
+    it('should return canonical claim details with claim_type', async () => {
+      const claim = await factories.createCanonicalClaim(null, 'Test canonical claim', 'MajorClaim');
 
       const response = await request(app).get(`/api/v1/arguments/claims/${claim.id}`);
 
@@ -74,7 +145,26 @@ describe('Arguments Routes Integration Tests', () => {
       expect(response.body.data).toMatchObject({
         id: claim.id,
         representative_text: 'Test canonical claim',
+        claim_type: 'MajorClaim',
       });
+    });
+
+    it('should return Supporting canonical claim type', async () => {
+      const claim = await factories.createCanonicalClaim(null, 'A supporting reason', 'Supporting');
+
+      const response = await request(app).get(`/api/v1/arguments/claims/${claim.id}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.claim_type).toBe('Supporting');
+    });
+
+    it('should return Opposing canonical claim type', async () => {
+      const claim = await factories.createCanonicalClaim(null, 'A counter-argument', 'Opposing');
+
+      const response = await request(app).get(`/api/v1/arguments/claims/${claim.id}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.claim_type).toBe('Opposing');
     });
 
     it('should return 404 for nonexistent claim', async () => {
@@ -162,6 +252,74 @@ describe('Arguments Routes Integration Tests', () => {
       await factories.createADU('post', post.id);
 
       const response = await request(app).get(`/api/v1/arguments/posts/${post.id}/canonical-mappings`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toHaveLength(0);
+    });
+  });
+
+  describe('GET /api/v1/arguments/replies/:id/adus', () => {
+    it('should return ADUs for a reply', async () => {
+      const reply = await factories.createReply();
+      await factories.createADU('reply', reply.id, { text: 'Reply claim', adu_type: 'MajorClaim' });
+      await factories.createADU('reply', reply.id, { text: 'Reply support', adu_type: 'Supporting' });
+
+      const response = await request(app).get(`/api/v1/arguments/replies/${reply.id}/adus`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveLength(2);
+      expect(response.body.data[0]).toMatchObject({
+        source_id: reply.id,
+        adu_type: 'MajorClaim',
+        text: 'Reply claim',
+      });
+    });
+
+    it('should return empty array for reply without ADUs', async () => {
+      const reply = await factories.createReply();
+
+      const response = await request(app).get(`/api/v1/arguments/replies/${reply.id}/adus`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveLength(0);
+    });
+  });
+
+  describe('GET /api/v1/arguments/replies/:id/canonical-mappings', () => {
+    it('should return canonical mappings for reply ADUs', async () => {
+      const reply = await factories.createReply();
+      const adu = await factories.createADU('reply', reply.id, { text: 'Reply claim' });
+      const canonical = await factories.createCanonicalClaim(null, 'Canonical text');
+      await factories.linkADUToCanonical(adu.id, canonical.id, 0.9);
+
+      const response = await request(app).get(`/api/v1/arguments/replies/${reply.id}/canonical-mappings`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data[0]).toMatchObject({
+        canonical_claim_id: canonical.id,
+        representative_text: 'Canonical text',
+      });
+    });
+
+    it('should return empty array for reply without ADUs', async () => {
+      const reply = await factories.createReply();
+
+      const response = await request(app).get(`/api/v1/arguments/replies/${reply.id}/canonical-mappings`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveLength(0);
+    });
+
+    it('should return empty array for reply with ADUs but no canonical mappings', async () => {
+      const reply = await factories.createReply();
+      await factories.createADU('reply', reply.id);
+
+      const response = await request(app).get(`/api/v1/arguments/replies/${reply.id}/canonical-mappings`);
 
       expect(response.status).toBe(200);
       expect(response.body.data).toHaveLength(0);

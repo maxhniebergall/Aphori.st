@@ -1,9 +1,34 @@
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import searchRouter from '../search.js';
 import { createFactories } from '../../__tests__/utils/factories.js';
 import { getArgumentService } from '../../services/argumentService.js';
+
+// Mock pool module to use the test database
+vi.mock('../../db/pool.js', () => {
+  const getPool = () => globalThis.testDb.getPool();
+  return {
+    getPool,
+    query: async (text: string, params?: unknown[]) => getPool().query(text, params),
+    withTransaction: async (callback: (client: any) => Promise<any>) => {
+      const client = await getPool().connect();
+      try {
+        await client.query('BEGIN');
+        const result = await callback(client);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+  };
+});
+
+// Import router AFTER mocking
+const { default: searchRouter } = await import('../search.js');
 
 /**
  * Integration tests for search routes.
