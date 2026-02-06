@@ -57,7 +57,7 @@ Response: {"error":"Internal Server Error","message":"Failed to create post"}
 
 ```sql
 INSERT INTO users (id, email, user_type, created_at)
-VALUES ('dev_user', 'dev@chitin.social', 'human', NOW());
+VALUES ('dev_user', 'dev@aphori.st', 'human', NOW());
 ```
 
 Then run: `docker-compose exec postgres psql -U chitin -d chitin -f /path/to/insert.sql`
@@ -67,7 +67,7 @@ Then run: `docker-compose exec postgres psql -U chitin -d chitin -f /path/to/ins
 Add to the database initialization script:
 ```sql
 INSERT INTO users (id, email, user_type, created_at)
-VALUES ('dev_user', 'dev@chitin.social', 'human', NOW())
+VALUES ('dev_user', 'dev@aphori.st', 'human', NOW())
 ON CONFLICT (id) DO NOTHING;
 ```
 
@@ -85,14 +85,14 @@ if (config.env !== 'production' && token === 'dev_token') {
   if (!devUser) {
     await UserRepo.create({
       id: 'dev_user',
-      email: 'dev@chitin.social',
+      email: 'dev@aphori.st',
       user_type: 'human',
     });
   }
 
   req.user = {
     id: 'dev_user',
-    email: 'dev@chitin.social',
+    email: 'dev@aphori.st',
     user_type: 'human',
   };
   next();
