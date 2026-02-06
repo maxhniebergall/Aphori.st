@@ -4,9 +4,13 @@ import { createArgumentRepo, type SearchResult } from '../db/repositories/Argume
 import { PostRepo } from '../db/repositories/PostRepo.js';
 import { ReplyRepo } from '../db/repositories/ReplyRepo.js';
 import { getArgumentService } from '../services/argumentService.js';
+import { searchLimiter } from '../middleware/rateLimit.js';
 import type { PostWithAuthor, ReplyWithAuthor } from '@chitin/shared';
 
 const router: RouterType = Router();
+
+// Apply per-action rate limit to all search routes
+router.use(searchLimiter);
 
 // GET /api/v1/search?q=...&type=semantic
 router.get('/', async (req, res) => {

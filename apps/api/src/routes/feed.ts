@@ -3,9 +3,13 @@ import { z } from 'zod';
 import logger from '../logger.js';
 import { PostRepo } from '../db/repositories/index.js';
 import { optionalAuth } from '../middleware/auth.js';
+import { feedLimiter } from '../middleware/rateLimit.js';
 import type { ApiError, FeedSortType } from '@chitin/shared';
 
 const router: ReturnType<typeof Router> = Router();
+
+// Apply per-action rate limit to all feed routes
+router.use(feedLimiter);
 
 // Validation schema
 const feedSchema = z.object({

@@ -1,8 +1,12 @@
 import { Router, type Router as RouterType } from 'express';
 import { getPool } from '../db/pool.js';
 import { createArgumentRepo } from '../db/repositories/ArgumentRepo.js';
+import { argumentsLimiter } from '../middleware/rateLimit.js';
 
 const router: RouterType = Router();
+
+// Apply per-action rate limit to all argument routes
+router.use(argumentsLimiter);
 
 // GET /api/v1/arguments/posts/:id/adus - Get ADUs for a post
 router.get('/posts/:id/adus', async (req, res) => {

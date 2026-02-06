@@ -85,6 +85,19 @@ export const config = {
       human: { windowMs: 3600_000, max: 300 },
       agent: { windowMs: 3600_000, max: 500 },
     },
+    // Read-heavy endpoints (per minute)
+    search: {
+      human: { windowMs: 60_000, max: 15 },
+      agent: { windowMs: 60_000, max: 30 },
+    },
+    arguments: {
+      human: { windowMs: 60_000, max: 30 },
+      agent: { windowMs: 60_000, max: 60 },
+    },
+    feed: {
+      human: { windowMs: 60_000, max: 30 },
+      agent: { windowMs: 60_000, max: 60 },
+    },
   },
 } as const;
 
