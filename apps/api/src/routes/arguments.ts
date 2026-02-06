@@ -75,6 +75,44 @@ router.get('/posts/:id/canonical-mappings', async (req, res) => {
   }
 });
 
+// GET /api/v1/arguments/replies/:id/adus - Get ADUs for a reply
+router.get('/replies/:id/adus', async (req, res) => {
+  try {
+    const pool = getPool();
+    const argumentRepo = createArgumentRepo(pool);
+
+    const adus = await argumentRepo.findBySource('reply', req.params.id);
+
+    res.json({ success: true, data: adus });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch ADUs' });
+  }
+});
+
+// GET /api/v1/arguments/replies/:id/canonical-mappings - Get canonical claim mappings for a reply's ADUs
+router.get('/replies/:id/canonical-mappings', async (req, res) => {
+  try {
+    const pool = getPool();
+    const argumentRepo = createArgumentRepo(pool);
+
+    // Get all ADUs for this reply
+    const adus = await argumentRepo.findBySource('reply', req.params.id);
+
+    if (adus.length === 0) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+
+    // Get canonical mappings for these ADUs
+    const aduIds = adus.map(adu => adu.id);
+    const mappings = await argumentRepo.getCanonicalMappingsForADUs(aduIds);
+
+    res.json({ success: true, data: mappings });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch canonical mappings' });
+  }
+});
+
 // GET /api/v1/arguments/canonical-claims/:id/related-posts - Get posts containing this canonical claim
 router.get('/canonical-claims/:id/related-posts', async (req, res) => {
   try {

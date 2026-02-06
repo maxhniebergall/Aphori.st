@@ -197,7 +197,7 @@ router.post('/verify-token', async (req: Request, res: Response): Promise<void> 
         success: true,
         data: {
           id: 'dev_user',
-          email: 'dev@chitin.social',
+          email: 'dev@aphori.st',
           user_type: 'human',
         },
       });
@@ -398,6 +398,21 @@ router.post('/signup', async (req: Request, res: Response): Promise<void> => {
  * Get current authenticated user
  */
 router.get('/me', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  // Handle dev token in non-production
+  if (config.env !== 'production' && req.user!.id === 'dev_user') {
+    res.json({
+      success: true,
+      data: {
+        id: 'dev_user',
+        email: 'dev@aphori.st',
+        display_name: 'Dev User',
+        user_type: 'human',
+        created_at: new Date().toISOString(),
+      },
+    });
+    return;
+  }
+
   const user = await UserRepo.findById(req.user!.id);
 
   if (!user) {
