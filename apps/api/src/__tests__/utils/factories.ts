@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import { Pool } from 'pg';
-import type { ADU, CanonicalClaim } from '../../db/repositories/ArgumentRepo.js';
+import type { ADU, CanonicalClaim, ADUType, CanonicalClaimType } from '../../db/repositories/ArgumentRepo.js';
 
 export class TestFactories {
   constructor(private pool: Pool) {}
@@ -117,25 +117,26 @@ export class TestFactories {
   async createADU(
     sourceType: 'post' | 'reply',
     sourceId: string,
-    overrides?: Partial<any>
+    overrides?: Partial<ADU & { adu_type: ADUType }>
   ): Promise<ADU> {
     const aduId = uuidv4();
     const aduData = {
       id: aduId,
       source_type: sourceType,
       source_id: sourceId,
-      adu_type: overrides?.adu_type || 'claim',
+      adu_type: overrides?.adu_type || 'MajorClaim' as ADUType,
       text: overrides?.text || 'This is a test claim.',
       span_start: overrides?.span_start ?? 0,
       span_end: overrides?.span_end ?? 25,
       confidence: overrides?.confidence ?? 0.95,
+      target_adu_id: overrides?.target_adu_id ?? null,
       created_at: new Date().toISOString(),
       ...overrides,
     };
 
     const result = await this.pool.query(
-      `INSERT INTO adus (id, source_type, source_id, adu_type, text, span_start, span_end, confidence, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      `INSERT INTO adus (id, source_type, source_id, adu_type, text, span_start, span_end, confidence, target_adu_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [
         aduData.id,
         aduData.source_type,
@@ -145,6 +146,7 @@ export class TestFactories {
         aduData.span_start,
         aduData.span_end,
         aduData.confidence,
+        aduData.target_adu_id,
         aduData.created_at,
       ]
     );
@@ -153,7 +155,7 @@ export class TestFactories {
   }
 
   async createADUEmbedding(aduId: string, embedding?: number[]): Promise<void> {
-    const vector = embedding || Array(768).fill(0.1);
+    const vector = embedding || Array(1536).fill(0.1);
 
     await this.pool.query(
       `INSERT INTO adu_embeddings (adu_id, embedding) VALUES ($1, $2)
@@ -162,22 +164,26 @@ export class TestFactories {
     );
   }
 
-  async createCanonicalClaim(authorId?: string | null, text?: string): Promise<CanonicalClaim> {
+  async createCanonicalClaim(
+    authorId?: string | null,
+    text?: string,
+    claimType: CanonicalClaimType = 'MajorClaim'
+  ): Promise<CanonicalClaim> {
     const claimId = uuidv4();
     const author = authorId || null;
     const claimText = text || 'This is a canonical claim.';
 
     const result = await this.pool.query(
-      `INSERT INTO canonical_claims (id, representative_text, author_id, adu_count, discussion_count, created_at, updated_at)
-       VALUES ($1, $2, $3, 0, 0, $4, $5) RETURNING *`,
-      [claimId, claimText, author, new Date().toISOString(), new Date().toISOString()]
+      `INSERT INTO canonical_claims (id, representative_text, author_id, claim_type, adu_count, discussion_count, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 0, 0, $5, $6) RETURNING *`,
+      [claimId, claimText, author, claimType, new Date().toISOString(), new Date().toISOString()]
     );
 
     return result.rows[0];
   }
 
   async createCanonicalClaimEmbedding(canonicalId: string, embedding?: number[]): Promise<void> {
-    const vector = embedding || Array(768).fill(0.1);
+    const vector = embedding || Array(1536).fill(0.1);
 
     await this.pool.query(
       `INSERT INTO canonical_claim_embeddings (canonical_claim_id, embedding) VALUES ($1, $2)
@@ -187,7 +193,7 @@ export class TestFactories {
   }
 
   async createContentEmbedding(sourceType: 'post' | 'reply', sourceId: string, embedding?: number[]): Promise<void> {
-    const vector = embedding || Array(768).fill(0.15);
+    const vector = embedding || Array(1536).fill(0.15);
 
     await this.pool.query(
       `INSERT INTO content_embeddings (source_type, source_id, embedding)

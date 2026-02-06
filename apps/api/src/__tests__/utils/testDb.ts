@@ -16,9 +16,9 @@ export class TestDatabase {
     this.adminPool = new Pool({
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '5432', 10),
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres',
-      database: 'postgres',
+      user: process.env.DB_USER || 'chitin',
+      password: process.env.DB_PASSWORD || 'chitin_dev',
+      database: process.env.DB_NAME || 'chitin',
     });
 
     try {
@@ -32,8 +32,8 @@ export class TestDatabase {
       this.pool = new Pool({
         host: process.env.DB_HOST || 'localhost',
         port: parseInt(process.env.DB_PORT || '5432', 10),
-        user: process.env.DB_USER || 'postgres',
-        password: process.env.DB_PASSWORD || 'postgres',
+        user: process.env.DB_USER || 'chitin',
+        password: process.env.DB_PASSWORD || 'chitin_dev',
         database: this.testDbName,
       });
 

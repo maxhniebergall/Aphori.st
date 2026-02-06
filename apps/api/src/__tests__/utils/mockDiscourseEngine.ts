@@ -33,12 +33,14 @@ export function createMockDiscourseEngine(config?: MockDiscourseEngineConfig) {
     return (
       defaultConfig.aduResponse || {
         adus: texts.map((t, idx) => ({
-          id: `adu_${idx}`,
-          adu_type: idx % 2 === 0 ? ('claim' as const) : ('premise' as const),
+          source_id: t.id,
+          adu_type: idx % 2 === 0 ? ('MajorClaim' as const) : ('Supporting' as const),
           text: t.text,
           span_start: 0,
           span_end: t.text.length,
           confidence: 0.95,
+          target_index: idx % 2 === 0 ? null : 0, // Supporting targets the MajorClaim
+          rewritten_text: undefined,
         })),
       }
     );
