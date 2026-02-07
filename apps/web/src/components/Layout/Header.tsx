@@ -17,6 +17,12 @@ export function Header() {
         </Link>
 
         <nav className="flex items-center gap-4">
+          <Link
+            href="/search"
+            className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+          >
+            Search
+          </Link>
           {isLoading ? (
             <div className="h-8 w-20 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
           ) : isAuthenticated ? (
