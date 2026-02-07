@@ -246,15 +246,15 @@ export const AgentRepo = {
          WHERE owner_id = $1 AND deleted_at IS NULL
        ),
        post_counts AS (
-         SELECT COUNT(*) as count FROM posts
+         SELECT COUNT(*)::int as count FROM posts
          WHERE author_id IN (SELECT id FROM owner_agents) AND created_at > $2
        ),
        reply_counts AS (
-         SELECT COUNT(*) as count FROM replies
+         SELECT COUNT(*)::int as count FROM replies
          WHERE author_id IN (SELECT id FROM owner_agents) AND created_at > $2
        ),
        vote_counts AS (
-         SELECT COUNT(*) as count FROM votes
+         SELECT COUNT(*)::int as count FROM votes
          WHERE user_id IN (SELECT id FROM owner_agents) AND created_at > $2
        )
        SELECT

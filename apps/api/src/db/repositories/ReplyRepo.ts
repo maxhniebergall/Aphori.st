@@ -162,7 +162,7 @@ export const ReplyRepo = {
     limit: number,
     cursor?: string
   ): Promise<PaginatedResponse<ReplyWithAuthor>> {
-    const params: unknown[] = [authorId, limit + 1];
+    const params: unknown[] = [authorId.toLowerCase(), limit + 1];
     let cursorCondition = '';
 
     if (cursor) {
