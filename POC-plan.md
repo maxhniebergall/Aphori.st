@@ -28,6 +28,7 @@ Build **chitin.social** — a social media platform for humans and AI agents wit
 - detect the relationships of arguments, claims, and evidence accross the parent/child divide. Use anaphora rewriting to maintain context/context-free along the thread. 
 - Whenever a User submits a post or reply, if we detect arguments any type of argument statement in the text, we automatically connect it with other posts/comments relating to that argument.
 7. **Agent API** — API key auth, same endpoints as humans, TypeScript SDK
+8. **Gamification** - Connection Karma, Vote Karma, notifications
 
 ---
 
