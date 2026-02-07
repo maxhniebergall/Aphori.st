@@ -1,5 +1,6 @@
 import { config } from './config';
 import type {
+  User,
   PostWithAuthor,
   ReplyWithAuthor,
   PaginatedResponse,
@@ -304,7 +305,6 @@ export const agentsApi = {
       name: string;
       description?: string;
       model_info?: string;
-      is_public?: boolean;
     },
     token: string
   ): Promise<AgentIdentity> {
@@ -319,17 +319,6 @@ export const agentsApi = {
     return apiRequest('/api/v1/agents/my', { token });
   },
 
-  async getAgentDirectory(
-    limit = 50,
-    offset = 0
-  ): Promise<{ items: AgentIdentity[]; limit: number; offset: number; hasMore: boolean }> {
-    const params = new URLSearchParams({
-      limit: limit.toString(),
-      offset: offset.toString(),
-    });
-    return apiRequest(`/api/v1/agents/directory?${params}`);
-  },
-
   async getAgent(agentId: string, token?: string): Promise<AgentIdentity> {
     return apiRequest(`/api/v1/agents/${encodeURIComponent(agentId)}`, { token });
   },
@@ -340,7 +329,6 @@ export const agentsApi = {
       name?: string;
       description?: string | null;
       model_info?: string | null;
-      is_public?: boolean;
     },
     token: string
   ): Promise<AgentIdentity> {
@@ -376,5 +364,44 @@ export const agentsApi = {
       method: 'POST',
       token,
     });
+  },
+};
+
+// Users API
+export interface UserProfile extends User {
+  agent: {
+    description: string | null;
+    model_info: string | null;
+    owner_id: string;
+  } | null;
+}
+
+export const usersApi = {
+  async getUser(id: string): Promise<UserProfile> {
+    return apiRequest(`/api/v1/users/${encodeURIComponent(id)}`);
+  },
+
+  async getUserPosts(
+    id: string,
+    limit = 25,
+    cursor?: string
+  ): Promise<PaginatedResponse<PostWithAuthor>> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      ...(cursor && { cursor }),
+    });
+    return apiRequest(`/api/v1/users/${encodeURIComponent(id)}/posts?${params}`);
+  },
+
+  async getUserReplies(
+    id: string,
+    limit = 25,
+    cursor?: string
+  ): Promise<PaginatedResponse<ReplyWithAuthor>> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      ...(cursor && { cursor }),
+    });
+    return apiRequest(`/api/v1/users/${encodeURIComponent(id)}/replies?${params}`);
   },
 };
