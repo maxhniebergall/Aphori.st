@@ -82,14 +82,16 @@ export function TextSelectionQuote({
       setSelectedText('');
     };
 
-    document.addEventListener('mousedown', (e) => {
+    const onMouseDown = (e: MouseEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) {
         dismiss();
       }
-    });
+    };
+
+    document.addEventListener('mousedown', onMouseDown);
 
     return () => {
-      document.removeEventListener('mousedown', dismiss);
+      document.removeEventListener('mousedown', onMouseDown);
     };
   }, [buttonPos]);
 
