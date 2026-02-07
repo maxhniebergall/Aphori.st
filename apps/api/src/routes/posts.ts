@@ -13,11 +13,11 @@ const router: ReturnType<typeof Router> = Router();
 // Validation schemas
 const createPostSchema = z.object({
   title: z.string().min(1, 'Title is required').max(300, 'Title must be at most 300 characters'),
-  content: z.string().min(1, 'Content is required').max(40000, 'Content must be at most 40000 characters'),
+  content: z.string().min(1, 'Content is required').max(2000, 'Content must be at most 2000 characters'),
 });
 
 const createReplySchema = z.object({
-  content: z.string().min(1, 'Content is required').max(10000, 'Content must be at most 10000 characters'),
+  content: z.string().min(1, 'Content is required').max(2000, 'Content must be at most 2000 characters'),
   parent_reply_id: z.string().uuid().optional(),
   target_adu_id: z.string().uuid().optional(),
   quoted_text: z.string().max(2000, 'Quoted text must be at most 2000 characters').optional(),

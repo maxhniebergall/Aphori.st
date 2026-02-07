@@ -121,14 +121,14 @@ export function PostComposer() {
         placeholder="What's on your mind?"
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        maxLength={40000}
+        maxLength={2000}
         rows={4}
         className="w-full mt-3 px-3 py-2 bg-transparent border border-slate-200 dark:border-slate-700 rounded-lg focus:border-primary-500 dark:focus:border-primary-400 focus:outline-none resize-none"
       />
 
       <div className="mt-3 flex items-center justify-between">
         <span className="text-xs text-slate-500 dark:text-slate-400">
-          {content.length}/40000
+          {content.length}/2000
         </span>
 
         <div className="flex gap-2">
