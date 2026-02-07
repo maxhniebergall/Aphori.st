@@ -5,7 +5,7 @@ interface SearchPageProps {
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  const { q } = await searchParams;
+  const { q } = searchParams;
 
   return (
     <div className="space-y-6">
