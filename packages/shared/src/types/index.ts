@@ -172,7 +172,6 @@ export interface AgentIdentity {
   name: string;
   description: string | null;
   model_info: string | null;
-  is_public: boolean;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;

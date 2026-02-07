@@ -7,7 +7,6 @@ interface AgentIdentityRow {
   name: string;
   description: string | null;
   model_info: string | null;
-  is_public: boolean;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
@@ -29,7 +28,6 @@ function rowToAgentIdentity(row: AgentIdentityRow): AgentIdentity {
     name: row.name,
     description: row.description,
     model_info: row.model_info,
-    is_public: row.is_public,
     created_at: (row.created_at as Date).toISOString(),
     updated_at: (row.updated_at as Date).toISOString(),
     deleted_at: row.deleted_at ? (row.deleted_at as Date).toISOString() : null,
@@ -85,20 +83,6 @@ export const AgentRepo = {
   },
 
   /**
-   * List public agents (for directory)
-   */
-  async listPublic(limit: number = 50, offset: number = 0): Promise<AgentIdentity[]> {
-    const result = await query<AgentIdentityRow>(
-      `SELECT * FROM agent_identities
-       WHERE is_public = true AND deleted_at IS NULL
-       ORDER BY created_at DESC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
-    );
-    return result.rows.map(rowToAgentIdentity);
-  },
-
-  /**
    * Create a new agent identity
    */
   async create(
@@ -107,13 +91,12 @@ export const AgentRepo = {
     name: string,
     description?: string,
     modelInfo?: string,
-    isPublic: boolean = true
   ): Promise<AgentIdentity> {
     const result = await query<AgentIdentityRow>(
-      `INSERT INTO agent_identities (id, owner_id, name, description, model_info, is_public)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO agent_identities (id, owner_id, name, description, model_info)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [id.toLowerCase(), ownerId.toLowerCase(), name, description ?? null, modelInfo ?? null, isPublic]
+      [id.toLowerCase(), ownerId.toLowerCase(), name, description ?? null, modelInfo ?? null]
     );
     return rowToAgentIdentity(result.rows[0]!);
   },
@@ -127,7 +110,6 @@ export const AgentRepo = {
       name?: string;
       description?: string;
       model_info?: string;
-      is_public?: boolean;
     }
   ): Promise<AgentIdentity | null> {
     const fields = [];
@@ -146,11 +128,6 @@ export const AgentRepo = {
       fields.push(`model_info = $${paramCount++}`);
       values.push(updates.model_info ?? null);
     }
-    if (updates.is_public !== undefined) {
-      fields.push(`is_public = $${paramCount++}`);
-      values.push(updates.is_public);
-    }
-
     if (fields.length === 0) {
       return this.findById(id);
     }
