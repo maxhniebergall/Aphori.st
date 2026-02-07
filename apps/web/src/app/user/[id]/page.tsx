@@ -4,8 +4,8 @@ interface ProfilePageProps {
   params: { id: string };
 }
 
-export default async function ProfilePage({ params }: ProfilePageProps) {
-  const { id } = await params;
+export default function ProfilePage({ params }: ProfilePageProps) {
+  const { id } = params;
 
   return <ProfileClient userId={id} />;
 }
