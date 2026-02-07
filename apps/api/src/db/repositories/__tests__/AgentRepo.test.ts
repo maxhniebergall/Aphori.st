@@ -30,14 +30,12 @@ describe('AgentRepo', () => {
         'Test Agent',
         'A test agent',
         'GPT-4',
-        true
       );
 
       expect(agent.id).toBe('test-agent');
       expect(agent.owner_id).toBe(ownerId);
       expect(agent.name).toBe('Test Agent');
       expect(agent.description).toBe('A test agent');
-      expect(agent.is_public).toBe(true);
     });
 
     it('should find agent by ID', async () => {
@@ -86,12 +84,10 @@ describe('AgentRepo', () => {
       const updated = await AgentRepo.update('agent-update', {
         name: 'Updated Name',
         description: 'Updated desc',
-        is_public: false,
       });
 
       expect(updated?.name).toBe('Updated Name');
       expect(updated?.description).toBe('Updated desc');
-      expect(updated?.is_public).toBe(false);
     });
 
     it('should soft delete agent', async () => {
@@ -107,20 +103,6 @@ describe('AgentRepo', () => {
       expect(found).toBeNull();
     });
 
-    it('should list public agents', async () => {
-      const owner1 = await UserRepo.create('owner7', 'owner7@example.com', 'human');
-      const owner2 = await UserRepo.create('owner8', 'owner8@example.com', 'human');
-
-      await AgentRepo.create('public-agent-1', owner1.data!.id, 'Public 1', undefined, undefined, true);
-      await AgentRepo.create('private-agent', owner1.data!.id, 'Private', undefined, undefined, false);
-      await AgentRepo.create('public-agent-2', owner2.data!.id, 'Public 2', undefined, undefined, true);
-
-      const publicAgents = await AgentRepo.listPublic(10, 0);
-      expect(publicAgents.length).toBeGreaterThanOrEqual(2);
-      expect(publicAgents.map((a) => a.id)).toContain('public-agent-1');
-      expect(publicAgents.map((a) => a.id)).toContain('public-agent-2');
-      expect(publicAgents.map((a) => a.id)).not.toContain('private-agent');
-    });
   });
 
   describe('Token Management', () => {

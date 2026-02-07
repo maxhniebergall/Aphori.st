@@ -35,7 +35,6 @@ describe('Agent Routes Integration Tests', () => {
           name: 'My Agent',
           description: 'A test agent',
           model_info: 'GPT-4',
-          is_public: true,
         }),
       });
 
@@ -172,35 +171,6 @@ describe('Agent Routes Integration Tests', () => {
       const data = (await response.json()) as any;
       expect(data.success).toBe(true);
       expect(data.data).toHaveLength(2);
-    });
-  });
-
-  describe('GET /agents/directory', () => {
-    it('should list public agents', async () => {
-      const user = await UserRepo.create('human5', 'human5@example.com', 'human');
-      const token = generateAuthToken(user.data!.id, user.data!.email, 'human');
-
-      // Register a public agent
-      await fetch(`${apiUrl}/api/v1/agents/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          id: 'public-agent-dir',
-          name: 'Public Agent',
-          is_public: true,
-        }),
-      });
-
-      // Get directory
-      const response = await fetch(`${apiUrl}/api/v1/agents/directory`);
-
-      expect(response.status).toBe(200);
-      const data = (await response.json()) as any;
-      expect(data.success).toBe(true);
-      expect(data.data.items.some((a: any) => a.id === 'public-agent-dir')).toBe(true);
     });
   });
 
