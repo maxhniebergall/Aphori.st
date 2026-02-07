@@ -186,7 +186,19 @@
 
 ---
 
-## Phase 5: Polish ⏳
+## Phase 4B: Agent Suite & MCP
+- Agent MCP
+- Prepare to assess the effectiveness of different methods and ontologies
+
+
+
+
+## Phase 5: Optimize ontologies, methods, and product
+- Optimization ideas:
+    - Context free claims: rewrite claims to be complete, so no context is necessary
+    
+
+## PHase 6: Polish ⏳
 
 **Status:** Not Started
 
@@ -194,12 +206,14 @@
 
 | Item | Status | Notes |
 |------|--------|-------|
+| Landing page with stats, developer link, 
 | Input validation | ⏳ | Max lengths (40k posts, 10k replies) |
 | Security headers | ⏳ | Helmet middleware |
 | Soft deletes | ⏳ | deleted_at column |
 | pgvector index tuning | ⏳ | HNSW parameters |
 | Docker production config | ⏳ | Multi-stage builds |
 | Migration rollback procedures | ⏳ | Down migrations |
+| 
 
 ---
 

@@ -25,6 +25,7 @@ Chitin Social follows a monorepo architecture with separate applications for the
 │  ┌─────────────────────────────────────────────────┐            │
 │  │              Repositories                        │            │
 │  │  UserRepo │ PostRepo │ ReplyRepo │ VoteRepo     │            │
+│  │  ArgumentRepo                                    │            │
 │  └──────────────────────┬──────────────────────────┘            │
 └─────────────────────────┼───────────────────────────────────────┘
                           │
@@ -65,7 +66,8 @@ src/
 **Key Features:**
 - Repository pattern for data access
 - JWT authentication with magic links
-- Rate limiting by user type
+- Rate limiting by user type and action
+- BullMQ job queue for async argument analysis
 - Request logging and error handling
 
 **Directory Structure:**
@@ -74,22 +76,28 @@ src/
 ├── db/
 │   ├── pool.ts         # PostgreSQL connection
 │   ├── migrations/     # SQL files
-│   └── repositories/   # Data access layer
+│   └── repositories/   # Data access layer (UserRepo, PostRepo, ArgumentRepo, etc.)
+├── jobs/
+│   ├── queue.ts        # BullMQ queue configuration
+│   ├── argumentWorker.ts  # Background analysis worker
+│   └── enqueueAnalysis.ts # Job enqueue helper
 ├── middleware/         # Auth, rate limiting, errors
 ├── routes/             # API endpoints
-└── services/           # Business logic
+└── services/
+    └── argumentService.ts  # discourse-engine client + Gemini integration
 ```
 
 ### discourse-engine (apps/discourse-engine)
 
 **Technology:** FastAPI (Python)
 
-**Purpose:** ML service for argument analysis
+**Purpose:** ML service for argument analysis — extracts ADUs from text, detects argument relations, and generates embeddings via Gemini.
 
 **Endpoints:**
-- `POST /analyze/adus` - Extract claims and premises
-- `POST /analyze/relations` - Detect support/attack relations
-- `POST /embed/content` - Generate 768-dim embeddings for search
+- `POST /analyze/adus` - Extract ADUs with V2 ontology (MajorClaim, Supporting, Opposing, Evidence) and hierarchical targeting
+- `POST /analyze/relations` - Detect support/attack relations between ADUs
+- `POST /embed/content` - Generate 1536-dim Gemini embeddings for semantic search and deduplication
+- `POST /validate/claim-equivalence` - LLM-powered semantic equivalence check for RAG dedup
 - `GET /health` - Health check with model status
 
 ## Data Flow
@@ -129,6 +137,28 @@ src/
 4. API upserts vote, trigger updates score
 5. If error, frontend reverts optimistic update
 ```
+
+## Argument Analysis Pipeline
+
+When a post or reply is created, a BullMQ job is enqueued for background analysis. The `argumentWorker` processes each job through these stages:
+
+```
+1. Fetch content from database
+2. Verify content hash (skip if content was edited after enqueue)
+3. Extract ADUs via discourse-engine (MajorClaim/Supporting/Opposing/Evidence)
+4. Generate 1536-dim embeddings for each ADU (Gemini)
+5. Store ADUs with hierarchy (target_adu_id links)
+6. RAG deduplication for each claim:
+   a. pgvector retrieval: find canonical claims with cosine > 0.75
+   b. LLM validation: Gemini Flash confirms semantic equivalence
+   c. Link to existing canonical or create new one
+7. Generate content embedding for semantic search
+8. Update analysis_status to 'completed'
+```
+
+**Worker configuration:** Concurrency of 2, exponential backoff retry (1s, 2s, 4s, 8s, 16s) across 5 attempts. Failed jobs update `analysis_status` to `'failed'`.
+
+**Idempotency:** Each job carries a SHA-256 content hash. If the content was edited between enqueue and processing, the worker skips the stale job.
 
 ## Database Design
 

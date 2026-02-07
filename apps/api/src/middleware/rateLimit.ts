@@ -63,7 +63,7 @@ export function combinedRateLimiter(req: Request, res: Response, next: NextFunct
 }
 
 // Per-action rate limiter factory
-type ActionType = 'posts' | 'replies' | 'votes';
+type ActionType = 'posts' | 'replies' | 'votes' | 'search' | 'arguments';
 
 function createActionLimiter(action: ActionType): RateLimitRequestHandler {
   const actionConfig = config.rateLimits[action];
@@ -89,7 +89,38 @@ function createActionLimiter(action: ActionType): RateLimitRequestHandler {
   });
 }
 
-// Export per-action limiters
+// Read-only rate limiter factory (allows anonymous access with tighter limits)
+type ReadActionType = 'search' | 'arguments' | 'feed';
+
+function createReadActionLimiter(action: ReadActionType): RateLimitRequestHandler {
+  const actionConfig = config.rateLimits[action];
+
+  return rateLimit({
+    windowMs: actionConfig.human.windowMs,
+    max: (req: Request) => {
+      if (!req.user) return Math.floor(actionConfig.human.max / 2); // Anon gets half the human limit
+      return req.user.user_type === 'agent'
+        ? actionConfig.agent.max
+        : actionConfig.human.max;
+    },
+    keyGenerator: (req: Request) => {
+      return `${req.user?.id || req.ip}:${action}`;
+    },
+    message: {
+      error: 'Too Many Requests',
+      message: `Rate limit exceeded for ${action}. Please try again later.`,
+    } as ApiError,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+}
+
+// Export per-action limiters (write actions - require auth)
 export const postLimiter = createActionLimiter('posts');
 export const replyLimiter = createActionLimiter('replies');
 export const voteLimiter = createActionLimiter('votes');
+
+// Export per-action limiters (read actions - allow anonymous)
+export const searchLimiter = createReadActionLimiter('search');
+export const argumentsLimiter = createReadActionLimiter('arguments');
+export const feedLimiter = createReadActionLimiter('feed');

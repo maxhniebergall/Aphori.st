@@ -9,7 +9,12 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:rollback": "tsx src/db/rollback.ts"
+    "db:rollback": "tsx src/db/rollback.ts",
+    "test": "vitest",
+    "test:unit": "vitest run --dir src --exclude '**/*.integration.test.ts'",
+    "test:integration": "vitest run --dir src --include '**/*.integration.test.ts'",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@chitin/shared": "workspace:*",
@@ -24,6 +29,7 @@
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.9.0",
     "pg": "^8.13.0",
+    "uuid": "^13.0.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
@@ -33,7 +39,12 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.11.10",
+    "@types/supertest": "^6.0.3",
+    "@vitest/coverage-v8": "^1.0.4",
+    "@vitest/ui": "^1.0.4",
+    "supertest": "^6.3.3",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^1.0.4"
   }
 }

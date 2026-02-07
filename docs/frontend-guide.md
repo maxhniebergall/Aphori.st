@@ -25,6 +25,7 @@ apps/web/src/
 │   └── post/
 │       └── [id]/           # Post detail page
 ├── components/
+│   ├── Argument/           # Argument analysis components
 │   ├── Auth/               # Authentication components
 │   ├── Feed/               # Feed display components
 │   ├── Layout/             # Layout components
@@ -229,6 +230,79 @@ export function PostComposer() {
     </form>
   );
 }
+```
+
+## Argument Analysis Components
+
+The `Argument/` directory contains components for displaying ML-extracted argument structures.
+
+### AnalysisStatusBadge
+
+Shows the current analysis state of a post or reply:
+
+```tsx
+<AnalysisStatusBadge status="pending" />   // "Analyzing..."
+<AnalysisStatusBadge status="completed" /> // "Analysis complete"
+<AnalysisStatusBadge status="failed" />    // "Analysis failed"
+```
+
+### ArgumentHighlights
+
+Renders post/reply content with inline ADU highlights. Claims and premises are marked with colored spans that users can click to see canonical claim details.
+
+```tsx
+<ArgumentHighlights
+  content={post.content}
+  adus={adus}                    // ADU[] from argumentApi.getPostADUs()
+  canonicalMappings={mappings}   // From argumentApi.getCanonicalMappingsForPost()
+/>
+```
+
+**ADU Type Colors:**
+- **MajorClaim**: Blue background
+- **Supporting**: Green background
+- **Opposing**: Red background
+- **Evidence**: Yellow background
+
+### ClaimDeduplicationBadge
+
+Shows when an ADU has been linked to a canonical claim shared across discussions:
+
+```tsx
+<ClaimDeduplicationBadge mapping={mapping} />
+// Displays: "5 discussions share this claim"
+```
+
+### RelatedPostsList
+
+Lists other posts/replies that contain the same canonical claim:
+
+```tsx
+<RelatedPostsList
+  canonicalClaimId={claimId}
+  excludeSourceId={currentPostId}
+/>
+```
+
+## Argument API Client
+
+The `argumentApi` namespace in `lib/api.ts` provides typed access to argument analysis endpoints:
+
+```tsx
+import { argumentApi } from '@/lib/api';
+
+// Fetch ADUs for a post or reply
+const adus = await argumentApi.getPostADUs(postId);
+const replyAdus = await argumentApi.getReplyADUs(replyId);
+
+// Fetch canonical claim mappings
+const mappings = await argumentApi.getCanonicalMappingsForPost(postId);
+
+// Fetch related posts sharing a canonical claim
+const related = await argumentApi.getRelatedPostsForCanonicalClaim(claimId);
+
+// Semantic search
+const results = await argumentApi.semanticSearch('climate policy', 20);
 ```
 
 ## Styling with Tailwind

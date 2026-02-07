@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import logger from '../logger.js';
+import { UserRepo } from '../db/repositories/index.js';
 import type { AuthenticatedUser, AuthTokenPayload, UserType } from '@chitin/shared';
 
 // Extend Express Request type
@@ -17,7 +18,7 @@ declare global {
  * Required authentication middleware
  * Blocks unauthenticated requests
  */
-export function authenticateToken(req: Request, res: Response, next: NextFunction): void {
+export async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers['authorization'];
   const token = authHeader?.split(' ')[1];
 
@@ -33,9 +34,14 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   if (config.env !== 'production' && token === 'dev_token') {
     req.user = {
       id: 'dev_user',
-      email: 'dev@chitin.social',
+      email: 'dev@aphori.st',
       user_type: 'human',
     };
+    // Ensure dev_user exists in DB (auto-create on first use)
+    const existing = await UserRepo.findById('dev_user');
+    if (!existing) {
+      await UserRepo.create('dev_user', 'dev@aphori.st', 'human', 'Dev User');
+    }
     next();
     return;
   }
@@ -79,7 +85,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
  * Optional authentication middleware
  * Attaches user if token present, but allows anonymous requests
  */
-export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers['authorization'];
   const token = authHeader?.split(' ')[1];
 
@@ -92,9 +98,14 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
   if (config.env !== 'production' && token === 'dev_token') {
     req.user = {
       id: 'dev_user',
-      email: 'dev@chitin.social',
+      email: 'dev@aphori.st',
       user_type: 'human',
     };
+    // Ensure dev_user exists in DB (auto-create on first use)
+    const existing = await UserRepo.findById('dev_user');
+    if (!existing) {
+      await UserRepo.create('dev_user', 'dev@aphori.st', 'human', 'Dev User');
+    }
     next();
     return;
   }

@@ -25,7 +25,7 @@ export interface Post {
   author_id: string;
   title: string;
   content: string;
-  content_hash: string;
+  analysis_content_hash: string;
   analysis_status: AnalysisStatus;
   score: number;
   reply_count: number;
@@ -51,7 +51,7 @@ export interface Reply {
   parent_reply_id: string | null;
   target_adu_id: string | null;
   content: string;
-  content_hash: string;
+  analysis_content_hash: string;
   analysis_status: AnalysisStatus;
   depth: number;
   path: string; // ltree path for efficient queries
@@ -92,7 +92,8 @@ export interface CreateVoteInput {
 }
 
 // ADU (Argumentative Discourse Unit) Types
-export type ADUType = 'claim' | 'premise' | 'conclusion';
+// V2 Ontology: Hierarchical types with embedded relations
+export type ADUType = 'MajorClaim' | 'Supporting' | 'Opposing' | 'Evidence';
 export type ADUSourceType = 'post' | 'reply';
 
 export interface ADU {
@@ -104,7 +105,13 @@ export interface ADU {
   span_start: number;
   span_end: number;
   confidence: number;
+  target_adu_id: string | null; // Hierarchical parent (null for MajorClaims)
   created_at: string;
+}
+
+// For tree views of argument structure
+export interface ADUTreeNode extends ADU {
+  children: ADUTreeNode[];
 }
 
 // Argument Relation Types
@@ -120,9 +127,12 @@ export interface ArgumentRelation {
 }
 
 // Canonical Claim Types
+export type CanonicalClaimType = 'MajorClaim' | 'Supporting' | 'Opposing';
+
 export interface CanonicalClaim {
   id: string;
   representative_text: string;
+  claim_type: CanonicalClaimType;
   created_at: string;
 }
 
@@ -138,7 +148,7 @@ export interface ContentEmbedding {
   id: string;
   source_type: 'post' | 'reply';
   source_id: string;
-  embedding: number[]; // 768-dimensional vector for semantic search
+  embedding: number[]; // 1536-dimensional vector for semantic search
   created_at: string;
 }
 
@@ -254,8 +264,9 @@ export interface AnalyzeADUsResponse {
     span_start: number;
     span_end: number;
     confidence: number;
+    target_index: number | null; // Array index of parent ADU (converted to UUID in backend)
+    rewritten_text?: string; // Anaphora-resolved version for canonical matching
   }>;
-  embeddings_384: number[][];
 }
 
 export interface AnalyzeRelationsRequest {
@@ -280,5 +291,5 @@ export interface EmbedContentRequest {
 }
 
 export interface EmbedContentResponse {
-  embeddings_768: number[][];
+  embeddings_1536: number[][];
 }

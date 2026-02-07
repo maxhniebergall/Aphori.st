@@ -4,6 +4,8 @@
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
+    "start": "./scripts/dev.sh",
+    "start:clean": "./scripts/dev.sh --stop-docker",
     "dev": "pnpm -r --parallel run dev",
     "dev:api": "pnpm --filter @chitin/api dev",
     "dev:web": "pnpm --filter @chitin/web dev",

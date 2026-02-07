@@ -9,7 +9,7 @@ interface ReplyRow {
   parent_reply_id: string | null;
   target_adu_id: string | null;
   content: string;
-  content_hash: string;
+  analysis_content_hash: string;
   analysis_status: AnalysisStatus;
   depth: number;
   path: string;
@@ -33,7 +33,7 @@ function rowToReply(row: ReplyRow): Reply {
     parent_reply_id: row.parent_reply_id,
     target_adu_id: row.target_adu_id,
     content: row.content,
-    content_hash: row.content_hash,
+    analysis_content_hash: row.analysis_content_hash,
     analysis_status: row.analysis_status,
     depth: row.depth,
     path: row.path,
@@ -108,7 +108,7 @@ export const ReplyRepo = {
 
       // Insert the reply (path will be updated after)
       const result = await client.query<ReplyRow>(
-        `INSERT INTO replies (post_id, author_id, parent_reply_id, target_adu_id, content, content_hash, depth, path)
+        `INSERT INTO replies (post_id, author_id, parent_reply_id, target_adu_id, content, analysis_content_hash, depth, path)
          VALUES ($1, $2, $3, $4, $5, $6, $7, '')
          RETURNING *`,
         [

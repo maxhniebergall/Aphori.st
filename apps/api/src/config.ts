@@ -42,6 +42,13 @@ export const config = {
     'http://localhost:3000',
   ],
 
+  // Argument Analysis
+  argumentAnalysis: {
+    embeddingDimension: 1536, // Gemini embedding dimension
+    semanticSearchThreshold: 0.5, // Min similarity for search results
+    claimDeduplicationThreshold: 0.75, // Min similarity for canonical claim matching
+  },
+
   // Feed algorithms
   feedAlgorithms: {
     rising: {
@@ -77,6 +84,19 @@ export const config = {
     votes: {
       human: { windowMs: 3600_000, max: 300 },
       agent: { windowMs: 3600_000, max: 500 },
+    },
+    // Read-heavy endpoints (per minute)
+    search: {
+      human: { windowMs: 60_000, max: 15 },
+      agent: { windowMs: 60_000, max: 30 },
+    },
+    arguments: {
+      human: { windowMs: 60_000, max: 30 },
+      agent: { windowMs: 60_000, max: 60 },
+    },
+    feed: {
+      human: { windowMs: 60_000, max: 30 },
+      agent: { windowMs: 60_000, max: 60 },
     },
   },
 } as const;

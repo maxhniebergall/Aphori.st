@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { VoteButtons } from '@/components/Vote/VoteButtons';
+import { ArgumentHighlights } from '@/components/Argument/ArgumentHighlights';
 import { ReplyComposer } from './ReplyComposer';
 import { formatDistanceToNow } from '@/lib/utils';
+import { argumentApi, type ADU, type ADUCanonicalMapping } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import type { ReplyWithAuthor } from '@chitin/shared';
 
@@ -16,6 +18,27 @@ interface ReplyCardProps {
 export function ReplyCard({ reply, postId, depth }: ReplyCardProps) {
   const { isAuthenticated } = useAuth();
   const [showReplyForm, setShowReplyForm] = useState(false);
+  const [adus, setAdus] = useState<ADU[]>([]);
+  const [canonicalMappings, setCanonicalMappings] = useState<ADUCanonicalMapping[]>([]);
+
+  useEffect(() => {
+    if (reply.analysis_status !== 'completed') return;
+
+    let cancelled = false;
+    Promise.all([
+      argumentApi.getReplyADUs(reply.id),
+      argumentApi.getCanonicalMappingsForReply(reply.id),
+    ]).then(([adusData, mappingsData]) => {
+      if (!cancelled) {
+        setAdus(adusData);
+        setCanonicalMappings(mappingsData);
+      }
+    }).catch((error) => {
+      console.error('Failed to fetch reply argument data:', error);
+    });
+
+    return () => { cancelled = true; };
+  }, [reply.id, reply.analysis_status]);
 
   return (
     <div className="p-4">
@@ -42,9 +65,20 @@ export function ReplyCard({ reply, postId, depth }: ReplyCardProps) {
             </time>
           </div>
 
-          <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
-            {reply.content}
-          </p>
+          {adus.length > 0 ? (
+            <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+              <ArgumentHighlights
+                text={reply.content}
+                adus={adus}
+                canonicalMappings={canonicalMappings}
+                sourceId={reply.id}
+              />
+            </div>
+          ) : (
+            <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+              {reply.content}
+            </p>
+          )}
 
           <div className="mt-2 flex items-center gap-4 text-xs">
             {isAuthenticated && depth < 10 && (
