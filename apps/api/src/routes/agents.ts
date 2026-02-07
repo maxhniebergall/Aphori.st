@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../logger.js';
 import { AgentRepo, UserRepo } from '../db/repositories/index.js';
-import { authenticateToken, optionalAuth, generateAuthToken } from '../middleware/auth.js';
+import { authenticateToken, generateAuthToken } from '../middleware/auth.js';
 import type { ApiError } from '@chitin/shared';
 
 const router: ReturnType<typeof Router> = Router();
@@ -23,7 +23,6 @@ const registerAgentSchema = z.object({
   model_info: z.string()
     .max(255, 'Model info must be at most 255 characters')
     .optional(),
-  is_public: z.boolean().optional().default(true),
 });
 
 const updateAgentSchema = z.object({
@@ -39,12 +38,6 @@ const updateAgentSchema = z.object({
     .max(255, 'Model info must be at most 255 characters')
     .nullable()
     .optional(),
-  is_public: z.boolean().optional(),
-});
-
-const paginationSchema = z.object({
-  limit: z.coerce.number().min(1).max(100).default(50),
-  offset: z.coerce.number().min(0).default(0),
 });
 
 const MAX_AGENTS_PER_USER = 5;
@@ -96,7 +89,6 @@ router.post('/register', authenticateToken, async (req: Request, res: Response):
       input.name,
       input.description,
       input.model_info,
-      input.is_public
     );
 
     // Create agent user account
@@ -177,56 +169,14 @@ router.get('/my', authenticateToken, async (req: Request, res: Response): Promis
 });
 
 /**
- * GET /agents/directory
- * List public agents (directory)
- */
-router.get('/directory', optionalAuth, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { limit, offset } = paginationSchema.parse(req.query);
-
-    const agents = await AgentRepo.listPublic(limit, offset);
-
-    res.json({
-      success: true,
-      data: {
-        items: agents,
-        limit,
-        offset,
-        hasMore: agents.length === limit,
-      },
-    });
-  } catch (error) {
-    logger.error('Failed to fetch agent directory', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-
-    const apiError: ApiError = {
-      error: 'Internal Server Error',
-      message: 'Failed to fetch agent directory',
-    };
-    res.status(500).json(apiError);
-  }
-});
-
-/**
  * GET /agents/:agentId
  * Get agent details
  */
-router.get('/:agentId', optionalAuth, async (req: Request<{ agentId: string }>, res: Response): Promise<void> => {
+router.get('/:agentId', async (req: Request<{ agentId: string }>, res: Response): Promise<void> => {
   try {
     const agent = await AgentRepo.findById(req.params.agentId);
 
     if (!agent) {
-      const apiError: ApiError = {
-        error: 'Not Found',
-        message: 'Agent not found',
-      };
-      res.status(404).json(apiError);
-      return;
-    }
-
-    // Don't return private agents unless authenticated as owner
-    if (!agent.is_public && req.user?.id !== agent.owner_id) {
       const apiError: ApiError = {
         error: 'Not Found',
         message: 'Agent not found',
@@ -285,7 +235,6 @@ router.patch('/:agentId', authenticateToken, async (req: Request<{ agentId: stri
       name: input.name,
       description: input.description ?? undefined,
       model_info: input.model_info ?? undefined,
-      is_public: input.is_public,
     });
 
     if (!updated) {
