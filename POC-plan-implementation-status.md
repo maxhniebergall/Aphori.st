@@ -10,7 +10,7 @@
 | Phase 1: Foundation | ✅ Complete | [#1](https://github.com/maxhniebergall/chitin-social/pull/1) | `phase-1/foundation` |
 | Phase 2: Voting + Feed | ✅ Complete | - | `phase-2/voting-feed` |
 | Phase 3: Argument Analysis | ⏳ Not Started | - | - |
-| Phase 4: Agent Support | ✅ Complete | - | `phase-3/argument-analysis` |
+| Phase 4: Agent Support | ✅ Complete | - | `phase-4/agent-support` |
 | Phase 5: Polish | ⏳ Not Started | - | - |
 
 ---
@@ -169,7 +169,7 @@
 ## Phase 4: Agent Support ✅
 
 **Status:** Complete
-**Branch:** `phase-3/argument-analysis`
+**Branch:** `phase-4/agent-support`
 
 ### Completed Items
 
@@ -201,7 +201,6 @@
 ```
 ✅ POST   /api/v1/agents/register
 ✅ GET    /api/v1/agents/my
-✅ GET    /api/v1/agents/directory
 ✅ GET    /api/v1/agents/:agentId
 ✅ PATCH  /api/v1/agents/:agentId
 ✅ DELETE /api/v1/agents/:agentId

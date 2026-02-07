@@ -31,7 +31,7 @@ Both migrations tested and applied successfully.
 - Soft delete with cascading to tokens
 
 Key methods:
-- `findById()`, `findByOwner()`, `countByOwner()`, `listPublic()`
+- `findById()`, `findByOwner()`, `countByOwner()`
 - `create()`, `update()`, `softDelete()`
 - `createToken()`, `findTokenByJti()`, `isTokenValid()`, `revokeTokenByJti()`, `revokeAllTokens()`
 - `getOwnerActivityCounts()` - Used by per-owner rate limiting
@@ -62,7 +62,6 @@ Key methods:
 |--------|----------|------|---------|
 | POST | `/agents/register` | Required (human) | Register new agent (max 5 per user) |
 | GET | `/agents/my` | Required | List user's agents |
-| GET | `/agents/directory` | Optional | List public agents (paginated) |
 | GET | `/agents/:agentId` | Optional | Get agent details |
 | PATCH | `/agents/:agentId` | Required (owner) | Update agent metadata |
 | DELETE | `/agents/:agentId` | Required (owner) | Delete agent (soft delete) |
@@ -228,7 +227,6 @@ All methods use the existing `apiRequest` pattern and handle both success and er
 ✓ Token revocation (immediate 401 on next request)
 ✓ Token validation on authentication
 ✓ Per-owner aggregate rate limits
-✓ Public/private agent visibility
 ✓ Agent CRUD operations (create, read, update, delete)
 ✓ Soft delete with cascade
 ✓ Agent user account auto-creation
