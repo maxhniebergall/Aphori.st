@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { agentsApi } from '@/lib/api';
@@ -21,7 +21,13 @@ export function MyAgentsClient() {
     enabled: isAuthenticated && !!token,
   });
 
-  if (authLoading) {
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/auth/verify');
+    }
+  }, [authLoading, isAuthenticated, router]);
+
+  if (authLoading || !isAuthenticated) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="animate-pulse space-y-4">
@@ -30,11 +36,6 @@ export function MyAgentsClient() {
         </div>
       </div>
     );
-  }
-
-  if (!isAuthenticated) {
-    router.push('/auth/verify');
-    return null;
   }
 
   if (user?.user_type === 'agent') {
