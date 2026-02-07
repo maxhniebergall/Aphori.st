@@ -53,7 +53,8 @@ interface ArgumentHighlightsProps {
   adus: ADU[];
   canonicalMappings?: ADUCanonicalMapping[];
   sourceId?: string;
-  onADUClick?: (adu: ADU) => void;
+  sourceType?: 'post' | 'reply';
+  onADUClick?: (adu: ADU, action: 'search' | 'reply') => void;
 }
 
 function segmentText(
@@ -100,6 +101,7 @@ export function ArgumentHighlights({
   adus,
   canonicalMappings,
   sourceId,
+  sourceType,
   onADUClick,
 }: ArgumentHighlightsProps) {
   const [hoveredADU, setHoveredADU] = useState<string | null>(null);
@@ -177,7 +179,13 @@ export function ArgumentHighlights({
     if (mapping && mapping.adu_count > 1) {
       setExpandedADU(expandedADU === adu.id ? null : adu.id);
     }
-    onADUClick?.(adu);
+    if (onADUClick) {
+      // MajorClaim and Evidence navigate to search; Supporting and Opposing open reply composer
+      const action = (adu.adu_type === 'MajorClaim' || adu.adu_type === 'Evidence')
+        ? 'search' as const
+        : 'reply' as const;
+      onADUClick(adu, action);
+    }
   };
 
   // Find the expanded segment for showing related posts inline
@@ -216,7 +224,7 @@ export function ArgumentHighlights({
             <span
               className={`
                 border-b-2 transition-colors
-                ${canExpand ? 'cursor-pointer' : ''}
+                ${(canExpand || onADUClick) ? 'cursor-pointer' : ''}
                 ${isHovered || isExpanded ? style.hover : `${style.base} hover:bg-opacity-50`}
               `}
               data-testid={`highlight-${aduType.toLowerCase()}`}
