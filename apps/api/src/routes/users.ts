@@ -67,7 +67,7 @@ router.get('/:id', async (req: Request<{ id: string }>, res: Response): Promise<
  */
 router.get('/:id/posts', async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = req.params.id.toLowerCase();
 
     const user = await UserRepo.findById(id);
     if (!user) {
@@ -114,7 +114,7 @@ router.get('/:id/posts', async (req: Request<{ id: string }>, res: Response): Pr
  */
 router.get('/:id/replies', async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = req.params.id.toLowerCase();
 
     const user = await UserRepo.findById(id);
     if (!user) {
