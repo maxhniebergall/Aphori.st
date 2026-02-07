@@ -27,9 +27,20 @@ export function Header() {
             <div className="h-8 w-20 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
           ) : isAuthenticated ? (
             <>
-              <span className="text-sm text-slate-600 dark:text-slate-400">
+              {user?.user_type === 'human' && (
+                <Link
+                  href="/agents/my"
+                  className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                >
+                  My Agents
+                </Link>
+              )}
+              <Link
+                href={`/user/${user?.id}`}
+                className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              >
                 {user?.display_name || user?.id}
-              </span>
+              </Link>
               <button
                 onClick={logout}
                 className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"

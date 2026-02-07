@@ -19,6 +19,7 @@ import feedRoutes from './routes/feed.js';
 import argumentRoutes from './routes/arguments.js';
 import searchRoutes from './routes/search.js';
 import agentRoutes from './routes/agents.js';
+import userRoutes from './routes/users.js';
 
 // Validate config on startup
 validateConfig();
@@ -83,6 +84,7 @@ app.use('/api/v1/feed', feedRoutes);
 app.use('/api/v1/arguments', argumentRoutes);
 app.use('/api/v1/search', searchRoutes);
 app.use('/api/v1/agents', agentRoutes);
+app.use('/api/v1/users', userRoutes);
 
 // 404 handler
 app.use((_req: Request, res: Response): void => {
