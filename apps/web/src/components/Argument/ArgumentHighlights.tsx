@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { ClaimDeduplicationBadge } from './ClaimDeduplicationBadge';
-import { RelatedPostsList } from './RelatedPostsList';
-import { argumentApi, type ADUCanonicalMapping, type RelatedSource } from '@/lib/api';
+import { type ADUCanonicalMapping } from '@/lib/api';
 
 // V2 Ontology ADU types
 type ADUType = 'MajorClaim' | 'Supporting' | 'Opposing' | 'Evidence';
@@ -52,8 +51,6 @@ interface ArgumentHighlightsProps {
   text: string;
   adus: ADU[];
   canonicalMappings?: ADUCanonicalMapping[];
-  sourceId?: string;
-  sourceType?: 'post' | 'reply';
   onADUClick?: (adu: ADU, action: 'search' | 'reply') => void;
 }
 
@@ -100,14 +97,9 @@ export function ArgumentHighlights({
   text,
   adus,
   canonicalMappings,
-  sourceId,
-  sourceType,
   onADUClick,
 }: ArgumentHighlightsProps) {
   const [hoveredADU, setHoveredADU] = useState<string | null>(null);
-  const [expandedADU, setExpandedADU] = useState<string | null>(null);
-  const [relatedSources, setRelatedSources] = useState<RelatedSource[]>([]);
-  const [isLoadingRelated, setIsLoadingRelated] = useState(false);
 
   // Memoize segments to avoid recreating on every render
   const segments = useMemo(
@@ -124,61 +116,7 @@ export function ArgumentHighlights({
     return map;
   }, [adus]);
 
-  // Create a stable lookup map for canonical claim IDs by ADU ID
-  const canonicalClaimIdByAduId = useMemo(() => {
-    const map = new Map<string, string>();
-    if (canonicalMappings) {
-      for (const mapping of canonicalMappings) {
-        if (mapping.adu_count > 1) {
-          map.set(mapping.adu_id, mapping.canonical_claim_id);
-        }
-      }
-    }
-    return map;
-  }, [canonicalMappings]);
-
-  // Fetch related sources when a claim is expanded
-  useEffect(() => {
-    if (!expandedADU) {
-      setRelatedSources([]);
-      return;
-    }
-
-    const canonicalClaimId = canonicalClaimIdByAduId.get(expandedADU);
-
-    if (!canonicalClaimId) {
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoadingRelated(true);
-
-    argumentApi
-      .getRelatedPostsForCanonicalClaim(canonicalClaimId, 10, sourceId)
-      .then((data) => {
-        if (!cancelled) {
-          setRelatedSources(data);
-          setIsLoadingRelated(false);
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to fetch related sources:', error);
-        if (!cancelled) {
-          setRelatedSources([]);
-          setIsLoadingRelated(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [expandedADU, sourceId, canonicalClaimIdByAduId]);
-
-  const handleClaimClick = (adu: ADU, mapping?: ADUCanonicalMapping) => {
-    // Only toggle expansion for deduplicated claims
-    if (mapping && mapping.adu_count > 1) {
-      setExpandedADU(expandedADU === adu.id ? null : adu.id);
-    }
+  const handleClaimClick = (adu: ADU) => {
     if (onADUClick) {
       // MajorClaim and Evidence navigate to search; Supporting and Opposing open reply composer
       const action = (adu.adu_type === 'MajorClaim' || adu.adu_type === 'Evidence')
@@ -187,11 +125,6 @@ export function ArgumentHighlights({
       onADUClick(adu, action);
     }
   };
-
-  // Find the expanded segment for showing related posts inline
-  const expandedSegmentIndex = segments.findIndex(
-    s => s.adu?.id === expandedADU && s.canonicalMapping && s.canonicalMapping.adu_count > 1
-  );
 
   return (
     <div className="whitespace-pre-wrap text-base leading-relaxed">
@@ -205,11 +138,6 @@ export function ArgumentHighlights({
         const hoveredAdu = hoveredADU ? aduById.get(hoveredADU) : undefined;
         const isHovered = hoveredADU === seg.adu.id
           || (hoveredAdu?.target_adu_id === seg.adu.id);
-        const isExpanded = expandedADU === seg.adu.id;
-        // Evidence is not deduplicated, so it won't have canonical mappings
-        const isDeduplicated = seg.canonicalMapping && seg.canonicalMapping.adu_count > 1;
-        const canExpand = isDeduplicated && aduType !== 'Evidence';
-
         // Build tooltip
         let tooltip = `${style.label} (${(seg.adu.confidence * 100).toFixed(0)}%)`;
         if (seg.canonicalMapping && seg.canonicalMapping.representative_text !== seg.text) {
@@ -224,11 +152,11 @@ export function ArgumentHighlights({
             <span
               className={`
                 border-b-2 transition-colors
-                ${(canExpand || onADUClick) ? 'cursor-pointer' : ''}
-                ${isHovered || isExpanded ? style.hover : `${style.base} hover:bg-opacity-50`}
+                ${onADUClick ? 'cursor-pointer' : ''}
+                ${isHovered ? style.hover : `${style.base} hover:bg-opacity-50`}
               `}
               data-testid={`highlight-${aduType.toLowerCase()}`}
-              onClick={() => handleClaimClick(seg.adu!, seg.canonicalMapping)}
+              onClick={() => handleClaimClick(seg.adu!)}
               onMouseEnter={() => setHoveredADU(seg.adu!.id)}
               onMouseLeave={() => setHoveredADU(null)}
               title={tooltip}
@@ -239,14 +167,7 @@ export function ArgumentHighlights({
             {aduType !== 'Evidence' && seg.canonicalMapping && (
               <ClaimDeduplicationBadge
                 aduCount={seg.canonicalMapping.adu_count}
-                isExpanded={isExpanded}
-              />
-            )}
-            {/* Show related posts inline after the expanded claim */}
-            {idx === expandedSegmentIndex && (
-              <RelatedPostsList
-                relatedSources={relatedSources}
-                isLoading={isLoadingRelated}
+                isExpanded={false}
               />
             )}
           </span>
