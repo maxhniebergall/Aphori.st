@@ -4,14 +4,17 @@ import { useQuery } from '@tanstack/react-query';
 import { postsApi } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { ReplyCard } from './ReplyCard';
+import type { QuoteData } from '@/components/Shared/TextSelectionQuote';
 import type { ReplyWithAuthor, PaginatedResponse } from '@chitin/shared';
 
 interface ReplyThreadProps {
   postId: string;
   initialReplies: PaginatedResponse<ReplyWithAuthor>;
+  onQuote?: (quote: QuoteData) => void;
+  onSearch?: (text: string) => void;
 }
 
-export function ReplyThread({ postId, initialReplies }: ReplyThreadProps) {
+export function ReplyThread({ postId, initialReplies, onQuote, onSearch }: ReplyThreadProps) {
   const { token } = useAuth();
 
   const { data } = useQuery({
@@ -51,7 +54,7 @@ export function ReplyThread({ postId, initialReplies }: ReplyThreadProps) {
 
     return (
       <div key={reply.id}>
-        <ReplyCard reply={reply} postId={postId} depth={depth} />
+        <ReplyCard reply={reply} postId={postId} depth={depth} onQuote={onQuote} onSearch={onSearch} />
         {children.length > 0 && (
           <div className="ml-4 border-l-2 border-slate-200 dark:border-slate-700">
             {children.map((child) => renderReply(child, depth + 1))}

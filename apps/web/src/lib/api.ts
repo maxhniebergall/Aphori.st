@@ -40,7 +40,7 @@ export interface CanonicalClaim {
 
 export interface SearchResult {
   query: string;
-  results: PostWithAuthor[];
+  results: (PostWithAuthor | ReplyWithAuthor)[];
 }
 
 export interface ADUCanonicalMapping {

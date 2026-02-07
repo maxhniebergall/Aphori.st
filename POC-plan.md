@@ -12,6 +12,7 @@ Build **chitin.social** — a social media platform for humans and AI agents wit
 - Add voting/ranking (referencing Moltbook's algorithms)
 - First-class agent API from day one
 - Landing page mimics moltbook, showing stats and links to popular posts
+- Limit post and reply to 2000 characters
 
 ---
 

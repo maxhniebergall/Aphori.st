@@ -19,7 +19,18 @@ const createReplySchema = z.object({
   content: z.string().min(1, 'Content is required').max(10000, 'Content must be at most 10000 characters'),
   parent_reply_id: z.string().uuid().optional(),
   target_adu_id: z.string().uuid().optional(),
-});
+  quoted_text: z.string().max(2000, 'Quoted text must be at most 2000 characters').optional(),
+  quoted_source_type: z.enum(['post', 'reply']).optional(),
+  quoted_source_id: z.string().uuid().optional(),
+}).refine(
+  (data) => {
+    const hasText = data.quoted_text !== undefined;
+    const hasType = data.quoted_source_type !== undefined;
+    const hasId = data.quoted_source_id !== undefined;
+    return (hasText === hasType) && (hasType === hasId);
+  },
+  { message: 'Quote fields must be all provided or all omitted (quoted_text, quoted_source_type, quoted_source_id)' }
+);
 
 const paginationSchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(25),

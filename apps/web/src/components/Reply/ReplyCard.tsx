@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { VoteButtons } from '@/components/Vote/VoteButtons';
 import { ArgumentHighlights } from '@/components/Argument/ArgumentHighlights';
+import { TextSelectionQuote, type QuoteData } from '@/components/Shared/TextSelectionQuote';
 import { ReplyComposer } from './ReplyComposer';
 import { formatDistanceToNow } from '@/lib/utils';
-import { argumentApi, type ADU, type ADUCanonicalMapping } from '@/lib/api';
+import { argumentApi } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import type { ReplyWithAuthor } from '@chitin/shared';
 
@@ -13,32 +15,38 @@ interface ReplyCardProps {
   reply: ReplyWithAuthor;
   postId: string;
   depth: number;
+  onQuote?: (quote: QuoteData) => void;
+  onSearch?: (text: string) => void;
 }
 
-export function ReplyCard({ reply, postId, depth }: ReplyCardProps) {
+export function ReplyCard({ reply, postId, depth, onQuote, onSearch }: ReplyCardProps) {
   const { isAuthenticated } = useAuth();
   const [showReplyForm, setShowReplyForm] = useState(false);
-  const [adus, setAdus] = useState<ADU[]>([]);
-  const [canonicalMappings, setCanonicalMappings] = useState<ADUCanonicalMapping[]>([]);
-
-  useEffect(() => {
-    if (reply.analysis_status !== 'completed') return;
-
-    let cancelled = false;
-    Promise.all([
+  const { data } = useQuery({
+    queryKey: ['argument-data', 'reply', reply.id],
+    queryFn: () => Promise.all([
       argumentApi.getReplyADUs(reply.id),
       argumentApi.getCanonicalMappingsForReply(reply.id),
-    ]).then(([adusData, mappingsData]) => {
-      if (!cancelled) {
-        setAdus(adusData);
-        setCanonicalMappings(mappingsData);
-      }
-    }).catch((error) => {
-      console.error('Failed to fetch reply argument data:', error);
-    });
+    ]),
+    enabled: reply.analysis_status === 'completed',
+    staleTime: 5 * 60 * 1000,
+  });
 
-    return () => { cancelled = true; };
-  }, [reply.id, reply.analysis_status]);
+  const adus = data?.[0] ?? [];
+  const canonicalMappings = data?.[1] ?? [];
+
+  const handleADUClick = useCallback((adu: { id: string; text: string }, action: 'search' | 'reply') => {
+    if (action === 'search' && onSearch) {
+      onSearch(adu.text);
+    } else if (action === 'reply' && onQuote) {
+      onQuote({
+        text: adu.text,
+        sourceType: 'reply',
+        sourceId: reply.id,
+        targetAduId: adu.id,
+      });
+    }
+  }, [onSearch, onQuote, reply.id]);
 
   return (
     <div className="p-4">
@@ -65,20 +73,32 @@ export function ReplyCard({ reply, postId, depth }: ReplyCardProps) {
             </time>
           </div>
 
-          {adus.length > 0 ? (
-            <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
-              <ArgumentHighlights
-                text={reply.content}
-                adus={adus}
-                canonicalMappings={canonicalMappings}
-                sourceId={reply.id}
-              />
-            </div>
-          ) : (
-            <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
-              {reply.content}
-            </p>
+          {reply.quoted_text && (
+            <blockquote className="mt-1 pl-3 border-l-2 border-slate-300 dark:border-slate-600 text-xs text-slate-500 dark:text-slate-400 italic line-clamp-3">
+              {reply.quoted_text}
+            </blockquote>
           )}
+
+          <TextSelectionQuote
+            sourceType="reply"
+            sourceId={reply.id}
+            onQuote={onQuote || (() => {})}
+          >
+            {adus.length > 0 ? (
+              <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+                <ArgumentHighlights
+                  text={reply.content}
+                  adus={adus}
+                  canonicalMappings={canonicalMappings}
+                  onADUClick={handleADUClick}
+                />
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                {reply.content}
+              </p>
+            )}
+          </TextSelectionQuote>
 
           <div className="mt-2 flex items-center gap-4 text-xs">
             {isAuthenticated && depth < 10 && (
