@@ -1,14 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { postsApi } from '@/lib/api';
+import type { QuoteData } from '@/components/Shared/TextSelectionQuote';
 
 interface ReplyComposerProps {
   postId: string;
   parentReplyId?: string;
   targetAduId?: string;
+  quote?: QuoteData | null;
+  onClearQuote?: () => void;
   onSuccess?: () => void;
   onCancel?: () => void;
   compact?: boolean;
@@ -18,6 +21,8 @@ export function ReplyComposer({
   postId,
   parentReplyId,
   targetAduId,
+  quote,
+  onClearQuote,
   onSuccess,
   onCancel,
   compact = false,
@@ -34,13 +39,19 @@ export function ReplyComposer({
         {
           content,
           parent_reply_id: parentReplyId,
-          target_adu_id: targetAduId,
+          target_adu_id: quote?.targetAduId ?? targetAduId,
+          ...(quote && {
+            quoted_text: quote.text,
+            quoted_source_type: quote.sourceType,
+            quoted_source_id: quote.sourceId,
+          }),
         },
         token
       );
     },
     onSuccess: () => {
       setContent('');
+      onClearQuote?.();
       queryClient.invalidateQueries({ queryKey: ['replies', postId] });
       onSuccess?.();
     },
@@ -57,6 +68,22 @@ export function ReplyComposer({
 
   return (
     <div className={compact ? '' : 'p-4 border-b border-slate-200 dark:border-slate-700'}>
+      {quote && (
+        <div className="mb-2 flex items-start gap-2 p-2 bg-slate-50 dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700">
+          <blockquote className="flex-1 pl-2 border-l-2 border-slate-300 dark:border-slate-600 text-xs text-slate-500 dark:text-slate-400 italic line-clamp-3">
+            {quote.text}
+          </blockquote>
+          <button
+            onClick={onClearQuote}
+            className="shrink-0 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+            aria-label="Remove quote"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
       <textarea
         placeholder={parentReplyId ? 'Write a reply...' : 'Add a comment...'}
         value={content}
