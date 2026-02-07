@@ -157,6 +157,43 @@ export const ReplyRepo = {
     });
   },
 
+  async findByAuthor(
+    authorId: string,
+    limit: number,
+    cursor?: string
+  ): Promise<PaginatedResponse<ReplyWithAuthor>> {
+    const params: unknown[] = [authorId, limit + 1];
+    let cursorCondition = '';
+
+    if (cursor) {
+      cursorCondition = 'AND r.created_at < $3';
+      params.push(cursor);
+    }
+
+    const result = await query<ReplyWithAuthorRow>(
+      `SELECT r.*, u.display_name as author_display_name, u.user_type as author_user_type
+       FROM replies r
+       JOIN users u ON r.author_id = u.id
+       WHERE r.author_id = $1 AND r.deleted_at IS NULL ${cursorCondition}
+       ORDER BY r.created_at DESC
+       LIMIT $2`,
+      params
+    );
+
+    const hasMore = result.rows.length > limit;
+    const items = result.rows.slice(0, limit).map(rowToReplyWithAuthor);
+
+    const nextCursor = hasMore && items.length > 0
+      ? items[items.length - 1]!.created_at
+      : null;
+
+    return {
+      items,
+      cursor: nextCursor,
+      hasMore,
+    };
+  },
+
   async findByPostId(
     postId: string,
     limit: number,
