@@ -15,6 +15,9 @@ interface ReplyRow {
   path: string;
   score: number;
   reply_count: number;
+  quoted_text: string | null;
+  quoted_source_type: 'post' | 'reply' | null;
+  quoted_source_id: string | null;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
@@ -39,6 +42,9 @@ function rowToReply(row: ReplyRow): Reply {
     path: row.path,
     score: row.score,
     reply_count: row.reply_count,
+    quoted_text: row.quoted_text,
+    quoted_source_type: row.quoted_source_type,
+    quoted_source_id: row.quoted_source_id,
     created_at: (row.created_at as Date).toISOString(),
     updated_at: (row.updated_at as Date).toISOString(),
     deleted_at: row.deleted_at ? (row.deleted_at as Date).toISOString() : null,
@@ -108,8 +114,8 @@ export const ReplyRepo = {
 
       // Insert the reply (path will be updated after)
       const result = await client.query<ReplyRow>(
-        `INSERT INTO replies (post_id, author_id, parent_reply_id, target_adu_id, content, analysis_content_hash, depth, path)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, '')
+        `INSERT INTO replies (post_id, author_id, parent_reply_id, target_adu_id, content, analysis_content_hash, depth, path, quoted_text, quoted_source_type, quoted_source_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, '', $8, $9, $10)
          RETURNING *`,
         [
           postId,
@@ -119,6 +125,9 @@ export const ReplyRepo = {
           input.content,
           contentHash,
           depth,
+          input.quoted_text ?? null,
+          input.quoted_source_type ?? null,
+          input.quoted_source_id ?? null,
         ]
       );
 
