@@ -57,6 +57,9 @@ export interface Reply {
   path: string; // ltree path for efficient queries
   score: number;
   reply_count: number;
+  quoted_text: string | null;
+  quoted_source_type: 'post' | 'reply' | null;
+  quoted_source_id: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -66,6 +69,9 @@ export interface CreateReplyInput {
   content: string;
   parent_reply_id?: string;
   target_adu_id?: string;
+  quoted_text?: string;
+  quoted_source_type?: 'post' | 'reply';
+  quoted_source_id?: string;
 }
 
 export interface ReplyWithAuthor extends Reply {
