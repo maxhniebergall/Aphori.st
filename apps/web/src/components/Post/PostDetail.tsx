@@ -85,8 +85,6 @@ export function PostDetail({ post, onQuote, onSearch }: PostDetailProps) {
                   text={post.content}
                   adus={adus}
                   canonicalMappings={canonicalMappings}
-                  sourceId={post.id}
-                  sourceType="post"
                   onADUClick={handleADUClick}
                 />
               ) : (

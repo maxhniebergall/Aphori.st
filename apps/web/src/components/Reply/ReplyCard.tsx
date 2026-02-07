@@ -90,8 +90,6 @@ export function ReplyCard({ reply, postId, depth, onQuote, onSearch }: ReplyCard
                   text={reply.content}
                   adus={adus}
                   canonicalMappings={canonicalMappings}
-                  sourceId={reply.id}
-                  sourceType="reply"
                   onADUClick={handleADUClick}
                 />
               </div>
