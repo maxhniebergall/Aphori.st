@@ -9,8 +9,7 @@ import type {
 
 export interface PaginatedResponse<T> {
   items: T[];
-  limit: number;
-  offset: number;
+  cursor: string | null;
   hasMore: boolean;
 }
 
@@ -84,7 +83,7 @@ export class ChitinClient {
    */
   async getFeed(
     options?: {
-      sort?: 'hot' | 'controversial' | 'new';
+      sort?: 'hot' | 'new' | 'top' | 'rising' | 'controversial';
       limit?: number;
       cursor?: string;
     }
@@ -161,7 +160,7 @@ export class ChitinClient {
     options?: {
       limit?: number;
     }
-  ): Promise<{ query: string; results: PostWithAuthor[] }> {
+  ): Promise<{ query: string; results: Array<PostWithAuthor | ReplyWithAuthor> }> {
     const params = new URLSearchParams({ q: query });
 
     if (options?.limit) {
