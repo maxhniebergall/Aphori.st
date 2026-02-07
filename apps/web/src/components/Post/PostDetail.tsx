@@ -1,44 +1,46 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { VoteButtons } from '@/components/Vote/VoteButtons';
 import { ArgumentHighlights } from '@/components/Argument/ArgumentHighlights';
+import { TextSelectionQuote, type QuoteData } from '@/components/Shared/TextSelectionQuote';
 import { formatDistanceToNow } from '@/lib/utils';
-import { argumentApi, type ADU, type ADUCanonicalMapping } from '@/lib/api';
+import { argumentApi } from '@/lib/api';
 import type { PostWithAuthor } from '@chitin/shared';
 
 interface PostDetailProps {
   post: PostWithAuthor;
+  onQuote?: (quote: QuoteData) => void;
+  onSearch?: (text: string) => void;
 }
 
-export function PostDetail({ post }: PostDetailProps) {
-  const [adus, setAdus] = useState<ADU[]>([]);
-  const [canonicalMappings, setCanonicalMappings] = useState<ADUCanonicalMapping[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export function PostDetail({ post, onQuote, onSearch }: PostDetailProps) {
+  const { data } = useQuery({
+    queryKey: ['argument-data', 'post', post.id],
+    queryFn: () => Promise.all([
+      argumentApi.getPostADUs(post.id),
+      argumentApi.getCanonicalMappingsForPost(post.id),
+    ]),
+    enabled: post.analysis_status === 'completed',
+    staleTime: 5 * 60 * 1000,
+  });
 
-  useEffect(() => {
-    async function fetchArgumentData() {
-      try {
-        // Fetch ADUs and canonical mappings in parallel
-        const [adusData, mappingsData] = await Promise.all([
-          argumentApi.getPostADUs(post.id),
-          argumentApi.getCanonicalMappingsForPost(post.id),
-        ]);
-        setAdus(adusData);
-        setCanonicalMappings(mappingsData);
-      } catch (error) {
-        console.error('Failed to fetch argument data:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
+  const adus = data?.[0] ?? [];
+  const canonicalMappings = data?.[1] ?? [];
 
-    if (post.analysis_status === 'completed') {
-      fetchArgumentData();
-    } else {
-      setIsLoading(false);
+  const handleADUClick = useCallback((adu: { id: string; text: string }, action: 'search' | 'reply') => {
+    if (action === 'search' && onSearch) {
+      onSearch(adu.text);
+    } else if (action === 'reply' && onQuote) {
+      onQuote({
+        text: adu.text,
+        sourceType: 'post',
+        sourceId: post.id,
+        targetAduId: adu.id,
+      });
     }
-  }, [post.id, post.analysis_status]);
+  }, [onSearch, onQuote, post.id]);
 
   return (
     <article className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 p-6">
@@ -73,21 +75,29 @@ export function PostDetail({ post }: PostDetailProps) {
           </div>
 
           <div className="mt-4 prose prose-slate dark:prose-invert max-w-none">
-            {!isLoading && adus.length > 0 ? (
-              <ArgumentHighlights
-                text={post.content}
-                adus={adus}
-                canonicalMappings={canonicalMappings}
-                sourceId={post.id}
-              />
-            ) : (
-              <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300">
-                {post.content}
-              </p>
-            )}
+            <TextSelectionQuote
+              sourceType="post"
+              sourceId={post.id}
+              onQuote={onQuote || (() => {})}
+            >
+              {adus.length > 0 ? (
+                <ArgumentHighlights
+                  text={post.content}
+                  adus={adus}
+                  canonicalMappings={canonicalMappings}
+                  sourceId={post.id}
+                  sourceType="post"
+                  onADUClick={handleADUClick}
+                />
+              ) : (
+                <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300">
+                  {post.content}
+                </p>
+              )}
+            </TextSelectionQuote>
           </div>
 
-          {!isLoading && adus.length > 0 && (
+          {adus.length > 0 && (
             <div className="mt-3 flex items-center flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1">
                 <span className="inline-block w-3 h-0.5 bg-blue-500 dark:bg-blue-400" />
