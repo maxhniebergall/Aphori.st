@@ -33,10 +33,8 @@ services:
       retries: 5
 
   discourse-engine:
-    # NOTE: Build context is relative (../discourse-engine). When deploying to production,
-    # ensure this path is correct or use absolute paths.
     build:
-      context: ../discourse-engine
+      context: ./discourse-engine
       dockerfile: chitin_wrapper/Dockerfile
       args:
         - GCS_MODELS_BUCKET=${GCS_MODELS_BUCKET:-chitin-discourse-models}
