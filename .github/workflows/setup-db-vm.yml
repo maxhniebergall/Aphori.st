@@ -80,7 +80,7 @@ jobs:
         if: inputs.action == 'start' || inputs.action == 'setup'
         run: |
           gcloud compute ssh $VM_NAME --zone $ZONE --command "
-            sudo /home/chitin-db/start-db.sh $DB_PORT $REDIS_PORT
+            sudo bash /home/chitin-db/start-db.sh $DB_PORT $REDIS_PORT
           "
 
       - name: Stop services
