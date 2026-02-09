@@ -37,10 +37,24 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # First-time setup: copy files to VM, create data directories
+      # First-time setup: copy files to VM, configure networking, create data directories
       - name: Setup VM
         if: inputs.action == 'setup'
         run: |
+          # Ensure VM has network tag for firewall targeting
+          gcloud compute instances add-tags $VM_NAME \
+            --zone $ZONE \
+            --tags postgres-server
+
+          # Allow Cloud Run (via VPC connector 10.8.0.0/28) to reach DB and Redis
+          gcloud compute firewall-rules create allow-cloudrun-to-postgres \
+            --network default \
+            --allow tcp:5432,tcp:6379 \
+            --source-ranges 10.8.0.0/28 \
+            --target-tags postgres-server \
+            --description "Allow Cloud Run via VPC connector to reach DB and Redis" \
+          || echo "Firewall rule already exists, skipping."
+
           gcloud compute scp \
             infra/docker-compose.vm.yml \
             infra/start-db.sh \
