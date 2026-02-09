@@ -15,7 +15,7 @@ REDIS_PORT="${2:?Usage: start-db.sh <pg_port> <redis_port>}"
 # Get access token from the instance metadata server
 TOKEN=$(curl -sf -H "Metadata-Flavor: Google" \
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
-  | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+  | tr -d '\n ' | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 
 if [ -z "$TOKEN" ]; then
   echo "ERROR: Failed to get access token from metadata server."
@@ -37,7 +37,8 @@ fetch_secret() {
   fi
 
   # Extract the base64-encoded data from payload.data and decode it
-  echo "$response" | sed -n 's/.*"data":"\([^"]*\)".*/\1/p' | base64 -d
+  # API may return pretty-printed JSON, so handle optional whitespace
+  echo "$response" | tr -d '\n ' | sed -n 's/.*"data":"\([^"]*\)".*/\1/p' | base64 -d
 }
 
 echo "Fetching secrets from Secret Manager..."
