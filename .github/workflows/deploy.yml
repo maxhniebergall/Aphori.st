@@ -186,10 +186,6 @@ jobs:
             --service-account chitin-web@$PROJECT_ID.iam.gserviceaccount.com \
             --allow-unauthenticated
 
-      # Deploy Firebase Hosting for domain routing
-      - name: Deploy Firebase Hosting
-        run: npx firebase-tools@latest deploy --only hosting --project $PROJECT_ID
-
       # Verify deployment
       - name: Verify health
         run: |
