@@ -18,6 +18,8 @@ env:
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
   ZONE: us-central1-a
   VM_NAME: chitin-db
+  DB_PORT: ${{ secrets.DB_PORT }}
+  REDIS_PORT: ${{ secrets.REDIS_PORT }}
 
 jobs:
   manage-db-vm:
@@ -49,14 +51,13 @@ jobs:
           # Allow Cloud Run (via VPC connector 10.8.0.0/28) to reach DB and Redis
           gcloud compute firewall-rules create allow-cloudrun-to-postgres \
             --network default \
-            --allow tcp:5432,tcp:6379 \
+            --allow tcp:$DB_PORT,tcp:$REDIS_PORT \
             --source-ranges 10.8.0.0/28 \
             --target-tags postgres-server \
             --description "Allow Cloud Run via VPC connector to reach DB and Redis" \
           || echo "Firewall rule already exists, skipping."
 
           gcloud compute scp \
-            infra/docker-compose.vm.yml \
             infra/start-db.sh \
             $VM_NAME:~ \
             --zone $ZONE
@@ -68,7 +69,6 @@ jobs:
 
           gcloud compute ssh $VM_NAME --zone $ZONE --command "
             sudo mkdir -p /mnt/stateful_partition/chitin/postgres /mnt/stateful_partition/chitin/redis /opt/chitin-db
-            sudo cp ~/docker-compose.vm.yml /opt/chitin-db/docker-compose.yml
             sudo cp -r ~/init /opt/chitin-db/init
             sudo cp ~/start-db.sh /opt/chitin-db/start-db.sh
             sudo chmod +x /opt/chitin-db/start-db.sh
@@ -80,21 +80,22 @@ jobs:
         if: inputs.action == 'start' || inputs.action == 'setup'
         run: |
           gcloud compute ssh $VM_NAME --zone $ZONE --command "
-            sudo /opt/chitin-db/start-db.sh
+            sudo /opt/chitin-db/start-db.sh $DB_PORT $REDIS_PORT
           "
 
       - name: Stop services
         if: inputs.action == 'stop'
         run: |
           gcloud compute ssh $VM_NAME --zone $ZONE --command "
-            cd /opt/chitin-db && sudo docker compose down
+            sudo docker stop chitin-postgres chitin-redis 2>/dev/null || true
+            sudo docker rm chitin-postgres chitin-redis 2>/dev/null || true
           "
 
       - name: Show status
         if: inputs.action == 'status'
         run: |
           gcloud compute ssh $VM_NAME --zone $ZONE --command "
-            cd /opt/chitin-db && sudo docker compose ps
+            sudo docker ps --filter name=chitin-
             echo ''
             echo 'Disk usage:'
             df -h /mnt/stateful_partition 2>/dev/null || df -h /

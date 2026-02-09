@@ -2,12 +2,15 @@
 set -euo pipefail
 
 # Fetches secrets from GCP Secret Manager using the instance metadata server
-# and starts PostgreSQL + Redis via docker compose.
-# Works on Container-Optimized OS (no gcloud or python needed — just curl and base64).
+# and starts PostgreSQL + Redis via docker run.
+# Works on Container-Optimized OS (no gcloud, python, or docker-compose needed).
 
 PROJECT="aphorist"
 WORK_DIR=/opt/chitin-db
 cd "$WORK_DIR"
+
+PG_PORT="${1:?Usage: start-db.sh <pg_port> <redis_port>}"
+REDIS_PORT="${2:?Usage: start-db.sh <pg_port> <redis_port>}"
 
 # Get access token from the instance metadata server
 TOKEN=$(curl -sf -H "Metadata-Flavor: Google" \
@@ -38,40 +41,62 @@ fetch_secret() {
 }
 
 echo "Fetching secrets from Secret Manager..."
-export POSTGRES_PASSWORD=$(fetch_secret POSTGRES_PASSWORD)
-export REDIS_PASSWORD=$(fetch_secret REDIS_PASSWORD)
+POSTGRES_PASSWORD=$(fetch_secret POSTGRES_PASSWORD)
+REDIS_PASSWORD=$(fetch_secret REDIS_PASSWORD)
 
 if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$REDIS_PASSWORD" ]; then
   echo "ERROR: Failed to fetch one or more secrets. Check VM service account permissions."
   exit 1
 fi
 
-echo "Starting PostgreSQL and Redis..."
-docker compose up -d
+# Stop and remove existing containers (if any)
+echo "Cleaning up old containers..."
+docker rm -f chitin-postgres chitin-redis 2>/dev/null || true
+
+echo "Starting PostgreSQL..."
+docker run -d \
+  --name chitin-postgres \
+  --restart unless-stopped \
+  -p "${PG_PORT}:5432" \
+  -e POSTGRES_USER=chitin \
+  -e "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
+  -e POSTGRES_DB=chitin \
+  -v /mnt/stateful_partition/chitin/postgres:/var/lib/postgresql/data \
+  -v "${WORK_DIR}/init:/docker-entrypoint-initdb.d" \
+  pgvector/pgvector:pg16
+
+echo "Starting Redis..."
+docker run -d \
+  --name chitin-redis \
+  --restart unless-stopped \
+  -p "${REDIS_PORT}:6379" \
+  -v /mnt/stateful_partition/chitin/redis:/data \
+  redis:7-alpine \
+  redis-server --requirepass "${REDIS_PASSWORD}"
 
 echo "Waiting for PostgreSQL..."
 for i in $(seq 1 30); do
-  if docker compose exec postgres pg_isready -U chitin -d chitin &> /dev/null; then
+  if docker exec chitin-postgres pg_isready -U chitin -d chitin &> /dev/null; then
     echo "PostgreSQL is ready!"
     break
   fi
   if [ "$i" -eq 30 ]; then
     echo "ERROR: PostgreSQL failed to start within 30 seconds"
-    docker compose logs postgres
+    docker logs chitin-postgres
     exit 1
   fi
   sleep 1
 done
 
 echo "Verifying Redis..."
-if docker compose exec redis redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG; then
+if docker exec chitin-redis redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG; then
   echo "Redis is ready!"
 else
   echo "ERROR: Redis is not responding"
-  docker compose logs redis
+  docker logs chitin-redis
   exit 1
 fi
 
 echo ""
 echo "=== Database services running ==="
-docker compose ps
+docker ps --filter name=chitin-
