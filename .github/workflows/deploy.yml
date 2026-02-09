@@ -136,18 +136,18 @@ jobs:
           REDIS_HOST=$REDIS_HOST,\
           REDIS_PORT=$REDIS_PORT,\
           CORS_ORIGINS=https://aphori.st,\
-          APP_URL=https://aphori.st,\
-          SMTP_FROM=noreply@aphori.st" \
+          APP_URL=https://aphori.st" \
             --set-secrets "\
           DB_PASSWORD=POSTGRES_PASSWORD:latest,\
           REDIS_PASSWORD=REDIS_PASSWORD:latest,\
           JWT_SECRET=JWT_SECRET:latest,\
           MAGIC_LINK_SECRET=MAGIC_LINK_SECRET:latest,\
           GOOGLE_API_KEY=GEMINI_API_KEY:latest,\
-          SMTP_HOST=EMAIL_HOST:latest,\
-          SMTP_PORT=EMAIL_PORT:latest,\
-          SMTP_USER=EMAIL_USERNAME:latest,\
-          SMTP_PASS=EMAIL_PASSWORD:latest" \
+          EMAIL_HOST=EMAIL_HOST:latest,\
+          EMAIL_PORT=EMAIL_PORT:latest,\
+          EMAIL_USERNAME=EMAIL_USERNAME:latest,\
+          EMAIL_PASSWORD=EMAIL_PASSWORD:latest,\
+          EMAIL_FROM=EMAIL_USERNAME:latest" \
             --allow-unauthenticated
 
       # Deploy Discourse Engine

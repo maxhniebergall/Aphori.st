@@ -44,11 +44,11 @@ export const config = {
 
   // Email
   email: {
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-    from: process.env.SMTP_FROM || 'noreply@chitin.social',
+    host: process.env.EMAIL_HOST,
+    port: parseInt(process.env.EMAIL_PORT || '587', 10),
+    user: process.env.EMAIL_USERNAME,
+    pass: process.env.EMAIL_PASSWORD,
+    from: process.env.EMAIL_FROM || 'noreply@chitin.social',
   },
 
   // URLs
@@ -130,9 +130,9 @@ export function validateConfig(): void {
       'REDIS_HOST',
       'JWT_SECRET',
       'MAGIC_LINK_SECRET',
-      'SMTP_HOST',
-      'SMTP_USER',
-      'SMTP_PASS',
+      'EMAIL_HOST',
+      'EMAIL_USERNAME',
+      'EMAIL_PASSWORD',
     ];
 
     const missing = required.filter(key => !process.env[key]);
