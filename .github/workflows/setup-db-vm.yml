@@ -1,0 +1,87 @@
+name: Manage DB VM
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'start'
+        type: choice
+        options:
+          - setup
+          - start
+          - stop
+          - status
+
+env:
+  PROJECT_ID: ${{ secrets.PROJECT_ID }}
+  ZONE: us-central1-a
+  VM_NAME: chitin-db
+
+jobs:
+  manage-db-vm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # First-time setup: copy files to VM, create data directories
+      - name: Setup VM
+        if: inputs.action == 'setup'
+        run: |
+          gcloud compute scp \
+            infra/docker-compose.vm.yml \
+            infra/start-db.sh \
+            $VM_NAME:~ \
+            --zone $ZONE
+
+          gcloud compute scp --recurse \
+            infra/init \
+            $VM_NAME:~ \
+            --zone $ZONE
+
+          gcloud compute ssh $VM_NAME --zone $ZONE --command "
+            sudo mkdir -p /mnt/stateful_partition/chitin/postgres /mnt/stateful_partition/chitin/redis /opt/chitin-db
+            sudo cp ~/docker-compose.vm.yml /opt/chitin-db/docker-compose.yml
+            sudo cp -r ~/init /opt/chitin-db/init
+            sudo cp ~/start-db.sh /opt/chitin-db/start-db.sh
+            sudo chmod +x /opt/chitin-db/start-db.sh
+            echo 'Setup complete.'
+          "
+
+      # Start: VM fetches its own secrets from Secret Manager
+      - name: Start services
+        if: inputs.action == 'start' || inputs.action == 'setup'
+        run: |
+          gcloud compute ssh $VM_NAME --zone $ZONE --command "
+            sudo /opt/chitin-db/start-db.sh
+          "
+
+      - name: Stop services
+        if: inputs.action == 'stop'
+        run: |
+          gcloud compute ssh $VM_NAME --zone $ZONE --command "
+            cd /opt/chitin-db && sudo docker compose down
+          "
+
+      - name: Show status
+        if: inputs.action == 'status'
+        run: |
+          gcloud compute ssh $VM_NAME --zone $ZONE --command "
+            cd /opt/chitin-db && sudo docker compose ps
+            echo ''
+            echo 'Disk usage:'
+            df -h /mnt/stateful_partition 2>/dev/null || df -h /
+          "

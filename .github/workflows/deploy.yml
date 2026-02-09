@@ -1,0 +1,191 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ secrets.PROJECT_ID }}
+  REGION: us-central1
+  DB_HOST: 10.128.0.3
+  REDIS_HOST: 10.128.0.3
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+
+      - name: Set short SHA
+        run: echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+
+      # Build and push all 3 images in parallel
+      - name: Build and push API image
+        run: |
+          docker build \
+            -f apps/api/Dockerfile \
+            -t gcr.io/$PROJECT_ID/chitin-api:$SHORT_SHA \
+            -t gcr.io/$PROJECT_ID/chitin-api:latest \
+            .
+          docker push gcr.io/$PROJECT_ID/chitin-api:$SHORT_SHA
+          docker push gcr.io/$PROJECT_ID/chitin-api:latest
+
+      - name: Build and push Web image
+        run: |
+          docker build \
+            -f apps/web/Dockerfile \
+            --build-arg NEXT_PUBLIC_API_URL=https://aphori.st \
+            --build-arg NEXT_PUBLIC_APP_URL=https://aphori.st \
+            -t gcr.io/$PROJECT_ID/chitin-web:$SHORT_SHA \
+            -t gcr.io/$PROJECT_ID/chitin-web:latest \
+            .
+          docker push gcr.io/$PROJECT_ID/chitin-web:$SHORT_SHA
+          docker push gcr.io/$PROJECT_ID/chitin-web:latest
+
+      - name: Build and push Discourse Engine image
+        run: |
+          docker build \
+            -f discourse-engine/chitin_wrapper/Dockerfile \
+            -t gcr.io/$PROJECT_ID/discourse-engine:$SHORT_SHA \
+            -t gcr.io/$PROJECT_ID/discourse-engine:latest \
+            ./discourse-engine
+          docker push gcr.io/$PROJECT_ID/discourse-engine:$SHORT_SHA
+          docker push gcr.io/$PROJECT_ID/discourse-engine:latest
+
+      # Run database migrations
+      - name: Run database migrations
+        run: |
+          if gcloud run jobs describe chitin-migrate --region $REGION 2>/dev/null; then
+            gcloud run jobs update chitin-migrate \
+              --region $REGION \
+              --image gcr.io/$PROJECT_ID/chitin-api:$SHORT_SHA \
+              --set-env-vars "DB_HOST=$DB_HOST,DB_USER=chitin,DB_NAME=chitin" \
+              --set-secrets "DB_PASSWORD=POSTGRES_PASSWORD:latest" \
+              --service-account chitin-api@$PROJECT_ID.iam.gserviceaccount.com
+            gcloud run jobs execute chitin-migrate \
+              --region $REGION \
+              --wait
+          else
+            gcloud run jobs create chitin-migrate \
+              --region $REGION \
+              --image gcr.io/$PROJECT_ID/chitin-api:$SHORT_SHA \
+              --command "node" \
+              --args "apps/api/dist/db/migrate.js" \
+              --set-env-vars "DB_HOST=$DB_HOST,DB_USER=chitin,DB_NAME=chitin" \
+              --set-secrets "DB_PASSWORD=POSTGRES_PASSWORD:latest" \
+              --vpc-connector chitin-vpc \
+              --service-account chitin-api@$PROJECT_ID.iam.gserviceaccount.com \
+              --execute-now \
+              --wait
+          fi
+
+      # Deploy API to Cloud Run
+      - name: Deploy API
+        run: |
+          gcloud run deploy chitin-api \
+            --image gcr.io/$PROJECT_ID/chitin-api:$SHORT_SHA \
+            --region $REGION \
+            --platform managed \
+            --port 3001 \
+            --memory 512Mi \
+            --min-instances 0 \
+            --max-instances 3 \
+            --vpc-connector chitin-vpc \
+            --service-account chitin-api@$PROJECT_ID.iam.gserviceaccount.com \
+            --set-env-vars "\
+          NODE_ENV=production,\
+          DB_HOST=$DB_HOST,\
+          DB_USER=chitin,\
+          DB_NAME=chitin,\
+          REDIS_HOST=$REDIS_HOST,\
+          CORS_ORIGINS=https://aphori.st,\
+          APP_URL=https://aphori.st,\
+          SMTP_FROM=noreply@aphori.st" \
+            --set-secrets "\
+          DB_PASSWORD=POSTGRES_PASSWORD:latest,\
+          REDIS_PASSWORD=REDIS_PASSWORD:latest,\
+          JWT_SECRET=JWT_SECRET:latest,\
+          MAGIC_LINK_SECRET=MAGIC_LINK_SECRET:latest,\
+          GOOGLE_API_KEY=GEMINI_API_KEY:latest,\
+          SMTP_HOST=EMAIL_HOST:latest,\
+          SMTP_PORT=EMAIL_PORT:latest,\
+          SMTP_USER=EMAIL_USERNAME:latest,\
+          SMTP_PASS=EMAIL_PASSWORD:latest" \
+            --allow-unauthenticated
+
+      # Deploy Discourse Engine
+      - name: Deploy Discourse Engine
+        run: |
+          gcloud run deploy discourse-engine \
+            --image gcr.io/$PROJECT_ID/discourse-engine:$SHORT_SHA \
+            --region $REGION \
+            --platform managed \
+            --port 8001 \
+            --memory 1Gi \
+            --min-instances 0 \
+            --max-instances 2 \
+            --service-account chitin-discourse@$PROJECT_ID.iam.gserviceaccount.com \
+            --set-secrets "GOOGLE_API_KEY=GEMINI_API_KEY:latest" \
+            --allow-unauthenticated
+
+      - name: Update API with Discourse Engine URL
+        run: |
+          DE_URL=$(gcloud run services describe discourse-engine --region $REGION --format 'value(status.url)')
+          gcloud run services update chitin-api \
+            --region $REGION \
+            --update-env-vars "DISCOURSE_ENGINE_URL=$DE_URL"
+
+      # Deploy Web to Cloud Run
+      - name: Deploy Web
+        run: |
+          gcloud run deploy chitin-web \
+            --image gcr.io/$PROJECT_ID/chitin-web:$SHORT_SHA \
+            --region $REGION \
+            --platform managed \
+            --port 3000 \
+            --memory 256Mi \
+            --min-instances 0 \
+            --max-instances 3 \
+            --service-account chitin-web@$PROJECT_ID.iam.gserviceaccount.com \
+            --allow-unauthenticated
+
+      # Deploy Firebase Hosting for domain routing
+      - name: Deploy Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.SERVICE_ACCOUNT_KEY }}
+          projectId: ${{ secrets.PROJECT_ID }}
+          channelId: live
+
+      # Verify deployment
+      - name: Verify health
+        run: |
+          echo "Checking API health..."
+          API_URL=$(gcloud run services describe chitin-api --region $REGION --format 'value(status.url)')
+          curl -sf "$API_URL/health" || echo "WARNING: API health check failed"
+
+          echo "Checking Web health..."
+          WEB_URL=$(gcloud run services describe chitin-web --region $REGION --format 'value(status.url)')
+          curl -sf "$WEB_URL" -o /dev/null || echo "WARNING: Web health check failed"
+
+          echo "Checking Discourse Engine health..."
+          DE_URL=$(gcloud run services describe discourse-engine --region $REGION --format 'value(status.url)')
+          curl -sf "$DE_URL/health" || echo "WARNING: Discourse Engine health check failed"
