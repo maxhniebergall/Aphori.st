@@ -89,6 +89,11 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
+# Sync password from Secret Manager into PostgreSQL
+# (POSTGRES_PASSWORD env var is only used during first initdb, not on subsequent starts)
+echo "Syncing database password from Secret Manager..."
+docker exec chitin-postgres psql -U chitin -d chitin -c "ALTER USER chitin PASSWORD '${POSTGRES_PASSWORD}';"
+
 echo "Verifying Redis..."
 if docker exec chitin-redis redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG; then
   echo "Redis is ready!"
