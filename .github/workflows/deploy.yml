@@ -79,6 +79,7 @@ jobs:
               --image gcr.io/$PROJECT_ID/chitin-api:$SHORT_SHA \
               --set-env-vars "DB_HOST=$DB_HOST,DB_USER=chitin,DB_NAME=chitin" \
               --set-secrets "DB_PASSWORD=POSTGRES_PASSWORD:latest" \
+              --vpc-connector chitin-vpc \
               --service-account chitin-api@$PROJECT_ID.iam.gserviceaccount.com
             gcloud run jobs execute chitin-migrate \
               --region $REGION \
