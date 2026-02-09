@@ -13,7 +13,7 @@ export function getPool(): pg.Pool {
       connectionString: config.database.url,
       max: 20,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '30000', 10),
     });
 
     pool.on('error', (err) => {
