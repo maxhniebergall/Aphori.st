@@ -2,18 +2,37 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+function buildPostgresUrl(): string {
+  const user = process.env.DB_USER || 'chitin';
+  const password = process.env.DB_PASSWORD || 'chitin_dev';
+  const host = process.env.DB_HOST || 'localhost';
+  const port = process.env.DB_PORT || '5432';
+  const name = process.env.DB_NAME || 'chitin';
+  return `postgresql://${user}:${encodeURIComponent(password)}@${host}:${port}/${name}`;
+}
+
+function buildRedisUrl(): string {
+  const password = process.env.REDIS_PASSWORD;
+  const host = process.env.REDIS_HOST || 'localhost';
+  const port = process.env.REDIS_PORT || '6379';
+  if (password) {
+    return `redis://:${encodeURIComponent(password)}@${host}:${port}`;
+  }
+  return `redis://${host}:${port}`;
+}
+
 export const config = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3001', 10),
 
   // Database
   database: {
-    url: process.env.DATABASE_URL || 'postgresql://chitin:chitin_dev@localhost:5432/chitin',
+    url: process.env.DATABASE_URL || buildPostgresUrl(),
   },
 
   // Redis
   redis: {
-    url: process.env.REDIS_URL || 'redis://localhost:6379',
+    url: process.env.REDIS_URL || buildRedisUrl(),
   },
 
   // JWT
@@ -105,6 +124,10 @@ export const config = {
 export function validateConfig(): void {
   if (config.env === 'production') {
     const required = [
+      'DB_PASSWORD',
+      'DB_HOST',
+      'REDIS_PASSWORD',
+      'REDIS_HOST',
       'JWT_SECRET',
       'MAGIC_LINK_SECRET',
       'SMTP_HOST',
