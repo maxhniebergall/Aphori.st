@@ -187,11 +187,17 @@ jobs:
             --allow-unauthenticated
 
       # Deploy Firebase Hosting for domain routing
+      - name: Decode Firebase service account key
+        run: |
+          echo "FIREBASE_SA_JSON<<FIREBASE_SA_EOF" >> $GITHUB_ENV
+          echo '${{ secrets.SERVICE_ACCOUNT_KEY }}' | base64 -d >> $GITHUB_ENV
+          echo "FIREBASE_SA_EOF" >> $GITHUB_ENV
+
       - name: Deploy Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.SERVICE_ACCOUNT_KEY }}
+          firebaseServiceAccount: ${{ env.FIREBASE_SA_JSON }}
           projectId: ${{ secrets.PROJECT_ID }}
           channelId: live
 
