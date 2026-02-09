@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 # Fetches secrets from GCP Secret Manager using the instance metadata server
@@ -6,7 +6,7 @@ set -euo pipefail
 # Works on Container-Optimized OS (no gcloud, python, or docker-compose needed).
 
 PROJECT="aphorist"
-WORK_DIR=/opt/chitin-db
+WORK_DIR=/home/chitin-db
 cd "$WORK_DIR"
 
 PG_PORT="${1:?Usage: start-db.sh <pg_port> <redis_port>}"

@@ -68,10 +68,10 @@ jobs:
             --zone $ZONE
 
           gcloud compute ssh $VM_NAME --zone $ZONE --command "
-            sudo mkdir -p /mnt/stateful_partition/chitin/postgres /mnt/stateful_partition/chitin/redis /opt/chitin-db
-            sudo cp -r ~/init /opt/chitin-db/init
-            sudo cp ~/start-db.sh /opt/chitin-db/start-db.sh
-            sudo chmod +x /opt/chitin-db/start-db.sh
+            sudo mkdir -p /mnt/stateful_partition/chitin/postgres /mnt/stateful_partition/chitin/redis /home/chitin-db
+            sudo cp -r ~/init /home/chitin-db/init
+            sudo cp ~/start-db.sh /home/chitin-db/start-db.sh
+            sudo chmod +x /home/chitin-db/start-db.sh
             echo 'Setup complete.'
           "
 
@@ -80,7 +80,7 @@ jobs:
         if: inputs.action == 'start' || inputs.action == 'setup'
         run: |
           gcloud compute ssh $VM_NAME --zone $ZONE --command "
-            sudo /opt/chitin-db/start-db.sh $DB_PORT $REDIS_PORT
+            sudo /home/chitin-db/start-db.sh $DB_PORT $REDIS_PORT
           "
 
       - name: Stop services
