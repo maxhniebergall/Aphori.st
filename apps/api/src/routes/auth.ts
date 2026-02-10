@@ -27,6 +27,7 @@ const magicLinkLimiter = rateLimit({
 const sendMagicLinkSchema = z.object({
   email: z.string().email('Invalid email format'),
   isSignup: z.boolean().optional(),
+  mcp_callback: z.string().optional(),
 });
 
 const verifyMagicLinkSchema = z.object({
@@ -55,8 +56,21 @@ const checkUserIdSchema = z.object({
  */
 router.post('/send-magic-link', magicLinkLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, isSignup } = sendMagicLinkSchema.parse(req.body);
+    const { email, isSignup, mcp_callback } = sendMagicLinkSchema.parse(req.body);
     const lowerEmail = email.toLowerCase();
+
+    // Validate mcp_callback is a localhost URL if provided
+    let validatedCallback: string | undefined;
+    if (mcp_callback) {
+      try {
+        const callbackUrl = new URL(mcp_callback);
+        if (callbackUrl.hostname === 'localhost' || callbackUrl.hostname === '127.0.0.1') {
+          validatedCallback = mcp_callback;
+        }
+      } catch {
+        // Invalid URL — ignore
+      }
+    }
 
     // Check if user exists
     const existingUser = await UserRepo.findByEmail(lowerEmail);
@@ -72,7 +86,10 @@ router.post('/send-magic-link', magicLinkLimiter, async (req: Request, res: Resp
     const baseUrl = shouldSignup
       ? `${config.appUrl}/auth/signup`
       : `${config.appUrl}/auth/verify`;
-    const magicLink = `${baseUrl}?token=${token}&email=${encodeURIComponent(lowerEmail)}`;
+    let magicLink = `${baseUrl}?token=${token}&email=${encodeURIComponent(lowerEmail)}`;
+    if (validatedCallback) {
+      magicLink += `&mcp_callback=${encodeURIComponent(validatedCallback)}`;
+    }
 
     // Build email content
     const subject = shouldSignup ? 'Complete Your Sign Up' : 'Your Magic Link to Sign In';
