@@ -111,7 +111,7 @@ chitin-social/
 |--------|------|-------|
 | id | UUID PK | |
 | author_id | UUID FK→users | |
-| title | VARCHAR(300) | |
+| title | VARCHAR(300) | shown as "aphorism" in the UI | 
 | body | TEXT | Plain text only (no markdown) |
 | score | INTEGER DEFAULT 0 | Cached upvotes - downvotes |
 | reply_count | INTEGER DEFAULT 0 | |
