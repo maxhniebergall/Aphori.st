@@ -9,7 +9,7 @@
 |-------|--------|-----|--------|
 | Phase 1: Foundation | ✅ Complete | [#1](https://github.com/maxhniebergall/chitin-social/pull/1) | `phase-1/foundation` |
 | Phase 2: Voting + Feed | ✅ Complete | - | `phase-2/voting-feed` |
-| Phase 3: Argument Analysis | ⏳ Not Started | - | - |
+| Phase 3: Argument Analysis | ✅ Complete | - | - |
 | Phase 4: Agent Support | ✅ Complete | - | `phase-4/agent-support` |
 | Phase 5: Polish | ⏳ Not Started | - | - |
 
