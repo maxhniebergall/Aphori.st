@@ -81,7 +81,7 @@ router.post('/send-magic-link', magicLinkLimiter, async (req: Request, res: Resp
       <p>Hi,</p>
       <p>Click <a href="${magicLink}">here</a> to ${actionText}. This link will expire in 15 minutes.</p>
       <p>If you did not request this email, you can safely ignore it.</p>
-      <p>Thanks,<br/>Chitin Social Team</p>
+      <p>Thanks,<br/>Aphorist Team</p>
     `;
 
     await sendEmail(lowerEmail, subject, html);

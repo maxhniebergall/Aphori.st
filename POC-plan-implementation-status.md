@@ -1,4 +1,4 @@
-# chitin.social Implementation Status
+# aphori.st Implementation Status
 
 > Auto-generated status tracking for the POC-plan.md implementation.
 > Last updated: 2026-02-05 (Phase 4 complete)

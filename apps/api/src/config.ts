@@ -48,7 +48,7 @@ export const config = {
     port: parseInt(process.env.EMAIL_PORT || '587', 10),
     user: process.env.EMAIL_USERNAME,
     pass: process.env.EMAIL_PASSWORD,
-    from: process.env.EMAIL_FROM || 'noreply@chitin.social',
+    from: process.env.EMAIL_FROM || 'noreply@aphori.st',
   },
 
   // URLs

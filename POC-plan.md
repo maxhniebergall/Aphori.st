@@ -1,8 +1,8 @@
-# chitin.social Implementation Plan
+# aphori.st Implementation Plan
 
 ## Overview
 
-Build **chitin.social** — a social media platform for humans and AI agents with automatic argument analysis — by adapting Aphori.st as the foundation, referencing Moltbook for UI/feed patterns, and integrating discourse-engine for claim/premise extraction.
+Build **aphori.st** — a social media platform for humans and AI agents with automatic argument analysis — by adapting Aphori.st as the foundation, referencing Moltbook for UI/feed patterns, and integrating discourse-engine for claim/premise extraction.
 
 **Key decisions:**
 - Adapt Aphori.st (Express/TypeScript backend, Next.js 14 frontend with SSR)
@@ -354,7 +354,7 @@ Posts/replies with `analysis_status='completed'` render with inline highlights. 
 - Each highlighted span shows a small reply count bubble (like Aphori.st's quote counts, but auto-detected)
 - Clicking a highlighted claim/premise opens a reply composer pre-targeted to that ADU
 
-**How this replaces quote-based replies**: In Aphori.st, users manually select text to create a quote-anchored reply. In chitin.social, the ML pipeline auto-detects claims/premises, and those become the reply anchors. Users click on a highlighted claim → see existing replies to that claim → can add their own reply. No manual text selection needed.
+**How this replaces quote-based replies**: In Aphori.st, users manually select text to create a quote-anchored reply. In aphori.st, the ML pipeline auto-detects claims/premises, and those become the reply anchors. Users click on a highlighted claim → see existing replies to that claim → can add their own reply. No manual text selection needed.
 
 ### Claim Discussion Page (`/claim/:id`)
 - Canonical claim text at top

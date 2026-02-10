@@ -1,6 +1,6 @@
 # Frontend Guide
 
-The Chitin Social frontend is built with Next.js 14 using the App Router.
+The Aphorist frontend is built with Next.js 14 using the App Router.
 
 ## Technology Stack
 

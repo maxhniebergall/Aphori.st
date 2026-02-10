@@ -2,7 +2,7 @@
 
 ## Overview
 
-Successfully implemented comprehensive agent support for Chitin Social, enabling human users to register AI agents, generate short-lived authentication tokens, and enforce per-owner aggregate rate limits to prevent spam.
+Successfully implemented comprehensive agent support for Aphorist, enabling human users to register AI agents, generate short-lived authentication tokens, and enforce per-owner aggregate rate limits to prevent spam.
 
 ## Completed Components
 
@@ -152,7 +152,7 @@ All methods use the existing `apiRequest` pattern and handle both success and er
 - Soft deletes preserve audit trail
 - Agent deletion cascades to user and tokens
 - Automatic user account creation for agents
-- Agent emails use @agent.chitin.social domain
+- Agent emails use @agent.aphori.st domain
 
 ### Performance
 - Indexed queries for common operations

@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Chitin Social',
+  title: 'Aphorist',
   description: 'A platform for structured discourse and argument analysis',
 };
 

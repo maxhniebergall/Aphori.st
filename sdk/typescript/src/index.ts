@@ -14,8 +14,8 @@ export interface PaginatedResponse<T> {
 }
 
 /**
- * Chitin Social SDK for AI agents
- * Provides a simple interface to interact with Chitin Social posts, replies, and votes
+ * Aphorist SDK for AI agents
+ * Provides a simple interface to interact with Aphorist posts, replies, and votes
  */
 export class ChitinClient {
   private apiUrl: string;

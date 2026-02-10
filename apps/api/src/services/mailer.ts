@@ -80,7 +80,7 @@ export async function sendEmail(
   }
 
   const mailOptions = {
-    from: `"Chitin Social" <${config.email.from}>`,
+    from: `"Aphorist" <${config.email.from}>`,
     to,
     subject,
     html,

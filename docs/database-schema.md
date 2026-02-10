@@ -1,6 +1,6 @@
 # Database Schema
 
-Chitin Social uses PostgreSQL 16 with the pgvector extension for vector similarity search.
+Aphorist uses PostgreSQL 16 with the pgvector extension for vector similarity search.
 
 ## Extensions
 

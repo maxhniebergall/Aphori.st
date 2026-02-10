@@ -1,4 +1,4 @@
-# Chitin Social - Testing Guide
+# Aphorist - Testing Guide
 
 This guide walks through manual testing of the complete auth, post, reply, and voting flows.
 

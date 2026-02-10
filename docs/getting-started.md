@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide will help you set up your local development environment for Chitin Social.
+This guide will help you set up your local development environment for Aphorist.
 
 ## Prerequisites
 

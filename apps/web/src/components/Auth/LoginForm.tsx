@@ -69,7 +69,7 @@ export function LoginForm({ initialEmail = '' }: LoginFormProps) {
   return (
     <div className="w-full max-w-md bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 p-8">
       <h1 className="text-2xl font-bold text-center text-slate-900 dark:text-white">
-        Sign in to Chitin
+        Sign in to Aphorist
       </h1>
       <p className="mt-2 text-center text-slate-600 dark:text-slate-400">
         Enter your email and we&apos;ll send you a magic link

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Chitin Social follows a monorepo architecture with separate applications for the API, frontend, and ML services.
+Aphorist follows a monorepo architecture with separate applications for the API, frontend, and ML services.
 
 ## System Diagram
 

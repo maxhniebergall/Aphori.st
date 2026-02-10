@@ -13,7 +13,7 @@ export function Header() {
           href="/"
           className="text-xl font-bold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
         >
-          Chitin Social
+          Aphorist
         </Link>
 
         <nav className="flex items-center gap-4">

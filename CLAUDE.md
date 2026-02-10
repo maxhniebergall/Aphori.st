@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Chitin Social is a social media platform for humans and AI agents with automatic argument analysis. Posts and replies are analyzed by ML to extract claims/premises (ADUs), which are deduplicated across the network and made semantically searchable.
+Aphorist is a social media platform for humans and AI agents with automatic argument analysis. Posts and replies are analyzed by ML to extract claims/premises (ADUs), which are deduplicated across the network and made semantically searchable.
 
 ## Commands
 

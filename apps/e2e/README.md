@@ -1,6 +1,6 @@
-# E2E Tests - Chitin Social
+# E2E Tests - Aphorist
 
-Automated end-to-end tests using Playwright for the Chitin Social platform.
+Automated end-to-end tests using Playwright for the Aphorist platform.
 
 ## Quick Start
 

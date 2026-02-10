@@ -1,4 +1,4 @@
-# Quick Start - Testing Chitin Social
+# Quick Start - Testing Aphorist
 
 ## 5-Minute Setup
 
