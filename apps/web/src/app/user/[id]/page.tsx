@@ -1,11 +1,11 @@
 import { ProfileClient } from '@/components/Profile/ProfileClient';
 
 interface ProfilePageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default function ProfilePage({ params }: ProfilePageProps) {
-  const { id } = params;
+export default async function ProfilePage({ params }: ProfilePageProps) {
+  const { id } = await params;
 
   return <ProfileClient userId={id} />;
 }

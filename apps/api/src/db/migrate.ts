@@ -63,36 +63,60 @@ async function applyMigration(migration: Migration): Promise<void> {
   }
 }
 
-async function migrate(): Promise<void> {
+// Advisory lock key for migration coordination (arbitrary fixed int)
+const MIGRATION_LOCK_ID = 839271;
+
+export async function migrate(): Promise<void> {
   logger.info('Starting database migrations...');
 
+  const client = await getPool().connect();
   try {
-    await ensureMigrationsTable();
-    const applied = await getAppliedMigrations();
-    const migrations = await getMigrationFiles();
+    // Acquire advisory lock to prevent concurrent migrations
+    const lockResult = await client.query<{ pg_try_advisory_lock: boolean }>(
+      'SELECT pg_try_advisory_lock($1)',
+      [MIGRATION_LOCK_ID]
+    );
 
-    let appliedCount = 0;
-    for (const migration of migrations) {
-      if (!applied.has(migration.name)) {
-        await applyMigration(migration);
-        appliedCount++;
+    if (!lockResult.rows[0]?.pg_try_advisory_lock) {
+      logger.info('Another instance is running migrations, skipping');
+      return;
+    }
+
+    try {
+      await ensureMigrationsTable();
+      const applied = await getAppliedMigrations();
+      const migrations = await getMigrationFiles();
+
+      let appliedCount = 0;
+      for (const migration of migrations) {
+        if (!applied.has(migration.name)) {
+          await applyMigration(migration);
+          appliedCount++;
+        }
       }
-    }
 
-    if (appliedCount === 0) {
-      logger.info('No new migrations to apply');
-    } else {
-      logger.info(`Applied ${appliedCount} migration(s)`);
+      if (appliedCount === 0) {
+        logger.info('No new migrations to apply');
+      } else {
+        logger.info(`Applied ${appliedCount} migration(s)`);
+      }
+    } finally {
+      await client.query('SELECT pg_advisory_unlock($1)', [MIGRATION_LOCK_ID]);
     }
-  } catch (error) {
-    logger.error('Migration failed', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    process.exit(1);
   } finally {
-    await closePool();
+    client.release();
   }
 }
 
-// Run if executed directly
-migrate();
+// Run if executed directly (for standalone migration job)
+const isDirectRun = process.argv[1]?.endsWith('migrate.js');
+if (isDirectRun) {
+  migrate()
+    .catch((error) => {
+      logger.error('Migration failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      process.exit(1);
+    })
+    .finally(() => closePool());
+}

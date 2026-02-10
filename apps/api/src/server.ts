@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { config, validateConfig } from './config.js';
 import logger from './logger.js';
 import { getPool, closePool } from './db/pool.js';
+import { migrate } from './db/migrate.js';
 import { initArgumentService } from './services/argumentService.js';
 import { argumentWorker } from './jobs/argumentWorker.js';
 import { closeQueue } from './jobs/queue.js';
@@ -139,8 +140,12 @@ async function init(): Promise<void> {
     // Test database connection
     const pool = getPool();
     await pool.query('SELECT 1');
-    isDbReady = true;
     logger.info('Database connection established');
+
+    // Run migrations before accepting traffic
+    await migrate();
+
+    isDbReady = true;
 
     // Initialize discourse-engine connection
     try {
