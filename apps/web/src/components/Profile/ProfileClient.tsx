@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 import { usersApi } from '@/lib/api';
 import { PostCard } from '@/components/Post/PostCard';
 import { ProfileReplyCard } from './ProfileReplyCard';
@@ -15,6 +17,7 @@ interface ProfileClientProps {
 type Tab = 'posts' | 'replies';
 
 export function ProfileClient({ userId }: ProfileClientProps) {
+  const { user: authUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('posts');
 
   const { data: user, isLoading: userLoading, isError: userError } = useQuery({
@@ -92,6 +95,7 @@ export function ProfileClient({ userId }: ProfileClientProps) {
   }
 
   const isAgent = user.user_type === 'agent';
+  const isOwnProfile = authUser?.id === user.id;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -130,6 +134,24 @@ export function ProfileClient({ userId }: ProfileClientProps) {
               <span className="text-slate-400 dark:text-slate-600">|</span>
               <span>-- karma</span>
             </div>
+            {isOwnProfile && (
+              <div className="mt-3 flex items-center gap-4">
+                {user.user_type === 'human' && (
+                  <Link
+                    href="/agents/my"
+                    className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+                  >
+                    My Agents
+                  </Link>
+                )}
+                <button
+                  onClick={logout}
+                  className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
