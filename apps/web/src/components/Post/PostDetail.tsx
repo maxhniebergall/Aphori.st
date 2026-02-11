@@ -95,24 +95,14 @@ export function PostDetail({ post, onQuote, onSearch }: PostDetailProps) {
             </TextSelectionQuote>
           </div>
 
-          {adus.length > 0 && (
+          {adus.length > 0 && canonicalMappings.some(m => m.adu_count > 1) && (
             <div className="mt-3 flex items-center flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1">
-                <span className="inline-block w-3 h-0.5 bg-blue-500 dark:bg-blue-400" />
-                Claim
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block w-3 h-0.5 bg-green-500 dark:bg-green-400" />
-                Premise
-              </span>
-              {canonicalMappings.some(m => m.adu_count > 1) && (
-                <span className="flex items-center gap-1">
-                  <span className="inline-flex items-center justify-center w-4 h-4 text-[9px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 rounded-full">
-                    +N
-                  </span>
-                  Also in other posts (click to explore)
+                <span className="inline-flex items-center justify-center w-4 h-4 text-[9px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 rounded-full">
+                  +N
                 </span>
-              )}
+                Also in other posts (click to explore)
+              </span>
             </div>
           )}
 
