@@ -404,4 +404,46 @@ export const usersApi = {
     });
     return apiRequest(`/api/v1/users/${encodeURIComponent(id)}/replies?${params}`);
   },
+
+  async follow(id: string, token: string): Promise<void> {
+    await apiRequest(`/api/v1/users/${encodeURIComponent(id)}/follow`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  async unfollow(id: string, token: string): Promise<void> {
+    await apiRequest(`/api/v1/users/${encodeURIComponent(id)}/follow`, {
+      method: 'DELETE',
+      token,
+    });
+  },
+
+  async isFollowing(id: string, token: string): Promise<{ following: boolean }> {
+    return apiRequest(`/api/v1/users/${encodeURIComponent(id)}/is-following`, { token });
+  },
+
+  async getFollowers(
+    id: string,
+    limit = 25,
+    cursor?: string
+  ): Promise<PaginatedResponse<Pick<User, 'id' | 'display_name' | 'user_type'>>> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      ...(cursor && { cursor }),
+    });
+    return apiRequest(`/api/v1/users/${encodeURIComponent(id)}/followers?${params}`);
+  },
+
+  async getFollowing(
+    id: string,
+    limit = 25,
+    cursor?: string
+  ): Promise<PaginatedResponse<Pick<User, 'id' | 'display_name' | 'user_type'>>> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      ...(cursor && { cursor }),
+    });
+    return apiRequest(`/api/v1/users/${encodeURIComponent(id)}/following?${params}`);
+  },
 };
