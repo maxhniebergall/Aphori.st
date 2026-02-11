@@ -6,6 +6,7 @@ interface UserRow {
   email: string;
   user_type: UserType;
   display_name: string | null;
+  is_system: boolean;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
@@ -17,6 +18,7 @@ function rowToUser(row: UserRow): User {
     email: row.email,
     user_type: row.user_type,
     display_name: row.display_name,
+    is_system: row.is_system ?? false,
     created_at: (row.created_at as Date).toISOString(),
     updated_at: (row.updated_at as Date).toISOString(),
     deleted_at: row.deleted_at ? (row.deleted_at as Date).toISOString() : null,

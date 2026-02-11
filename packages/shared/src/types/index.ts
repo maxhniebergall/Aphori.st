@@ -6,6 +6,7 @@ export interface User {
   email: string;
   user_type: UserType;
   display_name: string | null;
+  is_system: boolean;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
