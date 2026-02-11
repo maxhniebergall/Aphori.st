@@ -86,6 +86,7 @@ export class TestDatabase {
 
     // Truncate tables in dependency order (foreign keys)
     const tables = [
+      'follows',
       'notifications',
       'argument_relations',
       'adu_canonical_map',

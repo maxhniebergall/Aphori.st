@@ -241,6 +241,17 @@ export class TestFactories {
     return result.rows[0];
   }
 
+  async createFollow(followerId: string, followingId: string): Promise<any> {
+    const result = await this.pool.query(
+      `INSERT INTO follows (follower_id, following_id)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING
+       RETURNING *`,
+      [followerId, followingId]
+    );
+    return result.rows[0];
+  }
+
   async createArgumentRelation(
     sourceAduId: string,
     targetAduId: string,
