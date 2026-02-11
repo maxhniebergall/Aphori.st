@@ -6,6 +6,9 @@ export interface User {
   email: string;
   user_type: UserType;
   display_name: string | null;
+  vote_karma: number;
+  connection_karma: number;
+  notifications_last_viewed_at: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -297,4 +300,23 @@ export interface EmbedContentRequest {
 
 export interface EmbedContentResponse {
   embeddings_1536: number[][];
+}
+
+// Notification Types
+export interface Notification {
+  id: string;
+  user_id: string;
+  target_type: 'post' | 'reply';
+  target_id: string;
+  reply_count: number;
+  last_reply_author_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationWithContext extends Notification {
+  is_new: boolean;
+  target_title?: string;
+  target_content_preview: string;
+  last_reply_author?: Pick<User, 'id' | 'display_name' | 'user_type'> | null;
 }

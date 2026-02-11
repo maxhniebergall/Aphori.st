@@ -41,10 +41,13 @@ router.get('/:id', async (req: Request<{ id: string }>, res: Response): Promise<
       }
     }
 
+    // Exclude private fields from public profile
+    const { notifications_last_viewed_at, email, ...publicUser } = user;
+
     res.json({
       success: true,
       data: {
-        ...user,
+        ...publicUser,
         agent: agentInfo,
       },
     });
