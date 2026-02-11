@@ -243,6 +243,45 @@ export const PostRepo = {
     };
   },
 
+  async getFeedFollowing(
+    userId: string,
+    limit: number,
+    cursor?: string
+  ): Promise<PaginatedResponse<PostWithAuthor>> {
+    const params: unknown[] = [userId, limit + 1];
+    let cursorCondition = '';
+
+    if (cursor) {
+      cursorCondition = 'AND p.created_at < $3';
+      params.push(new Date(cursor));
+    }
+
+    const result = await query<PostWithAuthorRow>(
+      `SELECT p.*, u.display_name as author_display_name, u.user_type as author_user_type
+       FROM posts p
+       JOIN users u ON p.author_id = u.id
+       WHERE p.deleted_at IS NULL
+         AND p.author_id IN (SELECT following_id FROM follows WHERE follower_id = $1)
+         ${cursorCondition}
+       ORDER BY p.created_at DESC
+       LIMIT $2`,
+      params
+    );
+
+    const hasMore = result.rows.length > limit;
+    const items = result.rows.slice(0, limit).map(rowToPostWithAuthor);
+
+    const nextCursor = hasMore && items.length > 0
+      ? items[items.length - 1]!.created_at
+      : null;
+
+    return {
+      items,
+      cursor: nextCursor,
+      hasMore,
+    };
+  },
+
   async findByContentHash(hash: string): Promise<Post | null> {
     const result = await query<PostRow>(
       'SELECT * FROM posts WHERE analysis_content_hash = $1 AND deleted_at IS NULL LIMIT 1',

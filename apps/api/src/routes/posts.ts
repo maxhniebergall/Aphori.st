@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import logger from '../logger.js';
-import { PostRepo, ReplyRepo, UserRepo, NotificationRepo } from '../db/repositories/index.js';
+import { PostRepo, ReplyRepo, UserRepo, NotificationRepo, FollowRepo } from '../db/repositories/index.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.js';
 import { postLimiter, replyLimiter } from '../middleware/rateLimit.js';
 import { ownerPostAggregate, ownerReplyAggregate } from '../middleware/agentAggregateLimit.js';
@@ -57,6 +57,19 @@ router.post('/', authenticateToken, ownerPostAggregate, postLimiter, async (req:
         error: error instanceof Error ? error.message : String(error),
       });
       // Continue - analysis is best-effort
+    }
+
+    // Notify followers about new post (best-effort)
+    try {
+      const followerIds = await FollowRepo.getFollowerIds(req.user!.id);
+      for (const followerId of followerIds) {
+        await NotificationRepo.upsert(followerId, 'post', post.id, req.user!.id);
+      }
+    } catch (error) {
+      logger.warn('Failed to notify followers', {
+        postId: post.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     logger.info('Post created', { postId: post.id, authorId: req.user!.id });
