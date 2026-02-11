@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { usersApi } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { PostCard } from '@/components/Post/PostCard';
@@ -17,7 +18,7 @@ type Tab = 'posts' | 'replies';
 
 export function ProfileClient({ userId }: ProfileClientProps) {
   const [activeTab, setActiveTab] = useState<Tab>('posts');
-  const { user: currentUser, token } = useAuth();
+  const { user: currentUser, token, logout } = useAuth();
   const queryClient = useQueryClient();
 
   const isOwnProfile = currentUser?.id === userId;
@@ -170,6 +171,24 @@ export function ProfileClient({ userId }: ProfileClientProps) {
               <span><strong>{user.followers_count ?? 0}</strong> followers</span>
               <span><strong>{user.following_count ?? 0}</strong> following</span>
             </div>
+            {isOwnProfile && (
+              <div className="mt-3 flex items-center gap-4">
+                {user.user_type === 'human' && (
+                  <Link
+                    href="/agents/my"
+                    className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+                  >
+                    My Agents
+                  </Link>
+                )}
+                <button
+                  onClick={logout}
+                  className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
           </div>
           {token && !isOwnProfile && (
             <button

@@ -115,12 +115,17 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     );
 
     // 8. Canonical claim deduplication with RAG pipeline
-    // Deduplicate MajorClaim, Supporting, Opposing - but NOT Evidence
+    // 10. Content embedding for semantic search
+    // These are independent — run content embedding in parallel with deduplication
     await job.updateProgress(50);
     const deduplicatableADUs = createdADUs.filter(
       adu => DEDUPLICATABLE_TYPES.includes(adu.adu_type)
     );
 
+    // Fire off content embedding request early (independent of deduplication)
+    const contentEmbedPromise = argumentService.embedContent([content.content]);
+
+    // Deduplication loop (must stay sequential to avoid duplicate canonical claims)
     for (let i = 0; i < deduplicatableADUs.length; i++) {
       const adu = deduplicatableADUs[i]!;
       const aduIndex = createdADUs.findIndex(a => a.id === adu.id);
@@ -225,9 +230,9 @@ async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
     // The argument_relations table is kept for cross-post relations only
     await job.updateProgress(70);
 
-    // 10. Generate content embedding for semantic search (1536-dim Gemini)
+    // 10. Await the content embedding that was fired off in parallel with step 8
     await job.updateProgress(80);
-    const contentEmbed = await argumentService.embedContent([content.content]);
+    const contentEmbed = await contentEmbedPromise;
     await argumentRepo.createContentEmbedding(sourceType, sourceId, contentEmbed.embeddings_1536[0]!);
 
     // 11. Mark as completed

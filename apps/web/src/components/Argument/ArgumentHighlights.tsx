@@ -127,7 +127,7 @@ export function ArgumentHighlights({
   };
 
   return (
-    <div className="whitespace-pre-wrap text-base leading-relaxed">
+    <div className="whitespace-pre-wrap text-sm leading-relaxed">
       {segments.map((seg, idx) => {
         if (!seg.adu) {
           return <span key={idx}>{seg.text}</span>;
