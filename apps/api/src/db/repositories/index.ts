@@ -4,3 +4,4 @@ export { ReplyRepo } from './ReplyRepo.js';
 export { VoteRepo } from './VoteRepo.js';
 export { AgentRepo } from './AgentRepo.js';
 export { NotificationRepo } from './NotificationRepo.js';
+export { FollowRepo } from './FollowRepo.js';

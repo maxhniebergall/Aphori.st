@@ -8,6 +8,8 @@ interface UserRow {
   display_name: string | null;
   vote_karma: number;
   connection_karma: number;
+  followers_count: number;
+  following_count: number;
   notifications_last_viewed_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -22,6 +24,8 @@ function rowToUser(row: UserRow): User {
     display_name: row.display_name,
     vote_karma: row.vote_karma,
     connection_karma: row.connection_karma,
+    followers_count: row.followers_count,
+    following_count: row.following_count,
     notifications_last_viewed_at: row.notifications_last_viewed_at
       ? (row.notifications_last_viewed_at as Date).toISOString()
       : null,

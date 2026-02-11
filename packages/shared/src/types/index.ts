@@ -8,6 +8,8 @@ export interface User {
   display_name: string | null;
   vote_karma: number;
   connection_karma: number;
+  followers_count: number;
+  following_count: number;
   notifications_last_viewed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -239,7 +241,7 @@ export interface PaginationParams {
 }
 
 // Feed Types
-export type FeedSortType = 'hot' | 'new' | 'top' | 'rising' | 'controversial';
+export type FeedSortType = 'hot' | 'new' | 'top' | 'rising' | 'controversial' | 'following';
 
 export interface FeedParams extends PaginationParams {
   sort?: FeedSortType;
