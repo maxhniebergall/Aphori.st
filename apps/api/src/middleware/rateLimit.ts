@@ -1,7 +1,33 @@
-import rateLimit, { type RateLimitRequestHandler } from 'express-rate-limit';
+import rateLimit from 'express-rate-limit';
 import { Request, Response, NextFunction } from 'express';
 import { config } from '../config.js';
 import type { ApiError } from '@chitin/shared';
+import { AgentRepo, UserRepo } from '../db/repositories/index.js';
+
+// Cache of agent IDs owned by system accounts (TTL: 5 min)
+const systemAgentCache = new Map<string, { isSystem: boolean; expiresAt: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function isSystemAgent(req: Request): Promise<boolean> {
+  if (!req.user || req.user.user_type !== 'agent') return false;
+
+  const cached = systemAgentCache.get(req.user.id);
+  if (cached && cached.expiresAt > Date.now()) return cached.isSystem;
+
+  try {
+    const agent = await AgentRepo.findById(req.user.id);
+    if (!agent) {
+      systemAgentCache.set(req.user.id, { isSystem: false, expiresAt: Date.now() + CACHE_TTL_MS });
+      return false;
+    }
+    const owner = await UserRepo.findById(agent.owner_id);
+    const isSystem = owner?.is_system ?? false;
+    systemAgentCache.set(req.user.id, { isSystem, expiresAt: Date.now() + CACHE_TTL_MS });
+    return isSystem;
+  } catch {
+    return false;
+  }
+}
 
 // Rate limiter for authenticated users (human)
 export const humanLimiter = rateLimit({
@@ -51,24 +77,32 @@ export const anonymousLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Combined rate limiter that applies the appropriate limiter based on user type
+// Combined rate limiter that applies the appropriate limiter based on user type.
+// System-account-owned agents bypass all rate limits.
 export function combinedRateLimiter(req: Request, res: Response, next: NextFunction): void {
   if (!req.user) {
     anonymousLimiter(req, res, next);
-  } else if (req.user.user_type === 'agent') {
-    agentLimiter(req, res, next);
-  } else {
-    humanLimiter(req, res, next);
+    return;
   }
+
+  if (req.user.user_type === 'agent') {
+    isSystemAgent(req).then(isSys => {
+      if (isSys) { next(); return; }
+      agentLimiter(req, res, next);
+    }).catch(() => agentLimiter(req, res, next));
+    return;
+  }
+
+  humanLimiter(req, res, next);
 }
 
 // Per-action rate limiter factory
 type ActionType = 'posts' | 'replies' | 'votes' | 'search' | 'arguments';
 
-function createActionLimiter(action: ActionType): RateLimitRequestHandler {
+function createActionLimiter(action: ActionType): (req: Request, res: Response, next: NextFunction) => void {
   const actionConfig = config.rateLimits[action];
 
-  return rateLimit({
+  const limiter = rateLimit({
     windowMs: actionConfig.human.windowMs, // Same window for both
     max: (req: Request) => {
       if (!req.user) return 0; // Require auth for these actions
@@ -87,15 +121,22 @@ function createActionLimiter(action: ActionType): RateLimitRequestHandler {
     standardHeaders: true,
     legacyHeaders: false,
   });
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    isSystemAgent(req).then(isSys => {
+      if (isSys) { next(); return; }
+      limiter(req, res, next);
+    }).catch(() => limiter(req, res, next));
+  };
 }
 
 // Read-only rate limiter factory (allows anonymous access with tighter limits)
 type ReadActionType = 'search' | 'arguments' | 'feed';
 
-function createReadActionLimiter(action: ReadActionType): RateLimitRequestHandler {
+function createReadActionLimiter(action: ReadActionType): (req: Request, res: Response, next: NextFunction) => void {
   const actionConfig = config.rateLimits[action];
 
-  return rateLimit({
+  const limiter = rateLimit({
     windowMs: actionConfig.human.windowMs,
     max: (req: Request) => {
       if (!req.user) return Math.floor(actionConfig.human.max / 2); // Anon gets half the human limit
@@ -113,6 +154,13 @@ function createReadActionLimiter(action: ReadActionType): RateLimitRequestHandle
     standardHeaders: true,
     legacyHeaders: false,
   });
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    isSystemAgent(req).then(isSys => {
+      if (isSys) { next(); return; }
+      limiter(req, res, next);
+    }).catch(() => limiter(req, res, next));
+  };
 }
 
 // Export per-action limiters (write actions - require auth)
