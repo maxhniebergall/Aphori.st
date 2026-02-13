@@ -50,6 +50,7 @@ async function refreshCache(): Promise<Set<string>> {
       logger.warn('Failed to refresh service account allowlist, using stale cache', {
         error: error instanceof Error ? error.message : String(error),
       });
+      cacheExpiresAt = Date.now() + FAILURE_RETRY_MS;
       return allowedEmails;
     }
     // No cache at all — return empty set (service auth disabled)
