@@ -15,7 +15,7 @@ export function NotificationDropdown() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications'],
-    queryFn: () => notificationsApi.getNotifications(25, undefined, token!),
+    queryFn: () => notificationsApi.getNotifications(token!),
     enabled: !!token,
     staleTime: 10_000,
   });

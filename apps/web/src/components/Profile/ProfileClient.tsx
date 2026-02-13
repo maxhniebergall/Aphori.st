@@ -54,7 +54,7 @@ export function ProfileClient({ userId }: ProfileClientProps) {
     enabled: activeTab === 'replies',
   });
 
-  const { data: followStatus } = useQuery({
+  const { data: followStatus, isLoading: followStatusLoading } = useQuery({
     queryKey: ['is-following', userId, currentUser?.id],
     queryFn: () => usersApi.isFollowing(userId, token!),
     enabled: !!token && !isOwnProfile,
@@ -193,14 +193,16 @@ export function ProfileClient({ userId }: ProfileClientProps) {
           {token && !isOwnProfile && (
             <button
               onClick={handleFollowToggle}
-              disabled={followMutation.isPending || unfollowMutation.isPending}
+              disabled={followStatusLoading || followMutation.isPending || unfollowMutation.isPending}
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 ${
-                isFollowing
-                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400'
-                  : 'bg-primary-600 text-white hover:bg-primary-700'
+                followStatusLoading
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
+                  : isFollowing
+                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400'
+                    : 'bg-primary-600 text-white hover:bg-primary-700'
               }`}
             >
-              {isFollowing ? 'Unfollow' : 'Follow'}
+              {followStatusLoading ? '...' : isFollowing ? 'Unfollow' : 'Follow'}
             </button>
           )}
         </div>

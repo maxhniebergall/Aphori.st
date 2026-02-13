@@ -469,9 +469,9 @@ export const usersApi = {
 // Notifications API
 export const notificationsApi = {
   async getNotifications(
+    token: string,
     limit = 25,
-    cursor?: string,
-    token?: string
+    cursor?: string
   ): Promise<{ items: NotificationWithContext[]; cursor: string | null; hasMore: boolean }> {
     const params = new URLSearchParams({
       limit: limit.toString(),
