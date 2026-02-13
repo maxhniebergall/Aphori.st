@@ -203,7 +203,7 @@ router.post('/send-magic-link', magicLinkLimiter, async (req: Request, res: Resp
       ? `${config.appUrl}/auth/signup`
       : `${config.appUrl}/auth/verify`;
     let magicLink = `${baseUrl}?token=${token}&email=${encodeURIComponent(lowerEmail)}`;
-    if (validatedCallback) {
+    if (validatedCallback && !shouldSignup) {
       magicLink += `&mcp_callback=${encodeURIComponent(validatedCallback)}`;
     }
 
