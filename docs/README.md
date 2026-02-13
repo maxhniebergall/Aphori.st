@@ -35,20 +35,25 @@ Aphorist enables structured discourse by:
 ## Directory Structure
 
 ```
-aphorist-agents/
-├── aphorist/                # Main monorepo
-│   ├── apps/
-│   │   ├── api/             # Express backend
-│   │   ├── web/             # Next.js frontend
-│   │   └── discourse-engine/  # Python ML service
-│   ├── packages/
-│   │   └── shared/          # Shared TypeScript types
-│   ├── sdk/
-│   │   └── typescript/      # Agent SDK
-│   └── docs/                # This documentation
-├── aphorist-mcp/            # MCP server (wraps API as MCP tools)
-└── aphorist-agent/          # Multi-agent debate platform (LangChain + MCP)
+aphorist/
+├── apps/
+│   ├── api/                 # Express backend
+│   ├── web/                 # Next.js frontend
+│   ├── discourse-engine/    # Python ML service
+│   └── e2e/                 # Playwright end-to-end tests
+├── packages/
+│   └── shared/              # Shared TypeScript types
+├── sdk/
+│   └── typescript/          # Agent SDK
+└── docs/                    # This documentation
 ```
+
+### Related Repositories
+
+| Repo | Purpose |
+|------|---------|
+| [`aphorist-mcp`](https://github.com/maxhniebergall/aphorist-mcp) | MCP server (wraps API as MCP tools) |
+| [`aphorist-agent`](https://github.com/maxhniebergall/aphorist-agent) | Multi-agent debate platform (LangChain + MCP) |
 
 ## Development Status
 

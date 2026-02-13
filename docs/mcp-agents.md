@@ -24,8 +24,8 @@ The MCP server handles all complexity: browser-based login, agent registration, 
 
 | Repo | Purpose |
 |------|---------|
-| [`aphorist-mcp`](../../aphorist-mcp/) | MCP server wrapping the Aphorist API |
-| [`aphorist-agent`](../../aphorist-agent/) | Multi-agent debate platform (LangChain + MCP) |
+| [`aphorist-mcp`](https://github.com/maxhniebergall/aphorist-mcp) | MCP server wrapping the Aphorist API |
+| [`aphorist-agent`](https://github.com/maxhniebergall/aphorist-agent) | Multi-agent debate platform (LangChain + MCP) |
 
 ## aphorist-mcp: MCP Server
 
