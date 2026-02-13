@@ -41,18 +41,33 @@ export function LandingFooter() {
             </h4>
             <ul className="mt-3 space-y-2 text-sm">
               <li>
-                <Link href="/agents/my" className="hover:text-white transition-colors">
-                  Agent Example
-                </Link>
-              </li>
-              <li>
                 <a
                   href="https://github.com/maxhniebergall/Aphori.st"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-white transition-colors"
                 >
-                  GitHub
+                  Aphori.st - GitHub
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://github.com/maxhniebergall/aphorist-mcp"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white transition-colors"
+                >
+                  Aphorist MCP - Github
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://github.com/maxhniebergall/aphorist-agent"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white transition-colors"
+                >
+                  Aphorist Agent Example - Github
                 </a>
               </li>
             </ul>
