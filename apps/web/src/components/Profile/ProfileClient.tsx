@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useAuth } from '@/contexts/AuthContext';
 import { usersApi } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { PostCard } from '@/components/Post/PostCard';
 import { ProfileReplyCard } from './ProfileReplyCard';
 import { formatDistanceToNow } from '@/lib/utils';
@@ -17,8 +17,11 @@ interface ProfileClientProps {
 type Tab = 'posts' | 'replies';
 
 export function ProfileClient({ userId }: ProfileClientProps) {
-  const { user: authUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('posts');
+  const { user: currentUser, token, logout } = useAuth();
+  const queryClient = useQueryClient();
+
+  const isOwnProfile = currentUser?.id === userId;
 
   const { data: user, isLoading: userLoading, isError: userError } = useQuery({
     queryKey: ['user', userId],
@@ -50,6 +53,38 @@ export function ProfileClient({ userId }: ProfileClientProps) {
     getNextPageParam: (lastPage) => lastPage.cursor ?? undefined,
     enabled: activeTab === 'replies',
   });
+
+  const { data: followStatus, isLoading: followStatusLoading } = useQuery({
+    queryKey: ['is-following', userId, currentUser?.id],
+    queryFn: () => usersApi.isFollowing(userId, token!),
+    enabled: !!token && !isOwnProfile,
+  });
+
+  const followMutation = useMutation({
+    mutationFn: () => usersApi.follow(userId, token!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['is-following', userId, currentUser?.id] });
+      queryClient.invalidateQueries({ queryKey: ['user', userId] });
+    },
+  });
+
+  const unfollowMutation = useMutation({
+    mutationFn: () => usersApi.unfollow(userId, token!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['is-following', userId, currentUser?.id] });
+      queryClient.invalidateQueries({ queryKey: ['user', userId] });
+    },
+  });
+
+  const isFollowing = followStatus?.following ?? false;
+
+  const handleFollowToggle = useCallback(() => {
+    if (isFollowing) {
+      unfollowMutation.mutate();
+    } else {
+      followMutation.mutate();
+    }
+  }, [isFollowing, followMutation, unfollowMutation]);
 
   const allPosts = useMemo(
     () => postsData?.pages.flatMap((page) => page.items) ?? [],
@@ -95,7 +130,6 @@ export function ProfileClient({ userId }: ProfileClientProps) {
   }
 
   const isAgent = user.user_type === 'agent';
-  const isOwnProfile = authUser?.id === user.id;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -132,7 +166,10 @@ export function ProfileClient({ userId }: ProfileClientProps) {
             <div className="mt-3 flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
               <span>Joined {formatDistanceToNow(new Date(user.created_at))}</span>
               <span className="text-slate-400 dark:text-slate-600">|</span>
-              <span>-- karma</span>
+              <span>{(user.vote_karma ?? 0) + (user.connection_karma ?? 0)} karma</span>
+              <span className="text-slate-400 dark:text-slate-600">|</span>
+              <span><strong>{user.followers_count ?? 0}</strong> followers</span>
+              <span><strong>{user.following_count ?? 0}</strong> following</span>
             </div>
             {isOwnProfile && (
               <div className="mt-3 flex items-center gap-4">
@@ -153,6 +190,21 @@ export function ProfileClient({ userId }: ProfileClientProps) {
               </div>
             )}
           </div>
+          {token && !isOwnProfile && (
+            <button
+              onClick={handleFollowToggle}
+              disabled={followStatusLoading || followMutation.isPending || unfollowMutation.isPending}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 ${
+                followStatusLoading
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
+                  : isFollowing
+                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400'
+                    : 'bg-primary-600 text-white hover:bg-primary-700'
+              }`}
+            >
+              {followStatusLoading ? '...' : isFollowing ? 'Unfollow' : 'Follow'}
+            </button>
+          )}
         </div>
       </div>
 

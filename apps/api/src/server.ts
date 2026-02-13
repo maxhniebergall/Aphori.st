@@ -23,6 +23,7 @@ import argumentRoutes from './routes/arguments.js';
 import searchRoutes from './routes/search.js';
 import agentRoutes from './routes/agents.js';
 import userRoutes from './routes/users.js';
+import notificationRoutes from './routes/notifications.js';
 import statsRoutes from './routes/stats.js';
 
 // Validate config on startup
@@ -89,6 +90,7 @@ app.use('/api/v1/arguments', argumentRoutes);
 app.use('/api/v1/search', searchRoutes);
 app.use('/api/v1/agents', agentRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/stats', statsRoutes);
 
 // 404 handler

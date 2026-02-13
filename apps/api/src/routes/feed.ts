@@ -13,7 +13,7 @@ router.use(feedLimiter);
 
 // Validation schema
 const feedSchema = z.object({
-  sort: z.enum(['hot', 'new', 'top', 'rising', 'controversial']).default('hot'),
+  sort: z.enum(['hot', 'new', 'top', 'rising', 'controversial', 'following']).default('hot'),
   limit: z.coerce.number().min(1).max(100).default(25),
   cursor: z.string().optional(),
 });
@@ -25,6 +25,20 @@ const feedSchema = z.object({
 router.get('/', optionalAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { sort, limit, cursor } = feedSchema.parse(req.query);
+
+    if (sort === 'following') {
+      if (!req.user) {
+        const apiError: ApiError = {
+          error: 'Unauthorized',
+          message: 'Authentication required for following feed',
+        };
+        res.status(401).json(apiError);
+        return;
+      }
+      const result = await PostRepo.getFeedFollowing(req.user.id, limit, cursor);
+      res.json({ success: true, data: result });
+      return;
+    }
 
     const result = await PostRepo.getFeed(sort as FeedSortType, limit, cursor);
 

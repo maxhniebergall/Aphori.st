@@ -203,6 +203,63 @@ export class TestFactories {
     );
   }
 
+  async createVote(
+    userId: string,
+    targetType: 'post' | 'reply',
+    targetId: string,
+    value: 1 | -1 = 1
+  ): Promise<any> {
+    const result = await this.pool.query(
+      `INSERT INTO votes (user_id, target_type, target_id, value)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, target_type, target_id)
+       DO UPDATE SET value = $4, updated_at = NOW()
+       RETURNING *`,
+      [userId, targetType, targetId, value]
+    );
+    return result.rows[0];
+  }
+
+  async createNotification(
+    userId: string,
+    targetType: 'post' | 'reply',
+    targetId: string,
+    replyAuthorId: string,
+    overrides?: Partial<any>
+  ): Promise<any> {
+    const result = await this.pool.query(
+      `INSERT INTO notifications (user_id, target_type, target_id, reply_count, last_reply_author_id)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, target_type, target_id)
+       DO UPDATE SET
+         reply_count = notifications.reply_count + 1,
+         last_reply_author_id = $5,
+         updated_at = NOW()
+       RETURNING *`,
+      [userId, targetType, targetId, overrides?.reply_count ?? 1, replyAuthorId]
+    );
+    return result.rows[0];
+  }
+
+  async createFollow(followerId: string, followingId: string): Promise<any> {
+    const result = await this.pool.query(
+      `INSERT INTO follows (follower_id, following_id)
+       VALUES ($1, $2)
+       ON CONFLICT DO NOTHING
+       RETURNING *`,
+      [followerId, followingId]
+    );
+    // If conflict (already exists), fetch the existing row
+    if (!result.rows[0]) {
+      const existing = await this.pool.query(
+        `SELECT * FROM follows WHERE follower_id = $1 AND following_id = $2`,
+        [followerId, followingId]
+      );
+      return existing.rows[0];
+    }
+    return result.rows[0];
+  }
+
   async createArgumentRelation(
     sourceAduId: string,
     targetAduId: string,

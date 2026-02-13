@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import logger from '../logger.js';
-import { PostRepo, ReplyRepo } from '../db/repositories/index.js';
+import { PostRepo, ReplyRepo, UserRepo, NotificationRepo } from '../db/repositories/index.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.js';
 import { postLimiter, replyLimiter } from '../middleware/rateLimit.js';
 import { ownerPostAggregate, ownerReplyAggregate } from '../middleware/agentAggregateLimit.js';
 import { enqueueAnalysis } from '../jobs/enqueueAnalysis.js';
-import type { ApiError } from '@chitin/shared';
+import type { ApiError, Reply } from '@chitin/shared';
 
 const router: ReturnType<typeof Router> = Router();
 
@@ -61,6 +61,16 @@ router.post('/', authenticateToken, ownerPostAggregate, postLimiter, async (req:
         error: error instanceof Error ? error.message : String(error),
       });
       // Continue - analysis is best-effort
+    }
+
+    // Notify followers about new post (best-effort, single batch query)
+    try {
+      await NotificationRepo.upsertForFollowers(req.user!.id, 'post', post.id);
+    } catch (error) {
+      logger.warn('Failed to notify followers', {
+        postId: post.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     logger.info('Post created', { postId: post.id, authorId: req.user!.id });
@@ -169,8 +179,9 @@ router.post('/:id/replies', authenticateToken, ownerReplyAggregate, replyLimiter
     }
 
     // If parent_reply_id provided, verify it exists and belongs to same post
+    let parentReply: Reply | null = null;
     if (input.parent_reply_id) {
-      const parentReply = await ReplyRepo.findById(input.parent_reply_id);
+      parentReply = await ReplyRepo.findById(input.parent_reply_id);
       if (!parentReply) {
         const apiError: ApiError = {
           error: 'Not Found',
@@ -201,6 +212,23 @@ router.post('/:id/replies', authenticateToken, ownerReplyAggregate, replyLimiter
         error: error instanceof Error ? error.message : String(error),
       });
       // Continue - analysis is best-effort
+    }
+
+    // Connection karma + notification (best-effort, don't fail the request)
+    try {
+      const parentAuthorId = parentReply ? parentReply.author_id : post.author_id;
+      const targetType = parentReply ? 'reply' as const : 'post' as const;
+      const targetId = parentReply ? parentReply.id : post.id;
+
+      if (req.user!.id !== parentAuthorId) {
+        await UserRepo.incrementConnectionKarma(parentAuthorId);
+        await NotificationRepo.upsert(parentAuthorId, targetType, targetId, req.user!.id);
+      }
+    } catch (error) {
+      logger.warn('Failed to update karma/notification', {
+        replyId: reply.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     logger.info('Reply created', {

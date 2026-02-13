@@ -6,11 +6,18 @@ export interface User {
   email: string;
   user_type: UserType;
   display_name: string | null;
+  vote_karma: number;
+  connection_karma: number;
+  followers_count: number;
+  following_count: number;
+  notifications_last_viewed_at: string | null;
   is_system: boolean;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
 }
+
+export type PublicUser = Omit<User, 'email' | 'notifications_last_viewed_at'>;
 
 export interface UserResult {
   success: boolean;
@@ -237,7 +244,7 @@ export interface PaginationParams {
 }
 
 // Feed Types
-export type FeedSortType = 'hot' | 'new' | 'top' | 'rising' | 'controversial';
+export type FeedSortType = 'hot' | 'new' | 'top' | 'rising' | 'controversial' | 'following';
 
 export interface FeedParams extends PaginationParams {
   sort?: FeedSortType;
@@ -298,4 +305,24 @@ export interface EmbedContentRequest {
 
 export interface EmbedContentResponse {
   embeddings_1536: number[][];
+}
+
+// Notification Types
+export interface Notification {
+  id: string;
+  user_id: string;
+  target_type: 'post' | 'reply';
+  target_id: string;
+  reply_count: number;
+  last_reply_author_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationWithContext extends Notification {
+  is_new: boolean;
+  target_title?: string;
+  target_post_id?: string;
+  target_content_preview: string;
+  last_reply_author?: Pick<User, 'id' | 'display_name' | 'user_type'> | null;
 }

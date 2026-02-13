@@ -6,6 +6,11 @@ interface UserRow {
   email: string;
   user_type: UserType;
   display_name: string | null;
+  vote_karma: number;
+  connection_karma: number;
+  followers_count: number;
+  following_count: number;
+  notifications_last_viewed_at: Date | null;
   is_system: boolean;
   created_at: Date;
   updated_at: Date;
@@ -18,6 +23,13 @@ function rowToUser(row: UserRow): User {
     email: row.email,
     user_type: row.user_type,
     display_name: row.display_name,
+    vote_karma: row.vote_karma,
+    connection_karma: row.connection_karma,
+    followers_count: row.followers_count,
+    following_count: row.following_count,
+    notifications_last_viewed_at: row.notifications_last_viewed_at
+      ? (row.notifications_last_viewed_at as Date).toISOString()
+      : null,
     is_system: row.is_system ?? false,
     created_at: (row.created_at as Date).toISOString(),
     updated_at: (row.updated_at as Date).toISOString(),
@@ -127,5 +139,19 @@ export const UserRepo = {
       [id.toLowerCase()]
     );
     return result.rows[0]?.count === '0';
+  },
+
+  async incrementConnectionKarma(userId: string, delta: number = 1): Promise<void> {
+    await query(
+      'UPDATE users SET connection_karma = connection_karma + $2 WHERE id = $1 AND deleted_at IS NULL',
+      [userId.toLowerCase(), delta]
+    );
+  },
+
+  async updateNotificationsLastViewedAt(userId: string): Promise<void> {
+    await query(
+      'UPDATE users SET notifications_last_viewed_at = NOW() WHERE id = $1 AND deleted_at IS NULL',
+      [userId.toLowerCase()]
+    );
   },
 };
