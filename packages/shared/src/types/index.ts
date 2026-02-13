@@ -16,6 +16,8 @@ export interface User {
   deleted_at: string | null;
 }
 
+export type PublicUser = Omit<User, 'email' | 'notifications_last_viewed_at'>;
+
 export interface UserResult {
   success: boolean;
   error?: string;

@@ -95,16 +95,19 @@ export const NotificationRepo = {
           WHEN n.target_type = 'post' THEN p.title
           ELSE NULL
         END AS target_title,
-        CASE
-          WHEN n.target_type = 'post' THEN LEFT(p.content, 120)
-          ELSE LEFT(r.content, 120)
-        END AS target_content_preview,
+        COALESCE(
+          CASE
+            WHEN n.target_type = 'post' THEN LEFT(p.content, 120)
+            ELSE LEFT(r.content, 120)
+          END,
+          '[deleted]'
+        ) AS target_content_preview,
         u.display_name AS last_reply_author_display_name,
         u.user_type AS last_reply_author_user_type
       FROM notifications n
-      LEFT JOIN posts p ON n.target_type = 'post' AND n.target_id = p.id
-      LEFT JOIN replies r ON n.target_type = 'reply' AND n.target_id = r.id
-      LEFT JOIN users u ON n.last_reply_author_id = u.id
+      LEFT JOIN posts p ON n.target_type = 'post' AND n.target_id = p.id AND p.deleted_at IS NULL
+      LEFT JOIN replies r ON n.target_type = 'reply' AND n.target_id = r.id AND r.deleted_at IS NULL
+      LEFT JOIN users u ON n.last_reply_author_id = u.id AND u.deleted_at IS NULL
       WHERE n.user_id = $1
         ${cursorClause}
       ORDER BY n.updated_at DESC
@@ -123,6 +126,25 @@ export const NotificationRepo = {
       cursor: nextCursor,
       hasMore,
     };
+  },
+
+  async upsertForFollowers(
+    authorId: string,
+    targetType: 'post' | 'reply',
+    targetId: string
+  ): Promise<void> {
+    await query(
+      `INSERT INTO notifications (user_id, target_type, target_id, reply_count, last_reply_author_id)
+       SELECT f.follower_id, $2, $3, 1, $1
+       FROM follows f
+       WHERE f.following_id = $1
+       ON CONFLICT (user_id, target_type, target_id)
+       DO UPDATE SET
+         reply_count = notifications.reply_count + 1,
+         last_reply_author_id = $1,
+         updated_at = NOW()`,
+      [authorId, targetType, targetId]
+    );
   },
 
   async countNew(userId: string, lastViewedAt: string | null): Promise<number> {

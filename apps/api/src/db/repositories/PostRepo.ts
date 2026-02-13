@@ -248,7 +248,7 @@ export const PostRepo = {
     limit: number,
     cursor?: string
   ): Promise<PaginatedResponse<PostWithAuthor>> {
-    const params: unknown[] = [userId, limit + 1];
+    const params: unknown[] = [userId.toLowerCase(), limit + 1];
     let cursorCondition = '';
 
     if (cursor) {

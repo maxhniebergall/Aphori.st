@@ -16,7 +16,7 @@ export const FollowRepo = {
       `INSERT INTO follows (follower_id, following_id)
        VALUES ($1, $2)
        ON CONFLICT DO NOTHING`,
-      [followerId, followingId]
+      [followerId.toLowerCase(), followingId.toLowerCase()]
     );
     return (result.rowCount ?? 0) > 0;
   },
@@ -24,7 +24,7 @@ export const FollowRepo = {
   async unfollow(followerId: string, followingId: string): Promise<boolean> {
     const result = await query(
       `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
-      [followerId, followingId]
+      [followerId.toLowerCase(), followingId.toLowerCase()]
     );
     return (result.rowCount ?? 0) > 0;
   },
@@ -34,7 +34,7 @@ export const FollowRepo = {
       `SELECT EXISTS(
         SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2
       ) AS exists`,
-      [followerId, followingId]
+      [followerId.toLowerCase(), followingId.toLowerCase()]
     );
     return result.rows[0]?.exists ?? false;
   },
@@ -44,7 +44,8 @@ export const FollowRepo = {
     limit: number,
     cursor?: string
   ): Promise<PaginatedResponse<FollowUser>> {
-    const params: unknown[] = [userId, limit + 1];
+    const normalizedUserId = userId.toLowerCase();
+    const params: unknown[] = [normalizedUserId, limit + 1];
     let cursorCondition = '';
 
     if (cursor) {
@@ -82,7 +83,8 @@ export const FollowRepo = {
     limit: number,
     cursor?: string
   ): Promise<PaginatedResponse<FollowUser>> {
-    const params: unknown[] = [userId, limit + 1];
+    const normalizedUserId = userId.toLowerCase();
+    const params: unknown[] = [normalizedUserId, limit + 1];
     let cursorCondition = '';
 
     if (cursor) {
@@ -118,7 +120,7 @@ export const FollowRepo = {
   async getFollowerIds(userId: string): Promise<string[]> {
     const result = await query<{ follower_id: string }>(
       `SELECT follower_id FROM follows WHERE following_id = $1`,
-      [userId]
+      [userId.toLowerCase()]
     );
     return result.rows.map(r => r.follower_id);
   },
