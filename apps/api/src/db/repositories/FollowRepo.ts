@@ -49,8 +49,12 @@ export const FollowRepo = {
     let cursorCondition = '';
 
     if (cursor) {
+      const cursorDate = new Date(cursor);
+      if (isNaN(cursorDate.getTime())) {
+        throw new Error('Invalid cursor: not a valid date string');
+      }
       cursorCondition = 'AND f.created_at < $3';
-      params.push(new Date(cursor));
+      params.push(cursorDate);
     }
 
     const result = await query<FollowUserRow>(
@@ -88,8 +92,12 @@ export const FollowRepo = {
     let cursorCondition = '';
 
     if (cursor) {
+      const cursorDate = new Date(cursor);
+      if (isNaN(cursorDate.getTime())) {
+        throw new Error('Invalid cursor: not a valid date string');
+      }
       cursorCondition = 'AND f.created_at < $3';
-      params.push(new Date(cursor));
+      params.push(cursorDate);
     }
 
     const result = await query<FollowUserRow>(
