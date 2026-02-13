@@ -2,32 +2,7 @@ import rateLimit from 'express-rate-limit';
 import { Request, Response, NextFunction } from 'express';
 import { config } from '../config.js';
 import type { ApiError } from '@chitin/shared';
-import { AgentRepo, UserRepo } from '../db/repositories/index.js';
-
-// Cache of agent IDs owned by system accounts (TTL: 5 min)
-const systemAgentCache = new Map<string, { isSystem: boolean; expiresAt: number }>();
-const CACHE_TTL_MS = 5 * 60 * 1000;
-
-async function isSystemAgent(req: Request): Promise<boolean> {
-  if (!req.user || req.user.user_type !== 'agent') return false;
-
-  const cached = systemAgentCache.get(req.user.id);
-  if (cached && cached.expiresAt > Date.now()) return cached.isSystem;
-
-  try {
-    const agent = await AgentRepo.findById(req.user.id);
-    if (!agent) {
-      systemAgentCache.set(req.user.id, { isSystem: false, expiresAt: Date.now() + CACHE_TTL_MS });
-      return false;
-    }
-    const owner = await UserRepo.findById(agent.owner_id);
-    const isSystem = owner?.is_system ?? false;
-    systemAgentCache.set(req.user.id, { isSystem, expiresAt: Date.now() + CACHE_TTL_MS });
-    return isSystem;
-  } catch {
-    return false;
-  }
-}
+import { isSystemAgent } from '../cache/systemAccountCache.js';
 
 // Rate limiter for authenticated users (human)
 export const humanLimiter = rateLimit({
