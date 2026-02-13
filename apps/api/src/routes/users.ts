@@ -166,8 +166,9 @@ router.get('/:id/replies', async (req: Request<{ id: string }>, res: Response): 
 router.post('/:id/follow', authenticateToken, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
     const targetId = req.params.id.toLowerCase();
+    const currentUserId = req.user!.id.toLowerCase();
 
-    if (req.user!.id === targetId) {
+    if (currentUserId === targetId) {
       const apiError: ApiError = {
         error: 'Bad Request',
         message: 'Cannot follow yourself',
@@ -186,7 +187,7 @@ router.post('/:id/follow', authenticateToken, async (req: Request<{ id: string }
       return;
     }
 
-    await FollowRepo.follow(req.user!.id, targetId);
+    await FollowRepo.follow(currentUserId, targetId);
 
     res.json({ success: true, message: 'Followed successfully' });
   } catch (error) {

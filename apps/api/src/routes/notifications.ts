@@ -107,6 +107,16 @@ router.get('/new-count', authenticateToken, async (req: Request, res: Response):
  */
 router.post('/viewed', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
+    const user = await UserRepo.findById(req.user!.id);
+    if (!user) {
+      const apiError: ApiError = {
+        error: 'Not Found',
+        message: 'User not found',
+      };
+      res.status(404).json(apiError);
+      return;
+    }
+
     await UserRepo.updateNotificationsLastViewedAt(req.user!.id);
 
     res.json({
