@@ -9,9 +9,17 @@ const __dirname = path.dirname(__filename);
 export class TestDatabase {
   private pool: Pool | null = null;
   private adminPool: Pool | null = null;
-  private testDbName = 'chitin_test';
+  private testDbName: string;
+
+  constructor() {
+    const poolId = process.env.VITEST_POOL_ID;
+    this.testDbName = poolId ? `chitin_test_${poolId}` : 'chitin_test';
+  }
 
   async setup(): Promise<void> {
+    // Skip if already set up (global setup already ran for this worker)
+    if (this.pool) return;
+
     // Connect to default postgres database to create test database
     this.adminPool = new Pool({
       host: process.env.DB_HOST || 'localhost',
