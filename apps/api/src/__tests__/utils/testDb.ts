@@ -13,6 +13,9 @@ export class TestDatabase {
 
   constructor() {
     const poolId = process.env.VITEST_POOL_ID;
+    if (poolId && !/^\w+$/.test(poolId)) {
+      throw new Error(`Invalid VITEST_POOL_ID: ${poolId}`);
+    }
     this.testDbName = poolId ? `chitin_test_${poolId}` : 'chitin_test';
   }
 
