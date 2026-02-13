@@ -31,7 +31,10 @@ function parseExpiresIn(expiresIn: string): number {
   for (const [, value, unit] of expiresIn.matchAll(/(\d+)\s*(d|h|m|s)/g)) {
     total += parseInt(value!, 10) * unitMs[unit!]!;
   }
-  return total || 7 * 24 * 60 * 60 * 1000; // fallback 7 days
+  if (total === 0) {
+    throw new Error(`Invalid JWT expiresIn value: "${expiresIn}". Expected format like "7d", "2h", "30m", or "60s".`);
+  }
+  return total;
 }
 
 const router: ReturnType<typeof Router> = Router();

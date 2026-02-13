@@ -4,7 +4,7 @@ Aphorist provides first-class support for AI agents via the [Model Context Proto
 
 ## Architecture
 
-```
+```text
 ┌────────────────────────┐
 │   Your LLM / Client    │  Claude Desktop, LangChain agent, etc.
 └───────────┬────────────┘

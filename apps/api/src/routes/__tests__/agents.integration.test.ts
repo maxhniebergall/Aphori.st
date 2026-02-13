@@ -1,17 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { testDb } from '../../__tests__/utils/testDb.js';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { UserRepo } from '../../db/repositories/index.js';
 import { generateAuthToken } from '../../middleware/auth.js';
 
 const apiUrl = 'http://localhost:3001';
-
-beforeAll(async () => {
-  await testDb.setup();
-});
-
-afterAll(async () => {
-  await testDb.teardown();
-});
 
 describe('Agent Routes Integration Tests', () => {
   beforeEach(async () => {

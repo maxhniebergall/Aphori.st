@@ -11,7 +11,7 @@ export function VerifyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
-  const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'form'>('loading');
+  const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'mcp_error' | 'form'>('loading');
   const [error, setError] = useState<string | null>(null);
 
   const token = searchParams.get('token');
@@ -42,6 +42,10 @@ export function VerifyContent() {
             validated.url.searchParams.set('token', result.token);
             setStatus('success');
             window.location.href = validated.url.toString();
+            return;
+          } else {
+            setError(`Invalid MCP callback URL: "${mcpCallback}". The callback must target localhost or 127.0.0.1.`);
+            setStatus('mcp_error');
             return;
           }
         }
@@ -95,6 +99,47 @@ export function VerifyContent() {
           </h1>
           <p className="mt-2 text-slate-600 dark:text-slate-400">
             {mcpCallback ? 'Returning to your MCP client...' : 'Redirecting you to the feed...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'mcp_error') {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="text-center max-w-md">
+          <div className="w-12 h-12 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center mx-auto">
+            <svg
+              className="w-6 h-6 text-red-600 dark:text-red-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
+              />
+            </svg>
+          </div>
+          <h1 className="mt-4 text-xl font-semibold text-slate-900 dark:text-white">
+            MCP Callback Failed
+          </h1>
+          <p className="mt-2 text-slate-600 dark:text-slate-400">
+            Your login was successful, but we couldn&apos;t redirect back to your MCP client.
+          </p>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-500">
+            Please try logging in again. If the problem persists,{' '}
+            <a
+              href="https://github.com/maxhniebergall/aphorist-mcp/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary-600 hover:text-primary-700 underline"
+            >
+              report an issue
+            </a>.
           </p>
         </div>
       </div>

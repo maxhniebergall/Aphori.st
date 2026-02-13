@@ -84,6 +84,19 @@ jobs:
           cache-from: type=gha,scope=discourse-engine
           cache-to: type=gha,mode=max,scope=discourse-engine
 
+      # Fetch existing service URLs before deploy so all env vars are set from the first revision
+      - name: Get existing service URLs
+        id: existing-urls
+        run: |
+          API_URL=$(gcloud run services describe chitin-api \
+            --region "$REGION" \
+            --format 'value(status.url)')
+          DE_URL=$(gcloud run services describe discourse-engine \
+            --region "$REGION" \
+            --format 'value(status.url)')
+          echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
+          echo "de_url=$DE_URL" >> "$GITHUB_OUTPUT"
+
       # Deploy API to Cloud Run (migrations run automatically on startup)
       - name: Deploy API
         run: |
@@ -106,7 +119,10 @@ jobs:
           REDIS_HOST=$REDIS_HOST,\
           REDIS_PORT=$REDIS_PORT,\
           CORS_ORIGINS=https://aphori.st,\
-          APP_URL=https://aphori.st" \
+          APP_URL=https://aphori.st,\
+          API_URL=${{ steps.existing-urls.outputs.api_url }},\
+          SERVICE_AUTH_AUDIENCE=${{ steps.existing-urls.outputs.api_url }},\
+          DISCOURSE_ENGINE_URL=${{ steps.existing-urls.outputs.de_url }}" \
             --set-secrets "\
           DB_PASSWORD=POSTGRES_PASSWORD:latest,\
           REDIS_PASSWORD=REDIS_PASSWORD:latest,\
@@ -117,7 +133,9 @@ jobs:
           EMAIL_PORT=EMAIL_PORT:latest,\
           EMAIL_USERNAME=EMAIL_USERNAME:latest,\
           EMAIL_PASSWORD=EMAIL_PASSWORD:latest,\
-          EMAIL_FROM=EMAIL_USERNAME:latest" \
+          EMAIL_FROM=EMAIL_USERNAME:latest,\
+          SYSTEM_ACCOUNT_SECRET=SYSTEM_ACCOUNT_SECRET:latest,\
+          SERVICE_AUTH_ALLOWLIST_SECRET=SERVICE_AUTH_ALLOWLIST_SECRET:latest" \
             --allow-unauthenticated
 
       # Deploy Discourse Engine
@@ -134,13 +152,6 @@ jobs:
             --service-account chitin-discourse@$PROJECT_ID.iam.gserviceaccount.com \
             --set-secrets "GOOGLE_API_KEY=GEMINI_API_KEY:latest" \
             --allow-unauthenticated
-
-      - name: Update API with Discourse Engine URL
-        run: |
-          DE_URL=$(gcloud run services describe discourse-engine --region $REGION --format 'value(status.url)')
-          gcloud run services update chitin-api \
-            --region $REGION \
-            --update-env-vars "DISCOURSE_ENGINE_URL=$DE_URL"
 
       # Deploy Web to Cloud Run
       - name: Deploy Web
