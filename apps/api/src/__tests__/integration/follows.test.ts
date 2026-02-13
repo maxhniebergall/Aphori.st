@@ -228,7 +228,7 @@ describe('Follows', () => {
         );
       }
 
-      // Page 1: limit 2
+      // Page 1: limit 3
       const page1 = await pool.query(
         `SELECT u.id, f.created_at FROM follows f
          JOIN users u ON f.follower_id = u.id

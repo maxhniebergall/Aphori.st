@@ -69,7 +69,7 @@ afterAll(async () => {
 beforeEach(async () => {
   // Truncate in dependency order
   const tables = [
-    'notifications', 'argument_relations', 'adu_canonical_map', 'adu_embeddings',
+    'notifications', 'follows', 'argument_relations', 'adu_canonical_map', 'adu_embeddings',
     'canonical_claim_embeddings', 'canonical_claims', 'adus', 'content_embeddings',
     'votes', 'replies', 'posts', 'agent_tokens', 'agent_identities', 'users',
   ];
@@ -229,9 +229,11 @@ describe('Notifications', () => {
 
   it('should not create notification for self-reply', async () => {
     const author = await factories.createUser();
-    await factories.createPost(author.id);
+    const post = await factories.createPost(author.id);
+    // Author replies to their own post
+    await factories.createReply(post.id, author.id);
 
-    // The route would skip this, so we just verify no notification exists
+    // Self-reply should not generate a notification
     const result = await pool.query(
       'SELECT * FROM notifications WHERE user_id = $1',
       [author.id]
@@ -245,10 +247,19 @@ describe('Notifications', () => {
     const post1 = await factories.createPost(user.id);
     const post2 = await factories.createPost(user.id);
 
-    await factories.createNotification(user.id, 'post', post1.id, replier.id);
-    // Small delay so updated_at differs
-    await new Promise(resolve => setTimeout(resolve, 10));
-    await factories.createNotification(user.id, 'post', post2.id, replier.id);
+    // Insert with explicit timestamps (bypass trigger with session_replication_role)
+    await pool.query(`SET session_replication_role = 'replica'`);
+    await pool.query(
+      `INSERT INTO notifications (user_id, target_type, target_id, reply_count, last_reply_author_id, created_at, updated_at)
+       VALUES ($1, 'post', $2, 1, $3, NOW() - INTERVAL '2 minutes', NOW() - INTERVAL '2 minutes')`,
+      [user.id, post1.id, replier.id]
+    );
+    await pool.query(
+      `INSERT INTO notifications (user_id, target_type, target_id, reply_count, last_reply_author_id, created_at, updated_at)
+       VALUES ($1, 'post', $2, 1, $3, NOW() - INTERVAL '1 minute', NOW() - INTERVAL '1 minute')`,
+      [user.id, post2.id, replier.id]
+    );
+    await pool.query(`SET session_replication_role = 'origin'`);
 
     const result = await pool.query(
       'SELECT * FROM notifications WHERE user_id = $1 ORDER BY updated_at DESC',
@@ -265,18 +276,22 @@ describe('Notifications', () => {
     const post1 = await factories.createPost(user.id);
     const post2 = await factories.createPost(user.id);
 
-    await factories.createNotification(user.id, 'post', post1.id, replier.id);
-
-    // Mark as viewed
+    // Insert notification in the past (bypass trigger)
+    await pool.query(`SET session_replication_role = 'replica'`);
     await pool.query(
-      'UPDATE users SET notifications_last_viewed_at = NOW() WHERE id = $1',
+      `INSERT INTO notifications (user_id, target_type, target_id, reply_count, last_reply_author_id, created_at, updated_at)
+       VALUES ($1, 'post', $2, 1, $3, NOW() - INTERVAL '2 minutes', NOW() - INTERVAL '2 minutes')`,
+      [user.id, post1.id, replier.id]
+    );
+    await pool.query(`SET session_replication_role = 'origin'`);
+
+    // Mark as viewed between the two notifications
+    await pool.query(
+      `UPDATE users SET notifications_last_viewed_at = NOW() - INTERVAL '1 minute' WHERE id = $1`,
       [user.id]
     );
 
-    // Small delay
-    await new Promise(resolve => setTimeout(resolve, 10));
-
-    // New notification after viewing
+    // New notification after viewing (default updated_at = NOW())
     await factories.createNotification(user.id, 'post', post2.id, replier.id);
 
     const userResult = await pool.query('SELECT notifications_last_viewed_at FROM users WHERE id = $1', [user.id]);

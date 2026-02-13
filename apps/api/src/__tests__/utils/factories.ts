@@ -249,6 +249,14 @@ export class TestFactories {
        RETURNING *`,
       [followerId, followingId]
     );
+    // If conflict (already exists), fetch the existing row
+    if (!result.rows[0]) {
+      const existing = await this.pool.query(
+        `SELECT * FROM follows WHERE follower_id = $1 AND following_id = $2`,
+        [followerId, followingId]
+      );
+      return existing.rows[0];
+    }
     return result.rows[0];
   }
 
