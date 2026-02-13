@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { authApi } from '@/lib/api';
 import { LoginForm } from '@/components/Auth/LoginForm';
+import { validateMcpCallback } from '@chitin/shared';
 
 export function VerifyContent() {
   const router = useRouter();
@@ -36,16 +37,12 @@ export function VerifyContent() {
 
         // If MCP callback is present and is a localhost URL, redirect with the token
         if (mcpCallback) {
-          try {
-            const callbackUrl = new URL(mcpCallback);
-            if (callbackUrl.hostname === 'localhost' || callbackUrl.hostname === '127.0.0.1') {
-              callbackUrl.searchParams.set('token', result.token);
-              setStatus('success');
-              window.location.href = callbackUrl.toString();
-              return;
-            }
-          } catch {
-            // Invalid URL — fall through to normal flow
+          const validated = validateMcpCallback(mcpCallback);
+          if (validated.valid && validated.url) {
+            validated.url.searchParams.set('token', result.token);
+            setStatus('success');
+            window.location.href = validated.url.toString();
+            return;
           }
         }
 
