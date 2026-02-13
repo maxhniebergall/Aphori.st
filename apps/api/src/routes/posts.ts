@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import logger from '../logger.js';
-import { PostRepo, ReplyRepo, UserRepo, NotificationRepo, FollowRepo } from '../db/repositories/index.js';
+import { PostRepo, ReplyRepo, UserRepo, NotificationRepo } from '../db/repositories/index.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.js';
 import { postLimiter, replyLimiter } from '../middleware/rateLimit.js';
 import { ownerPostAggregate, ownerReplyAggregate } from '../middleware/agentAggregateLimit.js';
 import { enqueueAnalysis } from '../jobs/enqueueAnalysis.js';
-import type { ApiError } from '@chitin/shared';
+import type { ApiError, Reply } from '@chitin/shared';
 
 const router: ReturnType<typeof Router> = Router();
 
@@ -59,12 +59,9 @@ router.post('/', authenticateToken, ownerPostAggregate, postLimiter, async (req:
       // Continue - analysis is best-effort
     }
 
-    // Notify followers about new post (best-effort)
+    // Notify followers about new post (best-effort, single batch query)
     try {
-      const followerIds = await FollowRepo.getFollowerIds(req.user!.id);
-      for (const followerId of followerIds) {
-        await NotificationRepo.upsert(followerId, 'post', post.id, req.user!.id);
-      }
+      await NotificationRepo.upsertForFollowers(req.user!.id, 'post', post.id);
     } catch (error) {
       logger.warn('Failed to notify followers', {
         postId: post.id,
@@ -178,7 +175,7 @@ router.post('/:id/replies', authenticateToken, ownerReplyAggregate, replyLimiter
     }
 
     // If parent_reply_id provided, verify it exists and belongs to same post
-    let parentReply = null;
+    let parentReply: Reply | null = null;
     if (input.parent_reply_id) {
       parentReply = await ReplyRepo.findById(input.parent_reply_id);
       if (!parentReply) {
