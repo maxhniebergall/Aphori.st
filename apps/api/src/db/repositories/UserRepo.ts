@@ -113,10 +113,11 @@ export const UserRepo = {
   },
 
   async syncSystemFlags(ids: string[]): Promise<void> {
+    const normalizedIds = ids.map(id => id.toLowerCase());
     await query(
       `UPDATE users SET is_system = (id = ANY($1::text[]))
        WHERE is_system = true OR id = ANY($1::text[])`,
-      [ids]
+      [normalizedIds]
     );
   },
 
