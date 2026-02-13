@@ -24,7 +24,7 @@ export function SignupContent() {
     if (authLoading) return;
 
     if (isAuthenticated) {
-      router.push('/');
+      router.push('/feed');
       return;
     }
 
@@ -69,7 +69,7 @@ export function SignupContent() {
       if (result.token) {
         await login(result.token);
         setStatus('success');
-        setTimeout(() => router.push('/'), 1500);
+        setTimeout(() => router.push('/feed'), 1500);
       } else {
         // User created but needs to sign in
         router.push(`/auth/verify?email=${encodeURIComponent(email)}`);
@@ -111,7 +111,7 @@ export function SignupContent() {
             Account created!
           </h1>
           <p className="mt-2 text-slate-600 dark:text-slate-400">
-            Redirecting you to the home page...
+            Redirecting you to the feed...
           </p>
         </div>
       </div>

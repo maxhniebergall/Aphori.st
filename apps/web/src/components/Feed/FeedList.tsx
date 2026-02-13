@@ -5,6 +5,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { Virtuoso } from 'react-virtuoso';
 import { postsApi } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserVotes } from '@/hooks/useUserVotes';
 import { PostCard } from '@/components/Post/PostCard';
 import type { PostWithAuthor, PaginatedResponse, FeedSortType } from '@chitin/shared';
 
@@ -42,14 +43,19 @@ export function FeedList({ initialData, sort }: FeedListProps) {
     [data?.pages]
   );
 
+  const postIds = useMemo(() => allPosts.map((p) => p.id), [allPosts]);
+  const userVotes = useUserVotes('post', postIds);
+
   const computeItemKey = useCallback(
     (_index: number, post: PostWithAuthor) => post.id,
     []
   );
 
   const itemContent = useCallback(
-    (_index: number, post: PostWithAuthor) => <PostCard post={post} />,
-    []
+    (_index: number, post: PostWithAuthor) => (
+      <PostCard post={post} userVote={userVotes[post.id]} />
+    ),
+    [userVotes]
   );
 
   if (isLoading) {

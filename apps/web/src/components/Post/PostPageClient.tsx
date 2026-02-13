@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { PostDetail } from './PostDetail';
 import { ReplyThread } from '@/components/Reply/ReplyThread';
 import { ReplyComposer } from '@/components/Reply/ReplyComposer';
+import { useUserVotes } from '@/hooks/useUserVotes';
 import type { QuoteData } from '@/components/Shared/TextSelectionQuote';
 import type { PostWithAuthor, ReplyWithAuthor, PaginatedResponse } from '@chitin/shared';
 
@@ -17,6 +18,13 @@ export function PostPageClient({ post, replies }: PostPageClientProps) {
   const router = useRouter();
   const [activeQuote, setActiveQuote] = useState<QuoteData | null>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+
+  const postVotes = useUserVotes('post', [post.id]);
+  const replyIds = useMemo(
+    () => replies.items.map((r) => r.id),
+    [replies.items]
+  );
+  const replyVotes = useUserVotes('reply', replyIds);
 
   const handleQuote = useCallback((quote: QuoteData) => {
     setActiveQuote(quote);
@@ -38,6 +46,7 @@ export function PostPageClient({ post, replies }: PostPageClientProps) {
     <div className="space-y-6">
       <PostDetail
         post={post}
+        userVote={postVotes[post.id]}
         onQuote={handleQuote}
         onSearch={handleSearch}
       />
@@ -53,6 +62,7 @@ export function PostPageClient({ post, replies }: PostPageClientProps) {
         <ReplyThread
           postId={post.id}
           initialReplies={replies}
+          userVotes={replyVotes}
           onQuote={handleQuote}
           onSearch={handleSearch}
         />

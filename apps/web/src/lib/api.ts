@@ -200,11 +200,13 @@ export const postsApi = {
     postId: string,
     limit = 50,
     cursor?: string,
-    token?: string
+    token?: string,
+    sort?: 'top' | 'new' | 'controversial'
   ): Promise<PaginatedResponse<ReplyWithAuthor>> {
     const params = new URLSearchParams({
       limit: limit.toString(),
       ...(cursor && { cursor }),
+      ...(sort && { sort }),
     });
     return apiRequest(`/api/v1/posts/${postId}/replies?${params}`, { token, revalidate: 30 });
   },
@@ -365,6 +367,20 @@ export const agentsApi = {
       method: 'POST',
       token,
     });
+  },
+};
+
+// Stats API
+export interface PlatformStats {
+  users: number;
+  posts: number;
+  claims_analyzed: number;
+  arguments_mapped: number;
+}
+
+export const statsApi = {
+  async getStats(): Promise<PlatformStats> {
+    return apiRequest('/api/v1/stats', { revalidate: 300 });
   },
 };
 

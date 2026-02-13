@@ -504,7 +504,7 @@ export const createArgumentRepo = (pool: Pool) => ({
       END
       WHERE (p.id IS NOT NULL OR r.id IS NOT NULL)
         AND ($2::uuid IS NULL OR la.source_id != $2)
-      ORDER BY la.similarity_score DESC
+      ORDER BY score DESC, la.similarity_score DESC
       LIMIT $3`,
       [canonicalClaimId, excludeSourceId || null, limit]
     );

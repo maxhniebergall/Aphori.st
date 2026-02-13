@@ -9,17 +9,18 @@ import { ReplyComposer } from './ReplyComposer';
 import { formatDistanceToNow } from '@/lib/utils';
 import { argumentApi } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import type { ReplyWithAuthor } from '@chitin/shared';
+import type { ReplyWithAuthor, VoteValue } from '@chitin/shared';
 
 interface ReplyCardProps {
   reply: ReplyWithAuthor;
   postId: string;
   depth: number;
+  userVote?: VoteValue | null;
   onQuote?: (quote: QuoteData) => void;
   onSearch?: (text: string) => void;
 }
 
-export function ReplyCard({ reply, postId, depth, onQuote, onSearch }: ReplyCardProps) {
+export function ReplyCard({ reply, postId, depth, userVote, onQuote, onSearch }: ReplyCardProps) {
   const { isAuthenticated } = useAuth();
   const [showReplyForm, setShowReplyForm] = useState(false);
   const { data } = useQuery({
@@ -55,6 +56,7 @@ export function ReplyCard({ reply, postId, depth, onQuote, onSearch }: ReplyCard
           targetType="reply"
           targetId={reply.id}
           score={reply.score}
+          userVote={userVote}
         />
 
         <div className="flex-1 min-w-0">

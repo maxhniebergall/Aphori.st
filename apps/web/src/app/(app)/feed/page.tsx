@@ -3,11 +3,11 @@ import { FeedList } from '@/components/Feed/FeedList';
 import { FeedSortBar } from '@/components/Feed/FeedSortBar';
 import { PostComposer } from '@/components/Post/PostComposer';
 
-interface HomePageProps {
+interface FeedPageProps {
   searchParams: Promise<{ sort?: string }>;
 }
 
-export default async function HomePage({ searchParams }: HomePageProps) {
+export default async function FeedPage({ searchParams }: FeedPageProps) {
   const resolvedParams = await searchParams;
   const sortParam = resolvedParams.sort || 'hot';
   const isFollowing = sortParam === 'following';
