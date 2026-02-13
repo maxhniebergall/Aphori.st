@@ -88,14 +88,27 @@ jobs:
       - name: Get existing service URLs
         id: existing-urls
         run: |
-          API_URL=$(gcloud run services describe chitin-api \
-            --region $REGION \
-            --format 'value(status.url)' 2>/dev/null || echo "")
-          DE_URL=$(gcloud run services describe discourse-engine \
-            --region $REGION \
-            --format 'value(status.url)' 2>/dev/null || echo "")
-          echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
-          echo "de_url=$DE_URL" >> "$GITHUB_OUTPUT"
+          API_ERR=$(mktemp)
+          if API_URL=$(gcloud run services describe chitin-api \
+            --region "$REGION" \
+            --format 'value(status.url)' 2>"$API_ERR"); then
+            echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Failed to fetch chitin-api URL (may not exist yet): $(cat "$API_ERR")"
+            echo "api_url=" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f "$API_ERR"
+
+          DE_ERR=$(mktemp)
+          if DE_URL=$(gcloud run services describe discourse-engine \
+            --region "$REGION" \
+            --format 'value(status.url)' 2>"$DE_ERR"); then
+            echo "de_url=$DE_URL" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Failed to fetch discourse-engine URL (may not exist yet): $(cat "$DE_ERR")"
+            echo "de_url=" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f "$DE_ERR"
 
       # Deploy API to Cloud Run (migrations run automatically on startup)
       - name: Deploy API
