@@ -56,12 +56,12 @@ export const config = {
   apiUrl: process.env.API_URL || 'http://localhost:3001',
   discourseEngineUrl: process.env.DISCOURSE_ENGINE_URL || 'http://localhost:8001',
 
-  // System account management via Google Cloud Secret Manager
-  // Format: "projects/{project}/secrets/{name}/versions/latest"
+  // System account IDs (JSON string array injected via Cloud Run --set-secrets)
   systemAccountSecret: process.env.SYSTEM_ACCOUNT_SECRET || '',
 
   // Service auth: GCP identity token exchange for system account access
   serviceAuth: {
+    // Service account allowlist (JSON string array injected via Cloud Run --set-secrets)
     allowlistSecret: process.env.SERVICE_AUTH_ALLOWLIST_SECRET || '',
     audience: process.env.SERVICE_AUTH_AUDIENCE || process.env.API_URL || 'http://localhost:3001',
   },

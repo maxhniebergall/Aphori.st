@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@chitin/shared": "workspace:*",
-    "@google-cloud/secret-manager": "^6.1.1",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.34.0",
     "cors": "^2.8.5",
