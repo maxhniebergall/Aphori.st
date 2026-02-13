@@ -50,11 +50,11 @@ app.use(express.json({ limit: '50kb' }));
 // Optional auth for rate limiting (identifies user if token present)
 app.use(optionalAuth);
 
-// Rate limiting (per-user-type limits, requires auth to classify user)
-app.use(combinedRateLimiter);
-
 // Request logging (after auth so logs include user context)
 app.use(requestLogger);
+
+// Rate limiting (per-user-type limits, requires auth to classify user)
+app.use(combinedRateLimiter);
 
 // Database readiness flag
 let isDbReady = false;
@@ -150,10 +150,22 @@ async function init(): Promise<void> {
     await migrate();
 
     // Sync system accounts from Secret Manager (non-fatal)
-    await syncSystemAccountsFromSecret();
+    try {
+      await syncSystemAccountsFromSecret();
+    } catch (error) {
+      logger.warn('Failed to sync system accounts (non-fatal)', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     // Warm service account allowlist cache (non-fatal)
-    await syncServiceAccountAllowlist();
+    try {
+      await syncServiceAccountAllowlist();
+    } catch (error) {
+      logger.warn('Failed to sync service account allowlist (non-fatal)', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     isDbReady = true;
 

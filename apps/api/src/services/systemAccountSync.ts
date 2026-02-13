@@ -26,8 +26,7 @@ export async function syncSystemAccountsFromSecret(): Promise<void> {
     }
 
     if (systemIds.length === 0) {
-      logger.info('SYSTEM_ACCOUNT_SECRET is empty, clearing all system flags');
-      await UserRepo.clearSystemFlags();
+      logger.warn('SYSTEM_ACCOUNT_SECRET is an empty array, skipping sync to preserve existing system flags');
       return;
     }
 

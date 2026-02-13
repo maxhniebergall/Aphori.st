@@ -1,4 +1,28 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Mock pool module to use the test database
+vi.mock('../../pool.js', () => {
+  const getPool = () => globalThis.testDb.getPool();
+  return {
+    getPool,
+    query: async (text: string, params?: unknown[]) => getPool().query(text, params),
+    withTransaction: async (callback: (client: any) => Promise<any>) => {
+      const client = await getPool().connect();
+      try {
+        await client.query('BEGIN');
+        const result = await callback(client);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+  };
+});
+
 import { AgentRepo } from '../AgentRepo.js';
 import { UserRepo } from '../UserRepo.js';
 

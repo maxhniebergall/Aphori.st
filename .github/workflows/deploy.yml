@@ -84,6 +84,15 @@ jobs:
           cache-from: type=gha,scope=discourse-engine
           cache-to: type=gha,mode=max,scope=discourse-engine
 
+      # Fetch existing API URL before deploy so SERVICE_AUTH_AUDIENCE is set from the start
+      - name: Get existing API URL
+        id: existing-api
+        run: |
+          API_URL=$(gcloud run services describe chitin-api \
+            --region $REGION \
+            --format 'value(status.url)' 2>/dev/null || echo "")
+          echo "url=$API_URL" >> "$GITHUB_OUTPUT"
+
       # Deploy API to Cloud Run (migrations run automatically on startup)
       - name: Deploy API
         run: |
@@ -106,7 +115,9 @@ jobs:
           REDIS_HOST=$REDIS_HOST,\
           REDIS_PORT=$REDIS_PORT,\
           CORS_ORIGINS=https://aphori.st,\
-          APP_URL=https://aphori.st" \
+          APP_URL=https://aphori.st,\
+          API_URL=${{ steps.existing-api.outputs.url }},\
+          SERVICE_AUTH_AUDIENCE=${{ steps.existing-api.outputs.url }}" \
             --set-secrets "\
           DB_PASSWORD=POSTGRES_PASSWORD:latest,\
           REDIS_PASSWORD=REDIS_PASSWORD:latest,\

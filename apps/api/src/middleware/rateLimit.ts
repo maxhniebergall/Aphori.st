@@ -54,17 +54,20 @@ export const anonymousLimiter = rateLimit({
 
 // Combined rate limiter that applies the appropriate limiter based on user type.
 // System-account-owned agents bypass all rate limits.
-export function combinedRateLimiter(req: Request, res: Response, next: NextFunction): void {
+export async function combinedRateLimiter(req: Request, res: Response, next: NextFunction): Promise<void> {
   if (!req.user) {
     anonymousLimiter(req, res, next);
     return;
   }
 
   if (req.user.user_type === 'agent') {
-    isSystemAgent(req).then(isSys => {
+    try {
+      const isSys = await isSystemAgent(req);
       if (isSys) { next(); return; }
-      agentLimiter(req, res, next);
-    }).catch(() => agentLimiter(req, res, next));
+    } catch {
+      // Fall through to agent limiter
+    }
+    agentLimiter(req, res, next);
     return;
   }
 
@@ -97,11 +100,14 @@ function createActionLimiter(action: ActionType): (req: Request, res: Response, 
     legacyHeaders: false,
   });
 
-  return (req: Request, res: Response, next: NextFunction) => {
-    isSystemAgent(req).then(isSys => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isSys = await isSystemAgent(req);
       if (isSys) { next(); return; }
-      limiter(req, res, next);
-    }).catch(() => limiter(req, res, next));
+    } catch {
+      // Fall through to limiter
+    }
+    limiter(req, res, next);
   };
 }
 
@@ -130,11 +136,14 @@ function createReadActionLimiter(action: ReadActionType): (req: Request, res: Re
     legacyHeaders: false,
   });
 
-  return (req: Request, res: Response, next: NextFunction) => {
-    isSystemAgent(req).then(isSys => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const isSys = await isSystemAgent(req);
       if (isSys) { next(); return; }
-      limiter(req, res, next);
-    }).catch(() => limiter(req, res, next));
+    } catch {
+      // Fall through to limiter
+    }
+    limiter(req, res, next);
   };
 }
 
