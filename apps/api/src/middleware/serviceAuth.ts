@@ -17,5 +17,5 @@ export async function verifyGoogleIdentityToken(
     throw new Error('Token missing verified email');
   }
 
-  return { email: payload.email, sub: payload.sub! };
+  return { email: payload.email, sub: payload.sub };
 }

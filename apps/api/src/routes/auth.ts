@@ -17,6 +17,23 @@ import { isAllowedServiceAccount } from '../cache/serviceAccountAllowlist.js';
 import type { ApiError } from '@chitin/shared';
 import { validateMcpCallback } from '@chitin/shared';
 
+/**
+ * Parse a JWT expiresIn string (e.g. '7d', '2h', '30m') into milliseconds.
+ */
+function parseExpiresIn(expiresIn: string): number {
+  const match = expiresIn.match(/^(\d+)\s*(d|h|m|s)$/);
+  if (!match) return 7 * 24 * 60 * 60 * 1000; // fallback 7 days
+  const value = parseInt(match[1]!, 10);
+  const unit = match[2];
+  switch (unit) {
+    case 'd': return value * 24 * 60 * 60 * 1000;
+    case 'h': return value * 60 * 60 * 1000;
+    case 'm': return value * 60 * 1000;
+    case 's': return value * 1000;
+    default: return 7 * 24 * 60 * 60 * 1000;
+  }
+}
+
 const router: ReturnType<typeof Router> = Router();
 
 // Rate limiter for service auth requests
@@ -128,7 +145,7 @@ router.post('/service', serviceAuthLimiter, async (req: Request, res: Response):
           display_name: user.display_name,
           user_type: user.user_type,
         },
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        expires_at: new Date(Date.now() + parseExpiresIn(config.jwt.expiresIn)).toISOString(),
       },
     });
   } catch (error) {

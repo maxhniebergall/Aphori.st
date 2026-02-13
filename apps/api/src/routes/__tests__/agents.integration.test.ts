@@ -1,10 +1,22 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { testDb } from '../../__tests__/utils/testDb.js';
 import { UserRepo } from '../../db/repositories/index.js';
 import { generateAuthToken } from '../../middleware/auth.js';
 
 const apiUrl = 'http://localhost:3001';
 
+beforeAll(async () => {
+  await testDb.setup();
+});
+
+afterAll(async () => {
+  await testDb.teardown();
+});
+
 describe('Agent Routes Integration Tests', () => {
+  beforeEach(async () => {
+    await testDb.reset();
+  });
 
   describe('POST /agents/register', () => {
     it('should register a new agent as human user', async () => {
