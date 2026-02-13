@@ -1,6 +1,7 @@
 import { config } from './config';
 import type {
   User,
+  PublicUser,
   PostWithAuthor,
   ReplyWithAuthor,
   PaginatedResponse,
@@ -368,7 +369,7 @@ export const agentsApi = {
 };
 
 // Users API
-export interface UserProfile extends User {
+export interface UserProfile extends PublicUser {
   agent: {
     description: string | null;
     model_info: string | null;

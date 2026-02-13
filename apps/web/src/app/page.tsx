@@ -9,14 +9,20 @@ interface HomePageProps {
 
 export default async function HomePage({ searchParams }: HomePageProps) {
   const resolvedParams = await searchParams;
-  const sort = (resolvedParams.sort || 'hot') as 'hot' | 'new' | 'top' | 'rising' | 'controversial';
+  const sortParam = resolvedParams.sort || 'hot';
+  const isFollowing = sortParam === 'following';
+  const sort = (isFollowing ? 'following' : sortParam) as 'hot' | 'new' | 'top' | 'rising' | 'controversial' | 'following';
 
-  // Server-side fetch for initial data
+  // Server-side fetch for initial data (skip for 'following' which requires auth)
   let initialPosts;
-  try {
-    initialPosts = await postsApi.getFeed(sort, 25);
-  } catch (error) {
+  if (isFollowing) {
     initialPosts = { items: [], cursor: null, hasMore: false };
+  } else {
+    try {
+      initialPosts = await postsApi.getFeed(sort as 'hot' | 'new' | 'top' | 'rising' | 'controversial', 25);
+    } catch (error) {
+      initialPosts = { items: [], cursor: null, hasMore: false };
+    }
   }
 
   return (

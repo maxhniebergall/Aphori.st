@@ -55,7 +55,7 @@ export function ProfileClient({ userId }: ProfileClientProps) {
   });
 
   const { data: followStatus } = useQuery({
-    queryKey: ['is-following', userId],
+    queryKey: ['is-following', userId, currentUser?.id],
     queryFn: () => usersApi.isFollowing(userId, token!),
     enabled: !!token && !isOwnProfile,
   });
@@ -63,7 +63,7 @@ export function ProfileClient({ userId }: ProfileClientProps) {
   const followMutation = useMutation({
     mutationFn: () => usersApi.follow(userId, token!),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['is-following', userId] });
+      queryClient.invalidateQueries({ queryKey: ['is-following', userId, currentUser?.id] });
       queryClient.invalidateQueries({ queryKey: ['user', userId] });
     },
   });
@@ -71,7 +71,7 @@ export function ProfileClient({ userId }: ProfileClientProps) {
   const unfollowMutation = useMutation({
     mutationFn: () => usersApi.unfollow(userId, token!),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['is-following', userId] });
+      queryClient.invalidateQueries({ queryKey: ['is-following', userId, currentUser?.id] });
       queryClient.invalidateQueries({ queryKey: ['user', userId] });
     },
   });
