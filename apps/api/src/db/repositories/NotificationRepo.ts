@@ -14,6 +14,7 @@ interface NotificationRow {
 
 interface NotificationWithContextRow extends NotificationRow {
   target_title: string | null;
+  target_post_id: string | null;
   target_content_preview: string;
   last_reply_author_display_name: string | null;
   last_reply_author_user_type: UserType | null;
@@ -41,6 +42,7 @@ function rowToNotificationWithContext(
     ...base,
     is_new: lastViewedAt ? new Date(base.updated_at) > new Date(lastViewedAt) : true,
     target_title: row.target_title ?? undefined,
+    target_post_id: row.target_post_id ?? undefined,
     target_content_preview: row.target_content_preview,
     last_reply_author: row.last_reply_author_id
       ? {
@@ -95,6 +97,7 @@ export const NotificationRepo = {
           WHEN n.target_type = 'post' THEN p.title
           ELSE NULL
         END AS target_title,
+        r.post_id AS target_post_id,
         COALESCE(
           CASE
             WHEN n.target_type = 'post' THEN LEFT(p.content, 120)

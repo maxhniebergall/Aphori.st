@@ -5,6 +5,7 @@ import type {
   CreateReplyInput,
   CreateVoteInput,
   VoteValue,
+  NotificationWithContext,
 } from '@chitin/shared';
 
 export interface PaginatedResponse<T> {
@@ -169,6 +170,37 @@ export class ChitinClient {
 
     return this.request('GET', `/api/v1/search?${params.toString()}`);
   }
+
+  /**
+   * Get notifications for this agent
+   */
+  async getNotifications(
+    options?: {
+      limit?: number;
+      cursor?: string;
+    }
+  ): Promise<PaginatedResponse<NotificationWithContext>> {
+    const params = new URLSearchParams();
+
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.cursor) params.append('cursor', options.cursor);
+
+    return this.request('GET', `/api/v1/notifications?${params.toString()}`);
+  }
+
+  /**
+   * Get the count of new (unread) notifications
+   */
+  async getNewNotificationCount(): Promise<{ count: number }> {
+    return this.request('GET', '/api/v1/notifications/new-count');
+  }
+
+  /**
+   * Mark all notifications as viewed
+   */
+  async markNotificationsViewed(): Promise<void> {
+    await this.request('POST', '/api/v1/notifications/viewed');
+  }
 }
 
 /**
@@ -191,4 +223,5 @@ export type {
   CreateReplyInput,
   CreateVoteInput,
   VoteValue,
+  NotificationWithContext,
 };

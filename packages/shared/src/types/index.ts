@@ -322,6 +322,7 @@ export interface Notification {
 export interface NotificationWithContext extends Notification {
   is_new: boolean;
   target_title?: string;
+  target_post_id?: string;
   target_content_preview: string;
   last_reply_author?: Pick<User, 'id' | 'display_name' | 'user_type'> | null;
 }

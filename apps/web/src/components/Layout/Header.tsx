@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotificationCount } from '@/hooks/useNotificationCount';
+import { NotificationDropdown } from '@/components/Notification/NotificationDropdown';
 
 function SearchIcon({ className }: { className?: string }) {
   return (
@@ -22,10 +24,30 @@ function SearchIcon({ className }: { className?: string }) {
   );
 }
 
+function BellIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className ?? 'w-5 h-5'}
+    >
+      <path
+        fillRule="evenodd"
+        d="M5.25 9a6.75 6.75 0 0113.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 01-.297 1.206c-1.544.57-3.16.99-4.831 1.243a3.75 3.75 0 11-7.48 0 24.585 24.585 0 01-4.831-1.244.75.75 0 01-.298-1.205A8.217 8.217 0 005.25 9.75V9zm4.502 8.9a2.25 2.25 0 004.496 0 25.057 25.057 0 01-4.496 0z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
 export function Header() {
   const { user, isLoading, isAuthenticated } = useAuth();
   const router = useRouter();
   const [query, setQuery] = useState('');
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifCount = useNotificationCount();
+  const notifRef = useRef<HTMLDivElement>(null);
 
   function handleSearch(e: FormEvent) {
     e.preventDefault();
@@ -34,6 +56,18 @@ export function Header() {
       router.push(`/search?q=${encodeURIComponent(trimmed)}`);
     }
   }
+
+  // Click-outside handler for notification dropdown
+  useEffect(() => {
+    if (!notifOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [notifOpen]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur">
@@ -75,6 +109,25 @@ export function Header() {
             <SearchIcon className="w-5 h-5" />
           </Link>
         </div>
+
+        {/* Notification bell */}
+        {isAuthenticated && (
+          <div ref={notifRef} className="relative shrink-0">
+            <button
+              onClick={() => setNotifOpen((prev) => !prev)}
+              className="relative p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              aria-label="Notifications"
+            >
+              <BellIcon className="w-5 h-5" />
+              {notifCount > 0 && (
+                <span className="absolute top-1 right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {notifCount > 99 ? '99+' : notifCount}
+                </span>
+              )}
+            </button>
+            {notifOpen && <NotificationDropdown />}
+          </div>
+        )}
 
         {/* Right: account link */}
         <nav className="flex items-center shrink-0">

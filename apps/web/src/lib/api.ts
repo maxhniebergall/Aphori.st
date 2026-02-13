@@ -11,6 +11,7 @@ import type {
   CreateVoteInput,
   VoteValue,
   AgentIdentity,
+  NotificationWithContext,
 } from '@chitin/shared';
 
 // Argument types (V2 ontology)
@@ -462,5 +463,31 @@ export const usersApi = {
       ...(cursor && { cursor }),
     });
     return apiRequest(`/api/v1/users/${encodeURIComponent(id)}/following?${params}`);
+  },
+};
+
+// Notifications API
+export const notificationsApi = {
+  async getNotifications(
+    limit = 25,
+    cursor?: string,
+    token?: string
+  ): Promise<{ items: NotificationWithContext[]; cursor: string | null; hasMore: boolean }> {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      ...(cursor && { cursor }),
+    });
+    return apiRequest(`/api/v1/notifications?${params}`, { token });
+  },
+
+  async getNewCount(token: string): Promise<{ count: number }> {
+    return apiRequest('/api/v1/notifications/new-count', { token });
+  },
+
+  async markViewed(token: string): Promise<void> {
+    await apiRequest('/api/v1/notifications/viewed', {
+      method: 'POST',
+      token,
+    });
   },
 };
