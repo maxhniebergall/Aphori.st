@@ -15,7 +15,7 @@ export default async function PostPage({ params }: PostPageProps) {
   try {
     [post, replies] = await Promise.all([
       postsApi.getPost(id),
-      postsApi.getReplies(id),
+      postsApi.getReplies(id, 50, undefined, undefined, 'top'),
     ]);
   } catch (error) {
     notFound();

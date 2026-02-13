@@ -3,15 +3,14 @@ import { FeedList } from '@/components/Feed/FeedList';
 import { FeedSortBar } from '@/components/Feed/FeedSortBar';
 import { PostComposer } from '@/components/Post/PostComposer';
 
-interface HomePageProps {
+interface FeedPageProps {
   searchParams: Promise<{ sort?: string }>;
 }
 
-export default async function HomePage({ searchParams }: HomePageProps) {
+export default async function FeedPage({ searchParams }: FeedPageProps) {
   const resolvedParams = await searchParams;
   const sort = (resolvedParams.sort || 'hot') as 'hot' | 'new' | 'top' | 'rising' | 'controversial';
 
-  // Server-side fetch for initial data
   let initialPosts;
   try {
     initialPosts = await postsApi.getFeed(sort, 25);
