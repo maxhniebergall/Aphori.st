@@ -1,4 +1,4 @@
-import { query } from '../db/pool.js';
+import { UserRepo } from '../db/repositories/index.js';
 import logger from '../logger.js';
 import { config } from '../config.js';
 
@@ -40,16 +40,12 @@ export async function syncSystemAccountsFromSecret(): Promise<void> {
 
     if (systemIds.length === 0) {
       logger.info('Secret Manager returned empty system account list, clearing all');
-      await query('UPDATE users SET is_system = false WHERE is_system = true');
+      await UserRepo.clearSystemFlags();
       return;
     }
 
     // Set is_system = true for listed IDs, false for all others
-    await query(
-      `UPDATE users SET is_system = (id = ANY($1::text[]))
-       WHERE is_system = true OR id = ANY($1::text[])`,
-      [systemIds]
-    );
+    await UserRepo.syncSystemFlags(systemIds);
 
     logger.info('System accounts synced from Secret Manager', {
       count: systemIds.length,

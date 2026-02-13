@@ -108,6 +108,18 @@ export const UserRepo = {
     return result.rows.map(r => r.id);
   },
 
+  async clearSystemFlags(): Promise<void> {
+    await query('UPDATE users SET is_system = false WHERE is_system = true');
+  },
+
+  async syncSystemFlags(ids: string[]): Promise<void> {
+    await query(
+      `UPDATE users SET is_system = (id = ANY($1::text[]))
+       WHERE is_system = true OR id = ANY($1::text[])`,
+      [ids]
+    );
+  },
+
   async isIdAvailable(id: string): Promise<boolean> {
     const result = await query<{ count: string }>(
       'SELECT COUNT(*) as count FROM users WHERE id = $1',
