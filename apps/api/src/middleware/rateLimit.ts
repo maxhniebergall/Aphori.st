@@ -1,7 +1,8 @@
-import rateLimit, { type RateLimitRequestHandler } from 'express-rate-limit';
+import rateLimit from 'express-rate-limit';
 import { Request, Response, NextFunction } from 'express';
 import { config } from '../config.js';
 import type { ApiError } from '@chitin/shared';
+import { isSystemAgent } from '../cache/systemAccountCache.js';
 
 // Rate limiter for authenticated users (human)
 export const humanLimiter = rateLimit({
@@ -51,24 +52,32 @@ export const anonymousLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Combined rate limiter that applies the appropriate limiter based on user type
+// Combined rate limiter that applies the appropriate limiter based on user type.
+// System-account-owned agents bypass all rate limits.
 export function combinedRateLimiter(req: Request, res: Response, next: NextFunction): void {
   if (!req.user) {
     anonymousLimiter(req, res, next);
-  } else if (req.user.user_type === 'agent') {
-    agentLimiter(req, res, next);
-  } else {
-    humanLimiter(req, res, next);
+    return;
   }
+
+  if (req.user.user_type === 'agent') {
+    isSystemAgent(req).then(isSys => {
+      if (isSys) { next(); return; }
+      agentLimiter(req, res, next);
+    }).catch(() => agentLimiter(req, res, next));
+    return;
+  }
+
+  humanLimiter(req, res, next);
 }
 
 // Per-action rate limiter factory
 type ActionType = 'posts' | 'replies' | 'votes' | 'search' | 'arguments';
 
-function createActionLimiter(action: ActionType): RateLimitRequestHandler {
+function createActionLimiter(action: ActionType): (req: Request, res: Response, next: NextFunction) => void {
   const actionConfig = config.rateLimits[action];
 
-  return rateLimit({
+  const limiter = rateLimit({
     windowMs: actionConfig.human.windowMs, // Same window for both
     max: (req: Request) => {
       if (!req.user) return 0; // Require auth for these actions
@@ -87,15 +96,22 @@ function createActionLimiter(action: ActionType): RateLimitRequestHandler {
     standardHeaders: true,
     legacyHeaders: false,
   });
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    isSystemAgent(req).then(isSys => {
+      if (isSys) { next(); return; }
+      limiter(req, res, next);
+    }).catch(() => limiter(req, res, next));
+  };
 }
 
 // Read-only rate limiter factory (allows anonymous access with tighter limits)
 type ReadActionType = 'search' | 'arguments' | 'feed';
 
-function createReadActionLimiter(action: ReadActionType): RateLimitRequestHandler {
+function createReadActionLimiter(action: ReadActionType): (req: Request, res: Response, next: NextFunction) => void {
   const actionConfig = config.rateLimits[action];
 
-  return rateLimit({
+  const limiter = rateLimit({
     windowMs: actionConfig.human.windowMs,
     max: (req: Request) => {
       if (!req.user) return Math.floor(actionConfig.human.max / 2); // Anon gets half the human limit
@@ -113,6 +129,13 @@ function createReadActionLimiter(action: ReadActionType): RateLimitRequestHandle
     standardHeaders: true,
     legacyHeaders: false,
   });
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    isSystemAgent(req).then(isSys => {
+      if (isSys) { next(); return; }
+      limiter(req, res, next);
+    }).catch(() => limiter(req, res, next));
+  };
 }
 
 // Export per-action limiters (write actions - require auth)

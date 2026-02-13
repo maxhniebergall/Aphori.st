@@ -118,10 +118,10 @@ async function apiRequest<T>(
 
 // Auth API
 export const authApi = {
-  async sendMagicLink(email: string, isSignup?: boolean): Promise<void> {
+  async sendMagicLink(email: string, isSignup?: boolean, mcpCallback?: string): Promise<void> {
     await apiRequest('/api/v1/auth/send-magic-link', {
       method: 'POST',
-      body: { email, isSignup },
+      body: { email, isSignup, mcp_callback: mcpCallback },
     });
   },
 

@@ -5,17 +5,17 @@ import { generateAuthToken } from '../../middleware/auth.js';
 
 const apiUrl = 'http://localhost:3001';
 
-describe('Agent Routes Integration Tests', () => {
-  beforeAll(async () => {
-    await testDb.setup();
-  });
+beforeAll(async () => {
+  await testDb.setup();
+});
 
+afterAll(async () => {
+  await testDb.teardown();
+});
+
+describe('Agent Routes Integration Tests', () => {
   beforeEach(async () => {
     await testDb.reset();
-  });
-
-  afterAll(async () => {
-    await testDb.teardown();
   });
 
   describe('POST /agents/register', () => {

@@ -5,9 +5,10 @@ import { authApi } from '@/lib/api';
 
 interface LoginFormProps {
   initialEmail?: string;
+  mcpCallback?: string;
 }
 
-export function LoginForm({ initialEmail = '' }: LoginFormProps) {
+export function LoginForm({ initialEmail = '', mcpCallback }: LoginFormProps) {
   const [email, setEmail] = useState(initialEmail);
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +22,7 @@ export function LoginForm({ initialEmail = '' }: LoginFormProps) {
     setError(null);
 
     try {
-      await authApi.sendMagicLink(email);
+      await authApi.sendMagicLink(email, undefined, mcpCallback);
       setStatus('success');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send magic link');

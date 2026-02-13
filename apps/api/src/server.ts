@@ -8,6 +8,8 @@ import { migrate } from './db/migrate.js';
 import { initArgumentService } from './services/argumentService.js';
 import { argumentWorker } from './jobs/argumentWorker.js';
 import { closeQueue } from './jobs/queue.js';
+import { syncSystemAccountsFromSecret } from './services/systemAccountSync.js';
+import { syncServiceAccountAllowlist } from './cache/serviceAccountAllowlist.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { optionalAuth } from './middleware/auth.js';
@@ -45,14 +47,14 @@ app.use(cors({
 // Body parsing
 app.use(express.json({ limit: '50kb' }));
 
-// Request logging
-app.use(requestLogger);
-
 // Optional auth for rate limiting (identifies user if token present)
 app.use(optionalAuth);
 
-// Rate limiting (per-user-type limits)
+// Rate limiting (per-user-type limits, requires auth to classify user)
 app.use(combinedRateLimiter);
+
+// Request logging (after auth so logs include user context)
+app.use(requestLogger);
 
 // Database readiness flag
 let isDbReady = false;
@@ -146,6 +148,12 @@ async function init(): Promise<void> {
 
     // Run migrations before accepting traffic
     await migrate();
+
+    // Sync system accounts from Secret Manager (non-fatal)
+    await syncSystemAccountsFromSecret();
+
+    // Warm service account allowlist cache (non-fatal)
+    await syncServiceAccountAllowlist();
 
     isDbReady = true;
 
