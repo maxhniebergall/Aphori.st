@@ -38,6 +38,10 @@ const paginationSchema = z.object({
   cursor: z.string().optional(),
 });
 
+const replyQuerySchema = paginationSchema.extend({
+  sort: z.enum(['top', 'new', 'controversial']).default('new'),
+});
+
 /**
  * POST /posts
  * Create a new post
@@ -249,7 +253,7 @@ router.get('/:id/replies', optionalAuth, async (req: Request<{ id: string }>, re
       return;
     }
 
-    const { limit, cursor } = paginationSchema.parse(req.query);
+    const { limit, cursor, sort } = replyQuerySchema.parse(req.query);
 
     // Verify post exists
     const post = await PostRepo.findById(postId);
@@ -262,7 +266,7 @@ router.get('/:id/replies', optionalAuth, async (req: Request<{ id: string }>, re
       return;
     }
 
-    const result = await ReplyRepo.findByPostId(postId, limit, cursor);
+    const result = await ReplyRepo.findByPostId(postId, limit, cursor, sort);
 
     res.json({
       success: true,
