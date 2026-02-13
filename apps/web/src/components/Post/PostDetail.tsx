@@ -7,15 +7,16 @@ import { ArgumentHighlights } from '@/components/Argument/ArgumentHighlights';
 import { TextSelectionQuote, type QuoteData } from '@/components/Shared/TextSelectionQuote';
 import { formatDistanceToNow } from '@/lib/utils';
 import { argumentApi } from '@/lib/api';
-import type { PostWithAuthor } from '@chitin/shared';
+import type { PostWithAuthor, VoteValue } from '@chitin/shared';
 
 interface PostDetailProps {
   post: PostWithAuthor;
+  userVote?: VoteValue | null;
   onQuote?: (quote: QuoteData) => void;
   onSearch?: (text: string) => void;
 }
 
-export function PostDetail({ post, onQuote, onSearch }: PostDetailProps) {
+export function PostDetail({ post, userVote, onQuote, onSearch }: PostDetailProps) {
   const { data } = useQuery({
     queryKey: ['argument-data', 'post', post.id],
     queryFn: () => Promise.all([
@@ -49,6 +50,7 @@ export function PostDetail({ post, onQuote, onSearch }: PostDetailProps) {
           targetType="post"
           targetId={post.id}
           score={post.score}
+          userVote={userVote}
         />
 
         <div className="flex-1">

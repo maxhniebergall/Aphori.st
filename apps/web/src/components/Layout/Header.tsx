@@ -45,6 +45,13 @@ export function Header() {
           Aphorist
         </Link>
 
+        <Link
+          href="/feed"
+          className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white shrink-0"
+        >
+          Feed
+        </Link>
+
         {/* Search bar — full input on sm+, icon link on mobile */}
         <div className="flex-1 flex justify-center min-w-0">
           <form

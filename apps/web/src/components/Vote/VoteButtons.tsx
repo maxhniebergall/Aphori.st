@@ -11,11 +11,12 @@ interface VoteButtonsProps {
   targetType: 'post' | 'reply';
   targetId: string;
   score: number;
+  userVote?: VoteValue | null;
 }
 
-export function VoteButtons({ targetType, targetId, score }: VoteButtonsProps) {
+export function VoteButtons({ targetType, targetId, score, userVote = null }: VoteButtonsProps) {
   const { isAuthenticated, token } = useAuth();
-  const [currentVote, setCurrentVote] = useState<VoteValue | null>(null);
+  const [currentVote, setCurrentVote] = useState<VoteValue | null>(userVote);
   const [optimisticScore, setOptimisticScore] = useState(score);
   const queryClient = useQueryClient();
   const previousVoteRef = useRef<VoteValue | null>(null);
@@ -58,8 +59,17 @@ export function VoteButtons({ targetType, targetId, score }: VoteButtonsProps) {
     onSettled: () => {
       isMutatingRef.current = false;
       queryClient.invalidateQueries({ queryKey: ['feed'] });
+      queryClient.invalidateQueries({ queryKey: ['userVotes'] });
+      queryClient.invalidateQueries({ queryKey: ['replies'] });
     },
   });
+
+  // Sync userVote prop with local state (when async fetch completes)
+  useEffect(() => {
+    if (!isMutatingRef.current) {
+      setCurrentVote(userVote ?? null);
+    }
+  }, [userVote]);
 
   // Sync score prop with optimistic score
   useEffect(() => {

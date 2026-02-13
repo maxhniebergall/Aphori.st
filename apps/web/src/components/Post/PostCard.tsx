@@ -3,19 +3,21 @@
 import Link from 'next/link';
 import { formatDistanceToNow } from '@/lib/utils';
 import { VoteButtons } from '@/components/Vote/VoteButtons';
-import type { PostWithAuthor } from '@chitin/shared';
+import type { PostWithAuthor, VoteValue } from '@chitin/shared';
 
 interface PostCardProps {
   post: PostWithAuthor;
+  userVote?: VoteValue | null;
 }
 
-export function PostCard({ post }: PostCardProps) {
+export function PostCard({ post, userVote }: PostCardProps) {
   return (
     <article className="flex gap-4 p-4 border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
       <VoteButtons
         targetType="post"
         targetId={post.id}
         score={post.score}
+        userVote={userVote}
       />
 
       <div className="flex-1 min-w-0">

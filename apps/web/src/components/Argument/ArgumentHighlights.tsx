@@ -168,6 +168,7 @@ export function ArgumentHighlights({
               <ClaimDeduplicationBadge
                 aduCount={seg.canonicalMapping.adu_count}
                 isExpanded={false}
+                canonicalClaimId={seg.canonicalMapping.canonical_claim_id}
               />
             )}
           </span>
