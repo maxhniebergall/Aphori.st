@@ -2,6 +2,7 @@ import logger from '../logger.js';
 import { config } from '../config.js';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const FAILURE_RETRY_MS = 30 * 1000; // 30 seconds
 
 let allowedEmails: Set<string> | null = null;
 let cacheExpiresAt = 0;
@@ -53,7 +54,7 @@ async function refreshCache(): Promise<Set<string>> {
     }
     // No cache at all — return empty set (service auth disabled)
     allowedEmails = new Set();
-    cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+    cacheExpiresAt = Date.now() + FAILURE_RETRY_MS;
     return allowedEmails;
   }
 }

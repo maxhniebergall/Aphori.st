@@ -84,23 +84,22 @@ describe('isAllowedServiceAccount', () => {
     expect(await isAllowedServiceAccount('a@b.com')).toBe(false);
   });
 
-  it('returns stale cache on fetch error when cache exists', async () => {
+  it('returns stale cache on fetch error when cache is expired', async () => {
+    vi.useFakeTimers();
+
     mockAccessSecretVersion.mockResolvedValue([{
       payload: { data: JSON.stringify(['a@b.com']) },
     }]);
     await isAllowedServiceAccount('a@b.com');
 
-    // Expire cache then fail on refresh
-    _resetAllowlist();
-    // Re-populate then expire
-    await isAllowedServiceAccount('a@b.com'); // repopulates
-    // Now manually expire by resetting and having fetch fail
-    _resetAllowlist();
+    // Advance past TTL so cache expires, but don't reset (stale data remains)
+    vi.advanceTimersByTime(6 * 60 * 1000);
 
-    // First call populated the set. After reset + error, it should handle gracefully
+    // Next fetch fails — should fall back to stale cache
     mockAccessSecretVersion.mockRejectedValue(new Error('network error'));
-    // With no cache (reset clears it), returns empty
-    expect(await isAllowedServiceAccount('a@b.com')).toBe(false);
+    expect(await isAllowedServiceAccount('a@b.com')).toBe(true);
+
+    vi.useRealTimers();
   });
 });
 
