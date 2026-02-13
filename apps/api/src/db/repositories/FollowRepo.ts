@@ -117,11 +117,4 @@ export const FollowRepo = {
     return { items, cursor: nextCursor, hasMore };
   },
 
-  async getFollowerIds(userId: string): Promise<string[]> {
-    const result = await query<{ follower_id: string }>(
-      `SELECT follower_id FROM follows WHERE following_id = $1`,
-      [userId.toLowerCase()]
-    );
-    return result.rows.map(r => r.follower_id);
-  },
 };

@@ -61,6 +61,9 @@ afterAll(async () => {
     await pool.end();
   }
   if (adminPool) {
+    await adminPool.query(
+      `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${TEST_DB}' AND pid <> pg_backend_pid()`
+    );
     await adminPool.query(`DROP DATABASE IF EXISTS ${TEST_DB}`);
     await adminPool.end();
   }

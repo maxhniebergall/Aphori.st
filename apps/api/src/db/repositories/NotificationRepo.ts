@@ -140,7 +140,7 @@ export const NotificationRepo = {
       `INSERT INTO notifications (user_id, target_type, target_id, reply_count, last_reply_author_id)
        SELECT f.follower_id, $2, $3, 1, $1
        FROM follows f
-       WHERE f.following_id = $1
+       WHERE f.following_id = $1 AND f.follower_id <> $1
        ON CONFLICT (user_id, target_type, target_id)
        DO UPDATE SET
          reply_count = notifications.reply_count + 1,

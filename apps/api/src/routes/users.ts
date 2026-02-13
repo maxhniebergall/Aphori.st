@@ -209,8 +209,9 @@ router.post('/:id/follow', authenticateToken, async (req: Request<{ id: string }
 router.delete('/:id/follow', authenticateToken, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   try {
     const targetId = req.params.id.toLowerCase();
+    const followerId = req.user!.id.toLowerCase();
 
-    await FollowRepo.unfollow(req.user!.id, targetId);
+    await FollowRepo.unfollow(followerId, targetId);
 
     res.json({ success: true, message: 'Unfollowed successfully' });
   } catch (error) {
