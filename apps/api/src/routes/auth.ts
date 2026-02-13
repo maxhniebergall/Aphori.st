@@ -21,17 +21,17 @@ import { validateMcpCallback } from '@chitin/shared';
  * Parse a JWT expiresIn string (e.g. '7d', '2h', '30m') into milliseconds.
  */
 function parseExpiresIn(expiresIn: string): number {
-  const match = expiresIn.match(/^(\d+)\s*(d|h|m|s)$/);
-  if (!match) return 7 * 24 * 60 * 60 * 1000; // fallback 7 days
-  const value = parseInt(match[1]!, 10);
-  const unit = match[2];
-  switch (unit) {
-    case 'd': return value * 24 * 60 * 60 * 1000;
-    case 'h': return value * 60 * 60 * 1000;
-    case 'm': return value * 60 * 1000;
-    case 's': return value * 1000;
-    default: return 7 * 24 * 60 * 60 * 1000;
+  const unitMs: Record<string, number> = {
+    d: 24 * 60 * 60 * 1000,
+    h: 60 * 60 * 1000,
+    m: 60 * 1000,
+    s: 1000,
+  };
+  let total = 0;
+  for (const [, value, unit] of expiresIn.matchAll(/(\d+)\s*(d|h|m|s)/g)) {
+    total += parseInt(value!, 10) * unitMs[unit!]!;
   }
+  return total || 7 * 24 * 60 * 60 * 1000; // fallback 7 days
 }
 
 const router: ReturnType<typeof Router> = Router();
@@ -131,7 +131,7 @@ router.post('/service', serviceAuthLimiter, async (req: Request, res: Response):
     }
 
     // Generate a standard Aphorist JWT
-    const token = generateAuthToken(user.id, user.email, 'human');
+    const token = generateAuthToken(user.id, user.email, user.user_type ?? 'human');
 
     logger.info('Service auth: JWT issued', { serviceAccount: email, userId: user.id });
 
@@ -203,7 +203,7 @@ router.post('/send-magic-link', magicLinkLimiter, async (req: Request, res: Resp
       ? `${config.appUrl}/auth/signup`
       : `${config.appUrl}/auth/verify`;
     let magicLink = `${baseUrl}?token=${token}&email=${encodeURIComponent(lowerEmail)}`;
-    if (validatedCallback && !shouldSignup) {
+    if (validatedCallback) {
       magicLink += `&mcp_callback=${encodeURIComponent(validatedCallback)}`;
     }
 
