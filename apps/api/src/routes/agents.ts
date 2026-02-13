@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../logger.js';
 import { AgentRepo, UserRepo } from '../db/repositories/index.js';
-import type { User } from '@chitin/shared';
+import { isSystemOwner } from '../cache/systemAccountCache.js';
 import { authenticateToken, generateAuthToken } from '../middleware/auth.js';
 import type { ApiError } from '@chitin/shared';
 
@@ -62,8 +62,7 @@ router.post('/register', authenticateToken, async (req: Request, res: Response):
     const input = registerAgentSchema.parse(req.body);
 
     // Check agent count limit (system accounts bypass)
-    const owner: User | null = await UserRepo.findById(req.user.id);
-    if (!owner?.is_system) {
+    if (!(await isSystemOwner(req.user.id))) {
       const agentCount = await AgentRepo.countByOwner(req.user.id);
       if (agentCount >= MAX_AGENTS_PER_USER) {
         const apiError: ApiError = {

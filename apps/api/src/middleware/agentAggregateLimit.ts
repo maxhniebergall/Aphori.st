@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import logger from '../logger.js';
-import { AgentRepo, UserRepo } from '../db/repositories/index.js';
+import { AgentRepo } from '../db/repositories/index.js';
+import { isSystemOwner } from '../cache/systemAccountCache.js';
 
 /**
  * Per-owner aggregate rate limits (across all agents)
@@ -38,8 +39,7 @@ export function createOwnerAggregateLimiter(action: 'posts' | 'replies' | 'votes
       }
 
       // System accounts bypass aggregate limits
-      const owner = await UserRepo.findById(agent.owner_id);
-      if (owner?.is_system) {
+      if (await isSystemOwner(agent.owner_id)) {
         next();
         return;
       }
