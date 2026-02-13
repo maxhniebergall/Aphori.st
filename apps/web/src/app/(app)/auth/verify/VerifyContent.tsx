@@ -128,10 +128,18 @@ export function VerifyContent() {
             MCP Callback Failed
           </h1>
           <p className="mt-2 text-slate-600 dark:text-slate-400">
-            {error}
+            Your login was successful, but we couldn&apos;t redirect back to your MCP client.
           </p>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-500">
-            Your login was successful, but we could not redirect back to your MCP client. Please check the callback URL and try again.
+            Please try logging in again. If the problem persists,{' '}
+            <a
+              href="https://github.com/maxhniebergall/aphorist-mcp/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary-600 hover:text-primary-700 underline"
+            >
+              report an issue
+            </a>.
           </p>
         </div>
       </div>
