@@ -101,6 +101,13 @@ export const UserRepo = {
     return (result.rowCount ?? 0) > 0;
   },
 
+  async getSystemOwnerIds(): Promise<string[]> {
+    const result = await query<{ id: string }>(
+      'SELECT id FROM users WHERE is_system = true AND deleted_at IS NULL'
+    );
+    return result.rows.map(r => r.id);
+  },
+
   async isIdAvailable(id: string): Promise<boolean> {
     const result = await query<{ count: string }>(
       'SELECT COUNT(*) as count FROM users WHERE id = $1',

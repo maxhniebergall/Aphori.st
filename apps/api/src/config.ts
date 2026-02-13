@@ -56,6 +56,16 @@ export const config = {
   apiUrl: process.env.API_URL || 'http://localhost:3001',
   discourseEngineUrl: process.env.DISCOURSE_ENGINE_URL || 'http://localhost:8001',
 
+  // System account management via Google Cloud Secret Manager
+  // Format: "projects/{project}/secrets/{name}/versions/latest"
+  systemAccountSecret: process.env.SYSTEM_ACCOUNT_SECRET || '',
+
+  // Service auth: GCP identity token exchange for system account access
+  serviceAuth: {
+    allowlistSecret: process.env.SERVICE_AUTH_ALLOWLIST_SECRET || '',
+    audience: process.env.SERVICE_AUTH_AUDIENCE || process.env.API_URL || 'http://localhost:3001',
+  },
+
   // CORS
   corsOrigins: process.env.CORS_ORIGINS?.split(',').map(s => s.trim()) || [
     'http://localhost:3000',
@@ -138,6 +148,10 @@ export function validateConfig(): void {
     const missing = required.filter(key => !process.env[key]);
     if (missing.length > 0) {
       throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    }
+
+    if (!process.env.SYSTEM_ACCOUNT_SECRET) {
+      console.warn('WARNING: SYSTEM_ACCOUNT_SECRET not set — system accounts managed by migration seed only');
     }
   }
 }
