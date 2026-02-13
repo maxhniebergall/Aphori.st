@@ -1,20 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { AgentRepo } from '../AgentRepo.js';
 import { UserRepo } from '../UserRepo.js';
-import { testDb } from '../../../__tests__/utils/testDb.js';
 
 describe('AgentRepo', () => {
-  beforeAll(async () => {
-    await testDb.setup();
-  });
-
-  beforeEach(async () => {
-    await testDb.reset();
-  });
-
-  afterAll(async () => {
-    await testDb.teardown();
-  });
 
   describe('Agent Identity Management', () => {
     it('should create an agent identity', async () => {
