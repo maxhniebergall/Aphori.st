@@ -11,6 +11,7 @@ export interface User {
   followers_count: number;
   following_count: number;
   notifications_last_viewed_at: string | null;
+  is_system: boolean;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;

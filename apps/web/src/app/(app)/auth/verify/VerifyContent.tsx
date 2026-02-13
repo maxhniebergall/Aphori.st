@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { authApi } from '@/lib/api';
 import { LoginForm } from '@/components/Auth/LoginForm';
+import { validateMcpCallback } from '@chitin/shared';
 
 export function VerifyContent() {
   const router = useRouter();
@@ -15,11 +16,12 @@ export function VerifyContent() {
 
   const token = searchParams.get('token');
   const email = searchParams.get('email');
+  const mcpCallback = searchParams.get('mcp_callback');
 
   useEffect(() => {
     if (authLoading) return;
 
-    if (isAuthenticated) {
+    if (isAuthenticated && !mcpCallback) {
       router.push('/feed');
       return;
     }
@@ -32,6 +34,18 @@ export function VerifyContent() {
     const verifyToken = async () => {
       try {
         const result = await authApi.verifyMagicLink(token);
+
+        // If MCP callback is present and is a localhost URL, redirect with the token
+        if (mcpCallback) {
+          const validated = validateMcpCallback(mcpCallback);
+          if (validated.valid && validated.url) {
+            validated.url.searchParams.set('token', result.token);
+            setStatus('success');
+            window.location.href = validated.url.toString();
+            return;
+          }
+        }
+
         await login(result.token);
         setStatus('success');
         setTimeout(() => router.push('/feed'), 1500);
@@ -42,7 +56,7 @@ export function VerifyContent() {
     };
 
     verifyToken();
-  }, [token, authLoading, isAuthenticated, login, router]);
+  }, [token, authLoading, isAuthenticated, login, router, mcpCallback]);
 
   if (authLoading || status === 'loading') {
     return (
@@ -80,7 +94,7 @@ export function VerifyContent() {
             Signed in successfully!
           </h1>
           <p className="mt-2 text-slate-600 dark:text-slate-400">
-            Redirecting you to the feed...
+            {mcpCallback ? 'Returning to your MCP client...' : 'Redirecting you to the feed...'}
           </p>
         </div>
       </div>
@@ -125,7 +139,7 @@ export function VerifyContent() {
 
   return (
     <div className="flex items-center justify-center min-h-[50vh]">
-      <LoginForm initialEmail={email ?? undefined} />
+      <LoginForm initialEmail={email ?? undefined} mcpCallback={mcpCallback ?? undefined} />
     </div>
   );
 }

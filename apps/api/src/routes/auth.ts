@@ -12,9 +12,36 @@ import {
   verifyAuthToken,
   authenticateToken,
 } from '../middleware/auth.js';
+import { verifyGoogleIdentityToken } from '../middleware/serviceAuth.js';
+import { isAllowedServiceAccount } from '../cache/serviceAccountAllowlist.js';
 import type { ApiError } from '@chitin/shared';
+import { validateMcpCallback } from '@chitin/shared';
+
+/**
+ * Parse a JWT expiresIn string (e.g. '7d', '2h', '30m') into milliseconds.
+ */
+function parseExpiresIn(expiresIn: string): number {
+  const unitMs: Record<string, number> = {
+    d: 24 * 60 * 60 * 1000,
+    h: 60 * 60 * 1000,
+    m: 60 * 1000,
+    s: 1000,
+  };
+  let total = 0;
+  for (const [, value, unit] of expiresIn.matchAll(/(\d+)\s*(d|h|m|s)/g)) {
+    total += parseInt(value!, 10) * unitMs[unit!]!;
+  }
+  return total || 7 * 24 * 60 * 60 * 1000; // fallback 7 days
+}
 
 const router: ReturnType<typeof Router> = Router();
+
+// Rate limiter for service auth requests
+const serviceAuthLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  message: { error: 'Too Many Requests', message: 'Too many service auth requests, please try again later' },
+});
 
 // Rate limiter for magic link requests
 const magicLinkLimiter = rateLimit({
@@ -24,9 +51,14 @@ const magicLinkLimiter = rateLimit({
 });
 
 // Validation schemas
+const serviceAuthSchema = z.object({
+  identity_token: z.string().min(1, 'identity_token is required'),
+});
+
 const sendMagicLinkSchema = z.object({
   email: z.string().email('Invalid email format'),
   isSignup: z.boolean().optional(),
+  mcp_callback: z.string().optional(),
 });
 
 const verifyMagicLinkSchema = z.object({
@@ -50,13 +82,111 @@ const checkUserIdSchema = z.object({
 });
 
 /**
+ * POST /auth/service
+ * Exchange a GCP identity token for an Aphorist JWT (system account auth)
+ */
+router.post('/service', serviceAuthLimiter, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { identity_token } = serviceAuthSchema.parse(req.body);
+
+    // Verify the GCP identity token
+    let email: string;
+    try {
+      const result = await verifyGoogleIdentityToken(identity_token);
+      email = result.email;
+    } catch (error) {
+      logger.warn('Service auth: invalid GCP identity token', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const apiError: ApiError = {
+        error: 'Unauthorized',
+        message: 'Invalid or expired identity token',
+      };
+      res.status(401).json(apiError);
+      return;
+    }
+
+    // Check allowlist
+    const allowed = await isAllowedServiceAccount(email);
+    if (!allowed) {
+      logger.warn('Service auth: service account not in allowlist', { email });
+      const apiError: ApiError = {
+        error: 'Forbidden',
+        message: 'Service account not authorized',
+      };
+      res.status(403).json(apiError);
+      return;
+    }
+
+    // Look up the system user
+    const user = await UserRepo.findById('aphorist-system');
+    if (!user) {
+      logger.error('Service auth: aphorist-system user not found');
+      const apiError: ApiError = {
+        error: 'Internal Server Error',
+        message: 'System user not configured',
+      };
+      res.status(500).json(apiError);
+      return;
+    }
+
+    // Generate a standard Aphorist JWT
+    const token = generateAuthToken(user.id, user.email, user.user_type ?? 'human');
+
+    logger.info('Service auth: JWT issued', { serviceAccount: email, userId: user.id });
+
+    res.json({
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          display_name: user.display_name,
+          user_type: user.user_type,
+        },
+        expires_at: new Date(Date.now() + parseExpiresIn(config.jwt.expiresIn)).toISOString(),
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const apiError: ApiError = {
+        error: 'Validation Error',
+        message: error.errors[0]?.message || 'Invalid input',
+      };
+      res.status(400).json(apiError);
+      return;
+    }
+
+    logger.error('Service auth failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    const apiError: ApiError = {
+      error: 'Internal Server Error',
+      message: 'Service authentication failed',
+    };
+    res.status(500).json(apiError);
+  }
+});
+
+/**
  * POST /auth/send-magic-link
  * Send a magic link to the user's email
  */
 router.post('/send-magic-link', magicLinkLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, isSignup } = sendMagicLinkSchema.parse(req.body);
+    const { email, isSignup, mcp_callback } = sendMagicLinkSchema.parse(req.body);
     const lowerEmail = email.toLowerCase();
+
+    // Validate mcp_callback is a localhost URL if provided
+    let validatedCallback: string | undefined;
+    if (mcp_callback) {
+      const result = validateMcpCallback(mcp_callback);
+      if (result.valid) {
+        validatedCallback = mcp_callback;
+      }
+    }
 
     // Check if user exists
     const existingUser = await UserRepo.findByEmail(lowerEmail);
@@ -72,7 +202,10 @@ router.post('/send-magic-link', magicLinkLimiter, async (req: Request, res: Resp
     const baseUrl = shouldSignup
       ? `${config.appUrl}/auth/signup`
       : `${config.appUrl}/auth/verify`;
-    const magicLink = `${baseUrl}?token=${token}&email=${encodeURIComponent(lowerEmail)}`;
+    let magicLink = `${baseUrl}?token=${token}&email=${encodeURIComponent(lowerEmail)}`;
+    if (validatedCallback && !shouldSignup) {
+      magicLink += `&mcp_callback=${encodeURIComponent(validatedCallback)}`;
+    }
 
     // Build email content
     const subject = shouldSignup ? 'Complete Your Sign Up' : 'Your Magic Link to Sign In';

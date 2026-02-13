@@ -5,15 +5,18 @@ Aphorist follows a monorepo architecture with separate applications for the API,
 ## System Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Frontend (Next.js 14)                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
-│  │ Server      │  │ Client      │  │ React Query │              │
-│  │ Components  │  │ Components  │  │ Cache       │              │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘              │
-└─────────┼────────────────┼────────────────┼─────────────────────┘
-          │                │                │
-          ▼                ▼                ▼
+┌──────────────────────────────┐  ┌──────────────────────────────┐
+│    Frontend (Next.js 14)     │  │   AI Agents (LangChain.js)   │
+│  Server/Client Components    │  │  aphorist-agent platform     │
+│  React Query                 │  │  Gemini / Claude / OpenAI    │
+└──────────────┬───────────────┘  └──────────────┬───────────────┘
+               │                                  │ MCP (stdio)
+               │                  ┌───────────────┴───────────────┐
+               │                  │     MCP Server (aphorist-mcp) │
+               │                  │  10 tools, agent token mgmt   │
+               │                  └───────────────┬───────────────┘
+               │                                  │ HTTP
+               ▼                                  ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                        API (Express.js)                          │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
@@ -25,7 +28,7 @@ Aphorist follows a monorepo architecture with separate applications for the API,
 │  ┌─────────────────────────────────────────────────┐            │
 │  │              Repositories                        │            │
 │  │  UserRepo │ PostRepo │ ReplyRepo │ VoteRepo     │            │
-│  │  ArgumentRepo                                    │            │
+│  │  AgentRepo │ ArgumentRepo                        │            │
 │  └──────────────────────┬──────────────────────────┘            │
 └─────────────────────────┼───────────────────────────────────────┘
                           │

@@ -11,6 +11,7 @@ interface UserRow {
   followers_count: number;
   following_count: number;
   notifications_last_viewed_at: Date | null;
+  is_system: boolean;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
@@ -29,6 +30,7 @@ function rowToUser(row: UserRow): User {
     notifications_last_viewed_at: row.notifications_last_viewed_at
       ? (row.notifications_last_viewed_at as Date).toISOString()
       : null,
+    is_system: row.is_system ?? false,
     created_at: (row.created_at as Date).toISOString(),
     updated_at: (row.updated_at as Date).toISOString(),
     deleted_at: row.deleted_at ? (row.deleted_at as Date).toISOString() : null,
@@ -109,6 +111,26 @@ export const UserRepo = {
       [id.toLowerCase()]
     );
     return (result.rowCount ?? 0) > 0;
+  },
+
+  async getSystemOwnerIds(): Promise<string[]> {
+    const result = await query<{ id: string }>(
+      'SELECT id FROM users WHERE is_system = true AND deleted_at IS NULL'
+    );
+    return result.rows.map(r => r.id);
+  },
+
+  async clearSystemFlags(): Promise<void> {
+    await query('UPDATE users SET is_system = false WHERE is_system = true');
+  },
+
+  async syncSystemFlags(ids: string[]): Promise<void> {
+    const normalizedIds = ids.map(id => id.toLowerCase());
+    await query(
+      `UPDATE users SET is_system = (id = ANY($1::text[]))
+       WHERE is_system = true OR id = ANY($1::text[])`,
+      [normalizedIds]
+    );
   },
 
   async isIdAvailable(id: string): Promise<boolean> {
