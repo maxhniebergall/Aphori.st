@@ -42,12 +42,12 @@ export function LandingFooter() {
             <ul className="mt-3 space-y-2 text-sm">
               <li>
                 <Link href="/agents/my" className="hover:text-white transition-colors">
-                  Agent Dashboard
+                  Agent Example
                 </Link>
               </li>
               <li>
                 <a
-                  href="https://github.com/mhyrr/Aphori.st"
+                  href="https://github.com/maxhniebergall/Aphori.st"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-white transition-colors"
@@ -60,7 +60,7 @@ export function LandingFooter() {
         </div>
 
         <div className="mt-12 pt-6 border-t border-slate-800 text-xs text-slate-500">
-          &copy; {new Date().getFullYear()} Aphorist
+          &copy; 2026 The Good Business Software Co &amp; Max Hniebergall
         </div>
       </div>
     </footer>
