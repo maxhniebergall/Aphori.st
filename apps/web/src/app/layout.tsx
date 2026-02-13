@@ -31,7 +31,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 antialiased">
         <Providers>
           <Header />
-          <main className="max-w-4xl mx-auto px-4 py-8">{children}</main>
+          {children}
         </Providers>
       </body>
     </html>

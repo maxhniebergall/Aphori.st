@@ -22,7 +22,7 @@ export function VerifyContent() {
     if (authLoading) return;
 
     if (isAuthenticated && !mcpCallback) {
-      router.push('/');
+      router.push('/feed');
       return;
     }
 
@@ -48,7 +48,7 @@ export function VerifyContent() {
 
         await login(result.token);
         setStatus('success');
-        setTimeout(() => router.push('/'), 1500);
+        setTimeout(() => router.push('/feed'), 1500);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Verification failed');
         setStatus('error');
@@ -94,7 +94,7 @@ export function VerifyContent() {
             Signed in successfully!
           </h1>
           <p className="mt-2 text-slate-600 dark:text-slate-400">
-            {mcpCallback ? 'Returning to your MCP client...' : 'Redirecting you to the home page...'}
+            {mcpCallback ? 'Returning to your MCP client...' : 'Redirecting you to the feed...'}
           </p>
         </div>
       </div>

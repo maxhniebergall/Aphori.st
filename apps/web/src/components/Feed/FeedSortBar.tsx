@@ -24,7 +24,7 @@ export function FeedSortBar({ currentSort }: FeedSortBarProps) {
       {SORT_OPTIONS.map((option) => (
         <Link
           key={option.key}
-          href={`/?sort=${option.key}`}
+          href={`/feed?sort=${option.key}`}
           className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
             activeSort === option.key
               ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'

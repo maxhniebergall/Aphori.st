@@ -127,7 +127,7 @@ export function ArgumentHighlights({
   };
 
   return (
-    <div className="whitespace-pre-wrap text-base leading-relaxed">
+    <div className="whitespace-pre-wrap text-sm leading-relaxed">
       {segments.map((seg, idx) => {
         if (!seg.adu) {
           return <span key={idx}>{seg.text}</span>;
@@ -168,6 +168,7 @@ export function ArgumentHighlights({
               <ClaimDeduplicationBadge
                 aduCount={seg.canonicalMapping.adu_count}
                 isExpanded={false}
+                canonicalClaimId={seg.canonicalMapping.canonical_claim_id}
               />
             )}
           </span>

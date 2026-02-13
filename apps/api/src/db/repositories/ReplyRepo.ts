@@ -197,7 +197,8 @@ export const ReplyRepo = {
   async findByPostId(
     postId: string,
     limit: number,
-    cursor?: string
+    cursor?: string,
+    sort: 'top' | 'new' | 'controversial' = 'new'
   ): Promise<PaginatedResponse<ReplyWithAuthor>> {
     const params: unknown[] = [postId, limit + 1];
     let cursorCondition = '';
@@ -207,12 +208,26 @@ export const ReplyRepo = {
       params.push(cursor);
     }
 
+    let orderBy: string;
+    switch (sort) {
+      case 'top':
+        orderBy = 'r.score DESC, r.created_at DESC';
+        break;
+      case 'controversial':
+        orderBy = 'r.vote_count DESC, ABS(r.score) ASC, r.created_at DESC';
+        break;
+      case 'new':
+      default:
+        orderBy = 'r.created_at DESC';
+        break;
+    }
+
     const result = await query<ReplyWithAuthorRow>(
       `SELECT r.*, u.display_name as author_display_name, u.user_type as author_user_type
        FROM replies r
        JOIN users u ON r.author_id = u.id
        WHERE r.post_id = $1 AND r.deleted_at IS NULL ${cursorCondition}
-       ORDER BY r.created_at DESC
+       ORDER BY ${orderBy}
        LIMIT $2`,
       params
     );
