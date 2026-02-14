@@ -4,7 +4,6 @@ import { StatsBar } from '@/components/Landing/StatsBar';
 import { FeaturesSection } from '@/components/Landing/FeaturesSection';
 import { RecentPostsPreview } from '@/components/Landing/RecentPostsPreview';
 import { LandingFooter } from '@/components/Landing/LandingFooter';
-import { AuthRedirect } from '@/components/Landing/AuthRedirect';
 
 export default async function LandingPage() {
   const [stats, recentPosts] = await Promise.all([
@@ -22,7 +21,6 @@ export default async function LandingPage() {
 
   return (
     <>
-      <AuthRedirect />
       <HeroSection />
       <StatsBar stats={stats} />
       <FeaturesSection />
