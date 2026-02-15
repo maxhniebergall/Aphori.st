@@ -348,10 +348,21 @@ export const createArgumentRepo = (pool: Pool) => ({
         [aduId, canonicalId, similarity]
       );
 
-      // Update ADU count on canonical claim (atomic with insert)
+      // Update ADU count and discussion count on canonical claim (atomic with insert)
       await client.query(
         `UPDATE canonical_claims
-         SET adu_count = (SELECT COUNT(*) FROM adu_canonical_map WHERE canonical_claim_id = $1)
+         SET adu_count = (SELECT COUNT(*) FROM adu_canonical_map WHERE canonical_claim_id = $1),
+             discussion_count = (
+               SELECT COUNT(DISTINCT
+                 CASE WHEN a.source_type = 'post' THEN a.source_id
+                      WHEN a.source_type = 'reply' THEN r.post_id
+                 END
+               )
+               FROM adu_canonical_map acm
+               JOIN adus a ON acm.adu_id = a.id
+               LEFT JOIN replies r ON a.source_type = 'reply' AND a.source_id = r.id
+               WHERE acm.canonical_claim_id = $1
+             )
          WHERE id = $1`,
         [canonicalId]
       );
