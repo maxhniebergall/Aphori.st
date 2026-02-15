@@ -25,7 +25,7 @@ export function FeedSortBar({ currentSort }: FeedSortBarProps) {
     <div className="flex items-center gap-1 px-4 py-3 border-b border-slate-200 dark:border-slate-700">
       {isAuthenticated && (
         <Link
-          href="/?sort=following"
+          href="/feed?sort=following"
           className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
             activeSort === 'following'
               ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
