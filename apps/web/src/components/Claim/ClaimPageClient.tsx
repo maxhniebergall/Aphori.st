@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PostCard } from '@/components/Post/PostCard';
 import { SearchReplyCard } from '@/components/Search/SearchReplyCard';
 import type { CanonicalClaim, RelatedSource } from '@/lib/api';
@@ -67,15 +67,17 @@ const claimTypeLabels: Record<string, string> = {
 };
 
 export function ClaimPageClient({ claim, initialSources }: ClaimPageClientProps) {
+  const router = useRouter();
+
   return (
     <div className="max-w-3xl mx-auto">
       <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-        <Link
-          href="/"
+        <button
+          onClick={() => router.back()}
           className="text-sm text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 mb-4 inline-block"
         >
           &larr; Back
-        </Link>
+        </button>
 
         <div className="mt-2">
           <span className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
