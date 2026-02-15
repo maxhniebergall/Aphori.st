@@ -84,7 +84,7 @@ export const config = {
       windowHours: parseInt(process.env.RISING_WINDOW_HOURS || '24', 10),
     },
     controversial: {
-      minVotes: parseInt(process.env.CONTROVERSIAL_MIN_VOTES || '5', 10),
+      minVotes: parseInt(process.env.CONTROVERSIAL_MIN_VOTES || '1', 10),
     },
   },
 
