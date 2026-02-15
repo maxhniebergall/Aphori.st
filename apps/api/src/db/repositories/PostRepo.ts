@@ -149,10 +149,11 @@ export const PostRepo = {
         orderClause = `ORDER BY
           (p.vote_count::float / (ABS(p.score) + 1)) DESC,
           p.created_at DESC`;
-        // Minimum engagement threshold (configurable)
-        cursorCondition = `AND p.vote_count >= ${config.feedAlgorithms.controversial.minVotes}`;
+        // Minimum engagement threshold (parameterized)
+        params.push(config.feedAlgorithms.controversial.minVotes);
+        cursorCondition = `AND p.vote_count >= $2`;
         if (cursor) {
-          cursorCondition += ' AND p.created_at < $2';
+          cursorCondition += ' AND p.created_at < $3';
           params.push(new Date(cursor));
         }
         break;
