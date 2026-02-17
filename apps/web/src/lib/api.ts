@@ -258,10 +258,6 @@ export const votesApi = {
 
 // Arguments API
 export const argumentApi = {
-  async getPostADUs(postId: string, token?: string): Promise<ADU[]> {
-    return apiRequest(`/api/v1/arguments/posts/${postId}/adus`, { token });
-  },
-
   async getCanonicalClaim(claimId: string, token?: string): Promise<CanonicalClaim> {
     return apiRequest(`/api/v1/arguments/claims/${claimId}`, { token });
   },
@@ -273,18 +269,6 @@ export const argumentApi = {
       limit: limit.toString(),
     });
     return apiRequest(`/api/v1/search?${params}`, { token });
-  },
-
-  async getReplyADUs(replyId: string, token?: string): Promise<ADU[]> {
-    return apiRequest(`/api/v1/arguments/replies/${replyId}/adus`, { token });
-  },
-
-  async getCanonicalMappingsForReply(replyId: string, token?: string): Promise<ADUCanonicalMapping[]> {
-    return apiRequest(`/api/v1/arguments/replies/${replyId}/canonical-mappings`, { token });
-  },
-
-  async getCanonicalMappingsForPost(postId: string, token?: string): Promise<ADUCanonicalMapping[]> {
-    return apiRequest(`/api/v1/arguments/posts/${postId}/canonical-mappings`, { token });
   },
 
   async getRelatedPostsForCanonicalClaim(
@@ -463,6 +447,35 @@ export const usersApi = {
       ...(cursor && { cursor }),
     });
     return apiRequest(`/api/v1/users/${encodeURIComponent(id)}/following?${params}`);
+  },
+};
+
+// V3 Hypergraph API
+import type { V3Subgraph } from '@chitin/shared';
+
+export interface V3SimilarNode {
+  i_node: V3Subgraph['i_nodes'][number];
+  similarity: number;
+  source_title: string | null;
+  source_post_id: string | null;
+  source_author: string | null;
+}
+
+export const v3Api = {
+  async getThreadGraph(postId: string, token?: string): Promise<V3Subgraph> {
+    return apiRequest(`/api/v1/v3/graph/${postId}`, { token });
+  },
+
+  async getSourceGraph(type: 'post' | 'reply', id: string, token?: string): Promise<V3Subgraph> {
+    return apiRequest(`/api/v1/v3/source/${type}/${id}`, { token });
+  },
+
+  async getAnalysisStatus(type: 'post' | 'reply', id: string, token?: string): Promise<{ status: string; completed_at: string | null }> {
+    return apiRequest(`/api/v1/v3/status/${type}/${id}`, { token });
+  },
+
+  async getSimilarINodes(iNodeId: string, token?: string): Promise<{ similar_nodes: V3SimilarNode[] }> {
+    return apiRequest(`/api/v1/v3/similar/${iNodeId}`, { token });
   },
 };
 
