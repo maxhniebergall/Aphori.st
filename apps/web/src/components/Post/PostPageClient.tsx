@@ -6,6 +6,8 @@ import { PostDetail } from './PostDetail';
 import { ReplyThread } from '@/components/Reply/ReplyThread';
 import { ReplyComposer } from '@/components/Reply/ReplyComposer';
 import { useUserVotes } from '@/hooks/useUserVotes';
+import { useV3Subgraph } from '@/hooks/useV3Subgraph';
+import { getThreadEnthymemes } from '@/lib/v3Helpers';
 import type { QuoteData } from '@/components/Shared/TextSelectionQuote';
 import type { PostWithAuthor, ReplyWithAuthor, PaginatedResponse } from '@chitin/shared';
 
@@ -25,6 +27,15 @@ export function PostPageClient({ post, replies }: PostPageClientProps) {
     [replies.items]
   );
   const replyVotes = useUserVotes('reply', replyIds);
+
+  // V3 subgraph for the entire thread
+  const { data: v3Subgraph } = useV3Subgraph(post.id);
+
+  // Compute ghost replies from V3 data
+  const ghostReplies = useMemo(
+    () => v3Subgraph ? getThreadEnthymemes(v3Subgraph) : [],
+    [v3Subgraph]
+  );
 
   const handleQuote = useCallback((quote: QuoteData) => {
     setActiveQuote(quote);
@@ -49,6 +60,7 @@ export function PostPageClient({ post, replies }: PostPageClientProps) {
         userVote={postVotes[post.id]}
         onQuote={handleQuote}
         onSearch={handleSearch}
+        v3Subgraph={v3Subgraph}
       />
 
       <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700">
@@ -65,6 +77,8 @@ export function PostPageClient({ post, replies }: PostPageClientProps) {
           userVotes={replyVotes}
           onQuote={handleQuote}
           onSearch={handleSearch}
+          v3Subgraph={v3Subgraph}
+          ghostReplies={ghostReplies}
         />
       </div>
     </div>
