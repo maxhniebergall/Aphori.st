@@ -93,4 +93,77 @@ router.get('/status/:type/:id', async (req, res) => {
   }
 });
 
+// GET /api/v1/v3/similar/:iNodeId — find similar I-nodes across the network
+router.get('/similar/:iNodeId', async (req, res) => {
+  try {
+    const pool = getPool();
+    const v3Repo = createV3HypergraphRepo(pool);
+
+    // Look up the I-node's embedding
+    const nodeResult = await pool.query(
+      `SELECT id, embedding FROM v3_nodes_i WHERE id = $1`,
+      [req.params.iNodeId]
+    );
+
+    if (nodeResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'I-node not found' });
+      return;
+    }
+
+    const embedding = nodeResult.rows[0].embedding;
+    if (!embedding) {
+      res.json({ success: true, data: { similar_nodes: [] } });
+      return;
+    }
+
+    const similar = await v3Repo.findSimilarINodes(embedding, 0.75, 10);
+
+    // Exclude the queried node and join source info
+    const filtered = similar.filter(n => n.id !== req.params.iNodeId);
+
+    // Enrich with source post/reply info
+    const enriched = await Promise.all(
+      filtered.map(async (node) => {
+        let source_title: string | null = null;
+        let source_post_id: string | null = null;
+        let source_author: string | null = null;
+
+        if (node.source_type === 'post') {
+          const r = await pool.query(
+            `SELECT p.id, p.title, u.display_name, u.id as user_id FROM posts p JOIN users u ON p.author_id = u.id WHERE p.id = $1`,
+            [node.source_id]
+          );
+          if (r.rows[0]) {
+            source_title = r.rows[0].title;
+            source_post_id = r.rows[0].id;
+            source_author = r.rows[0].display_name || r.rows[0].user_id;
+          }
+        } else {
+          const r = await pool.query(
+            `SELECT r.post_id, p.title, u.display_name, u.id as user_id FROM replies r JOIN posts p ON r.post_id = p.id JOIN users u ON r.author_id = u.id WHERE r.id = $1`,
+            [node.source_id]
+          );
+          if (r.rows[0]) {
+            source_title = r.rows[0].title;
+            source_post_id = r.rows[0].post_id;
+            source_author = r.rows[0].display_name || r.rows[0].user_id;
+          }
+        }
+
+        return {
+          i_node: node,
+          similarity: node.similarity,
+          source_title,
+          source_post_id,
+          source_author,
+        };
+      })
+    );
+
+    res.json({ success: true, data: { similar_nodes: enriched } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to find similar I-nodes' });
+  }
+});
+
 export default router;
