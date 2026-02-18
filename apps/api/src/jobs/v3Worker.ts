@@ -1,11 +1,10 @@
 import { Worker, Job } from 'bullmq';
-import { Redis } from 'ioredis';
 import crypto from 'crypto';
-import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { createV3HypergraphRepo } from '../db/repositories/V3HypergraphRepo.js';
 import { getArgumentService } from '../services/argumentService.js';
 import { getPool } from '../db/pool.js';
+import { createBullMQConnection } from './redisConnection.js';
 
 interface V3AnalysisJobData {
   sourceType: 'post' | 'reply';
@@ -13,9 +12,7 @@ interface V3AnalysisJobData {
   contentHash: string;
 }
 
-const connection = new Redis(config.redis.url, {
-  maxRetriesPerRequest: null,
-});
+const connection = createBullMQConnection('v3-worker');
 
 async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
   const { sourceType, sourceId, contentHash } = job.data;
