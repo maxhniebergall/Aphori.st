@@ -62,13 +62,6 @@ export function InsightPopover({
         &ldquo;{iNode.content}&rdquo;
       </p>
 
-      {/* Context-free rewrite if different */}
-      {iNode.rewritten_text && iNode.rewritten_text !== iNode.content && (
-        <p className="mb-3 text-[10px] text-slate-500 dark:text-slate-400 italic">
-          Context-free: &ldquo;{iNode.rewritten_text}&rdquo;
-        </p>
-      )}
-
       {/* Extracted values */}
       {extractedValues.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1">
