@@ -8,6 +8,8 @@ import type {
   V3SocraticQuestion,
   V3ExtractedValue,
   V3Subgraph,
+  V3ConceptNode,
+  V3INodeConceptMapping,
   V3EngineAnalysis,
   V3HypergraphNode,
   V3HypergraphEdge,
@@ -78,6 +80,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
   },
 
   // ── Persist Hypergraph (single transaction) ──
+  // Returns the engineIdToDbId map for use in the concept disambiguation phase.
 
   async persistHypergraph(
     runId: string,
@@ -86,7 +89,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     analysis: V3EngineAnalysis,
     iNodeEmbeddings?: Map<string, number[]>,
     valueEmbeddings?: Map<string, number[]>
-  ): Promise<void> {
+  ): Promise<Map<string, string>> {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -179,10 +182,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
           return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`;
         }).join(',');
 
-        // Ghost nodes reference their parent scheme via node_id pattern "ghost::scheme-xxx::n"
-        // We need to find the scheme_id for each ghost
         const gParams = ghostNodes.flatMap((n: V3HypergraphNode) => {
-          // Extract scheme node_id from ghost node_id pattern: "ghost::SCHEME_ID::INDEX"
           const parts = n.node_id.split('::');
           const schemeEngineId = parts.length >= 2 ? parts[1]! : '';
           const schemeDbId = engineIdToDbId.get(schemeEngineId);
@@ -282,12 +282,104 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       }
 
       await client.query('COMMIT');
+      return engineIdToDbId;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
     }
+  },
+
+  // ── Concept Node Methods ──
+
+  async findSimilarConcepts(
+    embedding: number[],
+    threshold: number = 0.85,
+    limit: number = 3
+  ): Promise<Array<V3ConceptNode & { similarity: number; sampleINodeText: string }>> {
+    const result = await pool.query(
+      `SELECT c.id, c.term, c.definition, c.created_at,
+              (1 - (c.embedding <=> $1::vector)) as similarity,
+              COALESCE(
+                (SELECT i.content FROM v3_i_node_concept_map m
+                 JOIN v3_nodes_i i ON m.i_node_id = i.id
+                 WHERE m.concept_id = c.id
+                 ORDER BY m.created_at ASC LIMIT 1),
+                ''
+              ) as sample_i_node_text
+       FROM v3_concept_nodes c
+       WHERE c.embedding IS NOT NULL
+         AND (1 - (c.embedding <=> $1::vector)) > $2
+       ORDER BY similarity DESC
+       LIMIT $3`,
+      [JSON.stringify(embedding), threshold, limit]
+    );
+    return result.rows.map(r => ({
+      id: r.id,
+      term: r.term,
+      definition: r.definition,
+      created_at: r.created_at,
+      similarity: r.similarity,
+      sampleINodeText: r.sample_i_node_text,
+    }));
+  },
+
+  async createConcept(
+    term: string,
+    definition: string,
+    embedding: number[]
+  ): Promise<V3ConceptNode> {
+    const result = await pool.query(
+      `INSERT INTO v3_concept_nodes (term, definition, embedding)
+       VALUES ($1, $2, $3)
+       RETURNING id, term, definition, created_at`,
+      [term, definition, JSON.stringify(embedding)]
+    );
+    return result.rows[0];
+  },
+
+  async linkINodeToConcept(
+    iNodeId: string,
+    conceptId: string,
+    termText: string
+  ): Promise<void> {
+    await pool.query(
+      `INSERT INTO v3_i_node_concept_map (i_node_id, concept_id, term_text)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (i_node_id, term_text) DO NOTHING`,
+      [iNodeId, conceptId, termText]
+    );
+  },
+
+  async createEquivocationFlag(
+    schemeNodeId: string,
+    term: string,
+    premiseINodeId: string,
+    conclusionINodeId: string,
+    premiseConceptId: string,
+    conclusionConceptId: string
+  ): Promise<void> {
+    await pool.query(
+      `INSERT INTO v3_equivocation_flags
+         (scheme_node_id, term, premise_i_node_id, conclusion_i_node_id, premise_concept_id, conclusion_concept_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (scheme_node_id, term) DO NOTHING`,
+      [schemeNodeId, term, premiseINodeId, conclusionINodeId, premiseConceptId, conclusionConceptId]
+    );
+  },
+
+  async getConceptMapsForINodes(
+    iNodeIds: string[]
+  ): Promise<V3INodeConceptMapping[]> {
+    if (iNodeIds.length === 0) return [];
+    const result = await pool.query(
+      `SELECT i_node_id, concept_id, term_text, created_at
+       FROM v3_i_node_concept_map
+       WHERE i_node_id = ANY($1)`,
+      [iNodeIds]
+    );
+    return result.rows;
   },
 
   // ── Query Methods ──
@@ -298,7 +390,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
   ): Promise<V3Subgraph> {
     const [iNodes, sNodes, edges, enthymemes, socratic, values] = await Promise.all([
       pool.query<V3INode>(
-        `SELECT id, analysis_run_id, source_type, source_id, v2_adu_id, content, rewritten_text,
+        `SELECT id, analysis_run_id, source_type, source_id, content, rewritten_text,
                 epistemic_type, fvp_confidence, span_start, span_end, extraction_confidence, created_at
          FROM v3_nodes_i WHERE source_type = $1 AND source_id = $2
          ORDER BY span_start`,
@@ -350,10 +442,9 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
   },
 
   async getThreadSubgraph(postId: string): Promise<V3Subgraph> {
-    // Aggregate V3 graphs across the post + all its replies
     const [iNodes, sNodes, edges, enthymemes, socratic, values] = await Promise.all([
       pool.query<V3INode>(
-        `SELECT i.id, i.analysis_run_id, i.source_type, i.source_id, i.v2_adu_id, i.content,
+        `SELECT i.id, i.analysis_run_id, i.source_type, i.source_id, i.content,
                 i.rewritten_text, i.epistemic_type, i.fvp_confidence, i.span_start, i.span_end,
                 i.extraction_confidence, i.created_at
          FROM v3_nodes_i i
@@ -418,7 +509,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     limit: number = 10
   ): Promise<Array<V3INode & { similarity: number }>> {
     const result = await pool.query(
-      `SELECT id, analysis_run_id, source_type, source_id, v2_adu_id, content, rewritten_text,
+      `SELECT id, analysis_run_id, source_type, source_id, content, rewritten_text,
               epistemic_type, fvp_confidence, span_start, span_end, extraction_confidence, created_at,
               (1 - (embedding <=> $1::vector)) as similarity
        FROM v3_nodes_i
