@@ -6,8 +6,6 @@ import logger from './logger.js';
 import { getPool, closePool } from './db/pool.js';
 import { migrate } from './db/migrate.js';
 import { initArgumentService } from './services/argumentService.js';
-import { argumentWorker } from './jobs/argumentWorker.js';
-import { closeQueue } from './jobs/queue.js';
 import { v3Worker } from './jobs/v3Worker.js';
 import { closeV3Queue } from './jobs/v3Queue.js';
 import { syncSystemAccountsFromSecret } from './services/systemAccountSync.js';
@@ -123,8 +121,6 @@ async function gracefulShutdown(signal: string): Promise<void> {
     logger.info('HTTP server closed');
 
     try {
-      await argumentWorker.close();
-      await closeQueue();
       await v3Worker.close();
       await closeV3Queue();
       logger.info('Queue and worker closed');
@@ -189,7 +185,6 @@ async function init(): Promise<void> {
     }
 
     // Workers start automatically on import
-    logger.info('Argument analysis worker started');
     logger.info('V3 analysis worker started');
   } catch (error) {
     logger.error('Failed to connect to database', {
