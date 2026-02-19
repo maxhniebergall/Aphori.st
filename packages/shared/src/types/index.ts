@@ -105,73 +105,6 @@ export interface CreateVoteInput {
   value: VoteValue;
 }
 
-// ADU (Argumentative Discourse Unit) Types
-// V2 Ontology: Hierarchical types with embedded relations
-export type ADUType = 'MajorClaim' | 'Supporting' | 'Opposing' | 'Evidence';
-export type ADUSourceType = 'post' | 'reply';
-
-export interface ADU {
-  id: string;
-  source_type: ADUSourceType;
-  source_id: string;
-  adu_type: ADUType;
-  text: string;
-  span_start: number;
-  span_end: number;
-  confidence: number;
-  target_adu_id: string | null; // Hierarchical parent (null for MajorClaims)
-  created_at: string;
-}
-
-// For tree views of argument structure
-export interface ADUTreeNode extends ADU {
-  children: ADUTreeNode[];
-}
-
-// Argument Relation Types
-export type RelationType = 'support' | 'attack';
-
-export interface ArgumentRelation {
-  id: string;
-  source_adu_id: string;
-  target_adu_id: string;
-  relation_type: RelationType;
-  confidence: number;
-  created_at: string;
-}
-
-// Canonical Claim Types
-export type CanonicalClaimType = 'MajorClaim' | 'Supporting' | 'Opposing';
-
-export interface CanonicalClaim {
-  id: string;
-  representative_text: string;
-  claim_type: CanonicalClaimType;
-  created_at: string;
-}
-
-export interface ADUCanonicalMapping {
-  adu_id: string;
-  canonical_claim_id: string;
-  similarity_score: number;
-  created_at: string;
-}
-
-// Embedding Types
-export interface ContentEmbedding {
-  id: string;
-  source_type: 'post' | 'reply';
-  source_id: string;
-  embedding: number[]; // 1536-dimensional vector for semantic search
-  created_at: string;
-}
-
-export interface ADUEmbedding {
-  id: string;
-  adu_id: string;
-  embedding: number[]; // 384-dimensional vector for argument analysis
-  created_at: string;
-}
 
 // Agent Types
 export interface AgentIdentity {
@@ -265,40 +198,6 @@ export interface SearchResult {
 }
 
 // Discourse Engine Types (for API communication)
-export interface AnalyzeADUsRequest {
-  texts: Array<{ id: string; text: string }>;
-}
-
-export interface AnalyzeADUsResponse {
-  adus: Array<{
-    source_id: string;
-    adu_type: ADUType;
-    text: string;
-    span_start: number;
-    span_end: number;
-    confidence: number;
-    target_index: number | null; // Array index of parent ADU (converted to UUID in backend)
-    rewritten_text?: string; // Anaphora-resolved version for canonical matching
-  }>;
-}
-
-export interface AnalyzeRelationsRequest {
-  adus: Array<{
-    id: string;
-    text: string;
-  }>;
-  embeddings: number[][];
-}
-
-export interface AnalyzeRelationsResponse {
-  relations: Array<{
-    source_adu_id: string;
-    target_adu_id: string;
-    relation_type: RelationType;
-    confidence: number;
-  }>;
-}
-
 export interface EmbedContentRequest {
   texts: string[];
 }
@@ -351,7 +250,6 @@ export interface V3INode {
   analysis_run_id: string;
   source_type: 'post' | 'reply';
   source_id: string;
-  v2_adu_id: string | null;
   content: string;
   rewritten_text: string | null;
   epistemic_type: V3EpistemicType;
@@ -431,6 +329,7 @@ export interface V3HypergraphNode {
   span_start?: number;
   span_end?: number;
   extraction_confidence?: number;
+  high_variance_terms?: string[];
   // Scheme fields
   direction?: V3SchemeDirection;
   logic_type?: string;
@@ -470,4 +369,30 @@ export interface V3EngineAnalysis {
 
 export interface V3AnalyzeTextResponse {
   analyses: V3EngineAnalysis[];
+}
+
+// V3 Concept Node Types
+export interface V3ConceptNode {
+  id: string;
+  term: string;
+  definition: string;
+  created_at: string;
+}
+
+export interface V3INodeConceptMapping {
+  i_node_id: string;
+  concept_id: string;
+  term_text: string;
+  created_at: string;
+}
+
+export interface V3EquivocationFlag {
+  id: string;
+  scheme_node_id: string;
+  term: string;
+  premise_i_node_id: string;
+  conclusion_i_node_id: string;
+  premise_concept_id: string;
+  conclusion_concept_id: string;
+  created_at: string;
 }
