@@ -8,7 +8,7 @@ export function useV3Subgraph(postId: string) {
   return useQuery({
     queryKey: ['v3-subgraph', postId],
     queryFn: () => v3Api.getThreadGraph(postId, token ?? undefined),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
   });
 }
 
