@@ -72,28 +72,54 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
 
     await job.updateProgress(40);
 
-    // 6. Generate embeddings for I-Node texts
+    // 6. STEP A: Collect I-Node texts + all unique high_variance_terms,
+    //    then embed them all in a single merged call.
     const aduNodes = analysis.hypergraph.nodes.filter(
       (n: { node_type: string }) => n.node_type === 'adu'
     );
+
+    // Gather unique high-variance terms across all I-Nodes
+    const termToINodeEngineId = new Map<string, string>(); // term → first I-Node engine ID
+    for (const aduNode of aduNodes) {
+      const hvt: string[] = (aduNode as any).high_variance_terms ?? [];
+      for (const term of hvt) {
+        if (!termToINodeEngineId.has(term)) {
+          termToINodeEngineId.set(term, aduNode.node_id);
+        }
+      }
+    }
+    const uniqueTerms = Array.from(termToINodeEngineId.keys());
+
+    // Build a merged list: [aduTexts..., termTexts...]
+    const aduTexts = aduNodes.map(
+      (n: { rewritten_text?: string; text?: string }) => n.rewritten_text || n.text || ''
+    );
+    const termTexts = uniqueTerms; // embed the raw term strings for concept lookup
+    const allTextsToEmbed = [...aduTexts, ...termTexts];
+
     const iNodeEmbeddings = new Map<string, number[]>();
+    const termEmbeddings = new Map<string, number[]>();
 
-    if (aduNodes.length > 0) {
-      const texts = aduNodes.map(
-        (n: { rewritten_text?: string; text?: string }) => n.rewritten_text || n.text || ''
-      );
-      const embedResponse = await argumentService.embedContent(texts);
+    if (allTextsToEmbed.length > 0) {
+      const embedResponse = await argumentService.embedContent(allTextsToEmbed);
 
+      // Split results back
       for (let i = 0; i < aduNodes.length; i++) {
         if (embedResponse.embeddings_1536[i]) {
           iNodeEmbeddings.set(aduNodes[i]!.node_id, embedResponse.embeddings_1536[i]!);
+        }
+      }
+      for (let i = 0; i < uniqueTerms.length; i++) {
+        const idx = aduNodes.length + i;
+        if (embedResponse.embeddings_1536[idx]) {
+          termEmbeddings.set(uniqueTerms[i]!, embedResponse.embeddings_1536[idx]!);
         }
       }
     }
 
     await job.updateProgress(60);
 
-    // 7. Generate embeddings for extracted values
+    // 7. Generate embeddings for extracted values (separate call — different content type)
     const valueEmbeddings = new Map<string, number[]>();
     if (analysis.extracted_values && analysis.extracted_values.length > 0) {
       const valueTexts = analysis.extracted_values.map((v: { text: string }) => v.text);
@@ -106,10 +132,10 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
       }
     }
 
-    await job.updateProgress(80);
+    await job.updateProgress(70);
 
-    // 8. Persist hypergraph in single transaction
-    await v3Repo.persistHypergraph(
+    // 8. Persist hypergraph in single transaction; get engineIdToDbId for concept phase
+    const engineIdToDbId = await v3Repo.persistHypergraph(
       run.id,
       sourceType,
       sourceId,
@@ -117,6 +143,171 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
       iNodeEmbeddings,
       valueEmbeddings
     );
+
+    await job.updateProgress(80);
+
+    // ── Concept Disambiguation Phase ──
+    // Only runs if there are high-variance terms to process.
+
+    if (uniqueTerms.length > 0) {
+      logger.info(`V3: Concept phase — ${uniqueTerms.length} unique terms`, { sourceId });
+
+      // STEP B: Parallel DB candidate retrieval (local DB, no HTTP)
+      const candidatesPerTerm = new Map<string, Array<{
+        id: string; term: string; definition: string; sampleINodeText: string;
+      }>>();
+
+      await Promise.all(
+        uniqueTerms.map(async (term) => {
+          const embedding = termEmbeddings.get(term);
+          if (!embedding) {
+            candidatesPerTerm.set(term, []);
+            return;
+          }
+          const similar = await v3Repo.findSimilarConcepts(embedding, 0.85, 3);
+          candidatesPerTerm.set(
+            term,
+            similar.map(c => ({
+              id: c.id,
+              term: c.term,
+              definition: c.definition,
+              sampleINodeText: c.sampleINodeText,
+            }))
+          );
+        })
+      );
+
+      // Build per-term disambiguation inputs (term → I-Node text)
+      // Use the first I-Node that contains each term (rewritten_text preferred)
+      const termDisambInputs = uniqueTerms.map(term => {
+        const iNodeEngineId = termToINodeEngineId.get(term)!;
+        const iNodeNode = aduNodes.find((n: { node_id: string }) => n.node_id === iNodeEngineId);
+        const targetINodeText: string = (iNodeNode as any)?.rewritten_text
+          || (iNodeNode as any)?.text
+          || term;
+        return {
+          term,
+          targetINodeText,
+          candidates: candidatesPerTerm.get(term) ?? [],
+        };
+      });
+
+      // STEP C: Single HTTP call — discourse engine fans out to parallel Gemini calls
+      const disambResults = await argumentService.disambiguateConceptsBatch(
+        content.content,
+        termDisambInputs
+      );
+
+      // STEP D: Embed novel definitions (0–1 HTTP calls)
+      const novelTerms = disambResults.filter(r => r.newDefinition !== null);
+      const conceptIdForTerm = new Map<string, string>(); // term → concept UUID
+
+      // First, map matched concepts
+      for (const r of disambResults) {
+        if (r.matchedConceptId) {
+          conceptIdForTerm.set(r.term, r.matchedConceptId);
+        }
+      }
+
+      if (novelTerms.length > 0) {
+        const novelTexts = novelTerms.map(r => `${r.term}: ${r.newDefinition}`);
+        const novelEmbedResponse = await argumentService.embedContent(novelTexts);
+
+        await Promise.all(
+          novelTerms.map(async (r, idx) => {
+            const embedding = novelEmbedResponse.embeddings_1536[idx];
+            if (!embedding || !r.newDefinition) return;
+
+            const concept = await v3Repo.createConcept(r.term, r.newDefinition, embedding);
+            conceptIdForTerm.set(r.term, concept.id);
+          })
+        );
+      }
+
+      // STEP E: Link I-Nodes to concepts (DB only)
+      await Promise.all(
+        aduNodes.map(async (aduNode: { node_id: string }) => {
+          const dbINodeId = engineIdToDbId.get(aduNode.node_id);
+          if (!dbINodeId) return;
+
+          const hvt: string[] = (aduNode as any).high_variance_terms ?? [];
+          for (const term of hvt) {
+            const conceptId = conceptIdForTerm.get(term);
+            if (conceptId) {
+              await v3Repo.linkINodeToConcept(dbINodeId, conceptId, term);
+            }
+          }
+        })
+      );
+
+      // STEP F: Equivocation check (DB only)
+      const allINodeDbIds = aduNodes
+        .map((n: { node_id: string }) => engineIdToDbId.get(n.node_id))
+        .filter((id): id is string => !!id);
+
+      if (allINodeDbIds.length > 0) {
+        const conceptMaps = await v3Repo.getConceptMapsForINodes(allINodeDbIds);
+
+        // Build: iNodeId → Map(term → conceptId)
+        const iNodeTermConcept = new Map<string, Map<string, string>>();
+        for (const mapping of conceptMaps) {
+          if (!iNodeTermConcept.has(mapping.i_node_id)) {
+            iNodeTermConcept.set(mapping.i_node_id, new Map());
+          }
+          iNodeTermConcept.get(mapping.i_node_id)!.set(mapping.term_text, mapping.concept_id);
+        }
+
+        // For each scheme node, check premise/conclusion I-Node pairs for equivocation
+        const schemeNodes = analysis.hypergraph.nodes.filter(
+          (n: { node_type: string }) => n.node_type === 'scheme'
+        );
+
+        for (const schemeNode of schemeNodes) {
+          const schemeDbId = engineIdToDbId.get(schemeNode.node_id);
+          if (!schemeDbId) continue;
+
+          // Get premise and conclusion I-Node db IDs via edges
+          const schemeEdges = analysis.hypergraph.edges.filter(
+            (e: { scheme_node_id: string }) => e.scheme_node_id === schemeNode.node_id
+          );
+
+          const premiseDbIds = schemeEdges
+            .filter((e: { role: string }) => e.role === 'premise')
+            .map((e: { node_id: string }) => engineIdToDbId.get(e.node_id))
+            .filter((id): id is string => !!id);
+
+          const conclusionDbId = schemeEdges
+            .filter((e: { role: string }) => e.role === 'conclusion')
+            .map((e: { node_id: string }) => engineIdToDbId.get(e.node_id))
+            .find((id): id is string => !!id);
+
+          if (!conclusionDbId || premiseDbIds.length === 0) continue;
+
+          const conclusionConcepts = iNodeTermConcept.get(conclusionDbId);
+          if (!conclusionConcepts) continue;
+
+          for (const premiseDbId of premiseDbIds) {
+            const premiseConcepts = iNodeTermConcept.get(premiseDbId);
+            if (!premiseConcepts) continue;
+
+            // Find shared terms where the concept differs (equivocation)
+            for (const [term, premiseConceptId] of premiseConcepts) {
+              const conclusionConceptId = conclusionConcepts.get(term);
+              if (conclusionConceptId && conclusionConceptId !== premiseConceptId) {
+                await v3Repo.createEquivocationFlag(
+                  schemeDbId,
+                  term,
+                  premiseDbId,
+                  conclusionDbId,
+                  premiseConceptId,
+                  conclusionConceptId
+                );
+              }
+            }
+          }
+        }
+      }
+    }
 
     // 9. Mark run as completed
     await v3Repo.updateRunStatus(run.id, 'completed');
@@ -128,6 +319,7 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
       ghosts: analysis.hypergraph.nodes.filter((n: { node_type: string }) => n.node_type === 'ghost').length,
       edges: analysis.hypergraph.edges.length,
       socraticQuestions: analysis.socratic_questions.length,
+      uniqueConceptTerms: uniqueTerms.length,
     });
   } catch (error) {
     logger.error(`V3 analysis failed for ${sourceId}`, { error });
