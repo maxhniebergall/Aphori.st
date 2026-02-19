@@ -42,18 +42,18 @@ jobs:
       - name: Set short SHA
         run: echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
 
-      # Build and push all 3 images
-      - name: Build and push API image
+      # Build and push all images
+      - name: Build and push combined API+DE image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/api/Dockerfile
+          file: Dockerfile
           push: true
           tags: |
             gcr.io/${{ env.PROJECT_ID }}/chitin-api:${{ env.SHORT_SHA }}
             gcr.io/${{ env.PROJECT_ID }}/chitin-api:latest
-          cache-from: type=gha,scope=chitin-api
-          cache-to: type=gha,mode=max,scope=chitin-api
+          cache-from: type=gha,scope=chitin-api-combined
+          cache-to: type=gha,mode=max,scope=chitin-api-combined
 
       - name: Build and push Web image
         uses: docker/build-push-action@v6
@@ -70,20 +70,6 @@ jobs:
           cache-from: type=gha,scope=chitin-web
           cache-to: type=gha,mode=max,scope=chitin-web
 
-      - name: Build and push Discourse Engine image
-        uses: docker/build-push-action@v6
-        env:
-          BUILDKIT_PROGRESS: quiet
-        with:
-          context: ./discourse-engine
-          file: discourse-engine/chitin_wrapper/Dockerfile
-          push: true
-          tags: |
-            gcr.io/${{ env.PROJECT_ID }}/discourse-engine:${{ env.SHORT_SHA }}
-            gcr.io/${{ env.PROJECT_ID }}/discourse-engine:latest
-          cache-from: type=gha,scope=discourse-engine
-          cache-to: type=gha,mode=max,scope=discourse-engine
-
       # Fetch existing service URLs before deploy so all env vars are set from the first revision
       - name: Get existing service URLs
         id: existing-urls
@@ -91,11 +77,7 @@ jobs:
           API_URL=$(gcloud run services describe chitin-api \
             --region "$REGION" \
             --format 'value(status.url)')
-          DE_URL=$(gcloud run services describe discourse-engine \
-            --region "$REGION" \
-            --format 'value(status.url)')
           echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
-          echo "de_url=$DE_URL" >> "$GITHUB_OUTPUT"
 
       # Deploy API to Cloud Run (migrations run automatically on startup)
       - name: Deploy API
@@ -105,7 +87,7 @@ jobs:
             --region $REGION \
             --platform managed \
             --port 3001 \
-            --memory 512Mi \
+            --memory 1536Mi \
             --min-instances 0 \
             --max-instances 3 \
             --vpc-connector chitin-vpc \
@@ -122,7 +104,7 @@ jobs:
           APP_URL=https://aphori.st,\
           API_URL=${{ steps.existing-urls.outputs.api_url }},\
           SERVICE_AUTH_AUDIENCE=${{ steps.existing-urls.outputs.api_url }},\
-          DISCOURSE_ENGINE_URL=${{ steps.existing-urls.outputs.de_url }}" \
+          DISCOURSE_ENGINE_URL=http://localhost:8001" \
             --set-secrets "\
           DB_PASSWORD=POSTGRES_PASSWORD:latest,\
           REDIS_PASSWORD=REDIS_PASSWORD:latest,\
@@ -136,21 +118,6 @@ jobs:
           EMAIL_FROM=EMAIL_USERNAME:latest,\
           SYSTEM_ACCOUNT_SECRET=SYSTEM_ACCOUNT_SECRET:latest,\
           SERVICE_AUTH_ALLOWLIST_SECRET=SERVICE_AUTH_ALLOWLIST_SECRET:latest" \
-            --allow-unauthenticated
-
-      # Deploy Discourse Engine
-      - name: Deploy Discourse Engine
-        run: |
-          gcloud run deploy discourse-engine \
-            --image gcr.io/$PROJECT_ID/discourse-engine:$SHORT_SHA \
-            --region $REGION \
-            --platform managed \
-            --port 8001 \
-            --memory 1Gi \
-            --min-instances 0 \
-            --max-instances 2 \
-            --service-account chitin-discourse@$PROJECT_ID.iam.gserviceaccount.com \
-            --set-secrets "GOOGLE_API_KEY=GEMINI_API_KEY:latest" \
             --allow-unauthenticated
 
       # Deploy Web to Cloud Run
@@ -178,6 +145,3 @@ jobs:
           WEB_URL=$(gcloud run services describe chitin-web --region $REGION --format 'value(status.url)')
           curl -sf "$WEB_URL" -o /dev/null || echo "WARNING: Web health check failed"
 
-          echo "Checking Discourse Engine health..."
-          DE_URL=$(gcloud run services describe discourse-engine --region $REGION --format 'value(status.url)')
-          curl -sf "$DE_URL/health" || echo "WARNING: Discourse Engine health check failed"
