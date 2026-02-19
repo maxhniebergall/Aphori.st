@@ -2,31 +2,18 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { V3INode, V3SNode, V3Edge, V3ExtractedValue } from '@chitin/shared';
-
-interface ConnectedScheme {
-  sNode: V3SNode;
-  edge: V3Edge;
-}
+import type { V3INode, V3ExtractedValue } from '@chitin/shared';
 
 interface InsightPopoverProps {
   iNode: V3INode;
-  connectedSchemes: ConnectedScheme[];
   extractedValues: V3ExtractedValue[];
   anchorRect: DOMRect;
   onClose: () => void;
   onAction: (action: 'search' | 'reply') => void;
 }
 
-const epistemicColors: Record<string, { bg: string; text: string }> = {
-  FACT: { bg: 'bg-blue-100 dark:bg-blue-900/50', text: 'text-blue-700 dark:text-blue-300' },
-  VALUE: { bg: 'bg-purple-100 dark:bg-purple-900/50', text: 'text-purple-700 dark:text-purple-300' },
-  POLICY: { bg: 'bg-amber-100 dark:bg-amber-900/50', text: 'text-amber-700 dark:text-amber-300' },
-};
-
 export function InsightPopover({
   iNode,
-  connectedSchemes,
   extractedValues,
   anchorRect,
   onClose,
@@ -64,65 +51,22 @@ export function InsightPopover({
     };
   }, [onClose]);
 
-  const colors = epistemicColors[iNode.epistemic_type] ?? epistemicColors.FACT;
-
   return createPortal(
     <div
       ref={popoverRef}
       className="absolute z-50 w-80 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 p-4 text-sm"
       style={{ top: position.top, left: position.left }}
     >
-      {/* Epistemic type + confidence */}
-      <div className="flex items-center gap-2 mb-3">
-        <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors.bg} ${colors.text}`}>
-          {iNode.epistemic_type}
-        </span>
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          {(iNode.fvp_confidence * 100).toFixed(0)}% confidence
-        </span>
-      </div>
+      {/* Original clicked text – always shown */}
+      <p className="mb-2 text-xs text-slate-700 dark:text-slate-200 italic font-medium">
+        &ldquo;{iNode.content}&rdquo;
+      </p>
 
-      {/* Rewritten text if different */}
+      {/* Context-free rewrite if different */}
       {iNode.rewritten_text && iNode.rewritten_text !== iNode.content && (
-        <p className="mb-3 text-xs text-slate-600 dark:text-slate-300 italic">
-          &ldquo;{iNode.rewritten_text}&rdquo;
+        <p className="mb-3 text-[10px] text-slate-500 dark:text-slate-400 italic">
+          Context-free: &ldquo;{iNode.rewritten_text}&rdquo;
         </p>
-      )}
-
-      {/* Connected schemes */}
-      {connectedSchemes.length > 0 && (
-        <div className="mb-3 space-y-1.5">
-          {connectedSchemes.map(({ sNode, edge }) => (
-            <div
-              key={sNode.id}
-              className="flex items-center gap-2 text-xs"
-            >
-              <span className={`px-1.5 py-0.5 rounded font-medium ${
-                sNode.direction === 'SUPPORT'
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
-              }`}>
-                {sNode.direction}
-              </span>
-              {sNode.logic_type && (
-                <span className="text-slate-500 dark:text-slate-400">
-                  {sNode.logic_type}
-                </span>
-              )}
-              <span className="text-slate-400 dark:text-slate-500">
-                ({(sNode.confidence * 100).toFixed(0)}%)
-              </span>
-              <span className="text-slate-400 dark:text-slate-500 text-[10px]">
-                as {edge.role}
-              </span>
-              {sNode.gap_detected && (
-                <span className="px-1 py-0.5 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300 rounded text-[10px] font-medium">
-                  GAP
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
       )}
 
       {/* Extracted values */}

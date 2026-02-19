@@ -2,11 +2,9 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { InsightPopover } from './InsightPopover';
-import { WormholeBadge } from './WormholeBadge';
 import {
   filterSubgraphBySource,
   segmentTextV3,
-  getConnectedSchemes,
   getExtractedValues,
 } from '@/lib/v3Helpers';
 import type { V3Subgraph, V3INode, V3EpistemicType } from '@chitin/shared';
@@ -87,15 +85,13 @@ export function AugmentedText({
         const hover = epistemicHover[iNode.epistemic_type] ?? epistemicHover.FACT;
 
         return (
-          <span key={`${iNode.id}-${idx}`}>
-            <span
-              className={`underline underline-offset-2 cursor-pointer transition-colors rounded-sm ${underline} ${hover}`}
-              onClick={(e) => handleSpanClick(iNode, e)}
-              data-testid={`v3-highlight-${iNode.epistemic_type.toLowerCase()}`}
-            >
-              {seg.text}
-            </span>
-            <WormholeBadge iNodeId={iNode.id} />
+          <span
+            key={`${iNode.id}-${idx}`}
+            className={`underline underline-offset-2 cursor-pointer transition-colors rounded-sm ${underline} ${hover}`}
+            onClick={(e) => handleSpanClick(iNode, e)}
+            data-testid={`v3-highlight-${iNode.epistemic_type.toLowerCase()}`}
+          >
+            {seg.text}
           </span>
         );
       })}
@@ -103,7 +99,6 @@ export function AugmentedText({
       {activeINode && anchorRect && (
         <InsightPopover
           iNode={activeINode}
-          connectedSchemes={getConnectedSchemes(activeINode, subgraph)}
           extractedValues={getExtractedValues(activeINode.id, subgraph)}
           anchorRect={anchorRect}
           onClose={handlePopoverClose}
