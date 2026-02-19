@@ -58,7 +58,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       `UPDATE v3_analysis_runs
        SET status = $2,
            error_message = $3,
-           completed_at = CASE WHEN $2 IN ('completed', 'failed') THEN NOW() ELSE NULL END
+           completed_at = CASE WHEN $2::text IN ('completed', 'failed') THEN NOW() ELSE NULL END
        WHERE id = $1`,
       [runId, status, errorMessage || null]
     );
