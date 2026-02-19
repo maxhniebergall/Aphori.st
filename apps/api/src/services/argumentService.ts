@@ -2,33 +2,6 @@ import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 import type { V3AnalyzeTextResponse } from '@chitin/shared';
 
-export type ADUType = 'MajorClaim' | 'Supporting' | 'Opposing' | 'Evidence';
-
-export interface ADUResponse {
-  source_id: string;
-  adu_type: ADUType;
-  text: string;
-  span_start: number;
-  span_end: number;
-  confidence: number;
-  target_index: number | null; // Array index of parent ADU
-  rewritten_text?: string; // Anaphora-resolved version
-}
-
-// Legacy relation response - kept for cross-post relations
-export interface RelationResponse {
-  source_adu_id: string;
-  target_adu_id: string;
-  relation_type: 'support' | 'attack';
-  confidence: number;
-}
-
-export interface ClaimValidationResult {
-  is_equivalent: boolean;
-  canonical_claim_id: string | null;
-  explanation: string;
-}
-
 class DiscourseEngineService {
   private baseUrl: string;
   private timeout: number = 300000; // 5 minutes for model warmup
@@ -72,42 +45,8 @@ class DiscourseEngineService {
     }
   }
 
-  async healthCheck(): Promise<{ status: string; models_loaded: boolean }> {
+  async healthCheck(): Promise<{ status: string; v3_models_loaded: boolean }> {
     return this.request('/health', 'GET');
-  }
-
-  /**
-   * Analyze text to extract ADUs with V2 ontology (hierarchical types)
-   * Returns ADUs with target_index for building argument trees
-   */
-  async analyzeADUs(texts: Array<{ id: string; text: string }>) {
-    logger.info('Calling discourse-engine analyzeADUs', { textCount: texts.length });
-
-    const response = await this.request<{ adus: ADUResponse[] }>(
-      '/analyze/adus',
-      'POST',
-      { texts }
-    );
-
-    return response;
-  }
-
-  async analyzeRelations(
-    adus: Array<{ id: string; text: string; source_comment_id?: string }>,
-    embeddings: number[][]
-  ) {
-    logger.info('Calling discourse-engine analyzeRelations', {
-      aduCount: adus.length,
-      embeddingDim: embeddings[0]?.length,
-    });
-
-    const response = await this.request<{ relations: RelationResponse[] }>(
-      '/analyze/relations',
-      'POST',
-      { adus, embeddings }
-    );
-
-    return response;
   }
 
   async embedContent(texts: string[]) {
@@ -131,34 +70,45 @@ class DiscourseEngineService {
     return this.request<V3AnalyzeTextResponse>('/v3/analyze-text', 'POST', { texts });
   }
 
-  async validateClaimEquivalence(
-    newClaim: string,
-    candidates: Array<{ id: string; text: string; similarity: number }>
-  ): Promise<ClaimValidationResult> {
-    logger.info('Calling discourse-engine validateClaimEquivalence', {
-      newClaim,
-      candidateCount: candidates.length,
-    });
+  /**
+   * Disambiguate contested terms against known concept candidates.
+   * Sends 1 HTTP request; discourse engine fans out to N parallel Gemini calls internally.
+   */
+  async disambiguateConceptsBatch(
+    macroContext: string,
+    terms: Array<{
+      term: string;
+      targetINodeText: string;
+      candidates: Array<{ id: string; term: string; definition: string; sampleINodeText: string }>;
+    }>
+  ): Promise<Array<{ term: string; matchedConceptId: string | null; newDefinition: string | null }>> {
+    logger.info('Calling discourse-engine disambiguate-concepts', { termCount: terms.length });
 
-    const response = await this.request<ClaimValidationResult>(
-      '/validate/claim-equivalence',
+    const response = await this.request<{
+      results: Array<{ term: string; matched_concept_id: string | null; new_definition: string | null }>;
+    }>(
+      '/v3/disambiguate-concepts',
       'POST',
       {
-        new_claim: newClaim,
-        candidates: candidates.map(c => ({
-          id: c.id,
-          text: c.text,
-          similarity: c.similarity,
+        macro_context: macroContext,
+        terms: terms.map(t => ({
+          term: t.term,
+          target_i_node_text: t.targetINodeText,
+          candidates: t.candidates.map(c => ({
+            id: c.id,
+            term: c.term,
+            definition: c.definition,
+            sample_i_node_text: c.sampleINodeText,
+          })),
         })),
       }
     );
 
-    logger.info('LLM validation result', {
-      is_equivalent: response.is_equivalent,
-      canonical_claim_id: response.canonical_claim_id,
-    });
-
-    return response;
+    return response.results.map(r => ({
+      term: r.term,
+      matchedConceptId: r.matched_concept_id,
+      newDefinition: r.new_definition,
+    }));
   }
 }
 
@@ -178,8 +128,8 @@ export async function initArgumentService(): Promise<void> {
     const health = await argumentService.healthCheck();
     logger.info('discourse-engine health check', health);
 
-    if (!health.models_loaded) {
-      logger.warn('discourse-engine models still loading, will retry on first request');
+    if (!health.v3_models_loaded) {
+      logger.warn('discourse-engine V3 models still loading, will retry on first request');
     }
   } catch (error) {
     logger.error('discourse-engine healthcheck failed', { error });
