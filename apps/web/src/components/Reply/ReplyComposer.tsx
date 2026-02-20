@@ -43,8 +43,10 @@ export function ReplyComposer({
   });
 
   useEffect(() => {
-    if (analysisStatus === 'completed' && pendingReplyId) {
-      queryClient.invalidateQueries({ queryKey: ['v3-subgraph', postId] });
+    if (pendingReplyId && (analysisStatus === 'completed' || analysisStatus === 'failed')) {
+      if (analysisStatus === 'completed') {
+        queryClient.invalidateQueries({ queryKey: ['v3-subgraph', postId] });
+      }
       setPendingReplyId(null);
     }
   }, [analysisStatus, pendingReplyId, postId, queryClient]);
