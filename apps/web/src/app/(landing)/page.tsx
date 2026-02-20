@@ -11,7 +11,7 @@ export default async function LandingPage() {
       users: 0,
       posts: 0,
       claims_analyzed: 0,
-      arguments_mapped: 0,
+      concepts_mapped: 0,
     })),
     postsApi
       .getFeed('new', 6)
