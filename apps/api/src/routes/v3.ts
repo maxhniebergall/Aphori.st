@@ -1,8 +1,11 @@
 import { Router, type Router as RouterType } from 'express';
 import { getPool } from '../db/pool.js';
 import { createV3HypergraphRepo } from '../db/repositories/V3HypergraphRepo.js';
+import { PostRepo } from '../db/repositories/PostRepo.js';
+import { ReplyRepo } from '../db/repositories/ReplyRepo.js';
 import { enqueueV3Analysis } from '../jobs/enqueueV3Analysis.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { logger } from '../utils/logger.js';
 
 const router: RouterType = Router();
 
@@ -22,16 +25,16 @@ router.post('/analyze', authenticateToken, async (req, res) => {
     }
 
     // Fetch content to compute hash
-    const pool = getPool();
-    const table = source_type === 'post' ? 'posts' : 'replies';
-    const result = await pool.query(`SELECT content FROM ${table} WHERE id = $1 AND deleted_at IS NULL`, [source_id]);
+    const contentRecord = source_type === 'post'
+      ? await PostRepo.findById(source_id)
+      : await ReplyRepo.findById(source_id);
 
-    if (result.rows.length === 0) {
+    if (!contentRecord) {
       res.status(404).json({ success: false, error: 'Source content not found' });
       return;
     }
 
-    const jobId = await enqueueV3Analysis(source_type, source_id, result.rows[0].content);
+    const jobId = await enqueueV3Analysis(source_type, source_id, contentRecord.content);
 
     res.json({ success: true, data: { job_id: jobId } });
   } catch (error) {
@@ -121,47 +124,44 @@ router.get('/similar/:iNodeId', async (req, res) => {
     // Exclude the queried node and join source info
     const filtered = similar.filter(n => n.id !== req.params.iNodeId);
 
-    // Enrich with source post/reply info
-    const enriched = await Promise.all(
-      filtered.map(async (node) => {
-        let source_title: string | null = null;
-        let source_post_id: string | null = null;
-        let source_author: string | null = null;
+    // Batch-enrich with source post/reply info
+    const postIds = filtered.filter(n => n.source_type === 'post').map(n => n.source_id);
+    const replyIds = filtered.filter(n => n.source_type === 'reply').map(n => n.source_id);
 
-        if (node.source_type === 'post') {
-          const r = await pool.query(
-            `SELECT p.id, p.title, u.display_name, u.id as user_id FROM posts p JOIN users u ON p.author_id = u.id WHERE p.id = $1`,
-            [node.source_id]
-          );
-          if (r.rows[0]) {
-            source_title = r.rows[0].title;
-            source_post_id = r.rows[0].id;
-            source_author = r.rows[0].display_name || r.rows[0].user_id;
-          }
-        } else {
-          const r = await pool.query(
-            `SELECT r.post_id, p.title, u.display_name, u.id as user_id FROM replies r JOIN posts p ON r.post_id = p.id JOIN users u ON r.author_id = u.id WHERE r.id = $1`,
-            [node.source_id]
-          );
-          if (r.rows[0]) {
-            source_title = r.rows[0].title;
-            source_post_id = r.rows[0].post_id;
-            source_author = r.rows[0].display_name || r.rows[0].user_id;
-          }
-        }
+    const [postRows, replyRows] = await Promise.all([
+      postIds.length ? pool.query(
+        `SELECT p.id, p.title, u.display_name, u.id as user_id
+         FROM posts p JOIN users u ON p.author_id = u.id
+         WHERE p.id = ANY($1) AND p.deleted_at IS NULL`,
+        [postIds]
+      ) : { rows: [] as any[] },
+      replyIds.length ? pool.query(
+        `SELECT r.id, r.post_id, p.title, u.display_name, u.id as user_id
+         FROM replies r JOIN posts p ON r.post_id = p.id JOIN users u ON r.author_id = u.id
+         WHERE r.id = ANY($1) AND r.deleted_at IS NULL`,
+        [replyIds]
+      ) : { rows: [] as any[] },
+    ]);
 
-        return {
-          i_node: node,
-          similarity: node.similarity,
-          source_title,
-          source_post_id,
-          source_author,
-        };
-      })
-    );
+    const postMap = new Map(postRows.rows.map(r => [r.id, r]));
+    const replyMap = new Map(replyRows.rows.map(r => [r.id, r]));
+
+    const enriched = filtered.map(node => {
+      const row = node.source_type === 'post'
+        ? postMap.get(node.source_id)
+        : replyMap.get(node.source_id);
+      return {
+        i_node: node,
+        similarity: node.similarity,
+        source_title: row?.title ?? null,
+        source_post_id: node.source_type === 'post' ? (row?.id ?? null) : (row?.post_id ?? null),
+        source_author: row?.display_name || row?.user_id || null,
+      };
+    });
 
     res.json({ success: true, data: { similar_nodes: enriched } });
   } catch (error) {
+    logger.error('Failed to find similar I-nodes', { error });
     res.status(500).json({ success: false, error: 'Failed to find similar I-nodes' });
   }
 });
