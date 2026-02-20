@@ -31,25 +31,32 @@ export function ReplyComposer({
   const { isAuthenticated, token, user } = useAuth();
   const [content, setContent] = useState('');
   const [pendingReplyId, setPendingReplyId] = useState<string | null>(null);
+  const [pollingStartedAt, setPollingStartedAt] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
-  // Poll for V3 analysis completion after a reply is created
+  const POLLING_TIMEOUT_MS = 120_000; // 2 minutes
+
+  // Poll for V3 analysis completion after a reply is created.
+  // Polling stops automatically when analysis finishes or after 2 minutes.
   const { data: analysisStatus } = useQuery({
     queryKey: ['v3-analysis-status', 'reply', pendingReplyId],
     queryFn: () => v3Api.getAnalysisStatus('reply', pendingReplyId!, token ?? undefined),
-    enabled: !!pendingReplyId,
+    enabled: !!pendingReplyId && !!pollingStartedAt && (Date.now() - pollingStartedAt! < POLLING_TIMEOUT_MS),
     refetchInterval: 3000,
     select: (data) => data.status,
   });
 
   useEffect(() => {
-    if (pendingReplyId && (analysisStatus === 'completed' || analysisStatus === 'failed')) {
+    if (!pendingReplyId) return;
+    const timedOut = pollingStartedAt !== null && Date.now() - pollingStartedAt >= POLLING_TIMEOUT_MS;
+    if (analysisStatus === 'completed' || analysisStatus === 'failed' || timedOut) {
       if (analysisStatus === 'completed') {
         queryClient.invalidateQueries({ queryKey: ['v3-subgraph', postId] });
       }
       setPendingReplyId(null);
+      setPollingStartedAt(null);
     }
-  }, [analysisStatus, pendingReplyId, postId, queryClient]);
+  }, [analysisStatus, pendingReplyId, pollingStartedAt, postId, queryClient]);
 
   const createReplyMutation = useMutation({
     mutationFn: async () => {
@@ -90,6 +97,7 @@ export function ReplyComposer({
 
       // Start polling for V3 analysis completion
       setPendingReplyId(newReply.id);
+      setPollingStartedAt(Date.now());
 
       onSuccess?.();
     },

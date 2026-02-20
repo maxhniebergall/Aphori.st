@@ -81,8 +81,8 @@ export function AugmentedText({
         }
 
         const iNode = seg.iNode;
-        const underline = epistemicUnderline[iNode.epistemic_type];
-        const hover = epistemicHover[iNode.epistemic_type];
+        const underline = epistemicUnderline[iNode.epistemic_type] ?? epistemicUnderline.FACT;
+        const hover = epistemicHover[iNode.epistemic_type] ?? epistemicHover.FACT;
 
         return (
           <span
