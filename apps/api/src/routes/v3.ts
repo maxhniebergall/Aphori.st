@@ -5,7 +5,10 @@ import { PostRepo } from '../db/repositories/PostRepo.js';
 import { ReplyRepo } from '../db/repositories/ReplyRepo.js';
 import { enqueueV3Analysis } from '../jobs/enqueueV3Analysis.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { combinedRateLimiter } from '../middleware/rateLimit.js';
 import { logger } from '../utils/logger.js';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const router: RouterType = Router();
 
@@ -44,43 +47,55 @@ router.post('/analyze', authenticateToken, async (req, res) => {
 
 // GET /api/v1/v3/graph/:postId — full thread hypergraph
 router.get('/graph/:postId', async (req, res) => {
+  if (!UUID_RE.test(req.params.postId)) {
+    res.status(400).json({ success: false, error: 'Invalid post ID format' });
+    return;
+  }
   try {
     const pool = getPool();
     const v3Repo = createV3HypergraphRepo(pool);
     const subgraph = await v3Repo.getThreadSubgraph(req.params.postId);
     res.json({ success: true, data: subgraph });
   } catch (error) {
+    logger.error('Failed to fetch thread hypergraph', { postId: req.params.postId, error });
     res.status(500).json({ success: false, error: 'Failed to fetch thread hypergraph' });
   }
 });
 
 // GET /api/v1/v3/source/:type/:id — per-source hypergraph
 router.get('/source/:type/:id', async (req, res) => {
+  const { type, id } = req.params;
+  if (type !== 'post' && type !== 'reply') {
+    res.status(400).json({ success: false, error: 'type must be "post" or "reply"' });
+    return;
+  }
+  if (!UUID_RE.test(id)) {
+    res.status(400).json({ success: false, error: 'Invalid ID format' });
+    return;
+  }
   try {
-    const { type, id } = req.params;
-    if (type !== 'post' && type !== 'reply') {
-      res.status(400).json({ success: false, error: 'type must be "post" or "reply"' });
-      return;
-    }
-
     const pool = getPool();
     const v3Repo = createV3HypergraphRepo(pool);
     const subgraph = await v3Repo.getSubgraphBySource(type, id);
     res.json({ success: true, data: subgraph });
   } catch (error) {
+    logger.error('Failed to fetch source hypergraph', { type, id, error });
     res.status(500).json({ success: false, error: 'Failed to fetch source hypergraph' });
   }
 });
 
 // GET /api/v1/v3/status/:type/:id — analysis run status
 router.get('/status/:type/:id', async (req, res) => {
+  const { type, id } = req.params;
+  if (type !== 'post' && type !== 'reply') {
+    res.status(400).json({ success: false, error: 'type must be "post" or "reply"' });
+    return;
+  }
+  if (!UUID_RE.test(id)) {
+    res.status(400).json({ success: false, error: 'Invalid ID format' });
+    return;
+  }
   try {
-    const { type, id } = req.params;
-    if (type !== 'post' && type !== 'reply') {
-      res.status(400).json({ success: false, error: 'type must be "post" or "reply"' });
-      return;
-    }
-
     const pool = getPool();
     const v3Repo = createV3HypergraphRepo(pool);
     const status = await v3Repo.getRunStatus(type, id);
@@ -92,12 +107,18 @@ router.get('/status/:type/:id', async (req, res) => {
 
     res.json({ success: true, data: status });
   } catch (error) {
+    logger.error('Failed to fetch analysis status', { type, id, error });
     res.status(500).json({ success: false, error: 'Failed to fetch analysis status' });
   }
 });
 
 // GET /api/v1/v3/similar/:iNodeId — find similar I-nodes across the network
-router.get('/similar/:iNodeId', async (req, res) => {
+router.get('/similar/:iNodeId', combinedRateLimiter, async (req, res) => {
+  const iNodeId = req.params['iNodeId'];
+  if (typeof iNodeId !== 'string' || !UUID_RE.test(iNodeId)) {
+    res.status(400).json({ success: false, error: 'Invalid I-node ID format' });
+    return;
+  }
   try {
     const pool = getPool();
     const v3Repo = createV3HypergraphRepo(pool);
@@ -105,7 +126,7 @@ router.get('/similar/:iNodeId', async (req, res) => {
     // Look up the I-node's embedding
     const nodeResult = await pool.query(
       `SELECT id, embedding FROM v3_nodes_i WHERE id = $1`,
-      [req.params.iNodeId]
+      [iNodeId]
     );
 
     if (nodeResult.rows.length === 0) {
@@ -122,7 +143,7 @@ router.get('/similar/:iNodeId', async (req, res) => {
     const similar = await v3Repo.findSimilarINodes(embedding, 0.75, 10);
 
     // Exclude the queried node and join source info
-    const filtered = similar.filter(n => n.id !== req.params.iNodeId);
+    const filtered = similar.filter(n => n.id !== iNodeId);
 
     // Batch-enrich with source post/reply info
     const postIds = filtered.filter(n => n.source_type === 'post').map(n => n.source_id);

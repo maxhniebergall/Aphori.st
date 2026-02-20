@@ -1,4 +1,5 @@
 import { Worker, Job } from 'bullmq';
+import type { V3HypergraphNode, V3HypergraphEdge } from '@chitin/shared';
 import crypto from 'crypto';
 import { logger } from '../utils/logger.js';
 import { createV3HypergraphRepo } from '../db/repositories/V3HypergraphRepo.js';
@@ -16,7 +17,7 @@ interface V3AnalysisJobData {
 
 const connection = createBullMQConnection('v3-worker');
 
-async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
+export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
   const { sourceType, sourceId, contentHash } = job.data;
   const pool = getPool();
   const v3Repo = createV3HypergraphRepo(pool);
@@ -77,13 +78,13 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
     // 6. STEP A: Collect I-Node texts + all unique high_variance_terms,
     //    then embed them all in a single merged call.
     const aduNodes = analysis.hypergraph.nodes.filter(
-      (n: { node_type: string }) => n.node_type === 'adu'
+      (n): n is V3HypergraphNode & { node_type: 'adu' } => n.node_type === 'adu'
     );
 
     // Gather unique high-variance terms across all I-Nodes
     const termToINodeEngineId = new Map<string, string>(); // term → first I-Node engine ID
     for (const aduNode of aduNodes) {
-      const hvt: string[] = (aduNode as any).high_variance_terms ?? [];
+      const hvt: string[] = aduNode.high_variance_terms ?? [];
       for (const term of hvt) {
         if (!termToINodeEngineId.has(term)) {
           termToINodeEngineId.set(term, aduNode.node_id);
@@ -93,9 +94,7 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
     const uniqueTerms = Array.from(termToINodeEngineId.keys());
 
     // Build a merged list: [aduTexts..., termTexts...]
-    const aduTexts = aduNodes.map(
-      (n: { rewritten_text?: string; text?: string }) => n.rewritten_text || n.text || ''
-    );
+    const aduTexts = aduNodes.map(n => n.rewritten_text || n.text || '');
     const termTexts = uniqueTerms; // embed the raw term strings for concept lookup
     const allTextsToEmbed = [...aduTexts, ...termTexts];
 
@@ -104,6 +103,12 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
 
     if (allTextsToEmbed.length > 0) {
       const embedResponse = await argumentService.embedContent(allTextsToEmbed);
+
+      if (embedResponse.embeddings_1536.length !== allTextsToEmbed.length) {
+        throw new Error(
+          `embedContent returned ${embedResponse.embeddings_1536.length} vectors for ${allTextsToEmbed.length} inputs`
+        );
+      }
 
       // Split results back
       for (let i = 0; i < aduNodes.length; i++) {
@@ -183,10 +188,8 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
       // Use the first I-Node that contains each term (rewritten_text preferred)
       const termDisambInputs = uniqueTerms.map(term => {
         const iNodeEngineId = termToINodeEngineId.get(term)!;
-        const iNodeNode = aduNodes.find((n: { node_id: string }) => n.node_id === iNodeEngineId);
-        const targetINodeText: string = (iNodeNode as any)?.rewritten_text
-          || (iNodeNode as any)?.text
-          || term;
+        const iNodeNode = aduNodes.find(n => n.node_id === iNodeEngineId);
+        const targetINodeText: string = iNodeNode?.rewritten_text || iNodeNode?.text || term;
         return {
           term,
           targetINodeText,
@@ -195,8 +198,12 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
       });
 
       // STEP C: Single HTTP call — discourse engine fans out to parallel Gemini calls
+      const MAX_MACRO_CONTEXT_LENGTH = 8000;
+      const truncatedContext = contentRecord.content.length > MAX_MACRO_CONTEXT_LENGTH
+        ? contentRecord.content.slice(0, MAX_MACRO_CONTEXT_LENGTH)
+        : contentRecord.content;
       const disambResults = await argumentService.disambiguateConceptsBatch(
-        contentRecord.content,
+        truncatedContext,
         termDisambInputs
       );
 
@@ -204,10 +211,21 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
       const novelTerms = disambResults.filter(r => r.newDefinition !== null);
       const conceptIdForTerm = new Map<string, string>(); // term → concept UUID
 
-      // First, map matched concepts
+      // First, map matched concepts — validate that LLM didn't hallucinate an unknown ID
       for (const r of disambResults) {
         if (r.matchedConceptId) {
-          conceptIdForTerm.set(r.term, r.matchedConceptId);
+          const knownIds = new Set(
+            (candidatesPerTerm.get(r.term) ?? []).map(c => c.id)
+          );
+          if (!knownIds.has(r.matchedConceptId)) {
+            logger.warn(`V3: LLM returned unknown matchedConceptId for term "${r.term}", treating as novel`, {
+              matchedConceptId: r.matchedConceptId,
+              knownCandidates: Array.from(knownIds),
+            });
+            // Treat as novel: will be picked up by novelTerms if newDefinition is present
+          } else {
+            conceptIdForTerm.set(r.term, r.matchedConceptId);
+          }
         }
       }
 
@@ -228,11 +246,11 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
 
       // STEP E: Link I-Nodes to concepts (DB only)
       await Promise.all(
-        aduNodes.map(async (aduNode: { node_id: string }) => {
+        aduNodes.map(async (aduNode) => {
           const dbINodeId = engineIdToDbId.get(aduNode.node_id);
           if (!dbINodeId) return;
 
-          const hvt: string[] = (aduNode as any).high_variance_terms ?? [];
+          const hvt: string[] = aduNode.high_variance_terms ?? [];
           for (const term of hvt) {
             const conceptId = conceptIdForTerm.get(term);
             if (conceptId) {
@@ -244,7 +262,7 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
 
       // STEP F: Equivocation check (DB only)
       const allINodeDbIds = aduNodes
-        .map((n: { node_id: string }) => engineIdToDbId.get(n.node_id))
+        .map(n => engineIdToDbId.get(n.node_id))
         .filter((id): id is string => !!id);
 
       if (allINodeDbIds.length > 0) {
@@ -261,7 +279,7 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
 
         // For each scheme node, check premise/conclusion I-Node pairs for equivocation
         const schemeNodes = analysis.hypergraph.nodes.filter(
-          (n: { node_type: string }) => n.node_type === 'scheme'
+          (n): n is V3HypergraphNode & { node_type: 'scheme' } => n.node_type === 'scheme'
         );
 
         for (const schemeNode of schemeNodes) {
@@ -270,17 +288,22 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
 
           // Get premise and conclusion I-Node db IDs via edges
           const schemeEdges = analysis.hypergraph.edges.filter(
-            (e: { scheme_node_id: string }) => e.scheme_node_id === schemeNode.node_id
+            (e: V3HypergraphEdge) => e.scheme_node_id === schemeNode.node_id
           );
 
+          if (schemeEdges.length === 0) {
+            logger.debug(`V3: No edges found for scheme node ${schemeNode.node_id}, skipping equivocation check`);
+            continue;
+          }
+
           const premiseDbIds = schemeEdges
-            .filter((e: { role: string }) => e.role === 'premise')
-            .map((e: { node_id: string }) => engineIdToDbId.get(e.node_id))
+            .filter((e: V3HypergraphEdge) => e.role === 'premise')
+            .map((e: V3HypergraphEdge) => engineIdToDbId.get(e.node_id))
             .filter((id): id is string => !!id);
 
           const conclusionDbId = schemeEdges
-            .filter((e: { role: string }) => e.role === 'conclusion')
-            .map((e: { node_id: string }) => engineIdToDbId.get(e.node_id))
+            .filter((e: V3HypergraphEdge) => e.role === 'conclusion')
+            .map((e: V3HypergraphEdge) => engineIdToDbId.get(e.node_id))
             .find((id): id is string => !!id);
 
           if (!conclusionDbId || premiseDbIds.length === 0) continue;
@@ -317,8 +340,8 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
 
     logger.info(`V3 analysis completed for ${sourceId}`, {
       iNodes: aduNodes.length,
-      sNodes: analysis.hypergraph.nodes.filter((n: { node_type: string }) => n.node_type === 'scheme').length,
-      ghosts: analysis.hypergraph.nodes.filter((n: { node_type: string }) => n.node_type === 'ghost').length,
+      sNodes: analysis.hypergraph.nodes.filter((n: V3HypergraphNode) => n.node_type === 'scheme').length,
+      ghosts: analysis.hypergraph.nodes.filter((n: V3HypergraphNode) => n.node_type === 'ghost').length,
       edges: analysis.hypergraph.edges.length,
       socraticQuestions: analysis.socratic_questions?.length ?? 0,
       uniqueConceptTerms: uniqueTerms.length,

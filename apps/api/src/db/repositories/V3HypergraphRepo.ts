@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { logger } from '../../utils/logger.js';
 import type {
   V3AnalysisRun,
   V3INode,
@@ -94,6 +95,13 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     try {
       await client.query('BEGIN');
 
+      // Idempotency: delete any previously persisted data for this run before
+      // re-inserting. On a job retry the run already has rows; cascades from
+      // v3_nodes_i and v3_nodes_s clean up edges, enthymemes, socratic
+      // questions, extracted values, and concept mappings automatically.
+      await client.query(`DELETE FROM v3_nodes_i WHERE analysis_run_id = $1`, [runId]);
+      await client.query(`DELETE FROM v3_nodes_s WHERE analysis_run_id = $1`, [runId]);
+
       const { nodes, edges } = analysis.hypergraph;
       const engineIdToDbId = new Map<string, string>();
 
@@ -175,19 +183,30 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       }
 
       // 3. Batch-insert Enthymemes (ghost nodes)
+      // Only insert ghost nodes whose scheme engine ID can be resolved to a DB
+      // UUID — a missing `::` separator or an unrecognised scheme ID would
+      // otherwise pass null into the NOT NULL scheme_id column.
       const ghostNodes = nodes.filter((n: V3HypergraphNode) => n.node_type === 'ghost');
-      if (ghostNodes.length > 0) {
-        const gValues = ghostNodes.map((_: V3HypergraphNode, i: number) => {
+      const resolvableGhostNodes = ghostNodes.filter((n: V3HypergraphNode) => {
+        const parts = n.node_id.split('::');
+        if (parts.length < 2) return false;
+        return engineIdToDbId.has(parts[1]!);
+      });
+      const droppedGhosts = ghostNodes.length - resolvableGhostNodes.length;
+      if (droppedGhosts > 0) {
+        logger.warn(`V3: Dropped ${droppedGhosts} ghost nodes with unresolvable scheme IDs`, { runId });
+      }
+      if (resolvableGhostNodes.length > 0) {
+        const gValues = resolvableGhostNodes.map((_: V3HypergraphNode, i: number) => {
           const base = i * 4;
           return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`;
         }).join(',');
 
-        const gParams = ghostNodes.flatMap((n: V3HypergraphNode) => {
-          const parts = n.node_id.split('::');
-          const schemeEngineId = parts.length >= 2 ? parts[1]! : '';
-          const schemeDbId = engineIdToDbId.get(schemeEngineId);
+        const gParams = resolvableGhostNodes.flatMap((n: V3HypergraphNode) => {
+          const schemeEngineId = n.node_id.split('::')[1]!;
+          const schemeDbId = engineIdToDbId.get(schemeEngineId)!;
           return [
-            schemeDbId || null,
+            schemeDbId,
             n.ghost_text || n.text || '',
             n.ghost_fvp_type || n.fvp_type || 'FACT',
             n.probability ?? 0.5,
@@ -201,8 +220,8 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
           gParams
         );
 
-        for (let i = 0; i < ghostNodes.length; i++) {
-          engineIdToDbId.set(ghostNodes[i]!.node_id, gResult.rows[i]!.id);
+        for (let i = 0; i < resolvableGhostNodes.length; i++) {
+          engineIdToDbId.set(resolvableGhostNodes[i]!.node_id, gResult.rows[i]!.id);
         }
       }
 
@@ -243,6 +262,10 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       const resolvedSocraticQuestions = analysis.socratic_questions.filter(
         (sq: V3EngineSocraticQuestion) => engineIdToDbId.has(sq.scheme_node_id)
       );
+      const droppedCount = analysis.socratic_questions.length - resolvedSocraticQuestions.length;
+      if (droppedCount > 0) {
+        logger.warn(`V3: Dropped ${droppedCount} socratic questions with unresolvable scheme IDs`, { runId });
+      }
       if (resolvedSocraticQuestions.length > 0) {
         const sqValues = resolvedSocraticQuestions.map((_: V3EngineSocraticQuestion, i: number) => {
           const base = i * 4;
@@ -264,24 +287,35 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       }
 
       // 6. Insert Extracted Values
+      // Only insert values whose source_node_id maps to a known I-Node DB UUID —
+      // i_node_id is NOT NULL in the schema.
       if (analysis.extracted_values && analysis.extracted_values.length > 0) {
         type ExtractedValueEntry = { source_node_id: string; text: string };
-        const evValues = analysis.extracted_values.map((_: ExtractedValueEntry, i: number) => {
-          const base = i * 3;
-          return `($${base + 1}, $${base + 2}, $${base + 3})`;
-        }).join(',');
-
-        const evParams = analysis.extracted_values.flatMap((ev: ExtractedValueEntry) => [
-          engineIdToDbId.get(ev.source_node_id) || null,
-          ev.text,
-          valueEmbeddings?.get(ev.text) ? JSON.stringify(valueEmbeddings.get(ev.text)) : null,
-        ]);
-
-        await client.query(
-          `INSERT INTO v3_extracted_values (i_node_id, text, embedding)
-           VALUES ${evValues}`,
-          evParams
+        const resolvableValues = analysis.extracted_values.filter(
+          (ev: ExtractedValueEntry) => engineIdToDbId.has(ev.source_node_id)
         );
+        const droppedValues = analysis.extracted_values.length - resolvableValues.length;
+        if (droppedValues > 0) {
+          logger.warn(`V3: Dropped ${droppedValues} extracted values with unresolvable source node IDs`, { runId });
+        }
+        if (resolvableValues.length > 0) {
+          const evValues = resolvableValues.map((_: ExtractedValueEntry, i: number) => {
+            const base = i * 3;
+            return `($${base + 1}, $${base + 2}, $${base + 3})`;
+          }).join(',');
+
+          const evParams = resolvableValues.flatMap((ev: ExtractedValueEntry) => [
+            engineIdToDbId.get(ev.source_node_id)!,
+            ev.text,
+            valueEmbeddings?.get(ev.text) ? JSON.stringify(valueEmbeddings.get(ev.text)) : null,
+          ]);
+
+          await client.query(
+            `INSERT INTO v3_extracted_values (i_node_id, text, embedding)
+             VALUES ${evValues}`,
+            evParams
+          );
+        }
       }
 
       await client.query('COMMIT');
@@ -301,6 +335,10 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     threshold: number = 0.85,
     limit: number = 3
   ): Promise<Array<V3ConceptNode & { similarity: number; sampleINodeText: string }>> {
+    // Use ORDER BY + LIMIT to allow the HNSW index to work optimally, then
+    // filter by threshold in JS. Over-fetch by 3x so the JS filter has enough
+    // candidates after pruning.
+    const fetchLimit = limit * 3;
     const result = await pool.query(
       `SELECT c.id, c.term, c.definition, c.created_at,
               (1 - (c.embedding <=> $1::vector)) as similarity,
@@ -313,19 +351,21 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
               ) as sample_i_node_text
        FROM v3_concept_nodes c
        WHERE c.embedding IS NOT NULL
-         AND (1 - (c.embedding <=> $1::vector)) > $2
-       ORDER BY similarity DESC
-       LIMIT $3`,
-      [JSON.stringify(embedding), threshold, limit]
+       ORDER BY c.embedding <=> $1::vector
+       LIMIT $2`,
+      [JSON.stringify(embedding), fetchLimit]
     );
-    return result.rows.map(r => ({
-      id: r.id,
-      term: r.term,
-      definition: r.definition,
-      created_at: r.created_at,
-      similarity: r.similarity,
-      sampleINodeText: r.sample_i_node_text,
-    }));
+    return result.rows
+      .map(r => ({
+        id: r.id,
+        term: r.term,
+        definition: r.definition,
+        created_at: r.created_at,
+        similarity: parseFloat(r.similarity),
+        sampleINodeText: r.sample_i_node_text,
+      }))
+      .filter(r => r.similarity >= threshold)
+      .slice(0, limit);
   },
 
   async createConcept(
@@ -336,6 +376,9 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     const result = await pool.query(
       `INSERT INTO v3_concept_nodes (term, definition, embedding)
        VALUES ($1, $2, $3)
+       ON CONFLICT (term) DO UPDATE
+         SET definition = EXCLUDED.definition,
+             embedding = EXCLUDED.embedding
        RETURNING id, term, definition, created_at`,
       [term, definition, JSON.stringify(embedding)]
     );
