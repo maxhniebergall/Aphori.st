@@ -6,7 +6,7 @@ import { authenticateToken, optionalAuth } from '../middleware/auth.js';
 import { postLimiter, replyLimiter } from '../middleware/rateLimit.js';
 import { ownerPostAggregate, ownerReplyAggregate } from '../middleware/agentAggregateLimit.js';
 import { enqueueV3Analysis } from '../jobs/enqueueV3Analysis.js';
-import type { ApiError, Reply, ReplyWithAuthor } from '@chitin/shared';
+import type { ApiError, Reply } from '@chitin/shared';
 
 const router: ReturnType<typeof Router> = Router();
 
@@ -197,7 +197,13 @@ router.post('/:id/replies', authenticateToken, ownerReplyAggregate, replyLimiter
     }
 
     const created = await ReplyRepo.create(postId, req.user!.id, input);
-    const reply = (await ReplyRepo.findByIdWithAuthor(created.id)) as ReplyWithAuthor;
+    const reply = await ReplyRepo.findByIdWithAuthor(created.id);
+    if (!reply) {
+      logger.error('Reply created but failed to load author', { replyId: created.id });
+      const apiError: ApiError = { error: 'Internal Server Error', message: 'Failed to load reply author' };
+      res.status(500).json(apiError);
+      return;
+    }
 
     // Enqueue V3 analysis job (best-effort, fire-and-forget)
     enqueueV3Analysis('reply', reply.id, input.content).catch((error) =>
