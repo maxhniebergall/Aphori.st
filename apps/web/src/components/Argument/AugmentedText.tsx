@@ -51,7 +51,7 @@ export function AugmentedText({
 
   const handleSpanClick = useCallback(
     (iNode: V3INode, e: React.MouseEvent<HTMLSpanElement>) => {
-      const rect = (e.target as HTMLElement).getBoundingClientRect();
+      const rect = e.currentTarget.getBoundingClientRect();
       setActiveINode(iNode);
       setAnchorRect(rect);
     },
@@ -81,8 +81,8 @@ export function AugmentedText({
         }
 
         const iNode = seg.iNode;
-        const underline = epistemicUnderline[iNode.epistemic_type] ?? epistemicUnderline.FACT;
-        const hover = epistemicHover[iNode.epistemic_type] ?? epistemicHover.FACT;
+        const underline = epistemicUnderline[iNode.epistemic_type];
+        const hover = epistemicHover[iNode.epistemic_type];
 
         return (
           <span
