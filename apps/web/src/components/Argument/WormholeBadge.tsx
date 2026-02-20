@@ -87,25 +87,39 @@ export function WormholeBadge({ iNodeId }: WormholeBadgeProps) {
 
           {!isLoading && similarNodes.length > 0 && (
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {similarNodes.map((node) => (
-                <Link
-                  key={node.i_node.id}
-                  href={node.source_post_id ? `/post/${node.source_post_id}` : '#'}
-                  className="block p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <p className="text-xs text-slate-700 dark:text-slate-300 line-clamp-2">
-                    {node.i_node.content}
-                  </p>
-                  <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
-                    <span>{(node.similarity * 100).toFixed(0)}% match</span>
-                    {node.source_author && <span>by {node.source_author}</span>}
-                    {node.source_title && (
-                      <span className="truncate max-w-[120px]">in &ldquo;{node.source_title}&rdquo;</span>
-                    )}
+              {similarNodes.map((node) => {
+                const content = (
+                  <>
+                    <p className="text-xs text-slate-700 dark:text-slate-300 line-clamp-2">
+                      {node.i_node.content}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
+                      <span>{(node.similarity * 100).toFixed(0)}% match</span>
+                      {node.source_author && <span>by {node.source_author}</span>}
+                      {node.source_title && (
+                        <span className="truncate max-w-[120px]">in &ldquo;{node.source_title}&rdquo;</span>
+                      )}
+                    </div>
+                  </>
+                );
+                return node.source_post_id ? (
+                  <Link
+                    key={node.i_node.id}
+                    href={`/post/${node.source_post_id}`}
+                    className="block p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <div
+                    key={node.i_node.id}
+                    className="block p-2 rounded"
+                  >
+                    {content}
                   </div>
-                </Link>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>,
