@@ -141,7 +141,7 @@ export function ReplyThread({ postId, initialReplies, userVotes, onQuote, onSear
             ))}
             {isCollapsed && (
               <div className="py-1 text-[10px] text-slate-400 dark:text-slate-500">
-                {children.length + replyGhosts.length} hidden
+                {children.length + replyGhosts.length} replies hidden
               </div>
             )}
           </div>

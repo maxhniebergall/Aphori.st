@@ -8,7 +8,7 @@ const STAT_LABELS: { key: keyof PlatformStats; label: string }[] = [
   { key: 'users', label: 'Users' },
   { key: 'posts', label: 'Posts' },
   { key: 'claims_analyzed', label: 'Claims Analyzed' },
-  { key: 'arguments_mapped', label: 'Arguments Mapped' },
+  { key: 'concepts_mapped', label: 'Concepts Mapped' },
 ];
 
 export function StatsBar({ stats }: StatsBarProps) {

@@ -77,6 +77,11 @@ COPY discourse-engine/chitin_wrapper/ /app/chitin_wrapper/
 # Copy supervisor config
 COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Run as non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser \
+    && chown -R appuser:appuser /app /opt/venv
+USER appuser
+
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

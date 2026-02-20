@@ -71,11 +71,17 @@ export function segmentTextV3(text: string, iNodes: V3INode[]): V3Segment[] {
   let pos = 0;
 
   for (const iNode of sorted) {
-    if (pos < iNode.span_start) {
-      segments.push({ text: text.slice(pos, iNode.span_start) });
+    if (iNode.span_end <= pos) continue; // fully overlapped by a previous span, skip
+    // NOTE: effectiveStart may differ from iNode.span_start when spans partially overlap.
+    // The span metadata on the iNode represents the original extraction range, but we render
+    // from effectiveStart to avoid re-rendering already-covered text. This is a display-only
+    // approximation and does not affect the iNode's stored span values.
+    const effectiveStart = Math.max(iNode.span_start, pos);
+    if (pos < effectiveStart) {
+      segments.push({ text: text.slice(pos, effectiveStart) });
     }
     segments.push({
-      text: text.slice(iNode.span_start, iNode.span_end),
+      text: text.slice(effectiveStart, iNode.span_end),
       iNode,
     });
     pos = iNode.span_end;

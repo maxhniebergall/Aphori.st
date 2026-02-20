@@ -360,7 +360,7 @@ export interface PlatformStats {
   users: number;
   posts: number;
   claims_analyzed: number;
-  arguments_mapped: number;
+  concepts_mapped: number;
 }
 
 export const statsApi = {

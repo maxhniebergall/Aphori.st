@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { ADUResponse, RelationResponse } from '../argumentService.js';
 
 // Simple implementation for testing
 class TestDiscourseEngineService {
@@ -39,41 +38,43 @@ class TestDiscourseEngineService {
     }
   }
 
-  async healthCheck(): Promise<{ status: string; models_loaded: boolean }> {
+  async healthCheck(): Promise<{ status: string; v3_models_loaded: boolean }> {
     return this.request('/health', 'GET');
-  }
-
-  async analyzeADUs(texts: Array<{ id: string; text: string }>) {
-    return this.request<{ adus: ADUResponse[] }>('/analyze/adus', 'POST', { texts });
-  }
-
-  async analyzeRelations(adus: Array<{ id: string; text: string; source_comment_id?: string }>, embeddings: number[][]) {
-    return this.request<{ relations: RelationResponse[] }>('/analyze/relations', 'POST', {
-      adus,
-      embeddings,
-    });
   }
 
   async embedContent(texts: string[]) {
     return this.request<{ embeddings_1536: number[][] }>('/embed/content', 'POST', { texts });
   }
 
-  async validateClaimEquivalence(
-    newClaim: string,
-    candidates: Array<{ id: string; text: string; similarity: number }>
+  async disambiguateConceptsBatch(
+    macroContext: string,
+    terms: Array<{
+      term: string;
+      targetINodeText: string;
+      candidates: Array<{ id: string; term: string; definition: string; sampleINodeText: string }>;
+    }>
   ) {
-    return this.request<{ is_equivalent: boolean; canonical_claim_id: string | null; explanation: string }>(
-      '/validate/claim-equivalence',
-      'POST',
-      {
-        new_claim: newClaim,
-        candidates: candidates.map(c => ({
+    const response = await this.request<{
+      results: Array<{ term: string; matched_concept_id: string | null; new_definition: string | null }>;
+    }>('/v3/disambiguate-concepts', 'POST', {
+      macro_context: macroContext,
+      terms: terms.map(t => ({
+        term: t.term,
+        target_i_node_text: t.targetINodeText,
+        candidates: t.candidates.map(c => ({
           id: c.id,
-          text: c.text,
-          similarity: c.similarity,
+          term: c.term,
+          definition: c.definition,
+          sample_i_node_text: c.sampleINodeText,
         })),
-      }
-    );
+      })),
+    });
+
+    return response.results.map(r => ({
+      term: r.term,
+      matchedConceptId: r.matched_concept_id,
+      newDefinition: r.new_definition,
+    }));
   }
 }
 
@@ -87,124 +88,6 @@ describe('DiscourseEngineService', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  describe('analyzeADUs', () => {
-    it('should call discourse-engine with correct payload', async () => {
-      const mockResponse = {
-        adus: [
-          { id: 'adu_1', adu_type: 'claim' as const, text: 'Test claim', span_start: 0, span_end: 10, confidence: 0.95 },
-        ],
-      };
-
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(() =>
-          Promise.resolve(
-            new Response(JSON.stringify(mockResponse), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            })
-          )
-        )
-      );
-
-      const result = await service.analyzeADUs([{ id: 'test_1', text: 'Test content' }]);
-
-      expect(result.adus).toHaveLength(1);
-      expect(result.adus[0]).toMatchObject({
-        adu_type: 'claim',
-        text: 'Test claim',
-        confidence: 0.95,
-      });
-
-      expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:8000/analyze/adus',
-        expect.objectContaining({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        })
-      );
-    });
-
-    it('should handle empty ADU response', async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ adus: [] }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            })
-          )
-        )
-      );
-
-      const result = await service.analyzeADUs([{ id: 'test_1', text: 'No ADUs here' }]);
-
-      expect(result.adus).toHaveLength(0);
-    });
-
-    it('should throw on service error', async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(() =>
-          Promise.resolve(
-            new Response('Internal server error', {
-              status: 500,
-            })
-          )
-        )
-      );
-
-      await expect(service.analyzeADUs([{ id: 'test_1', text: 'Test' }])).rejects.toThrow(
-        'discourse-engine error: 500'
-      );
-    });
-  });
-
-  describe('analyzeRelations', () => {
-    it('should send ADUs and embeddings to service', async () => {
-      const mockResponse = {
-        relations: [
-          {
-            source_adu_id: 'adu_1',
-            target_adu_id: 'adu_2',
-            relation_type: 'support' as const,
-            confidence: 0.85,
-          },
-        ],
-      };
-
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(() =>
-          Promise.resolve(
-            new Response(JSON.stringify(mockResponse), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            })
-          )
-        )
-      );
-
-      const adus = [
-        { id: 'adu_1', text: 'Claim 1' },
-        { id: 'adu_2', text: 'Claim 2' },
-      ];
-      const embeddings = [
-        Array(1536).fill(0.1),
-        Array(1536).fill(0.2),
-      ];
-
-      const result = await service.analyzeRelations(adus, embeddings);
-
-      expect(result.relations).toHaveLength(1);
-      expect(result.relations[0]).toMatchObject({
-        relation_type: 'support',
-        confidence: 0.85,
-      });
-    });
   });
 
   describe('embedContent', () => {
@@ -233,12 +116,12 @@ describe('DiscourseEngineService', () => {
     });
   });
 
-  describe('validateClaimEquivalence', () => {
-    it('should send candidates with similarity scores to LLM', async () => {
+  describe('disambiguateConceptsBatch', () => {
+    it('should match term to an existing concept candidate', async () => {
       const mockResponse = {
-        is_equivalent: true,
-        canonical_claim_id: 'canonical_123',
-        explanation: 'Claims are equivalent',
+        results: [
+          { term: 'freedom', matched_concept_id: 'concept-123', new_definition: null },
+        ],
       };
 
       vi.stubGlobal(
@@ -253,28 +136,36 @@ describe('DiscourseEngineService', () => {
         )
       );
 
-      const result = await service.validateClaimEquivalence('New claim text', [
-        { id: 'canonical_1', text: 'Existing claim', similarity: 0.82 },
-        { id: 'canonical_2', text: 'Another claim', similarity: 0.76 },
-      ]);
+      const result = await service.disambiguateConceptsBatch(
+        'We need more freedom in this country.',
+        [
+          {
+            term: 'freedom',
+            targetINodeText: 'We need more freedom',
+            candidates: [
+              { id: 'concept-123', term: 'freedom', definition: 'Absence of government coercion', sampleINodeText: 'Freedom means no state control' },
+            ],
+          },
+        ]
+      );
 
-      expect(result.is_equivalent).toBe(true);
-      expect(result.canonical_claim_id).toBe('canonical_123');
+      expect(result).toHaveLength(1);
+      expect(result[0]!.term).toBe('freedom');
+      expect(result[0]!.matchedConceptId).toBe('concept-123');
+      expect(result[0]!.newDefinition).toBeNull();
 
       const fetchCall = (fetch as any).mock.calls[0];
       const body = JSON.parse(fetchCall[1].body);
-      expect(body.candidates).toHaveLength(2);
-      expect(body.candidates[0]).toMatchObject({
-        text: 'Existing claim',
-        similarity: 0.82,
-      });
+      expect(body.macro_context).toBe('We need more freedom in this country.');
+      expect(body.terms[0].term).toBe('freedom');
+      expect(body.terms[0].target_i_node_text).toBe('We need more freedom');
     });
 
-    it('should parse structured output correctly', async () => {
+    it('should return a new definition when no candidate matches', async () => {
       const mockResponse = {
-        is_equivalent: false,
-        canonical_claim_id: null,
-        explanation: 'Claims diverge on key points',
+        results: [
+          { term: 'justice', matched_concept_id: null, new_definition: 'Procedural fairness in legal processes' },
+        ],
       };
 
       vi.stubGlobal(
@@ -289,21 +180,72 @@ describe('DiscourseEngineService', () => {
         )
       );
 
-      const result = await service.validateClaimEquivalence('Claim A', [
-        { id: 'canonical_1', text: 'Claim B', similarity: 0.65 },
+      const result = await service.disambiguateConceptsBatch(
+        'Justice requires fair trials.',
+        [
+          {
+            term: 'justice',
+            targetINodeText: 'Justice requires fair trials',
+            candidates: [],
+          },
+        ]
+      );
+
+      expect(result[0]!.matchedConceptId).toBeNull();
+      expect(result[0]!.newDefinition).toBe('Procedural fairness in legal processes');
+    });
+
+    it('should handle multiple terms in a single call', async () => {
+      const mockResponse = {
+        results: [
+          { term: 'freedom', matched_concept_id: 'concept-1', new_definition: null },
+          { term: 'equality', matched_concept_id: null, new_definition: 'Equal treatment under law' },
+        ],
+      };
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() =>
+          Promise.resolve(
+            new Response(JSON.stringify(mockResponse), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          )
+        )
+      );
+
+      const result = await service.disambiguateConceptsBatch('Freedom and equality matter.', [
+        { term: 'freedom', targetINodeText: 'Freedom matters', candidates: [{ id: 'concept-1', term: 'freedom', definition: 'Liberty', sampleINodeText: 'Liberty from coercion' }] },
+        { term: 'equality', targetINodeText: 'Equality matters', candidates: [] },
       ]);
 
-      expect(result.is_equivalent).toBe(false);
-      expect(result.canonical_claim_id).toBeNull();
-      expect(result.explanation).toContain('diverge');
+      expect(result).toHaveLength(2);
+      expect(result[0]!.matchedConceptId).toBe('concept-1');
+      expect(result[1]!.newDefinition).toBe('Equal treatment under law');
+    });
+
+    it('should throw on service error', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() =>
+          Promise.resolve(
+            new Response('Internal server error', { status: 500 })
+          )
+        )
+      );
+
+      await expect(
+        service.disambiguateConceptsBatch('context', [{ term: 'test', targetINodeText: 'test', candidates: [] }])
+      ).rejects.toThrow('discourse-engine error: 500');
     });
   });
 
   describe('health check', () => {
-    it('should check service health and model status', async () => {
+    it('should check service health and v3 model status', async () => {
       const mockResponse = {
         status: 'ok',
-        models_loaded: true,
+        v3_models_loaded: true,
       };
 
       vi.stubGlobal(
@@ -321,7 +263,7 @@ describe('DiscourseEngineService', () => {
       const health = await service.healthCheck();
 
       expect(health.status).toBe('ok');
-      expect(health.models_loaded).toBe(true);
+      expect(health.v3_models_loaded).toBe(true);
 
       expect(fetch).toHaveBeenCalledWith(
         'http://localhost:8000/health',

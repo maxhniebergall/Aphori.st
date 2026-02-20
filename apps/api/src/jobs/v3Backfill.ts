@@ -108,7 +108,7 @@ async function main(): Promise<void> {
     logger.error('V3 Backfill failed', {
       error: error instanceof Error ? error.message : String(error),
     });
-    process.exit(1);
+    process.exitCode = 1;
   } finally {
     await closePool();
   }
