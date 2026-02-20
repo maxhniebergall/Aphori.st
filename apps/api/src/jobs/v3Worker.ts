@@ -2,6 +2,8 @@ import { Worker, Job } from 'bullmq';
 import crypto from 'crypto';
 import { logger } from '../utils/logger.js';
 import { createV3HypergraphRepo } from '../db/repositories/V3HypergraphRepo.js';
+import { PostRepo } from '../db/repositories/PostRepo.js';
+import { ReplyRepo } from '../db/repositories/ReplyRepo.js';
 import { getArgumentService } from '../services/argumentService.js';
 import { getPool } from '../db/pool.js';
 import { createBullMQConnection } from './redisConnection.js';
@@ -23,18 +25,18 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
   logger.info(`Processing V3 analysis job ${job.id}`, { sourceType, sourceId });
 
   try {
-    // 1. Fetch content from DB
-    const table = sourceType === 'post' ? 'posts' : 'replies';
-    const result = await pool.query(`SELECT * FROM ${table} WHERE id = $1`, [sourceId]);
-    const content = result.rows[0];
+    // 1. Fetch content from DB via repositories
+    const contentRecord = sourceType === 'post'
+      ? await PostRepo.findById(sourceId)
+      : await ReplyRepo.findById(sourceId);
 
-    if (!content) {
+    if (!contentRecord) {
       logger.warn(`Content not found: ${sourceType} ${sourceId}`);
       return;
     }
 
     // 2. Verify content hash for idempotency
-    const currentHash = crypto.createHash('sha256').update(content.content).digest('hex');
+    const currentHash = crypto.createHash('sha256').update(contentRecord.content).digest('hex');
     if (currentHash !== contentHash) {
       logger.info(`V3: Content hash mismatch, skipping: ${sourceId}`);
       return;
@@ -60,7 +62,7 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
     // 5. Call discourse engine V3 analysis
     logger.info(`V3: Calling engine for ${sourceId}`);
     const v3Response = await argumentService.analyzeV3([
-      { id: sourceId, text: content.content }
+      { id: sourceId, text: contentRecord.content }
     ]);
 
     const analysis = v3Response.analyses[0];
@@ -194,7 +196,7 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
 
       // STEP C: Single HTTP call — discourse engine fans out to parallel Gemini calls
       const disambResults = await argumentService.disambiguateConceptsBatch(
-        content.content,
+        contentRecord.content,
         termDisambInputs
       );
 
@@ -318,7 +320,7 @@ async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
       sNodes: analysis.hypergraph.nodes.filter((n: { node_type: string }) => n.node_type === 'scheme').length,
       ghosts: analysis.hypergraph.nodes.filter((n: { node_type: string }) => n.node_type === 'ghost').length,
       edges: analysis.hypergraph.edges.length,
-      socraticQuestions: analysis.socratic_questions.length,
+      socraticQuestions: analysis.socratic_questions?.length ?? 0,
       uniqueConceptTerms: uniqueTerms.length,
     });
   } catch (error) {
