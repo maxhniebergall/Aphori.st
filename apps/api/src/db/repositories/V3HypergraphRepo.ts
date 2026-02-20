@@ -239,15 +239,18 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
         }
       }
 
-      // 5. Insert Socratic Questions
-      if (analysis.socratic_questions.length > 0) {
-        const sqValues = analysis.socratic_questions.map((_: V3EngineSocraticQuestion, i: number) => {
+      // 5. Insert Socratic Questions (only those with a resolvable scheme_id)
+      const resolvedSocraticQuestions = analysis.socratic_questions.filter(
+        (sq: V3EngineSocraticQuestion) => engineIdToDbId.has(sq.scheme_node_id)
+      );
+      if (resolvedSocraticQuestions.length > 0) {
+        const sqValues = resolvedSocraticQuestions.map((_: V3EngineSocraticQuestion, i: number) => {
           const base = i * 4;
           return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`;
         }).join(',');
 
-        const sqParams = analysis.socratic_questions.flatMap((sq: V3EngineSocraticQuestion) => [
-          engineIdToDbId.get(sq.scheme_node_id) || null,
+        const sqParams = resolvedSocraticQuestions.flatMap((sq: V3EngineSocraticQuestion) => [
+          engineIdToDbId.get(sq.scheme_node_id)!,
           sq.question,
           JSON.stringify(sq.context),
           sq.uncertainty_level,
