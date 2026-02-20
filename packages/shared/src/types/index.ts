@@ -326,3 +326,148 @@ export interface NotificationWithContext extends Notification {
   target_content_preview: string;
   last_reply_author?: Pick<User, 'id' | 'display_name' | 'user_type'> | null;
 }
+
+// V3 Neurosymbolic Types
+export type V3EpistemicType = 'FACT' | 'VALUE' | 'POLICY';
+export type V3SchemeDirection = 'SUPPORT' | 'ATTACK';
+export type V3EdgeRole = 'premise' | 'conclusion' | 'motivation';
+export type V3NodeType = 'i_node' | 'ghost';
+export type V3EnthymemeStatus = 'pending' | 'accepted' | 'rejected';
+export type V3AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface V3AnalysisRun {
+  id: string;
+  source_type: 'post' | 'reply';
+  source_id: string;
+  content_hash: string;
+  status: V3AnalysisStatus;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface V3INode {
+  id: string;
+  analysis_run_id: string;
+  source_type: 'post' | 'reply';
+  source_id: string;
+  v2_adu_id: string | null;
+  content: string;
+  rewritten_text: string | null;
+  epistemic_type: V3EpistemicType;
+  fvp_confidence: number;
+  span_start: number;
+  span_end: number;
+  extraction_confidence: number;
+  created_at: string;
+}
+
+export interface V3SNode {
+  id: string;
+  analysis_run_id: string;
+  direction: V3SchemeDirection;
+  logic_type: string | null;
+  confidence: number;
+  gap_detected: boolean;
+  created_at: string;
+}
+
+export interface V3Edge {
+  id: string;
+  scheme_node_id: string;
+  node_id: string;
+  node_type: V3NodeType;
+  role: V3EdgeRole;
+}
+
+export interface V3Enthymeme {
+  id: string;
+  scheme_id: string;
+  content: string;
+  fvp_type: V3EpistemicType;
+  probability: number;
+  status: V3EnthymemeStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface V3SocraticQuestion {
+  id: string;
+  scheme_id: string;
+  question: string;
+  context: Record<string, unknown>;
+  uncertainty_level: number;
+  resolved: boolean;
+  resolution_reply_id: string | null;
+  created_at: string;
+}
+
+export interface V3ExtractedValue {
+  id: string;
+  i_node_id: string;
+  text: string;
+  cluster_label: string | null;
+  created_at: string;
+}
+
+export interface V3Subgraph {
+  i_nodes: V3INode[];
+  s_nodes: V3SNode[];
+  edges: V3Edge[];
+  enthymemes: V3Enthymeme[];
+  socratic_questions: V3SocraticQuestion[];
+  extracted_values: V3ExtractedValue[];
+}
+
+// V3 Discourse Engine Response Types
+export interface V3HypergraphNode {
+  node_id: string;
+  node_type: 'adu' | 'scheme' | 'ghost';
+  // ADU fields
+  text?: string;
+  rewritten_text?: string;
+  fvp_type?: V3EpistemicType;
+  fvp_confidence?: number;
+  span_start?: number;
+  span_end?: number;
+  extraction_confidence?: number;
+  // Scheme fields
+  direction?: V3SchemeDirection;
+  logic_type?: string;
+  confidence?: number;
+  gap_detected?: boolean;
+  // Ghost fields
+  ghost_text?: string;
+  ghost_fvp_type?: V3EpistemicType;
+  probability?: number;
+}
+
+export interface V3HypergraphEdge {
+  scheme_node_id: string;
+  node_id: string;
+  role: V3EdgeRole;
+}
+
+export interface V3EngineSocraticQuestion {
+  scheme_node_id: string;
+  question: string;
+  context: Record<string, unknown>;
+  uncertainty_level: number;
+}
+
+export interface V3EngineAnalysis {
+  text_id: string;
+  hypergraph: {
+    nodes: V3HypergraphNode[];
+    edges: V3HypergraphEdge[];
+  };
+  socratic_questions: V3EngineSocraticQuestion[];
+  extracted_values?: Array<{
+    source_node_id: string;
+    text: string;
+  }>;
+}
+
+export interface V3AnalyzeTextResponse {
+  analyses: V3EngineAnalysis[];
+}

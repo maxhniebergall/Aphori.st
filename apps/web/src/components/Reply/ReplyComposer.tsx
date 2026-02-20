@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { postsApi } from '@/lib/api';
+import { postsApi, v3Api } from '@/lib/api';
+import type { PaginatedResponse, ReplyWithAuthor } from '@chitin/shared';
 import type { QuoteData } from '@/components/Shared/TextSelectionQuote';
 
 interface ReplyComposerProps {
@@ -27,9 +28,26 @@ export function ReplyComposer({
   onCancel,
   compact = false,
 }: ReplyComposerProps) {
-  const { isAuthenticated, token } = useAuth();
+  const { isAuthenticated, token, user } = useAuth();
   const [content, setContent] = useState('');
+  const [pendingReplyId, setPendingReplyId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  // Poll for V3 analysis completion after a reply is created
+  const { data: analysisStatus } = useQuery({
+    queryKey: ['v3-analysis-status', 'reply', pendingReplyId],
+    queryFn: () => v3Api.getAnalysisStatus('reply', pendingReplyId!, token ?? undefined),
+    enabled: !!pendingReplyId,
+    refetchInterval: 3000,
+    select: (data) => data.status,
+  });
+
+  useEffect(() => {
+    if (analysisStatus === 'completed' && pendingReplyId) {
+      queryClient.invalidateQueries({ queryKey: ['v3-subgraph', postId] });
+      setPendingReplyId(null);
+    }
+  }, [analysisStatus, pendingReplyId, postId, queryClient]);
 
   const createReplyMutation = useMutation({
     mutationFn: async () => {
@@ -49,10 +67,28 @@ export function ReplyComposer({
         token
       );
     },
-    onSuccess: () => {
+    onSuccess: (newReply: ReplyWithAuthor) => {
       setContent('');
       onClearQuote?.();
+
+      // Optimistically inject the new reply into all active reply caches for this post
+      const existingQueries = queryClient.getQueriesData<PaginatedResponse<ReplyWithAuthor>>({
+        queryKey: ['replies', postId],
+      });
+      for (const [queryKey, queryData] of existingQueries) {
+        if (!queryData) continue;
+        queryClient.setQueryData<PaginatedResponse<ReplyWithAuthor>>(queryKey, {
+          ...queryData,
+          items: [...queryData.items, newReply],
+        });
+      }
+
+      // Background refetch for eventual consistency
       queryClient.invalidateQueries({ queryKey: ['replies', postId] });
+
+      // Start polling for V3 analysis completion
+      setPendingReplyId(newReply.id);
+
       onSuccess?.();
     },
   });

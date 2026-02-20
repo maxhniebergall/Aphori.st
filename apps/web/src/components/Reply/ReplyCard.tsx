@@ -1,15 +1,14 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useCallback, useMemo } from 'react';
 import { VoteButtons } from '@/components/Vote/VoteButtons';
-import { ArgumentHighlights } from '@/components/Argument/ArgumentHighlights';
+import { AugmentedText } from '@/components/Argument/AugmentedText';
 import { TextSelectionQuote, type QuoteData } from '@/components/Shared/TextSelectionQuote';
 import { ReplyComposer } from './ReplyComposer';
 import { formatDistanceToNow } from '@/lib/utils';
-import { argumentApi } from '@/lib/api';
+import { filterSubgraphBySource } from '@/lib/v3Helpers';
 import { useAuth } from '@/contexts/AuthContext';
-import type { ReplyWithAuthor, VoteValue } from '@chitin/shared';
+import type { ReplyWithAuthor, VoteValue, V3Subgraph, V3INode } from '@chitin/shared';
 
 interface ReplyCardProps {
   reply: ReplyWithAuthor;
@@ -18,33 +17,26 @@ interface ReplyCardProps {
   userVote?: VoteValue | null;
   onQuote?: (quote: QuoteData) => void;
   onSearch?: (text: string) => void;
+  v3Subgraph?: V3Subgraph;
 }
 
-export function ReplyCard({ reply, postId, depth, userVote, onQuote, onSearch }: ReplyCardProps) {
+export function ReplyCard({ reply, postId, depth, userVote, onQuote, onSearch, v3Subgraph }: ReplyCardProps) {
   const { isAuthenticated } = useAuth();
   const [showReplyForm, setShowReplyForm] = useState(false);
-  const { data } = useQuery({
-    queryKey: ['argument-data', 'reply', reply.id],
-    queryFn: () => Promise.all([
-      argumentApi.getReplyADUs(reply.id),
-      argumentApi.getCanonicalMappingsForReply(reply.id),
-    ]),
-    enabled: reply.analysis_status === 'completed',
-    staleTime: 5 * 60 * 1000,
-  });
 
-  const adus = data?.[0] ?? [];
-  const canonicalMappings = data?.[1] ?? [];
+  const hasV3INodes = useMemo(() => {
+    if (!v3Subgraph) return false;
+    return filterSubgraphBySource(v3Subgraph, 'reply', reply.id).length > 0;
+  }, [v3Subgraph, reply.id]);
 
-  const handleADUClick = useCallback((adu: { id: string; text: string }, action: 'search' | 'reply') => {
+  const handleINodeClick = useCallback((iNode: V3INode, action: 'search' | 'reply') => {
     if (action === 'search' && onSearch) {
-      onSearch(adu.text);
+      onSearch(iNode.rewritten_text || iNode.content);
     } else if (action === 'reply' && onQuote) {
       onQuote({
-        text: adu.text,
+        text: iNode.content,
         sourceType: 'reply',
         sourceId: reply.id,
-        targetAduId: adu.id,
       });
     }
   }, [onSearch, onQuote, reply.id]);
@@ -86,13 +78,14 @@ export function ReplyCard({ reply, postId, depth, userVote, onQuote, onSearch }:
             sourceId={reply.id}
             onQuote={onQuote || (() => {})}
           >
-            {adus.length > 0 ? (
+            {hasV3INodes && v3Subgraph ? (
               <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
-                <ArgumentHighlights
+                <AugmentedText
                   text={reply.content}
-                  adus={adus}
-                  canonicalMappings={canonicalMappings}
-                  onADUClick={handleADUClick}
+                  sourceType="reply"
+                  sourceId={reply.id}
+                  subgraph={v3Subgraph}
+                  onINodeClick={handleINodeClick}
                 />
               </div>
             ) : (

@@ -5,8 +5,8 @@ import { PostRepo, ReplyRepo, UserRepo, NotificationRepo } from '../db/repositor
 import { authenticateToken, optionalAuth } from '../middleware/auth.js';
 import { postLimiter, replyLimiter } from '../middleware/rateLimit.js';
 import { ownerPostAggregate, ownerReplyAggregate } from '../middleware/agentAggregateLimit.js';
-import { enqueueAnalysis } from '../jobs/enqueueAnalysis.js';
-import type { ApiError, Reply } from '@chitin/shared';
+import { enqueueV3Analysis } from '../jobs/enqueueV3Analysis.js';
+import type { ApiError, Reply, ReplyWithAuthor } from '@chitin/shared';
 
 const router: ReturnType<typeof Router> = Router();
 
@@ -52,26 +52,21 @@ router.post('/', authenticateToken, ownerPostAggregate, postLimiter, async (req:
 
     const post = await PostRepo.create(req.user!.id, input);
 
-    // Enqueue analysis job
-    try {
-      await enqueueAnalysis('post', post.id, input.content);
-    } catch (error) {
-      logger.warn('Failed to enqueue analysis', {
+    // Enqueue analysis jobs (best-effort)
+    enqueueV3Analysis('post', post.id, input.content).catch((error) =>
+      logger.warn('Failed to enqueue V3 analysis', {
         postId: post.id,
         error: error instanceof Error ? error.message : String(error),
-      });
-      // Continue - analysis is best-effort
-    }
+      })
+    );
 
-    // Notify followers about new post (best-effort, single batch query)
-    try {
-      await NotificationRepo.upsertForFollowers(req.user!.id, 'post', post.id);
-    } catch (error) {
+    // Notify followers about new post (best-effort, fire-and-forget)
+    NotificationRepo.upsertForFollowers(req.user!.id, 'post', post.id).catch((error) =>
       logger.warn('Failed to notify followers', {
         postId: post.id,
         error: error instanceof Error ? error.message : String(error),
-      });
-    }
+      })
+    );
 
     logger.info('Post created', { postId: post.id, authorId: req.user!.id });
 
@@ -201,34 +196,34 @@ router.post('/:id/replies', authenticateToken, ownerReplyAggregate, replyLimiter
       }
     }
 
-    const reply = await ReplyRepo.create(postId, req.user!.id, input);
+    const created = await ReplyRepo.create(postId, req.user!.id, input);
+    const reply = (await ReplyRepo.findByIdWithAuthor(created.id)) as ReplyWithAuthor;
 
-    // Enqueue analysis job
-    try {
-      await enqueueAnalysis('reply', reply.id, input.content);
-    } catch (error) {
-      logger.warn('Failed to enqueue analysis', {
+    // Enqueue V3 analysis job (best-effort, fire-and-forget)
+    enqueueV3Analysis('reply', reply.id, input.content).catch((error) =>
+      logger.warn('Failed to enqueue V3 analysis', {
         replyId: reply.id,
         error: error instanceof Error ? error.message : String(error),
-      });
-      // Continue - analysis is best-effort
-    }
+      })
+    );
 
-    // Connection karma + notification (best-effort, don't fail the request)
-    try {
-      const parentAuthorId = parentReply ? parentReply.author_id : post.author_id;
+    // Connection karma + notification (best-effort, fire-and-forget)
+    const parentAuthorId = parentReply ? parentReply.author_id : post.author_id;
+    if (req.user!.id !== parentAuthorId) {
       const targetType = parentReply ? 'reply' as const : 'post' as const;
       const targetId = parentReply ? parentReply.id : post.id;
-
-      if (req.user!.id !== parentAuthorId) {
-        await UserRepo.incrementConnectionKarma(parentAuthorId);
-        await NotificationRepo.upsert(parentAuthorId, targetType, targetId, req.user!.id);
-      }
-    } catch (error) {
-      logger.warn('Failed to update karma/notification', {
-        replyId: reply.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      UserRepo.incrementConnectionKarma(parentAuthorId).catch((error) =>
+        logger.warn('Failed to update karma', {
+          replyId: reply.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+      NotificationRepo.upsert(parentAuthorId, targetType, targetId, req.user!.id).catch((error) =>
+        logger.warn('Failed to upsert notification', {
+          replyId: reply.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
     }
 
     logger.info('Reply created', {

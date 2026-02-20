@@ -1,5 +1,6 @@
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
+import type { V3AnalyzeTextResponse } from '@chitin/shared';
 
 export type ADUType = 'MajorClaim' | 'Supporting' | 'Opposing' | 'Evidence';
 
@@ -120,6 +121,14 @@ class DiscourseEngineService {
 
     // Normalize field name from discourse-engine response
     return { embeddings_1536: response.embeddings };
+  }
+
+  /**
+   * V3 analysis: extract neurosymbolic hypergraph from texts
+   */
+  async analyzeV3(texts: Array<{ id: string; text: string }>): Promise<V3AnalyzeTextResponse> {
+    logger.info('Calling discourse-engine V3 analyze-text', { textCount: texts.length });
+    return this.request<V3AnalyzeTextResponse>('/v3/analyze-text', 'POST', { texts });
   }
 
   async validateClaimEquivalence(

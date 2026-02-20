@@ -1,11 +1,11 @@
 import { Worker, Job } from 'bullmq';
-import { Redis } from 'ioredis';
 import crypto from 'crypto';
-import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { createArgumentRepo, type ADUType, type CanonicalClaimType } from '../db/repositories/ArgumentRepo.js';
 import { getArgumentService } from '../services/argumentService.js';
 import { getPool } from '../db/pool.js';
+import { config } from '../config.js';
+import { createBullMQConnection } from './redisConnection.js';
 
 // ADU types that can be deduplicated into canonical claims
 // Evidence is NOT deduplicated as it's context-specific
@@ -25,9 +25,7 @@ interface AnalysisJobData {
   contentHash: string;
 }
 
-const connection = new Redis(config.redis.url, {
-  maxRetriesPerRequest: null,
-});
+const connection = createBullMQConnection('argument-worker');
 
 async function processAnalysis(job: Job<AnalysisJobData>): Promise<void> {
   const { sourceType, sourceId, contentHash } = job.data;

@@ -8,6 +8,8 @@ import { migrate } from './db/migrate.js';
 import { initArgumentService } from './services/argumentService.js';
 import { argumentWorker } from './jobs/argumentWorker.js';
 import { closeQueue } from './jobs/queue.js';
+import { v3Worker } from './jobs/v3Worker.js';
+import { closeV3Queue } from './jobs/v3Queue.js';
 import { syncSystemAccountsFromSecret } from './services/systemAccountSync.js';
 import { syncServiceAccountAllowlist } from './cache/serviceAccountAllowlist.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -25,6 +27,7 @@ import agentRoutes from './routes/agents.js';
 import userRoutes from './routes/users.js';
 import notificationRoutes from './routes/notifications.js';
 import statsRoutes from './routes/stats.js';
+import v3Routes from './routes/v3.js';
 
 // Validate config on startup
 validateConfig();
@@ -92,6 +95,7 @@ app.use('/api/v1/agents', agentRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/stats', statsRoutes);
+app.use('/api/v1/v3', v3Routes);
 
 // 404 handler
 app.use((_req: Request, res: Response): void => {
@@ -121,6 +125,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
     try {
       await argumentWorker.close();
       await closeQueue();
+      await v3Worker.close();
+      await closeV3Queue();
       logger.info('Queue and worker closed');
       await closePool();
       logger.info('Database connections closed');
@@ -182,8 +188,9 @@ async function init(): Promise<void> {
       // Continue startup - background jobs will retry
     }
 
-    // Worker starts automatically on import
+    // Workers start automatically on import
     logger.info('Argument analysis worker started');
+    logger.info('V3 analysis worker started');
   } catch (error) {
     logger.error('Failed to connect to database', {
       error: error instanceof Error ? error.message : String(error),

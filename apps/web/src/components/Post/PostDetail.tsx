@@ -1,44 +1,35 @@
 'use client';
 
-import { useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useMemo } from 'react';
 import { VoteButtons } from '@/components/Vote/VoteButtons';
-import { ArgumentHighlights } from '@/components/Argument/ArgumentHighlights';
+import { AugmentedText } from '@/components/Argument/AugmentedText';
 import { TextSelectionQuote, type QuoteData } from '@/components/Shared/TextSelectionQuote';
 import { formatDistanceToNow } from '@/lib/utils';
-import { argumentApi } from '@/lib/api';
-import type { PostWithAuthor, VoteValue } from '@chitin/shared';
+import { filterSubgraphBySource } from '@/lib/v3Helpers';
+import type { PostWithAuthor, VoteValue, V3Subgraph, V3INode } from '@chitin/shared';
 
 interface PostDetailProps {
   post: PostWithAuthor;
   userVote?: VoteValue | null;
   onQuote?: (quote: QuoteData) => void;
   onSearch?: (text: string) => void;
+  v3Subgraph?: V3Subgraph;
 }
 
-export function PostDetail({ post, userVote, onQuote, onSearch }: PostDetailProps) {
-  const { data } = useQuery({
-    queryKey: ['argument-data', 'post', post.id],
-    queryFn: () => Promise.all([
-      argumentApi.getPostADUs(post.id),
-      argumentApi.getCanonicalMappingsForPost(post.id),
-    ]),
-    enabled: post.analysis_status === 'completed',
-    staleTime: 5 * 60 * 1000,
-  });
+export function PostDetail({ post, userVote, onQuote, onSearch, v3Subgraph }: PostDetailProps) {
+  const hasV3INodes = useMemo(() => {
+    if (!v3Subgraph) return false;
+    return filterSubgraphBySource(v3Subgraph, 'post', post.id).length > 0;
+  }, [v3Subgraph, post.id]);
 
-  const adus = data?.[0] ?? [];
-  const canonicalMappings = data?.[1] ?? [];
-
-  const handleADUClick = useCallback((adu: { id: string; text: string }, action: 'search' | 'reply') => {
+  const handleINodeClick = useCallback((iNode: V3INode, action: 'search' | 'reply') => {
     if (action === 'search' && onSearch) {
-      onSearch(adu.text);
+      onSearch(iNode.rewritten_text || iNode.content);
     } else if (action === 'reply' && onQuote) {
       onQuote({
-        text: adu.text,
+        text: iNode.content,
         sourceType: 'post',
         sourceId: post.id,
-        targetAduId: adu.id,
       });
     }
   }, [onSearch, onQuote, post.id]);
@@ -82,12 +73,13 @@ export function PostDetail({ post, userVote, onQuote, onSearch }: PostDetailProp
               sourceId={post.id}
               onQuote={onQuote || (() => {})}
             >
-              {adus.length > 0 ? (
-                <ArgumentHighlights
+              {hasV3INodes && v3Subgraph ? (
+                <AugmentedText
                   text={post.content}
-                  adus={adus}
-                  canonicalMappings={canonicalMappings}
-                  onADUClick={handleADUClick}
+                  sourceType="post"
+                  sourceId={post.id}
+                  subgraph={v3Subgraph}
+                  onINodeClick={handleINodeClick}
                 />
               ) : (
                 <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300">
@@ -96,17 +88,6 @@ export function PostDetail({ post, userVote, onQuote, onSearch }: PostDetailProp
               )}
             </TextSelectionQuote>
           </div>
-
-          {adus.length > 0 && canonicalMappings.some(m => m.adu_count > 1) && (
-            <div className="mt-3 flex items-center flex-wrap gap-4 text-xs text-slate-500 dark:text-slate-400">
-              <span className="flex items-center gap-1">
-                <span className="inline-flex items-center justify-center w-4 h-4 text-[9px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 rounded-full">
-                  +N
-                </span>
-                Also in other posts (click to explore)
-              </span>
-            </div>
-          )}
 
           <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 text-sm text-slate-500 dark:text-slate-400">
             {post.reply_count} {post.reply_count === 1 ? 'reply' : 'replies'}
