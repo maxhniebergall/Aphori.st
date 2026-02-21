@@ -123,16 +123,26 @@ export function getArgumentService(): DiscourseEngineService {
 
 export async function initArgumentService(): Promise<void> {
   const argumentService = getArgumentService();
+  const maxAttempts = 8;
+  const baseDelayMs = 2000;
 
-  try {
-    const health = await argumentService.healthCheck();
-    logger.info('discourse-engine health check', health);
-
-    if (!health.v3_models_loaded) {
-      logger.warn('discourse-engine V3 models still loading, will retry on first request');
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const health = await argumentService.healthCheck();
+      logger.info('discourse-engine health check', health);
+      if (!health.v3_models_loaded) {
+        logger.warn('discourse-engine V3 models still loading, will retry on first request');
+      }
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt === maxAttempts) {
+        logger.error('discourse-engine unavailable after retries', { error: message, attempts: maxAttempts });
+        throw error;
+      }
+      const delayMs = baseDelayMs * attempt;
+      logger.warn('discourse-engine not ready yet, retrying...', { attempt, maxAttempts, delayMs });
+      await new Promise(resolve => setTimeout(resolve, delayMs));
     }
-  } catch (error) {
-    logger.error('discourse-engine healthcheck failed', { error });
-    throw error;
   }
 }
