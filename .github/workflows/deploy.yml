@@ -79,6 +79,13 @@ jobs:
             --format 'value(status.url)')
           echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
 
+      # Grant the API service account read/write access to the batch checkpoint bucket (idempotent)
+      - name: Grant batch bucket access to API service account
+        run: |
+          gcloud storage buckets add-iam-policy-binding gs://aphorist-batch-ingestion-bucket \
+            --member="serviceAccount:chitin-api@$PROJECT_ID.iam.gserviceaccount.com" \
+            --role="roles/storage.objectUser"
+
       # Deploy API to Cloud Run (migrations run automatically on startup)
       - name: Deploy API
         run: |
