@@ -8,6 +8,45 @@ import type {
   V3ExtractedValue,
 } from '@chitin/shared';
 
+/** Returns the set of I-node IDs that are not the conclusion of any SUPPORT scheme edge */
+export function getUnsupportedINodeIds(subgraph: V3Subgraph): Set<string> {
+  const sNodeById = new Map(subgraph.s_nodes.map(s => [s.id, s] as const));
+  const supportedIds = new Set(
+    subgraph.edges
+      .filter(e => e.role === 'conclusion' && e.node_type === 'i_node')
+      .filter(e => sNodeById.get(e.scheme_node_id)?.direction === 'SUPPORT')
+      .map(e => e.node_id)
+  );
+  return new Set(
+    subgraph.i_nodes
+      .filter(i => !supportedIds.has(i.id))
+      .map(i => i.id)
+  );
+}
+
+/** Returns a map from I-node ID to fallacy info for I-nodes that are conclusions of fallacious scheme edges */
+export function getFallaciousINodeIds(
+  subgraph: V3Subgraph
+): Map<string, { type: string; explanation: string }> {
+  const result = new Map<string, { type: string; explanation: string }>();
+  for (const sNode of subgraph.s_nodes) {
+    if (sNode.fallacy_type && sNode.fallacy_type !== 'NONE') {
+      const conclusionEdge = subgraph.edges.find(
+        e => e.scheme_node_id === sNode.id && e.role === 'conclusion' && e.node_type === 'i_node'
+      );
+      if (conclusionEdge) {
+        // Assumption: at most one fallacious S-node per I-node conclusion.
+        // If multiple fallacious S-nodes share a conclusion, last-write-wins.
+        result.set(conclusionEdge.node_id, {
+          type: sNode.fallacy_type,
+          explanation: sNode.fallacy_explanation ?? '',
+        });
+      }
+    }
+  }
+  return result;
+}
+
 /** Filter I-nodes for a specific source (post or reply) */
 export function filterSubgraphBySource(
   subgraph: V3Subgraph,

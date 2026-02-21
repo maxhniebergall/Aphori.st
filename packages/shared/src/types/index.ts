@@ -267,6 +267,8 @@ export interface V3SNode {
   logic_type: string | null;
   confidence: number;
   gap_detected: boolean;
+  fallacy_type: string | null;
+  fallacy_explanation: string | null;
   created_at: string;
 }
 
