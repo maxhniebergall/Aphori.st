@@ -14,6 +14,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { optionalAuth } from './middleware/auth.js';
 import { combinedRateLimiter } from './middleware/rateLimit.js';
+import { ipBlocklistMiddleware } from './middleware/ipBlocklist.js';
 import authRoutes from './routes/auth.js';
 import postsRoutes from './routes/posts.js';
 import repliesRoutes from './routes/replies.js';
@@ -26,6 +27,7 @@ import userRoutes from './routes/users.js';
 import notificationRoutes from './routes/notifications.js';
 import statsRoutes from './routes/stats.js';
 import v3Routes from './routes/v3.js';
+import internalRoutes from './routes/internal.js';
 
 // Validate config on startup
 validateConfig();
@@ -37,6 +39,9 @@ app.set('trust proxy', 1);
 
 // Security headers
 app.use(helmet());
+
+// IP blocklist — checked before auth, rate limiting, and route handlers
+app.use(ipBlocklistMiddleware);
 
 // CORS
 app.use(cors({
@@ -94,6 +99,9 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/stats', statsRoutes);
 app.use('/api/v1/v3', v3Routes);
+
+// Internal service-to-service routes (protected by shared secret, not public auth)
+app.use('/internal', internalRoutes);
 
 // 404 handler
 app.use((_req: Request, res: Response): void => {

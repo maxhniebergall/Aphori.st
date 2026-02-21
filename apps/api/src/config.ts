@@ -56,6 +56,9 @@ export const config = {
   apiUrl: process.env.API_URL || 'http://localhost:3001',
   discourseEngineUrl: process.env.DISCOURSE_ENGINE_URL || 'http://localhost:8001',
 
+  // Shared secret for internal service-to-service calls (web → api)
+  internalSecret: process.env.INTERNAL_API_SECRET || 'dev-internal-secret',
+
   // System account IDs (JSON string array injected via Cloud Run --set-secrets)
   systemAccountSecret: process.env.SYSTEM_ACCOUNT_SECRET || '',
 
@@ -143,6 +146,7 @@ export function validateConfig(): void {
       'EMAIL_HOST',
       'EMAIL_USERNAME',
       'EMAIL_PASSWORD',
+      'INTERNAL_API_SECRET',
     ];
 
     const missing = required.filter(key => !process.env[key]);
