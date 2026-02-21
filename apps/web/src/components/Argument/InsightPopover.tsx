@@ -55,7 +55,16 @@ export function InsightPopover({
     };
   }, [onClose]);
 
-  const replyButtonLabel = isUnsupported && !fallacyInfo ? 'Add supporting premise' : 'Reply to this';
+  const getReplyButtonLabel = () => {
+    // Fallacious and supported claims both use the generic "Reply to this" label;
+    // only unsupported, non-fallacious claims encourage adding a supporting premise.
+    if (isUnsupported && !fallacyInfo) {
+      return 'Add supporting premise';
+    }
+    return 'Reply to this';
+  };
+
+  const replyButtonLabel = getReplyButtonLabel();
 
   return createPortal(
     <div
