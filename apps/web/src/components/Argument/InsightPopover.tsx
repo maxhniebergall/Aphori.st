@@ -10,6 +10,8 @@ interface InsightPopoverProps {
   anchorRect: DOMRect;
   onClose: () => void;
   onAction: (action: 'search' | 'reply') => void;
+  isUnsupported?: boolean;
+  fallacyInfo?: { type: string; explanation: string };
 }
 
 export function InsightPopover({
@@ -18,6 +20,8 @@ export function InsightPopover({
   anchorRect,
   onClose,
   onAction,
+  isUnsupported,
+  fallacyInfo,
 }: InsightPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -51,6 +55,8 @@ export function InsightPopover({
     };
   }, [onClose]);
 
+  const replyButtonLabel = isUnsupported && !fallacyInfo ? 'Add supporting premise' : 'Reply to this';
+
   return createPortal(
     <div
       ref={popoverRef}
@@ -61,6 +67,31 @@ export function InsightPopover({
       <p className="mb-2 text-xs text-slate-700 dark:text-slate-200 italic font-medium">
         &ldquo;{iNode.content}&rdquo;
       </p>
+
+      {/* Fallacy banner – red, shown when a logical issue is detected */}
+      {fallacyInfo && (
+        <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
+          <p className="text-xs font-semibold text-red-700 dark:text-red-300">
+            {fallacyInfo.type === 'EQUIVOCATION'
+              ? '⚠ Equivocation detected'
+              : `⚠ Logical issue detected: ${fallacyInfo.type.replace(/_/g, ' ')}`}
+          </p>
+          {fallacyInfo.explanation && (
+            <p className="text-xs text-red-600 dark:text-red-400 mt-1 italic">
+              {fallacyInfo.explanation}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Missing evidence banner – yellow, shown when claim has no supporting premises */}
+      {isUnsupported && !fallacyInfo && (
+        <div className="mb-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded border border-yellow-200 dark:border-yellow-800">
+          <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-200">
+            This claim currently lacks supporting evidence.
+          </p>
+        </div>
+      )}
 
       {/* Extracted values */}
       {extractedValues.length > 0 && (
@@ -88,7 +119,7 @@ export function InsightPopover({
           onClick={() => onAction('reply')}
           className="flex-1 px-2 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded transition-colors"
         >
-          Reply to this
+          {replyButtonLabel}
         </button>
       </div>
     </div>,
