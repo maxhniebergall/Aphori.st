@@ -10,10 +10,11 @@ import type {
 
 /** Returns the set of I-node IDs that are not the conclusion of any SUPPORT scheme edge */
 export function getUnsupportedINodeIds(subgraph: V3Subgraph): Set<string> {
+  const sNodeById = new Map(subgraph.s_nodes.map(s => [s.id, s] as const));
   const supportedIds = new Set(
     subgraph.edges
       .filter(e => e.role === 'conclusion' && e.node_type === 'i_node')
-      .filter(e => subgraph.s_nodes.find(s => s.id === e.scheme_node_id)?.direction === 'SUPPORT')
+      .filter(e => sNodeById.get(e.scheme_node_id)?.direction === 'SUPPORT')
       .map(e => e.node_id)
   );
   return new Set(
@@ -34,6 +35,8 @@ export function getFallaciousINodeIds(
         e => e.scheme_node_id === sNode.id && e.role === 'conclusion' && e.node_type === 'i_node'
       );
       if (conclusionEdge) {
+        // Assumption: at most one fallacious S-node per I-node conclusion.
+        // If multiple fallacious S-nodes share a conclusion, last-write-wins.
         result.set(conclusionEdge.node_id, {
           type: sNode.fallacy_type,
           explanation: sNode.fallacy_explanation ?? '',
