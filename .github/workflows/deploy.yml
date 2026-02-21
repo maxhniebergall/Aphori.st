@@ -113,7 +113,6 @@ jobs:
           APP_URL=https://aphori.st,\
           API_URL=${{ steps.existing-urls.outputs.api_url }},\
           SERVICE_AUTH_AUDIENCE=${{ steps.existing-urls.outputs.api_url }},\
-          DISCOURSE_ENGINE_URL=http://localhost:8001,\
           BATCH_CHECKPOINT_BUCKET=$BATCH_CHECKPOINT_BUCKET" \
             --set-secrets "\
           DB_PASSWORD=POSTGRES_PASSWORD:latest,\

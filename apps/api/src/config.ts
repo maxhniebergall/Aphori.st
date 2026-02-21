@@ -54,7 +54,7 @@ export const config = {
   // URLs
   appUrl: process.env.APP_URL || 'http://localhost:3000',
   apiUrl: process.env.API_URL || 'http://localhost:3001',
-  discourseEngineUrl: process.env.DISCOURSE_ENGINE_URL || 'http://localhost:8001',
+  discourseEngineUrl: 'http://localhost:8001',
 
   // Shared secret for internal service-to-service calls (web → api)
   internalSecret: process.env.INTERNAL_API_SECRET || 'dev-internal-secret',

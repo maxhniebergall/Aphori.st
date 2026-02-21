@@ -99,6 +99,5 @@ In development (`NODE_ENV !== 'production'`), use `Bearer dev_token` to authenti
 ```
 DATABASE_URL=postgresql://chitin:chitin_dev@localhost:5432/chitin
 REDIS_URL=redis://localhost:6379
-DISCOURSE_ENGINE_URL=http://localhost:8001
 GOOGLE_API_KEY=...  # For Gemini embeddings
 ```

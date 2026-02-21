@@ -67,7 +67,6 @@ Key environment variables:
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
 | `JWT_SECRET` | Secret for signing JWTs | `dev-secret-change-in-production` |
 | `MAGIC_LINK_SECRET` | Secret for magic link tokens | `dev-magic-link-secret` |
-| `DISCOURSE_ENGINE_URL` | ML service URL | `http://localhost:8001` |
 | `GOOGLE_API_KEY` | Gemini API key for embeddings | *(required for argument analysis)* |
 
 ## Development Authentication
