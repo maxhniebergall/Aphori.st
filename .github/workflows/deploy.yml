@@ -11,6 +11,7 @@ env:
   DB_PORT: ${{ secrets.DB_PORT }}
   REDIS_HOST: ${{ secrets.REDIS_HOST }}
   REDIS_PORT: ${{ secrets.REDIS_PORT }}
+  BATCH_CHECKPOINT_BUCKET: aphorist-batch-ingestion-bucket
 
 jobs:
   build-and-deploy:
@@ -79,6 +80,14 @@ jobs:
             --format 'value(status.url)')
           echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
 
+      # Grant the API service account read/write access to the batch checkpoint bucket (idempotent)
+      - name: Grant batch bucket access to API service account
+        continue-on-error: true
+        run: |
+          gcloud storage buckets add-iam-policy-binding gs://$BATCH_CHECKPOINT_BUCKET \
+            --member="serviceAccount:chitin-api@$PROJECT_ID.iam.gserviceaccount.com" \
+            --role="roles/storage.objectUser"
+
       # Deploy API to Cloud Run (migrations run automatically on startup)
       - name: Deploy API
         run: |
@@ -105,7 +114,7 @@ jobs:
           API_URL=${{ steps.existing-urls.outputs.api_url }},\
           SERVICE_AUTH_AUDIENCE=${{ steps.existing-urls.outputs.api_url }},\
           DISCOURSE_ENGINE_URL=http://localhost:8001,\
-          BATCH_CHECKPOINT_BUCKET=aphorist-batch-ingestion-bucket" \
+          BATCH_CHECKPOINT_BUCKET=$BATCH_CHECKPOINT_BUCKET" \
             --set-secrets "\
           DB_PASSWORD=POSTGRES_PASSWORD:latest,\
           REDIS_PASSWORD=REDIS_PASSWORD:latest,\
