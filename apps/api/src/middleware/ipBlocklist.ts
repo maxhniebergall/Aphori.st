@@ -49,7 +49,7 @@ export async function blockIP(ip: string, ttlSeconds = DEFAULT_TTL_S): Promise<v
   try {
     await getRedis().setex(`${KEY_PREFIX}${ip}`, ttlSeconds, '1');
     localCache.set(ip, { blocked: true, expiresAt: Date.now() + LOCAL_TTL_MS });
-    logger.info('IP blocked', { ip, ttlSeconds });
+    logger.debug('IP blocked', { ip, ttlSeconds });
   } catch (err) {
     logger.warn('Failed to block IP in Redis', {
       ip,
@@ -59,9 +59,19 @@ export async function blockIP(ip: string, ttlSeconds = DEFAULT_TTL_S): Promise<v
 }
 
 export async function getBlockedIPs(): Promise<string[]> {
+  const redisClient = getRedis();
+  const pattern = `${KEY_PREFIX}*`;
+  const blocked: string[] = [];
+  let cursor = '0';
   try {
-    const keys = await getRedis().keys(`${KEY_PREFIX}*`);
-    return keys.map((k) => k.slice(KEY_PREFIX.length));
+    do {
+      const [nextCursor, keys] = await redisClient.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = nextCursor;
+      for (const key of keys) {
+        blocked.push(key.slice(KEY_PREFIX.length));
+      }
+    } while (cursor !== '0');
+    return blocked;
   } catch {
     return [];
   }
