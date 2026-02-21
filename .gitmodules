@@ -1,3 +1,4 @@
 [submodule "discourse-engine"]
 	path = discourse-engine
 	url = https://github.com/maxhniebergall/discourse-engine.git
+	branch = main
