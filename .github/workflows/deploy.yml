@@ -117,7 +117,8 @@ jobs:
           EMAIL_PASSWORD=EMAIL_PASSWORD:latest,\
           EMAIL_FROM=EMAIL_USERNAME:latest,\
           SYSTEM_ACCOUNT_SECRET=SYSTEM_ACCOUNT_SECRET:latest,\
-          SERVICE_AUTH_ALLOWLIST_SECRET=SERVICE_AUTH_ALLOWLIST_SECRET:latest" \
+          SERVICE_AUTH_ALLOWLIST_SECRET=SERVICE_AUTH_ALLOWLIST_SECRET:latest,\
+          INTERNAL_API_SECRET=INTERNAL_API_SECRET:latest" \
             --allow-unauthenticated
 
       # Deploy Web to Cloud Run
@@ -132,6 +133,8 @@ jobs:
             --min-instances 0 \
             --max-instances 3 \
             --service-account chitin-web@$PROJECT_ID.iam.gserviceaccount.com \
+            --set-secrets "\
+          INTERNAL_API_SECRET=INTERNAL_API_SECRET:latest" \
             --allow-unauthenticated
 
       # Verify deployment
