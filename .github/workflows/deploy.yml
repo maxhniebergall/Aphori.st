@@ -97,6 +97,7 @@ jobs:
             --platform managed \
             --port 3001 \
             --memory 1536Mi \
+            --cpu-boost \
             --min-instances 0 \
             --max-instances 3 \
             --vpc-connector chitin-vpc \
