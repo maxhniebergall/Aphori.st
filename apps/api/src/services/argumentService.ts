@@ -123,7 +123,7 @@ export function getArgumentService(): DiscourseEngineService {
 
 export async function initArgumentService(): Promise<void> {
   const argumentService = getArgumentService();
-  const maxAttempts = 8;
+  const maxAttempts = 12;
   const baseDelayMs = 2000;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
