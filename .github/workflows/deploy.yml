@@ -114,7 +114,8 @@ jobs:
           APP_URL=https://aphori.st,\
           API_URL=${{ steps.existing-urls.outputs.api_url }},\
           SERVICE_AUTH_AUDIENCE=${{ steps.existing-urls.outputs.api_url }},\
-          BATCH_CHECKPOINT_BUCKET=$BATCH_CHECKPOINT_BUCKET" \
+          BATCH_CHECKPOINT_BUCKET=$BATCH_CHECKPOINT_BUCKET,\
+          PYDANTIC_SKIP_VALIDATING_CORE_SCHEMAS=true" \
             --set-secrets "\
           DB_PASSWORD=POSTGRES_PASSWORD:latest,\
           REDIS_PASSWORD=REDIS_PASSWORD:latest,\
