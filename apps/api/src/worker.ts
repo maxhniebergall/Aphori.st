@@ -63,7 +63,15 @@ async function init(): Promise<void> {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Force shutdown after timeout on unhandled cases
-setTimeout(() => {}, 2_147_483_647); // Keep process alive
+// Exit if the worker hits a fatal error or closes unexpectedly (supervisord will restart)
+v3Worker.on('error', (err) => {
+  logger.error('V3 worker fatal error, exiting', { error: err instanceof Error ? err.message : String(err) });
+  gracefulShutdown('worker-error').catch(() => process.exit(1));
+});
+
+v3Worker.on('closed', () => {
+  logger.warn('V3 worker closed unexpectedly, exiting');
+  process.exit(1);
+});
 
 init();

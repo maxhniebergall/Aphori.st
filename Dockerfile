@@ -90,4 +90,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 
 # Default to API mode; override with SUPERVISOR_CONF for worker mode
 ENV SUPERVISOR_CONF=/etc/supervisor/conf.d/supervisord.conf
-CMD /usr/bin/supervisord -n -c ${SUPERVISOR_CONF}
+CMD exec /usr/bin/supervisord -n -c ${SUPERVISOR_CONF}
