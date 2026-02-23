@@ -59,6 +59,7 @@ jobs:
 
           gcloud compute scp \
             infra/start-db.sh \
+            infra/deploy-worker.sh \
             $VM_NAME:~ \
             --zone $ZONE
 
@@ -71,7 +72,8 @@ jobs:
             sudo mkdir -p /mnt/stateful_partition/chitin/postgres /mnt/stateful_partition/chitin/redis /home/chitin-db
             sudo cp -r ~/init /home/chitin-db/init
             sudo cp ~/start-db.sh /home/chitin-db/start-db.sh
-            sudo chmod +x /home/chitin-db/start-db.sh
+            sudo cp ~/deploy-worker.sh /home/chitin-db/deploy-worker.sh
+            sudo chmod +x /home/chitin-db/start-db.sh /home/chitin-db/deploy-worker.sh
             echo 'Setup complete.'
           "
 
@@ -87,8 +89,8 @@ jobs:
         if: inputs.action == 'stop'
         run: |
           gcloud compute ssh $VM_NAME --zone $ZONE --command "
-            sudo docker stop chitin-postgres chitin-redis 2>/dev/null || true
-            sudo docker rm chitin-postgres chitin-redis 2>/dev/null || true
+            sudo docker stop chitin-worker chitin-postgres chitin-redis 2>/dev/null || true
+            sudo docker rm chitin-worker chitin-postgres chitin-redis 2>/dev/null || true
           "
 
       - name: Show status
