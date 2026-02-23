@@ -50,14 +50,18 @@ if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$REDIS_PASSWORD" ]; then
   exit 1
 fi
 
+# Create Docker network for inter-container communication
+docker network create chitin-net 2>/dev/null || true
+
 # Stop and remove existing containers (if any)
 echo "Cleaning up old containers..."
-docker rm -f chitin-postgres chitin-redis 2>/dev/null || true
+docker rm -f chitin-postgres chitin-redis chitin-worker 2>/dev/null || true
 
 echo "Starting PostgreSQL..."
 docker run -d \
   --name chitin-postgres \
   --restart unless-stopped \
+  --network chitin-net \
   -p "${PG_PORT}:5432" \
   -e POSTGRES_USER=chitin \
   -e "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
@@ -70,6 +74,7 @@ echo "Starting Redis..."
 docker run -d \
   --name chitin-redis \
   --restart unless-stopped \
+  --network chitin-net \
   -p "${REDIS_PORT}:6379" \
   -v /mnt/stateful_partition/chitin/redis:/data \
   redis:7-alpine \
