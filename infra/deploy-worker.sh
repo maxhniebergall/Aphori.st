@@ -47,13 +47,10 @@ if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$REDIS_PASSWORD" ] || [ -z "$GEMINI_API_
   exit 1
 fi
 
-# ── Authenticate Docker to GCR ──
+# ── Authenticate Docker to GCR (reuse $TOKEN from above) ──
 
 echo "Authenticating Docker to GCR..."
-curl -sf -H "Metadata-Flavor: Google" \
-  "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
-  | tr -d '\n ' | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p' \
-  | docker login -u oauth2accesstoken --password-stdin https://gcr.io
+echo "$TOKEN" | docker login -u oauth2accesstoken --password-stdin https://gcr.io
 
 # ── Create Docker network if needed ──
 
@@ -69,6 +66,17 @@ docker pull "$IMAGE"
 echo "Stopping old worker container..."
 docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 
+# ── Write secrets to a temp env-file (avoids leaking via docker inspect / ps) ──
+
+ENV_FILE=$(mktemp)
+trap "rm -f $ENV_FILE" EXIT
+cat > "$ENV_FILE" <<EOF
+DB_PASSWORD=${POSTGRES_PASSWORD}
+REDIS_PASSWORD=${REDIS_PASSWORD}
+GOOGLE_API_KEY=${GEMINI_API_KEY}
+EOF
+chmod 600 "$ENV_FILE"
+
 # ── Start worker container ──
 
 echo "Starting worker container..."
@@ -76,20 +84,23 @@ docker run -d \
   --name "$CONTAINER_NAME" \
   --restart unless-stopped \
   --network "$NETWORK" \
+  --env-file "$ENV_FILE" \
   -e SUPERVISOR_CONF=/etc/supervisor/conf.d/worker-supervisord.conf \
   -e NODE_ENV=production \
   -e DB_HOST=chitin-postgres \
   -e DB_PORT=5432 \
   -e DB_USER=chitin \
   -e DB_NAME=chitin \
-  -e "DB_PASSWORD=${POSTGRES_PASSWORD}" \
   -e REDIS_HOST=chitin-redis \
   -e REDIS_PORT=6379 \
-  -e "REDIS_PASSWORD=${REDIS_PASSWORD}" \
-  -e "GOOGLE_API_KEY=${GEMINI_API_KEY}" \
   -e BATCH_STARTUP_ENABLED=true \
   -e BATCH_CHECKPOINT_BUCKET=aphorist-batch-ingestion-bucket \
   -e PYDANTIC_SKIP_VALIDATING_CORE_SCHEMAS=true \
+  --health-cmd "supervisorctl status worker | grep -q RUNNING" \
+  --health-interval 30s \
+  --health-timeout 5s \
+  --health-start-period 45s \
+  --health-retries 3 \
   "$IMAGE"
 
 echo ""
