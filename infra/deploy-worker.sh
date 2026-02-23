@@ -11,6 +11,9 @@ WORK_DIR=/home/chitin-db
 CONTAINER_NAME="chitin-worker"
 NETWORK="chitin-net"
 
+cleanup() { rm -f "${ENV_FILE:-}"; rm -rf "${DOCKER_CONFIG:-}"; }
+trap cleanup EXIT
+
 # ── Fetch secrets from GCP Secret Manager ──
 
 TOKEN=$(curl -sf -H "Metadata-Flavor: Google" \
@@ -49,6 +52,10 @@ fi
 
 # ── Authenticate Docker to GCR (reuse $TOKEN from above) ──
 
+# Docker login tries to save credentials to ~/.docker/config.json.
+# On VMs with a read-only root filesystem, redirect to a temp directory.
+export DOCKER_CONFIG=$(mktemp -d)
+
 echo "Authenticating Docker to GCR..."
 echo "$TOKEN" | docker login -u oauth2accesstoken --password-stdin https://gcr.io
 
@@ -69,7 +76,6 @@ docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 # ── Write secrets to a temp env-file (avoids leaking via docker inspect / ps) ──
 
 ENV_FILE=$(mktemp)
-trap "rm -f $ENV_FILE" EXIT
 cat > "$ENV_FILE" <<EOF
 DB_PASSWORD=${POSTGRES_PASSWORD}
 REDIS_PASSWORD=${REDIS_PASSWORD}
