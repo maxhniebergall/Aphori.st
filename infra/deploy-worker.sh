@@ -11,7 +11,7 @@ WORK_DIR=/home/chitin-db
 CONTAINER_NAME="chitin-worker"
 NETWORK="chitin-net"
 
-cleanup() { rm -f "${ENV_FILE:-}"; }
+cleanup() { rm -f "${ENV_FILE:-}"; rm -rf "${DOCKER_CONFIG:-}"; }
 trap cleanup EXIT
 
 # ── Fetch secrets from GCP Secret Manager ──
@@ -50,17 +50,14 @@ if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$REDIS_PASSWORD" ] || [ -z "$GEMINI_API_
   exit 1
 fi
 
-# ── Authenticate Docker to GCR ──
-# gcloud is pre-installed on GCE VMs and uses the VM's service account via
-# metadata. This sets up the Docker credential helper for Artifact Registry
-# (which now backs gcr.io).
+# ── Authenticate Docker to GCR (reuse $TOKEN from above) ──
 
-# Ensure Docker config is writable (root's HOME may be on a read-only FS)
-export HOME=${HOME:-/tmp}
-mkdir -p "$HOME/.docker" 2>/dev/null || export HOME=/tmp
+# Docker login tries to save credentials to ~/.docker/config.json.
+# On VMs with a read-only root filesystem, redirect to a temp directory.
+export DOCKER_CONFIG=$(mktemp -d)
 
 echo "Authenticating Docker to GCR..."
-gcloud auth configure-docker gcr.io --quiet
+echo "$TOKEN" | docker login -u oauth2accesstoken --password-stdin https://gcr.io
 
 # ── Create Docker network if needed ──
 
