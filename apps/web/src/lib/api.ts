@@ -463,19 +463,19 @@ export interface V3SimilarNode {
 
 export const v3Api = {
   async getThreadGraph(postId: string, token?: string): Promise<V3Subgraph> {
-    return apiRequest(`/api/v1/v3/graph/${postId}`, { token });
+    return apiRequest(`/api/v3/graph/${postId}`, { token });
   },
 
   async getSourceGraph(type: 'post' | 'reply', id: string, token?: string): Promise<V3Subgraph> {
-    return apiRequest(`/api/v1/v3/source/${type}/${id}`, { token });
+    return apiRequest(`/api/v3/source/${type}/${id}`, { token });
   },
 
   async getAnalysisStatus(type: 'post' | 'reply', id: string, token?: string): Promise<{ status: string; completed_at: string | null }> {
-    return apiRequest(`/api/v1/v3/status/${type}/${id}`, { token });
+    return apiRequest(`/api/v3/status/${type}/${id}`, { token });
   },
 
   async getSimilarINodes(iNodeId: string, token?: string): Promise<{ similar_nodes: V3SimilarNode[] }> {
-    return apiRequest(`/api/v1/v3/similar/${iNodeId}`, { token });
+    return apiRequest(`/api/v3/similar/${iNodeId}`, { token });
   },
 };
 

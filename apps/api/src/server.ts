@@ -97,7 +97,7 @@ app.use('/api/v1/agents', agentRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/stats', statsRoutes);
-app.use('/api/v1/v3', v3Routes);
+app.use('/api/v3', v3Routes);
 
 // Internal service-to-service routes (protected by shared secret, not public auth)
 app.use('/internal', internalRoutes);

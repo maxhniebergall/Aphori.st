@@ -12,7 +12,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const router: RouterType = Router();
 
-// POST /api/v1/v3/analyze — trigger V3 analysis (auth required)
+// POST /api/v3/analyze — trigger V3 analysis (auth required)
 router.post('/analyze', authenticateToken, async (req, res) => {
   try {
     const { source_type, source_id } = req.body;
@@ -45,7 +45,7 @@ router.post('/analyze', authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/v1/v3/graph/:postId — full thread hypergraph
+// GET /api/v3/graph/:postId — full thread hypergraph
 router.get('/graph/:postId', async (req, res) => {
   if (!UUID_RE.test(req.params.postId)) {
     res.status(400).json({ success: false, error: 'Invalid post ID format' });
@@ -62,7 +62,7 @@ router.get('/graph/:postId', async (req, res) => {
   }
 });
 
-// GET /api/v1/v3/source/:type/:id — per-source hypergraph
+// GET /api/v3/source/:type/:id — per-source hypergraph
 router.get('/source/:type/:id', async (req, res) => {
   const { type, id } = req.params;
   if (type !== 'post' && type !== 'reply') {
@@ -84,7 +84,7 @@ router.get('/source/:type/:id', async (req, res) => {
   }
 });
 
-// GET /api/v1/v3/status/:type/:id — analysis run status
+// GET /api/v3/status/:type/:id — analysis run status
 router.get('/status/:type/:id', async (req, res) => {
   const { type, id } = req.params;
   if (type !== 'post' && type !== 'reply') {
@@ -112,7 +112,7 @@ router.get('/status/:type/:id', async (req, res) => {
   }
 });
 
-// GET /api/v1/v3/similar/:iNodeId — find similar I-nodes across the network
+// GET /api/v3/similar/:iNodeId — find similar I-nodes across the network
 router.get('/similar/:iNodeId', combinedRateLimiter, async (req, res) => {
   const iNodeId = req.params['iNodeId'];
   if (typeof iNodeId !== 'string' || !UUID_RE.test(iNodeId)) {
