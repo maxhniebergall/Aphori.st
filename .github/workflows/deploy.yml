@@ -46,6 +46,8 @@ jobs:
         run: echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
 
       # Build and push all images
+      # Single image tagged as both chitin-api and chitin-worker.
+      # Runtime mode (API vs worker) is selected via the SUPERVISOR_CONF env var.
       - name: Build and push combined API+DE image
         uses: docker/build-push-action@v6
         with:
@@ -85,6 +87,7 @@ jobs:
           echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
 
       # Deploy API to Cloud Run (migrations run automatically on startup)
+      # NOTE: BATCH_STARTUP_ENABLED=false because batch processing runs on the worker (VM), not the API (Cloud Run)
       - name: Deploy API
         run: |
           gcloud run deploy chitin-api \
