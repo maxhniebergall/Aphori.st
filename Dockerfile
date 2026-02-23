@@ -74,8 +74,9 @@ COPY apps/api/src/db/migrations/ apps/api/dist/db/migrations/
 COPY discourse-engine/factional_analysis/ /app/factional_analysis/
 COPY discourse-engine/chitin_wrapper/ /app/chitin_wrapper/
 
-# Copy supervisor config
+# Copy supervisor configs (API mode and worker mode)
 COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY supervisor/worker-supervisord.conf /etc/supervisor/conf.d/worker-supervisord.conf
 
 # Run as non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser \
@@ -87,4 +88,6 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:3001/health || exit 1
 
-CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Default to API mode; override with SUPERVISOR_CONF for worker mode
+ENV SUPERVISOR_CONF=/etc/supervisor/conf.d/supervisord.conf
+CMD /usr/bin/supervisord -n -c ${SUPERVISOR_CONF}
