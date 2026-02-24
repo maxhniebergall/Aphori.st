@@ -55,7 +55,7 @@ docker network create chitin-net 2>/dev/null || true
 
 # Stop and remove existing containers (if any)
 echo "Cleaning up old containers..."
-docker rm -f chitin-postgres chitin-redis chitin-worker 2>/dev/null || true
+docker rm -f chitin-postgres chitin-redis 2>/dev/null || true
 
 echo "Starting PostgreSQL..."
 docker run -d \
