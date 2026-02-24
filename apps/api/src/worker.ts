@@ -45,6 +45,31 @@ async function init(): Promise<void> {
     // Run migrations (advisory lock prevents races with API)
     await migrate();
 
+    // Recover stuck 'processing' runs from a previous worker crash.
+    // Runs where persistHypergraph committed (i-nodes exist) → mark 'completed' so
+    // the UI shows results immediately.  Runs without any i-nodes → reset to
+    // 'pending' so they get re-queued for a full retry.
+    const recoveryResult = await pool.query(`
+      UPDATE v3_analysis_runs r
+      SET status = CASE
+            WHEN EXISTS (SELECT 1 FROM v3_nodes_i WHERE analysis_run_id = r.id)
+              THEN 'completed'
+            ELSE 'pending'
+          END,
+          error_message = CASE
+            WHEN EXISTS (SELECT 1 FROM v3_nodes_i WHERE analysis_run_id = r.id)
+              THEN 'Recovered by worker restart (concept phase may be incomplete)'
+            ELSE 'Reset by worker restart (no data persisted)'
+          END
+      WHERE status = 'processing'
+      RETURNING id, status
+    `);
+    if (recoveryResult.rowCount && recoveryResult.rowCount > 0) {
+      const completed = recoveryResult.rows.filter(r => r.status === 'completed').length;
+      const pending = recoveryResult.rows.filter(r => r.status === 'pending').length;
+      logger.info(`Worker: reset stale processing runs`, { completed, pending });
+    }
+
     // Wait for discourse engine to be ready before starting the BullMQ worker.
     // If the DE isn't up after all retries, exit so supervisord can restart us —
     // jobs will stay safely queued in Redis until the DE comes up.

@@ -31,6 +31,8 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
        ON CONFLICT (source_type, source_id, content_hash) DO UPDATE
          SET status = CASE
            WHEN v3_analysis_runs.status = 'failed' THEN 'pending'
+           WHEN v3_analysis_runs.status = 'processing'
+            AND v3_analysis_runs.updated_at < NOW() - INTERVAL '20 minutes' THEN 'pending'
            ELSE v3_analysis_runs.status
          END
        RETURNING *`,
@@ -61,7 +63,8 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       `UPDATE v3_analysis_runs
        SET status = $2,
            error_message = $3,
-           completed_at = CASE WHEN $4 IN ('completed', 'failed') THEN NOW() ELSE NULL END
+           completed_at = CASE WHEN $4 IN ('completed', 'failed') THEN NOW() ELSE NULL END,
+           updated_at = NOW()
        WHERE id = $1`,
       [runId, status, errorMessage || null, status]
     );
