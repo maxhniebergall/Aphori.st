@@ -9,6 +9,7 @@ import { migrate } from './db/migrate.js';
 import { initArgumentService } from './services/argumentService.js';
 import { createV3Worker } from './jobs/v3Worker.js';
 import { closeV3Queue } from './jobs/v3Queue.js';
+import { enqueueV3Analysis } from './jobs/enqueueV3Analysis.js';
 import type { Worker } from 'bullmq';
 
 // Populated in init() after the discourse engine is confirmed ready.
@@ -62,12 +63,50 @@ async function init(): Promise<void> {
             ELSE 'Reset by worker restart (no data persisted)'
           END
       WHERE status = 'processing'
-      RETURNING id, status
+      RETURNING id, status, source_type, source_id
     `);
     if (recoveryResult.rowCount && recoveryResult.rowCount > 0) {
       const completed = recoveryResult.rows.filter(r => r.status === 'completed').length;
-      const pending = recoveryResult.rows.filter(r => r.status === 'pending').length;
-      logger.info(`Worker: reset stale processing runs`, { completed, pending });
+      const pendingRows = recoveryResult.rows.filter(r => r.status === 'pending');
+      logger.info(`Worker: reset stale processing runs`, { completed, pending: pendingRows.length });
+
+      // Re-enqueue BullMQ jobs for runs reset to 'pending'. The original BullMQ
+      // jobs were silently marked "completed" (worker skipped without error), so
+      // they're gone from Redis — nothing would trigger re-analysis without this.
+      if (pendingRows.length > 0) {
+        const [postRows, replyRows] = await Promise.all([
+          pool.query(
+            `SELECT id, content FROM posts WHERE id = ANY($1) AND deleted_at IS NULL`,
+            [pendingRows.filter(r => r.source_type === 'post').map(r => r.source_id)]
+          ),
+          pool.query(
+            `SELECT id, content FROM replies WHERE id = ANY($1) AND deleted_at IS NULL`,
+            [pendingRows.filter(r => r.source_type === 'reply').map(r => r.source_id)]
+          ),
+        ]);
+        const postContent = new Map(postRows.rows.map(r => [r.id, r.content]));
+        const replyContent = new Map(replyRows.rows.map(r => [r.id, r.content]));
+
+        let requeued = 0;
+        for (const run of pendingRows) {
+          const content = run.source_type === 'post'
+            ? postContent.get(run.source_id)
+            : replyContent.get(run.source_id);
+          if (!content) {
+            logger.warn(`Worker: recovery could not find content for ${run.source_type} ${run.source_id}, skipping re-enqueue`);
+            continue;
+          }
+          try {
+            await enqueueV3Analysis(run.source_type, run.source_id, content);
+            requeued++;
+          } catch (err) {
+            logger.error(`Worker: recovery failed to re-enqueue ${run.source_type} ${run.source_id}`, {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+        logger.info(`Worker: re-enqueued ${requeued}/${pendingRows.length} recovered runs`);
+      }
     }
 
     // Wait for discourse engine to be ready before starting the BullMQ worker.
