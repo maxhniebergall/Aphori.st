@@ -166,3 +166,8 @@ jobs:
           WEB_URL=$(gcloud run services describe chitin-web --region $REGION --format 'value(status.url)')
           curl -sf "$WEB_URL" -o /dev/null || echo "WARNING: Web health check failed"
 
+          echo "Checking worker health..."
+          gcloud compute ssh $VM_NAME --zone $ZONE --command \
+            "docker ps --filter name=chitin-worker --format '{{.Status}}' | grep -q '(healthy\|Up)'" \
+            || echo "WARNING: Worker health check failed (may still be starting)"
+
