@@ -397,37 +397,45 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
   }
 }
 
-export const v3Worker = new Worker('v3-analysis', processV3Analysis, {
-  connection,
-  concurrency: 2,
-  settings: {
-    backoffStrategy: async (attemptsMade: number) => {
-      return Math.pow(2, Math.min(attemptsMade, 4)) * 1000;
+/**
+ * Create and start the BullMQ worker.
+ * Called only after the discourse engine is confirmed ready, so that jobs
+ * pulled from the queue are not immediately rejected with "fetch failed".
+ */
+export function createV3Worker(): Worker {
+  const worker = new Worker('v3-analysis', processV3Analysis, {
+    connection,
+    concurrency: 2,
+    settings: {
+      backoffStrategy: async (attemptsMade: number) => {
+        return Math.pow(2, Math.min(attemptsMade, 4)) * 1000;
+      },
     },
-  },
-});
-
-// Log worker readiness
-v3Worker.waitUntilReady().then(() => {
-  logger.info('V3 worker: Redis connection ready, listening for jobs');
-}).catch((err) => {
-  logger.error('V3 worker: Redis connection FAILED', {
-    error: err instanceof Error ? err.message : String(err),
   });
-});
 
-v3Worker.on('completed', job => {
-  logger.info(`V3 worker: completed job ${job.id}`);
-});
-
-v3Worker.on('failed', (job, err) => {
-  logger.error(`V3 worker: FAILED job ${job?.id}`, {
-    error: err.message,
-    attemptsMade: job?.attemptsMade,
-    attemptsTotal: job?.opts?.attempts,
+  worker.waitUntilReady().then(() => {
+    logger.info('V3 worker: Redis connection ready, listening for jobs');
+  }).catch((err) => {
+    logger.error('V3 worker: Redis connection FAILED', {
+      error: err instanceof Error ? err.message : String(err),
+    });
   });
-});
 
-v3Worker.on('error', err => {
-  logger.error('V3 worker: fatal error', { error: err instanceof Error ? err.message : String(err) });
-});
+  worker.on('completed', job => {
+    logger.info(`V3 worker: completed job ${job.id}`);
+  });
+
+  worker.on('failed', (job, err) => {
+    logger.error(`V3 worker: FAILED job ${job?.id}`, {
+      error: err.message,
+      attemptsMade: job?.attemptsMade,
+      attemptsTotal: job?.opts?.attempts,
+    });
+  });
+
+  worker.on('error', err => {
+    logger.error('V3 worker: fatal error', { error: err instanceof Error ? err.message : String(err) });
+  });
+
+  return worker;
+}
