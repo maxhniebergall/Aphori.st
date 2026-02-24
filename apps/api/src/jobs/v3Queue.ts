@@ -15,6 +15,15 @@ export const v3Queue = new Queue('v3-analysis', {
   },
 });
 
+// Log queue readiness
+v3Queue.waitUntilReady().then(() => {
+  logger.info('V3 queue: Redis connection ready');
+}).catch((err) => {
+  logger.error('V3 queue: Redis connection FAILED', {
+    error: err instanceof Error ? err.message : String(err),
+  });
+});
+
 export const v3QueueEvents = new QueueEvents('v3-analysis', { connection: eventsConnection });
 
 v3QueueEvents.on('completed', ({ jobId }) => {

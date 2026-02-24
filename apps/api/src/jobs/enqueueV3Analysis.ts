@@ -10,7 +10,10 @@ export async function enqueueV3Analysis(
   const contentHash = crypto.createHash('sha256').update(content).digest('hex');
   const jobId = `v3-${sourceType}-${sourceId}-${contentHash.substring(0, 8)}`;
 
-  await v3Queue.add('v3-analyze', { sourceType, sourceId, contentHash }, {
+  const redisStatus = (v3Queue as any).client?.status ?? 'unknown';
+  logger.info(`V3 enqueue: attempting job ${jobId}`, { sourceType, sourceId, redisStatus });
+
+  const job = await v3Queue.add('v3-analyze', { sourceType, sourceId, contentHash }, {
     jobId,
     attempts: 5,
     backoff: {
@@ -19,6 +22,11 @@ export async function enqueueV3Analysis(
     },
   });
 
-  logger.info(`Enqueued V3 analysis job: ${jobId}`, { sourceType, sourceId });
+  logger.info(`V3 enqueue: success — job ${jobId}`, {
+    sourceType,
+    sourceId,
+    bullmqJobId: job.id,
+    queueName: job.queueName,
+  });
   return jobId;
 }

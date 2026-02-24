@@ -23,7 +23,12 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
   const v3Repo = createV3HypergraphRepo(pool);
   const argumentService = getArgumentService();
 
-  logger.info(`Processing V3 analysis job ${job.id}`, { sourceType, sourceId });
+  logger.info(`V3 worker: received job ${job.id}`, {
+    sourceType,
+    sourceId,
+    contentHash: contentHash.substring(0, 8),
+    attemptsMade: job.attemptsMade,
+  });
 
   try {
     // 1. Fetch content from DB via repositories
@@ -32,28 +37,34 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       : await ReplyRepo.findById(sourceId);
 
     if (!contentRecord) {
-      logger.warn(`Content not found: ${sourceType} ${sourceId}`);
+      logger.error(`V3 worker: content NOT FOUND in DB — ${sourceType} ${sourceId}. Job will not retry.`);
       return;
     }
+
+    logger.info(`V3 worker: fetched content (${contentRecord.content.length} chars)`, { sourceType, sourceId });
 
     // 2. Verify content hash for idempotency
     const currentHash = crypto.createHash('sha256').update(contentRecord.content).digest('hex');
     if (currentHash !== contentHash) {
-      logger.info(`V3: Content hash mismatch, skipping: ${sourceId}`);
+      logger.warn(`V3 worker: content hash mismatch, skipping`, {
+        sourceId,
+        expected: contentHash.substring(0, 8),
+        actual: currentHash.substring(0, 8),
+      });
       return;
     }
 
     // 3. Check idempotency via analysis runs
     const existingRun = await v3Repo.findExistingRun(sourceType, sourceId, contentHash);
     if (existingRun && existingRun.status === 'completed') {
-      logger.info(`V3: Already completed for ${sourceId}, skipping`);
+      logger.info(`V3 worker: already completed for ${sourceId}, skipping`);
       return;
     }
 
     // 4. Create/get analysis run
     const run = await v3Repo.createAnalysisRun(sourceType, sourceId, contentHash);
     if (run.status !== 'pending') {
-      logger.info(`V3: Run ${run.id} is ${run.status}, skipping`);
+      logger.info(`V3 worker: run ${run.id} is ${run.status}, skipping`, { sourceId });
       return;
     }
 
@@ -61,17 +72,24 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     await job.updateProgress(10);
 
     // 5. Call discourse engine V3 analysis
-    logger.info(`V3: Calling engine for ${sourceId}`);
+    logger.info(`V3 worker: calling discourse engine`, { sourceId, runId: run.id });
     const v3Response = await argumentService.analyzeV3([
       { id: sourceId, text: contentRecord.content }
     ]);
 
     const analysis = v3Response.analyses[0];
     if (!analysis) {
-      logger.info(`V3: No analysis returned for ${sourceId}`);
+      logger.warn(`V3 worker: discourse engine returned NO analysis`, { sourceId, runId: run.id });
       await v3Repo.updateRunStatus(run.id, 'completed');
       return;
     }
+
+    logger.info(`V3 worker: discourse engine returned analysis`, {
+      sourceId,
+      nodes: analysis.hypergraph.nodes.length,
+      edges: analysis.hypergraph.edges.length,
+      socraticQuestions: analysis.socratic_questions?.length ?? 0,
+    });
 
     await job.updateProgress(40);
 
@@ -102,6 +120,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     const termEmbeddings = new Map<string, number[]>();
 
     if (allTextsToEmbed.length > 0) {
+      logger.info(`V3 worker: embedding ${allTextsToEmbed.length} texts (${aduTexts.length} ADUs + ${termTexts.length} terms)`, { sourceId });
       const embedResponse = await argumentService.embedContent(allTextsToEmbed);
 
       if (embedResponse.embeddings_1536.length !== allTextsToEmbed.length) {
@@ -142,6 +161,12 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     await job.updateProgress(70);
 
     // 8. Persist hypergraph in single transaction; get engineIdToDbId for concept phase
+    logger.info(`V3 worker: persisting hypergraph`, {
+      sourceId,
+      runId: run.id,
+      iNodeEmbeddings: iNodeEmbeddings.size,
+      valueEmbeddings: valueEmbeddings.size,
+    });
     const engineIdToDbId = await v3Repo.persistHypergraph(
       run.id,
       sourceType,
@@ -347,7 +372,12 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       uniqueConceptTerms: uniqueTerms.length,
     });
   } catch (error) {
-    logger.error(`V3 analysis failed for ${sourceId}`, { error });
+    logger.error(`V3 worker: analysis FAILED for ${sourceId}`, {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      jobId: job.id,
+      attemptsMade: job.attemptsMade,
+    });
 
     // Try to mark run as failed
     try {
@@ -360,7 +390,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
         );
       }
     } catch (e) {
-      logger.error('Failed to update V3 run status to failed', { error: e });
+      logger.error('V3 worker: failed to update run status to failed', { error: e });
     }
 
     throw error;
@@ -377,14 +407,27 @@ export const v3Worker = new Worker('v3-analysis', processV3Analysis, {
   },
 });
 
+// Log worker readiness
+v3Worker.waitUntilReady().then(() => {
+  logger.info('V3 worker: Redis connection ready, listening for jobs');
+}).catch((err) => {
+  logger.error('V3 worker: Redis connection FAILED', {
+    error: err instanceof Error ? err.message : String(err),
+  });
+});
+
 v3Worker.on('completed', job => {
-  logger.info(`V3 worker completed job ${job.id}`);
+  logger.info(`V3 worker: completed job ${job.id}`);
 });
 
 v3Worker.on('failed', (job, err) => {
-  logger.error(`V3 worker failed job ${job?.id}`, { error: err.message });
+  logger.error(`V3 worker: FAILED job ${job?.id}`, {
+    error: err.message,
+    attemptsMade: job?.attemptsMade,
+    attemptsTotal: job?.opts?.attempts,
+  });
 });
 
 v3Worker.on('error', err => {
-  logger.error('V3 worker error', { error: err });
+  logger.error('V3 worker: fatal error', { error: err instanceof Error ? err.message : String(err) });
 });

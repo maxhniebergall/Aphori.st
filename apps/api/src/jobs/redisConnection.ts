@@ -23,7 +23,9 @@ export function createBullMQConnection(label: string): Redis {
   });
 
   connection.on('ready', () => {
-    logger.info(`Redis ${label}: connected`);
+    // Log host (but not password) so we can verify API and worker hit the same Redis
+    const redactedUrl = config.redis.url.replace(/:\/\/:[^@]+@/, '://***@');
+    logger.info(`Redis ${label}: connected`, { url: redactedUrl });
   });
 
   return connection;

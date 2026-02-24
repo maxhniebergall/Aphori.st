@@ -54,9 +54,10 @@ router.post('/', authenticateToken, ownerPostAggregate, postLimiter, async (req:
 
     // Enqueue analysis jobs (best-effort)
     enqueueV3Analysis('post', post.id, input.content).catch((error) =>
-      logger.warn('Failed to enqueue V3 analysis', {
+      logger.error('V3 enqueue FAILED for post', {
         postId: post.id,
         error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       })
     );
 
@@ -207,9 +208,10 @@ router.post('/:id/replies', authenticateToken, ownerReplyAggregate, replyLimiter
 
     // Enqueue V3 analysis job (best-effort, fire-and-forget)
     enqueueV3Analysis('reply', reply.id, input.content).catch((error) =>
-      logger.warn('Failed to enqueue V3 analysis', {
+      logger.error('V3 enqueue FAILED for reply', {
         replyId: reply.id,
         error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       })
     );
 
