@@ -10,6 +10,7 @@
     "dev:api": "pnpm --filter @chitin/api dev",
     "dev:web": "pnpm --filter @chitin/web dev",
     "dev:discourse": "pnpm --filter @chitin/discourse-engine dev",
+    "dev:worker": "pnpm --filter @chitin/api dev:worker",
     "build": "pnpm -r run build",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",

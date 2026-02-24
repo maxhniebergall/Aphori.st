@@ -14,6 +14,7 @@ pnpm dev              # Start all services (API :3001, Web :3000)
 pnpm dev:api          # API only
 pnpm dev:web          # Frontend only
 pnpm dev:discourse    # ML service only (:8001)
+pnpm dev:worker       # Analysis worker only
 ./scripts/dev.sh      # Full setup with Docker health checks
 ```
 
