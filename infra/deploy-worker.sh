@@ -63,6 +63,19 @@ echo "$TOKEN" | docker login -u oauth2accesstoken --password-stdin https://gcr.i
 
 docker network create "$NETWORK" 2>/dev/null || true
 
+# ── Ensure DB containers are on the network ──
+# If postgres/redis were restarted outside of start-db.sh they may have lost
+# their network attachment. Reconnect them so the worker can resolve hostnames.
+
+for dep in chitin-postgres chitin-redis; do
+  if docker ps -q --filter "name=$dep" | grep -q .; then
+    docker network connect "$NETWORK" "$dep" 2>/dev/null || true
+    echo "$dep: connected to $NETWORK"
+  else
+    echo "WARNING: $dep is not running — worker will fail to connect"
+  fi
+done
+
 # ── Pull image ──
 
 echo "Pulling $IMAGE..."
