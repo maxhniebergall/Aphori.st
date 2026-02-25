@@ -80,7 +80,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     const analysis = v3Response.analyses[0];
     if (!analysis) {
       logger.warn(`V3 worker: discourse engine returned NO analysis`, { sourceId, runId: run.id });
-      await v3Repo.updateRunStatus(run.id, 'completed');
+      await v3Repo.updateRunStatus(run.id, 'failed', 'Discourse engine returned no analysis');
       return;
     }
 
