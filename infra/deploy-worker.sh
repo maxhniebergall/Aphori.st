@@ -125,3 +125,79 @@ docker run -d \
 echo ""
 echo "=== Worker container started ==="
 docker ps --filter "name=$CONTAINER_NAME"
+
+# ── Install ingest-status helper ──
+
+mkdir -p ~/bin
+grep -qxF 'export PATH=$HOME/bin:$PATH' ~/.bashrc || echo 'export PATH=$HOME/bin:$PATH' >> ~/.bashrc
+
+cat > ~/bin/ingest-status << 'SCRIPT'
+#!/bin/bash
+# ingest-status: V3 analysis ingestion progress report
+
+PSQL="docker exec chitin-postgres psql -U chitin -d chitin"
+
+echo "========================================"
+echo " V3 Ingestion Status"
+echo " $(date -u '+%Y-%m-%d %H:%M UTC')"
+echo "========================================"
+
+echo ""
+echo "--- Content Coverage ---"
+$PSQL -c "
+SELECT
+  src,
+  total,
+  v3_completed as completed,
+  total - v3_completed as remaining,
+  round(100.0 * v3_completed / NULLIF(total, 0), 1) as pct_done
+FROM (
+  SELECT 'posts' as src,
+    COUNT(*) as total,
+    COUNT(*) FILTER (WHERE EXISTS (
+      SELECT 1 FROM v3_analysis_runs r
+      WHERE r.source_type = 'post' AND r.source_id = p.id AND r.status = 'completed'
+    )) as v3_completed
+  FROM posts p WHERE deleted_at IS NULL
+  UNION ALL
+  SELECT 'replies',
+    COUNT(*),
+    COUNT(*) FILTER (WHERE EXISTS (
+      SELECT 1 FROM v3_analysis_runs r
+      WHERE r.source_type = 'reply' AND r.source_id = rp.id AND r.status = 'completed'
+    ))
+  FROM replies rp WHERE deleted_at IS NULL
+) t;
+"
+
+echo "--- Run Status Breakdown ---"
+$PSQL -c "
+SELECT status, COUNT(*) as count, to_char(MAX(updated_at), 'YYYY-MM-DD HH24:MI') as latest_update
+FROM v3_analysis_runs
+GROUP BY status
+ORDER BY count DESC;
+"
+
+echo "--- Completion Rate ---"
+$PSQL -c "
+SELECT
+  COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '1 hour')  as completed_last_1h,
+  COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '6 hours') as completed_last_6h,
+  COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '24 hours') as completed_last_24h
+FROM v3_analysis_runs WHERE status = 'completed';
+"
+
+echo "--- Supervisord Programs ---"
+docker exec chitin-worker supervisorctl -c /etc/supervisor/conf.d/worker-supervisord.conf status 2>/dev/null \
+  || echo "(supervisorctl unavailable)"
+
+echo ""
+echo "--- Batch Daemon Activity (last 30m) ---"
+docker logs chitin-worker --since=30m 2>&1 \
+  | grep -E 'batch_daemon|v3_batch|stage[0-9]|chunk|unprocessed|pipeline|sleeping|Batch|PENDING|RUNNING|SUCCEEDED|FAILED|completed_at' \
+  | grep -v '^$' \
+  | tail -25
+SCRIPT
+
+chmod +x ~/bin/ingest-status
+echo "ingest-status installed at ~/bin/ingest-status (run: ingest-status)"
