@@ -127,9 +127,12 @@ echo "=== Worker container started ==="
 docker ps --filter "name=$CONTAINER_NAME"
 
 # ── Install ingest-status helper ──
+# Container-Optimized OS has a read-only root filesystem.
+# /var/lib/google is a persistent, writable GCP-managed directory on COS.
 
-mkdir -p /usr/local/bin
-cat > /usr/local/bin/ingest-status << 'SCRIPT'
+INGEST_BIN_DIR=/var/lib/google/bin
+mkdir -p "$INGEST_BIN_DIR"
+cat > "$INGEST_BIN_DIR/ingest-status" << 'SCRIPT'
 #!/bin/bash
 # ingest-status: V3 analysis ingestion progress report
 
@@ -197,5 +200,10 @@ docker logs chitin-worker --since=30m 2>&1 \
   | tail -25
 SCRIPT
 
-chmod +x /usr/local/bin/ingest-status
-echo "ingest-status installed at /usr/local/bin/ingest-status (run: ingest-status)"
+chmod +x "$INGEST_BIN_DIR/ingest-status"
+
+# Add to PATH for all login shells (COS: /etc is writable but stateless across OS updates)
+echo "export PATH=\"$INGEST_BIN_DIR:\$PATH\"" > /etc/profile.d/chitin.sh
+
+echo "ingest-status installed at $INGEST_BIN_DIR/ingest-status"
+echo "  PATH entry added to /etc/profile.d/chitin.sh — re-login or: export PATH=\"$INGEST_BIN_DIR:\$PATH\""
