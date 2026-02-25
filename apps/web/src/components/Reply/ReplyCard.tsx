@@ -86,6 +86,7 @@ export function ReplyCard({ reply, postId, depth, userVote, onQuote, onSearch, v
                   sourceId={reply.id}
                   subgraph={v3Subgraph}
                   onINodeClick={handleINodeClick}
+                  postId={postId}
                 />
               </div>
             ) : (

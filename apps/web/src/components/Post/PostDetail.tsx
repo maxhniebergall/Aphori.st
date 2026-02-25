@@ -80,6 +80,7 @@ export function PostDetail({ post, userVote, onQuote, onSearch, v3Subgraph }: Po
                   sourceId={post.id}
                   subgraph={v3Subgraph}
                   onINodeClick={handleINodeClick}
+                  postId={post.id}
                 />
               ) : (
                 <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300">

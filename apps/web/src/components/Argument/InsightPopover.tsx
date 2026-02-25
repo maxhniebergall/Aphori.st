@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import type { V3INode, V3ExtractedValue } from '@chitin/shared';
 
 interface InsightPopoverProps {
@@ -12,6 +13,7 @@ interface InsightPopoverProps {
   onAction: (action: 'search' | 'reply') => void;
   isUnsupported?: boolean;
   fallacyInfo?: { type: string; explanation: string };
+  postId?: string;
 }
 
 export function InsightPopover({
@@ -22,6 +24,7 @@ export function InsightPopover({
   onAction,
   isUnsupported,
   fallacyInfo,
+  postId,
 }: InsightPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -118,12 +121,22 @@ export function InsightPopover({
 
       {/* Actions */}
       <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-        <button
-          onClick={() => onAction('search')}
-          className="flex-1 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded transition-colors"
-        >
-          Search similar
-        </button>
+        {!isUnsupported && !fallacyInfo ? (
+          <Link
+            href={`/investigate/${iNode.id}?postId=${postId ?? ''}`}
+            onClick={onClose}
+            className="flex-1 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded transition-colors text-center"
+          >
+            Investigate
+          </Link>
+        ) : (
+          <button
+            onClick={() => onAction('search')}
+            className="flex-1 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded transition-colors"
+          >
+            Search similar
+          </button>
+        )}
         <button
           onClick={() => onAction('reply')}
           className="flex-1 px-2 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded transition-colors"

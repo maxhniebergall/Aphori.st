@@ -17,6 +17,7 @@ interface AugmentedTextProps {
   sourceId: string;
   subgraph: V3Subgraph;
   onINodeClick?: (iNode: V3INode, action: 'search' | 'reply') => void;
+  postId?: string;
 }
 
 function getHighlightStyle(
@@ -48,6 +49,7 @@ export function AugmentedText({
   sourceId,
   subgraph,
   onINodeClick,
+  postId,
 }: AugmentedTextProps) {
   const [activeINode, setActiveINode] = useState<V3INode | null>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -125,6 +127,7 @@ export function AugmentedText({
           onAction={handlePopoverAction}
           isUnsupported={unsupportedIds.has(activeINode.id)}
           fallacyInfo={fallaciousIds.get(activeINode.id)}
+          postId={postId}
         />
       )}
     </div>
