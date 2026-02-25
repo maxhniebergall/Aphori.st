@@ -127,26 +127,22 @@ echo "=== Worker container started ==="
 docker ps --filter "name=$CONTAINER_NAME"
 
 # ── Install ingest-status helper ──
-# Container-Optimized OS has a read-only root filesystem.
-# /var/lib/chitin/bin is a persistent, writable directory under /var.
+# Container-Optimized OS mounts /var, /home, and /tmp all noexec — no script
+# file can be executed directly. Define ingest-status as a shell function in
+# /etc/profile.d/chitin.sh instead; it gets sourced by login shells (no execve).
 
-INGEST_BIN_DIR=/var/lib/chitin/bin
-mkdir -p "$INGEST_BIN_DIR"
-chmod 755 "$INGEST_BIN_DIR"
-cat > "$INGEST_BIN_DIR/ingest-status" << 'SCRIPT'
-#!/bin/bash
-# ingest-status: V3 analysis ingestion progress report
+cat > /etc/profile.d/chitin.sh << 'PROFILE'
+ingest-status() {
+  local PSQL="docker exec chitin-postgres psql -U chitin -d chitin"
 
-PSQL="docker exec chitin-postgres psql -U chitin -d chitin"
+  echo "========================================"
+  echo " V3 Ingestion Status"
+  echo " $(date -u '+%Y-%m-%d %H:%M UTC')"
+  echo "========================================"
 
-echo "========================================"
-echo " V3 Ingestion Status"
-echo " $(date -u '+%Y-%m-%d %H:%M UTC')"
-echo "========================================"
-
-echo ""
-echo "--- Content Coverage ---"
-$PSQL -c "
+  echo ""
+  echo "--- Content Coverage ---"
+  $PSQL -c "
 SELECT
   src,
   total,
@@ -172,16 +168,16 @@ FROM (
 ) t;
 "
 
-echo "--- Run Status Breakdown ---"
-$PSQL -c "
+  echo "--- Run Status Breakdown ---"
+  $PSQL -c "
 SELECT status, COUNT(*) as count, to_char(MAX(updated_at), 'YYYY-MM-DD HH24:MI') as latest_update
 FROM v3_analysis_runs
 GROUP BY status
 ORDER BY count DESC;
 "
 
-echo "--- Completion Rate ---"
-$PSQL -c "
+  echo "--- Completion Rate ---"
+  $PSQL -c "
 SELECT
   COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '1 hour')  as completed_last_1h,
   COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '6 hours') as completed_last_6h,
@@ -189,23 +185,19 @@ SELECT
 FROM v3_analysis_runs WHERE status = 'completed';
 "
 
-echo "--- Supervisord Programs ---"
-docker exec chitin-worker supervisorctl -c /etc/supervisor/conf.d/worker-supervisord.conf status 2>/dev/null \
-  || echo "(supervisorctl unavailable)"
+  echo "--- Supervisord Programs ---"
+  docker exec chitin-worker supervisorctl -c /etc/supervisor/conf.d/worker-supervisord.conf status 2>/dev/null \
+    || echo "(supervisorctl unavailable)"
 
-echo ""
-echo "--- Batch Daemon Activity (last 30m) ---"
-docker logs chitin-worker --since=30m 2>&1 \
-  | grep -E 'batch_daemon|v3_batch|stage[0-9]|chunk|unprocessed|pipeline|sleeping|Batch|PENDING|RUNNING|SUCCEEDED|FAILED|completed_at' \
-  | grep -v '^$' \
-  | tail -25
-SCRIPT
+  echo ""
+  echo "--- Batch Daemon Activity (last 30m) ---"
+  docker logs chitin-worker --since=30m 2>&1 \
+    | grep -E 'batch_daemon|v3_batch|stage[0-9]|chunk|unprocessed|pipeline|sleeping|Batch|PENDING|RUNNING|SUCCEEDED|FAILED|completed_at' \
+    | grep -v '^$' \
+    | tail -25
+}
+PROFILE
 
-chmod 755 "$INGEST_BIN_DIR/ingest-status"
-
-# Add to PATH for all login shells (COS: /etc is writable but stateless across OS updates)
-echo "export PATH=\"$INGEST_BIN_DIR:\$PATH\"" > /etc/profile.d/chitin.sh
 chmod 644 /etc/profile.d/chitin.sh
-
-echo "ingest-status installed at $INGEST_BIN_DIR/ingest-status"
-echo "  PATH entry added — re-login or: source /etc/profile.d/chitin.sh"
+echo "ingest-status function installed in /etc/profile.d/chitin.sh"
+echo "  Available on next login, or: source /etc/profile.d/chitin.sh"
