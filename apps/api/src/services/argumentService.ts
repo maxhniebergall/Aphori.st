@@ -4,7 +4,7 @@ import type { V3AnalyzeTextResponse } from '@chitin/shared';
 
 class DiscourseEngineService {
   private baseUrl: string;
-  private timeout: number = 300000; // 5 minutes for model warmup
+  private timeout: number = 1800000; // 30 minutes
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
