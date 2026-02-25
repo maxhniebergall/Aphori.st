@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { query, withTransaction } from '../pool.js';
-import type { Reply, ReplyWithAuthor, AnalysisStatus, CreateReplyInput, PaginatedResponse } from '@chitin/shared';
+import type { Reply, ReplyWithAuthor, CreateReplyInput, PaginatedResponse } from '@chitin/shared';
 
 interface ReplyRow {
   id: string;
@@ -10,7 +10,6 @@ interface ReplyRow {
   target_adu_id: string | null;
   content: string;
   analysis_content_hash: string;
-  analysis_status: AnalysisStatus;
   depth: number;
   path: string;
   score: number;
@@ -37,7 +36,6 @@ function rowToReply(row: ReplyRow): Reply {
     target_adu_id: row.target_adu_id,
     content: row.content,
     analysis_content_hash: row.analysis_content_hash,
-    analysis_status: row.analysis_status,
     depth: row.depth,
     path: row.path,
     score: row.score,
@@ -271,16 +269,6 @@ export const ReplyRepo = {
     );
 
     return result.rows.map(rowToReplyWithAuthor);
-  },
-
-  async updateAnalysisStatus(id: string, status: AnalysisStatus): Promise<Reply | null> {
-    const result = await query<ReplyRow>(
-      `UPDATE replies SET analysis_status = $2
-       WHERE id = $1 AND deleted_at IS NULL
-       RETURNING *`,
-      [id, status]
-    );
-    return result.rows[0] ? rowToReply(result.rows[0]) : null;
   },
 
   async softDelete(id: string): Promise<boolean> {

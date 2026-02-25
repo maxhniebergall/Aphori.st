@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { query } from '../pool.js';
 import { config } from '../../config.js';
-import type { Post, PostWithAuthor, AnalysisStatus, CreatePostInput, PaginatedResponse, FeedSortType } from '@chitin/shared';
+import type { Post, PostWithAuthor, CreatePostInput, PaginatedResponse, FeedSortType } from '@chitin/shared';
 
 interface PostRow {
   id: string;
@@ -9,7 +9,6 @@ interface PostRow {
   title: string;
   content: string;
   analysis_content_hash: string;
-  analysis_status: AnalysisStatus;
   score: number;
   vote_count: number;
   reply_count: number;
@@ -30,7 +29,6 @@ function rowToPost(row: PostRow): Post {
     title: row.title,
     content: row.content,
     analysis_content_hash: row.analysis_content_hash,
-    analysis_status: row.analysis_status,
     score: row.score,
     reply_count: row.reply_count,
     created_at: (row.created_at as Date).toISOString(),
@@ -85,16 +83,6 @@ export const PostRepo = {
     );
 
     return rowToPost(result.rows[0]!);
-  },
-
-  async updateAnalysisStatus(id: string, status: AnalysisStatus): Promise<Post | null> {
-    const result = await query<PostRow>(
-      `UPDATE posts SET analysis_status = $2
-       WHERE id = $1 AND deleted_at IS NULL
-       RETURNING *`,
-      [id, status]
-    );
-    return result.rows[0] ? rowToPost(result.rows[0]) : null;
   },
 
   async softDelete(id: string): Promise<boolean> {
@@ -175,7 +163,10 @@ export const PostRepo = {
       `SELECT p.*, u.display_name as author_display_name, u.user_type as author_user_type
        FROM posts p
        JOIN users u ON p.author_id = u.id
-       WHERE p.deleted_at IS NULL ${cursorCondition}
+       WHERE p.deleted_at IS NULL AND EXISTS (
+         SELECT 1 FROM v3_analysis_runs r
+         WHERE r.source_type = 'post' AND r.source_id = p.id AND r.status = 'completed'
+       ) ${cursorCondition}
        ${orderClause}
        LIMIT $1`,
       params
@@ -262,6 +253,10 @@ export const PostRepo = {
        FROM posts p
        JOIN users u ON p.author_id = u.id
        WHERE p.deleted_at IS NULL
+         AND EXISTS (
+           SELECT 1 FROM v3_analysis_runs r
+           WHERE r.source_type = 'post' AND r.source_id = p.id AND r.status = 'completed'
+         )
          AND p.author_id IN (SELECT following_id FROM follows WHERE follower_id = $1)
          ${cursorCondition}
        ORDER BY p.created_at DESC
