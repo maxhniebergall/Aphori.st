@@ -128,6 +128,7 @@ docker ps --filter "name=$CONTAINER_NAME"
 
 # ── Install ingest-status helper ──
 
+mkdir -p /usr/local/bin
 cat > /usr/local/bin/ingest-status << 'SCRIPT'
 #!/bin/bash
 # ingest-status: V3 analysis ingestion progress report
