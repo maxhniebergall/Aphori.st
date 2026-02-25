@@ -99,12 +99,6 @@ export class TestDatabase {
     const tables = [
       'follows',
       'notifications',
-      'argument_relations',
-      'adu_canonical_map',
-      'adu_embeddings',
-      'canonical_claim_embeddings',
-      'canonical_claims',
-      'adus',
       'content_embeddings',
       'votes',
       'replies',

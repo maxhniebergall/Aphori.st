@@ -26,15 +26,12 @@ export interface UserResult {
 }
 
 // Post Types
-export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed';
-
 export interface Post {
   id: string;
   author_id: string;
   title: string;
   content: string;
   analysis_content_hash: string;
-  analysis_status: AnalysisStatus;
   score: number;
   reply_count: number;
   created_at: string;
@@ -60,7 +57,6 @@ export interface Reply {
   target_adu_id: string | null;
   content: string;
   analysis_content_hash: string;
-  analysis_status: AnalysisStatus;
   depth: number;
   path: string; // ltree path for efficient queries
   score: number;
