@@ -130,7 +130,7 @@ docker ps --filter "name=$CONTAINER_NAME"
 # Container-Optimized OS has a read-only root filesystem.
 # /var/lib/google is a persistent, writable GCP-managed directory on COS.
 
-INGEST_BIN_DIR=/var/lib/google/bin
+INGEST_BIN_DIR=/var/lib/chitin/bin
 mkdir -p "$INGEST_BIN_DIR"
 cat > "$INGEST_BIN_DIR/ingest-status" << 'SCRIPT'
 #!/bin/bash
