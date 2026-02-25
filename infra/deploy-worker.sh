@@ -115,7 +115,7 @@ docker run -d \
   -e BATCH_STARTUP_ENABLED=true \
   -e BATCH_CHECKPOINT_BUCKET=aphorist-batch-ingestion-bucket \
   -e PYDANTIC_SKIP_VALIDATING_CORE_SCHEMAS=true \
-  --health-cmd "supervisorctl status worker | grep -q RUNNING" \
+  --health-cmd "supervisorctl -c /etc/supervisor/conf.d/worker-supervisord.conf status worker | grep -q RUNNING" \
   --health-interval 30s \
   --health-timeout 5s \
   --health-start-period 45s \
