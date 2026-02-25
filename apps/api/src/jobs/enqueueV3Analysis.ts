@@ -15,7 +15,7 @@ export async function enqueueV3Analysis(
 
   const job = await v3Queue.add('v3-analyze', { sourceType, sourceId, contentHash }, {
     jobId,
-    attempts: 5,
+    attempts: 2,
     backoff: {
       type: 'exponential',
       delay: 1000,
