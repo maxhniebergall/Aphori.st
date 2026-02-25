@@ -1,6 +1,9 @@
+import { Agent } from 'undici';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 import type { V3AnalyzeTextResponse } from '@chitin/shared';
+
+const undiciAgent = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
 
 class DiscourseEngineService {
   private baseUrl: string;
@@ -25,6 +28,7 @@ class DiscourseEngineService {
         headers: { 'Content-Type': 'application/json' },
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
+        dispatcher: undiciAgent,
       });
 
       if (!response.ok) {
