@@ -128,10 +128,7 @@ docker ps --filter "name=$CONTAINER_NAME"
 
 # ── Install ingest-status helper ──
 
-mkdir -p ~/bin
-grep -qxF 'export PATH=$HOME/bin:$PATH' ~/.bashrc || echo 'export PATH=$HOME/bin:$PATH' >> ~/.bashrc
-
-cat > ~/bin/ingest-status << 'SCRIPT'
+cat > /usr/local/bin/ingest-status << 'SCRIPT'
 #!/bin/bash
 # ingest-status: V3 analysis ingestion progress report
 
@@ -199,5 +196,5 @@ docker logs chitin-worker --since=30m 2>&1 \
   | tail -25
 SCRIPT
 
-chmod +x ~/bin/ingest-status
-echo "ingest-status installed at ~/bin/ingest-status (run: ingest-status)"
+chmod +x /usr/local/bin/ingest-status
+echo "ingest-status installed at /usr/local/bin/ingest-status (run: ingest-status)"
