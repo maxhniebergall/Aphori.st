@@ -1,7 +1,7 @@
 /**
  * V3 Backfill Script
  *
- * Re-analyzes existing posts/replies with the V3 neurosymbolic pipeline.
+ * Enqueues existing posts/replies for V3 neurosymbolic analysis.
  * Skips content that already has a completed V3 analysis run.
  *
  * Usage:
@@ -53,12 +53,11 @@ async function backfillSource(
 ): Promise<number> {
   const table = sourceType === 'post' ? 'posts' : 'replies';
 
-  // Find sources with completed V2 analysis but no completed V3 run
+  // Find sources with no completed V3 run
   const result = await pool.query(
     `SELECT t.id, t.content
      FROM ${table} t
-     WHERE t.analysis_status = 'completed'
-       AND t.deleted_at IS NULL
+     WHERE t.deleted_at IS NULL
        AND NOT EXISTS (
          SELECT 1 FROM v3_analysis_runs r
          WHERE r.source_type = $1
