@@ -207,10 +207,5 @@ chmod 755 "$INGEST_BIN_DIR/ingest-status"
 echo "export PATH=\"$INGEST_BIN_DIR:\$PATH\"" > /etc/profile.d/chitin.sh
 chmod 644 /etc/profile.d/chitin.sh
 
-# Also patch sudo secure_path so `sudo ingest-status` works
-if grep -q 'secure_path' /etc/sudoers 2>/dev/null; then
-  sed -i "s|secure_path=\"\([^\"]*\)\"|secure_path=\"$INGEST_BIN_DIR:\1\"|" /etc/sudoers
-fi
-
 echo "ingest-status installed at $INGEST_BIN_DIR/ingest-status"
 echo "  PATH entry added — re-login or: source /etc/profile.d/chitin.sh"
