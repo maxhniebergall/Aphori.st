@@ -405,7 +405,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 export function createV3Worker(): Worker {
   const worker = new Worker('v3-analysis', processV3Analysis, {
     connection,
-    concurrency: 4,
+    concurrency: 16,
     settings: {
       backoffStrategy: async (attemptsMade: number) => {
         return Math.pow(2, Math.min(attemptsMade, 4)) * 1000;
