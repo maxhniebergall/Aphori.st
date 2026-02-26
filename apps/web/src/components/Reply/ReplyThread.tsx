@@ -47,7 +47,7 @@ export function ReplyThread({ postId, initialReplies, userVotes, onQuote, onSear
     staleTime: 30 * 1000,
   });
 
-  const replies = data?.items ?? [];
+  const replies = useMemo(() => data?.items ?? [], [data]);
 
   // Build ghost replies map keyed by sourceType:sourceId
   const ghostsBySource = useMemo(() => {

@@ -41,7 +41,7 @@ export function ReplyComposer({
   const { data: analysisStatus } = useQuery({
     queryKey: ['v3-analysis-status', 'reply', pendingReplyId],
     queryFn: () => v3Api.getAnalysisStatus('reply', pendingReplyId!, token ?? undefined),
-    enabled: !!pendingReplyId && !!pollingStartedAt && (Date.now() - pollingStartedAt! < POLLING_TIMEOUT_MS),
+    enabled: !!pendingReplyId && !!pollingStartedAt,
     refetchInterval: 3000,
     select: (data) => data.status,
   });
