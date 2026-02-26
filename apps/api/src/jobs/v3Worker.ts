@@ -8,6 +8,7 @@ import { ReplyRepo } from '../db/repositories/ReplyRepo.js';
 import { getArgumentService } from '../services/argumentService.js';
 import { getPool } from '../db/pool.js';
 import { createBullMQConnection } from './redisConnection.js';
+import { enqueueV3Analysis } from './enqueueV3Analysis.js';
 
 interface V3AnalysisJobData {
   sourceType: 'post' | 'reply';
@@ -177,6 +178,46 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     );
 
     await job.updateProgress(80);
+
+    // ── Create replies from ghost nodes (assumption-bot) ──
+    const ghostNodes = analysis.hypergraph.nodes.filter(
+      (n: V3HypergraphNode) => n.node_type === 'ghost'
+    );
+    if (ghostNodes.length > 0) {
+      let postId: string;
+      let parentReplyId: string | undefined;
+      if (sourceType === 'post') {
+        postId = sourceId;
+      } else {
+        const parentReply = await ReplyRepo.findById(sourceId);
+        if (!parentReply) {
+          logger.warn(`V3 worker: could not find parent reply for ghost nodes`, { sourceId });
+          postId = '';
+        } else {
+          postId = parentReply.post_id;
+          parentReplyId = sourceId;
+        }
+      }
+
+      if (postId) {
+        for (const ghostNode of ghostNodes) {
+          const ghostText = ghostNode.ghost_text || ghostNode.text || '';
+          if (!ghostText) continue;
+          try {
+            const botReply = await ReplyRepo.create(postId, 'assumption-bot', {
+              content: ghostText,
+              parent_reply_id: parentReplyId,
+            });
+            await enqueueV3Analysis('reply', botReply.id, ghostText);
+          } catch (err) {
+            logger.warn(`V3 worker: failed to create ghost reply for node ${ghostNode.node_id}`, {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+        logger.info(`V3 worker: created ${ghostNodes.length} ghost replies as assumption-bot`, { sourceId });
+      }
+    }
 
     // ── Concept Disambiguation Phase ──
     // Only runs if there are high-variance terms to process.
