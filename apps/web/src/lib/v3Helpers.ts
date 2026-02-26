@@ -3,8 +3,6 @@ import type {
   V3INode,
   V3SNode,
   V3Edge,
-  V3Enthymeme,
-  V3SocraticQuestion,
   V3ExtractedValue,
 } from '@chitin/shared';
 
@@ -74,22 +72,6 @@ export function getConnectedSchemes(
     .filter((x): x is { sNode: V3SNode; edge: V3Edge } => x !== null);
 }
 
-/** Get enthymemes for a given S-node */
-export function getEnthymemesForScheme(
-  sNodeId: string,
-  subgraph: V3Subgraph
-): V3Enthymeme[] {
-  return subgraph.enthymemes.filter((e) => e.scheme_id === sNodeId);
-}
-
-/** Get socratic questions for a given S-node */
-export function getSocraticQuestionsForScheme(
-  sNodeId: string,
-  subgraph: V3Subgraph
-): V3SocraticQuestion[] {
-  return subgraph.socratic_questions.filter((q) => q.scheme_id === sNodeId);
-}
-
 /** Get extracted values for a given I-node */
 export function getExtractedValues(
   iNodeId: string,
@@ -133,49 +115,3 @@ export function segmentTextV3(text: string, iNodes: V3INode[]): V3Segment[] {
   return segments;
 }
 
-export interface EnrichedGhostReply {
-  enthymeme: V3Enthymeme;
-  sNode: V3SNode;
-  parentINode: V3INode | null;
-  socraticQuestions: V3SocraticQuestion[];
-  /** The source that the parent scheme is connected to */
-  sourceType: 'post' | 'reply';
-  sourceId: string;
-}
-
-/** Walk enthymemes → scheme → edges → source I-nodes to build enriched ghost reply data */
-export function getThreadEnthymemes(subgraph: V3Subgraph): EnrichedGhostReply[] {
-  const results: EnrichedGhostReply[] = [];
-
-  for (const enthymeme of subgraph.enthymemes) {
-    const sNode = subgraph.s_nodes.find((s) => s.id === enthymeme.scheme_id);
-    if (!sNode) continue;
-
-    const socraticQuestions = getSocraticQuestionsForScheme(sNode.id, subgraph);
-
-    // Find the I-node connected to this scheme (as conclusion or premise)
-    const connectedEdges = subgraph.edges.filter(
-      (e) => e.scheme_node_id === sNode.id && e.node_type === 'i_node'
-    );
-    const parentINode = connectedEdges.length > 0
-      ? subgraph.i_nodes.find((n) => n.id === connectedEdges[0]!.node_id) ?? null
-      : null;
-
-    // Determine the source from the parent I-node
-    const sourceType = parentINode?.source_type ?? 'post';
-    const sourceId = parentINode?.source_id ?? '';
-
-    if (!sourceId) continue;
-
-    results.push({
-      enthymeme,
-      sNode,
-      parentINode,
-      socraticQuestions,
-      sourceType,
-      sourceId,
-    });
-  }
-
-  return results;
-}
