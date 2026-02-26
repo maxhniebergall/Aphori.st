@@ -552,6 +552,248 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     };
   },
 
+  // ── Investigate Page: Subgraph + enriched data for ranking pipeline ──
+
+  async getINodeById(iNodeId: string): Promise<(V3INode & { embedding: number[] | null }) | null> {
+    const result = await pool.query(
+      `SELECT id, analysis_run_id, source_type, source_id, content, rewritten_text,
+              epistemic_type, fvp_confidence, span_start, span_end, extraction_confidence, created_at,
+              embedding
+       FROM v3_nodes_i WHERE id = $1`,
+      [iNodeId]
+    );
+    return result.rows[0] || null;
+  },
+
+  // Returns all I-nodes related to the focal node via S-nodes (direct connections),
+  // plus their source vote scores, author karma, and the connecting scheme details.
+  async getInvestigateSubgraph(focalINodeId: string): Promise<{
+    relatedNodes: Array<{
+      id: string;
+      content: string;
+      rewritten_text: string | null;
+      epistemic_type: string;
+      fvp_confidence: number;
+      source_type: 'post' | 'reply';
+      source_id: string;
+      source_post_id: string;
+      direction: 'SUPPORT' | 'ATTACK';
+      scheme_id: string;
+      scheme_confidence: number;
+      gap_detected: boolean;
+      vote_score: number;
+      user_karma: number;
+      source_title: string | null;
+      source_author: string | null;
+      source_author_id: string | null;
+      embedding: number[] | null;
+    }>;
+    schemeEdges: Array<{
+      scheme_id: string;
+      from_node_id: string;
+      to_node_id: string;
+      direction: 'SUPPORT' | 'ATTACK';
+      scheme_confidence: number;
+    }>;
+    enthymemes: Array<{
+      id: string;
+      scheme_id: string;
+      content: string;
+      fvp_type: string;
+      probability: number;
+      direction: 'SUPPORT' | 'ATTACK';
+    }>;
+    socraticQuestions: Array<{
+      id: string;
+      scheme_id: string;
+      question: string;
+      uncertainty_level: number;
+    }>;
+    extractedValues: Map<string, string[]>;
+  }> {
+    // Step 1: Find all S-nodes where the focal I-node appears as conclusion
+    // and get all premise I-nodes connected to those S-nodes
+    const relatedResult = await pool.query(
+      `WITH focal_schemes AS (
+         SELECT DISTINCT
+           s.id as scheme_id,
+           s.direction,
+           s.confidence as scheme_confidence,
+           s.gap_detected
+         FROM v3_edges e
+         JOIN v3_nodes_s s ON s.id = e.scheme_node_id
+         WHERE e.node_id = $1
+           AND e.node_type = 'i_node'
+           AND e.role = 'conclusion'
+       ),
+       premise_nodes AS (
+         SELECT DISTINCT
+           i.id,
+           i.content,
+           i.rewritten_text,
+           i.epistemic_type,
+           i.fvp_confidence,
+           i.source_type,
+           i.source_id,
+           i.embedding,
+           fs.direction,
+           fs.scheme_id,
+           fs.scheme_confidence,
+           fs.gap_detected
+         FROM focal_schemes fs
+         JOIN v3_edges e ON e.scheme_node_id = fs.scheme_id
+           AND e.node_type = 'i_node'
+           AND e.role = 'premise'
+         JOIN v3_nodes_i i ON i.id = e.node_id
+         WHERE i.id != $1
+       )
+       SELECT
+         pn.*,
+         CASE
+           WHEN pn.source_type = 'post' THEN p.score
+           ELSE r.score
+         END as vote_score,
+         COALESCE(u.vote_karma, 0) as user_karma,
+         CASE
+           WHEN pn.source_type = 'post' THEN p.id
+           ELSE r.post_id
+         END as source_post_id,
+         CASE
+           WHEN pn.source_type = 'post' THEN p.title
+           ELSE pp.title
+         END as source_title,
+         u.display_name as source_author,
+         u.id as source_author_id
+       FROM premise_nodes pn
+       LEFT JOIN posts p ON pn.source_type = 'post' AND p.id = pn.source_id AND p.deleted_at IS NULL
+       LEFT JOIN replies r ON pn.source_type = 'reply' AND r.id = pn.source_id AND r.deleted_at IS NULL
+       LEFT JOIN posts pp ON pn.source_type = 'reply' AND pp.id = r.post_id
+       LEFT JOIN v3_analysis_runs ar ON ar.source_type = pn.source_type AND ar.source_id = pn.source_id
+       LEFT JOIN users u ON (
+         (pn.source_type = 'post' AND u.id = p.author_id) OR
+         (pn.source_type = 'reply' AND u.id = r.author_id)
+       )
+       LIMIT 500`,
+      [focalINodeId]
+    );
+
+    // Step 2: Get all scheme edges for these nodes (to build the graph for Brandes')
+    const nodeIds = [focalINodeId, ...relatedResult.rows.map((r: { id: string }) => r.id)];
+    const schemeEdgesResult = await pool.query(
+      `SELECT DISTINCT
+         s.id as scheme_id,
+         e_premise.node_id as from_node_id,
+         e_conclusion.node_id as to_node_id,
+         s.direction,
+         s.confidence as scheme_confidence
+       FROM v3_nodes_s s
+       JOIN v3_edges e_premise ON e_premise.scheme_node_id = s.id AND e_premise.role = 'premise' AND e_premise.node_type = 'i_node'
+       JOIN v3_edges e_conclusion ON e_conclusion.scheme_node_id = s.id AND e_conclusion.role = 'conclusion' AND e_conclusion.node_type = 'i_node'
+       WHERE e_premise.node_id = ANY($1) OR e_conclusion.node_id = ANY($1)`,
+      [nodeIds]
+    );
+
+    // Step 3: Get enthymemes for all relevant schemes
+    const schemeIds = [...new Set([
+      ...relatedResult.rows.map((r: { scheme_id: string }) => r.scheme_id),
+      ...schemeEdgesResult.rows.map((r: { scheme_id: string }) => r.scheme_id),
+    ])];
+    const enthymenesResult = schemeIds.length > 0 ? await pool.query(
+      `SELECT en.id, en.scheme_id, en.content, en.fvp_type, en.probability, s.direction
+       FROM v3_enthymemes en
+       JOIN v3_nodes_s s ON s.id = en.scheme_id
+       WHERE en.scheme_id = ANY($1) AND en.probability > 0.5
+       ORDER BY en.probability DESC`,
+      [schemeIds]
+    ) : { rows: [] };
+
+    // Step 4: Get socratic questions for schemes with gaps
+    const socraticResult = schemeIds.length > 0 ? await pool.query(
+      `SELECT id, scheme_id, question, uncertainty_level
+       FROM v3_socratic_questions
+       WHERE scheme_id = ANY($1)
+       ORDER BY uncertainty_level DESC`,
+      [schemeIds]
+    ) : { rows: [] };
+
+    // Step 5: Get extracted values for related I-nodes
+    const relatedNodeIds = relatedResult.rows.map((r: { id: string }) => r.id);
+    const valuesResult = relatedNodeIds.length > 0 ? await pool.query(
+      `SELECT i_node_id, text FROM v3_extracted_values
+       WHERE i_node_id = ANY($1)`,
+      [relatedNodeIds]
+    ) : { rows: [] };
+
+    const extractedValuesMap = new Map<string, string[]>();
+    for (const row of valuesResult.rows) {
+      if (!extractedValuesMap.has(row.i_node_id)) {
+        extractedValuesMap.set(row.i_node_id, []);
+      }
+      extractedValuesMap.get(row.i_node_id)!.push(row.text);
+    }
+
+    return {
+      relatedNodes: relatedResult.rows.map((r: {
+        id: string; content: string; rewritten_text: string | null;
+        epistemic_type: string; fvp_confidence: number;
+        source_type: 'post' | 'reply'; source_id: string; source_post_id: string;
+        direction: 'SUPPORT' | 'ATTACK'; scheme_id: string; scheme_confidence: number;
+        gap_detected: boolean; vote_score: number; user_karma: number;
+        source_title: string | null; source_author: string | null;
+        source_author_id: string | null; embedding: number[] | null;
+      }) => ({
+        id: r.id,
+        content: r.content,
+        rewritten_text: r.rewritten_text,
+        epistemic_type: r.epistemic_type,
+        fvp_confidence: r.fvp_confidence,
+        source_type: r.source_type,
+        source_id: r.source_id,
+        source_post_id: r.source_post_id,
+        direction: r.direction,
+        scheme_id: r.scheme_id,
+        scheme_confidence: r.scheme_confidence,
+        gap_detected: r.gap_detected,
+        vote_score: Number(r.vote_score) || 0,
+        user_karma: Number(r.user_karma) || 0,
+        source_title: r.source_title,
+        source_author: r.source_author,
+        source_author_id: r.source_author_id,
+        embedding: r.embedding,
+      })),
+      schemeEdges: schemeEdgesResult.rows.map((r: {
+        scheme_id: string; from_node_id: string; to_node_id: string;
+        direction: 'SUPPORT' | 'ATTACK'; scheme_confidence: number;
+      }) => ({
+        scheme_id: r.scheme_id,
+        from_node_id: r.from_node_id,
+        to_node_id: r.to_node_id,
+        direction: r.direction,
+        scheme_confidence: Number(r.scheme_confidence) || 0,
+      })),
+      enthymemes: enthymenesResult.rows.map((r: {
+        id: string; scheme_id: string; content: string;
+        fvp_type: string; probability: number; direction: 'SUPPORT' | 'ATTACK';
+      }) => ({
+        id: r.id,
+        scheme_id: r.scheme_id,
+        content: r.content,
+        fvp_type: r.fvp_type,
+        probability: Number(r.probability) || 0,
+        direction: r.direction,
+      })),
+      socraticQuestions: socraticResult.rows.map((r: {
+        id: string; scheme_id: string; question: string; uncertainty_level: number;
+      }) => ({
+        id: r.id,
+        scheme_id: r.scheme_id,
+        question: r.question,
+        uncertainty_level: Number(r.uncertainty_level) || 0,
+      })),
+      extractedValues: extractedValuesMap,
+    };
+  },
+
   async findSimilarINodes(
     embedding: number[],
     threshold: number = 0.75,

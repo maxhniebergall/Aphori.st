@@ -7,6 +7,11 @@ import { enqueueV3Analysis } from '../jobs/enqueueV3Analysis.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { combinedRateLimiter } from '../middleware/rateLimit.js';
 import { logger } from '../utils/logger.js';
+import {
+  runRankingPipeline,
+  detectGhostNodes,
+  type SubgraphNode,
+} from '../services/investigateService.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -184,6 +189,132 @@ router.get('/similar/:iNodeId', combinedRateLimiter, async (req, res) => {
   } catch (error) {
     logger.error('Failed to find similar I-nodes', { error });
     res.status(500).json({ success: false, error: 'Failed to find similar I-nodes' });
+  }
+});
+
+// GET /api/v3/investigate/:iNodeId — Synthetic Global Thread
+router.get('/investigate/:iNodeId', combinedRateLimiter, async (req, res) => {
+  const iNodeId = req.params['iNodeId'];
+  if (typeof iNodeId !== 'string' || !UUID_RE.test(iNodeId)) {
+    res.status(400).json({ success: false, error: 'Invalid I-node ID format' });
+    return;
+  }
+
+  try {
+    const pool = getPool();
+    const v3Repo = createV3HypergraphRepo(pool);
+
+    // 1. Fetch the focal I-node
+    const focalNode = await v3Repo.getINodeById(iNodeId);
+    if (!focalNode) {
+      res.status(404).json({ success: false, error: 'I-node not found' });
+      return;
+    }
+
+    // Fetch focal node source info
+    const [focalPostRow, focalReplyRow] = await Promise.all([
+      focalNode.source_type === 'post'
+        ? pool.query(
+            `SELECT p.id, p.title, u.display_name, u.id as user_id
+             FROM posts p JOIN users u ON p.author_id = u.id
+             WHERE p.id = $1 AND p.deleted_at IS NULL`,
+            [focalNode.source_id]
+          )
+        : Promise.resolve({ rows: [] as { id: string; title: string; display_name: string; user_id: string }[] }),
+      focalNode.source_type === 'reply'
+        ? pool.query(
+            `SELECT r.id, r.post_id, p.title, u.display_name, u.id as user_id
+             FROM replies r
+             JOIN posts p ON r.post_id = p.id
+             JOIN users u ON r.author_id = u.id
+             WHERE r.id = $1 AND r.deleted_at IS NULL`,
+            [focalNode.source_id]
+          )
+        : Promise.resolve({ rows: [] as { id: string; post_id: string; title: string; display_name: string; user_id: string }[] }),
+    ]);
+
+    const focalSourceRow = focalNode.source_type === 'post'
+      ? focalPostRow.rows[0]
+      : focalReplyRow.rows[0];
+
+    const focalData = {
+      id: focalNode.id,
+      content: focalNode.content,
+      rewritten_text: focalNode.rewritten_text,
+      epistemic_type: focalNode.epistemic_type,
+      fvp_confidence: focalNode.fvp_confidence,
+      source_type: focalNode.source_type,
+      source_id: focalNode.source_id,
+      source_post_id: focalNode.source_type === 'post'
+        ? (focalSourceRow?.id ?? focalNode.source_id)
+        : ((focalSourceRow as { post_id?: string })?.post_id ?? focalNode.source_id),
+      source_title: focalSourceRow?.title ?? null,
+      source_author: focalSourceRow?.display_name ?? null,
+      source_author_id: focalSourceRow?.user_id ?? null,
+    };
+
+    // 2. Get the investigate subgraph
+    const subgraph = await v3Repo.getInvestigateSubgraph(iNodeId);
+
+    // 3. Attach extracted values to nodes
+    const nodesWithValues: SubgraphNode[] = subgraph.relatedNodes.map(node => ({
+      ...node,
+      extracted_values: subgraph.extractedValues.get(node.id) ?? [],
+    }));
+
+    // 4. Run the ranking pipeline
+    const { rankedNodes, clustersFormed } = runRankingPipeline(
+      nodesWithValues,
+      subgraph.schemeEdges,
+      iNodeId
+    );
+
+    // 5. Detect ghost nodes
+    const ghostNodes = detectGhostNodes(
+      rankedNodes,
+      subgraph.enthymemes,
+      subgraph.socraticQuestions
+    );
+
+    // 6. Build the response
+    const syntheticThread = rankedNodes.map(node => ({
+      i_node_id: node.id,
+      content: node.content,
+      rewritten_text: node.rewritten_text,
+      epistemic_type: node.epistemic_type,
+      fvp_confidence: node.fvp_confidence,
+      source_type: node.source_type,
+      source_id: node.source_id,
+      source_post_id: node.source_post_id,
+      source_title: node.source_title,
+      source_author: node.source_author,
+      source_author_id: node.source_author_id,
+      relation: node.direction,
+      scheme_id: node.scheme_id,
+      scheme_confidence: node.scheme_confidence,
+      evidence_rank: node.evidence_rank,
+      hinge_centrality: node.hinge_centrality,
+      final_score: node.final_score,
+      cluster_id: node.cluster_id,
+      extracted_values: node.extracted_values,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        focal_node: focalData,
+        synthetic_thread: syntheticThread,
+        ghost_nodes: ghostNodes,
+        total_related: subgraph.relatedNodes.length,
+        computation_metadata: {
+          nodes_analyzed: subgraph.relatedNodes.length,
+          clusters_formed: clustersFormed,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to generate investigate page', { iNodeId, error });
+    res.status(500).json({ success: false, error: 'Failed to generate investigate page' });
   }
 });
 

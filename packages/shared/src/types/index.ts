@@ -394,3 +394,62 @@ export interface V3EquivocationFlag {
   conclusion_concept_id: string;
   created_at: string;
 }
+
+// Investigate Page Types
+export interface InvestigateFocalNode {
+  id: string;
+  content: string;
+  rewritten_text: string | null;
+  epistemic_type: V3EpistemicType;
+  fvp_confidence: number;
+  source_type: 'post' | 'reply';
+  source_id: string;
+  source_post_id: string;
+  source_title: string | null;
+  source_author: string | null;
+  source_author_id: string | null;
+}
+
+export interface InvestigateThreadNode {
+  i_node_id: string;
+  content: string;
+  rewritten_text: string | null;
+  epistemic_type: V3EpistemicType;
+  fvp_confidence: number;
+  source_type: 'post' | 'reply';
+  source_id: string;
+  source_post_id: string;
+  source_title: string | null;
+  source_author: string | null;
+  source_author_id: string | null;
+  relation: V3SchemeDirection;
+  scheme_id: string;
+  scheme_confidence: number;
+  evidence_rank: number;
+  hinge_centrality: number;
+  final_score: number;
+  cluster_id: number;
+  extracted_values: string[];
+}
+
+export interface InvestigateGhostNode {
+  id: string;
+  content: string;
+  fvp_type: V3EpistemicType;
+  probability: number;
+  scheme_id: string;
+  scheme_direction: V3SchemeDirection;
+  socratic_question: string | null;
+  uncertainty_level: number;
+}
+
+export interface InvestigateResponse {
+  focal_node: InvestigateFocalNode;
+  synthetic_thread: InvestigateThreadNode[];
+  ghost_nodes: InvestigateGhostNode[];
+  total_related: number;
+  computation_metadata: {
+    nodes_analyzed: number;
+    clusters_formed: number;
+  };
+}
