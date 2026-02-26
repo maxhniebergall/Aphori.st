@@ -42,8 +42,22 @@ export interface CanonicalClaim {
   updated_at: string;
 }
 
+export interface MatchedINode {
+  i_node_id: string;
+  content: string;
+  rewritten_text: string | null;
+  epistemic_type: string;
+  similarity: number;
+  source_type: 'post' | 'reply';
+  source_id: string;
+  source_post_id: string | null;
+  source_title: string | null;
+  source_author: string | null;
+}
+
 export interface SearchResult {
   query: string;
+  matched_inode: MatchedINode | null;
   results: (PostWithAuthor | ReplyWithAuthor)[];
 }
 
@@ -451,7 +465,8 @@ export const usersApi = {
 };
 
 // V3 Hypergraph API
-import type { V3Subgraph } from '@chitin/shared';
+import type { V3Subgraph, InvestigateResponse } from '@chitin/shared';
+export type { InvestigateResponse };
 
 export interface V3SimilarNode {
   i_node: V3Subgraph['i_nodes'][number];
@@ -476,6 +491,10 @@ export const v3Api = {
 
   async getSimilarINodes(iNodeId: string, token?: string): Promise<{ similar_nodes: V3SimilarNode[] }> {
     return apiRequest(`/api/v3/similar/${iNodeId}`, { token });
+  },
+
+  async getInvestigate(iNodeId: string, token?: string): Promise<InvestigateResponse> {
+    return apiRequest(`/api/v3/investigate/${iNodeId}`, { token });
   },
 };
 
