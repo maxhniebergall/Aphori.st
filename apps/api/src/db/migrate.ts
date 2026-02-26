@@ -3,6 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { getPool, closePool, query } from './pool.js';
 import logger from '../logger.js';
+import { enqueueV3Analysis } from '../jobs/enqueueV3Analysis.js';
+import { closeV3Queue } from '../jobs/v3Queue.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
@@ -63,6 +65,22 @@ async function applyMigration(migration: Migration): Promise<void> {
   }
 }
 
+async function runPostMigrationHooks(migrationName: string): Promise<void> {
+  if (migrationName === '030_backfill_enthymeme_replies.sql') {
+    logger.info('Post-migration: enqueueing assumption-bot replies for v3 analysis...');
+    const result = await query<{ id: string; content: string }>(
+      `SELECT id, content FROM replies WHERE author_id = 'assumption-bot'`
+    );
+    let enqueued = 0;
+    for (const row of result.rows) {
+      await enqueueV3Analysis('reply', row.id, row.content);
+      enqueued++;
+    }
+    logger.info(`Post-migration: enqueued ${enqueued} assumption-bot replies`);
+    await closeV3Queue();
+  }
+}
+
 // Advisory lock key for migration coordination (arbitrary fixed int)
 const MIGRATION_LOCK_ID = 839271;
 
@@ -92,6 +110,7 @@ export async function migrate(): Promise<void> {
         if (!applied.has(migration.name)) {
           await applyMigration(migration);
           appliedCount++;
+          await runPostMigrationHooks(migration.name);
         }
       }
 
@@ -109,7 +128,7 @@ export async function migrate(): Promise<void> {
 }
 
 // Run if executed directly (for standalone migration job)
-const isDirectRun = process.argv[1]?.endsWith('migrate.js');
+const isDirectRun = process.argv[1]?.endsWith('migrate.js') || process.argv[1]?.endsWith('migrate.ts');
 if (isDirectRun) {
   migrate()
     .catch((error) => {
