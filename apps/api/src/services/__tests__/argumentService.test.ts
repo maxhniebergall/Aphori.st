@@ -42,11 +42,11 @@ class TestDiscourseEngineService {
     return this.request('/health', 'GET');
   }
 
-  async embedContent(texts: string[]) {
+  async embedForDelayedAnalysis(texts: string[]) {
     return this.request<{ embeddings_1536: number[][] }>('/embed/content', 'POST', { texts });
   }
 
-  async disambiguateConceptsBatch(
+  async disambiguateConceptsForDelayedJob(
     macroContext: string,
     terms: Array<{
       term: string;
@@ -90,7 +90,7 @@ describe('DiscourseEngineService', () => {
     vi.restoreAllMocks();
   });
 
-  describe('embedContent', () => {
+  describe('embedForDelayedAnalysis', () => {
     it('should request 1536-dimensional embeddings', async () => {
       const mockResponse = {
         embeddings_1536: [Array(1536).fill(0.1), Array(1536).fill(0.2)],
@@ -108,7 +108,7 @@ describe('DiscourseEngineService', () => {
         )
       );
 
-      const result = await service.embedContent(['Text 1', 'Text 2']);
+      const result = await service.embedForDelayedAnalysis(['Text 1', 'Text 2']);
 
       expect(result.embeddings_1536).toHaveLength(2);
       expect(result.embeddings_1536[0]).toHaveLength(1536);
@@ -116,7 +116,7 @@ describe('DiscourseEngineService', () => {
     });
   });
 
-  describe('disambiguateConceptsBatch', () => {
+  describe('disambiguateConceptsForDelayedJob', () => {
     it('should match term to an existing concept candidate', async () => {
       const mockResponse = {
         results: [
@@ -136,7 +136,7 @@ describe('DiscourseEngineService', () => {
         )
       );
 
-      const result = await service.disambiguateConceptsBatch(
+      const result = await service.disambiguateConceptsForDelayedJob(
         'We need more freedom in this country.',
         [
           {
@@ -180,7 +180,7 @@ describe('DiscourseEngineService', () => {
         )
       );
 
-      const result = await service.disambiguateConceptsBatch(
+      const result = await service.disambiguateConceptsForDelayedJob(
         'Justice requires fair trials.',
         [
           {
@@ -215,7 +215,7 @@ describe('DiscourseEngineService', () => {
         )
       );
 
-      const result = await service.disambiguateConceptsBatch('Freedom and equality matter.', [
+      const result = await service.disambiguateConceptsForDelayedJob('Freedom and equality matter.', [
         { term: 'freedom', targetINodeText: 'Freedom matters', candidates: [{ id: 'concept-1', term: 'freedom', definition: 'Liberty', sampleINodeText: 'Liberty from coercion' }] },
         { term: 'equality', targetINodeText: 'Equality matters', candidates: [] },
       ]);
@@ -236,7 +236,7 @@ describe('DiscourseEngineService', () => {
       );
 
       await expect(
-        service.disambiguateConceptsBatch('context', [{ term: 'test', targetINodeText: 'test', candidates: [] }])
+        service.disambiguateConceptsForDelayedJob('context', [{ term: 'test', targetINodeText: 'test', candidates: [] }])
       ).rejects.toThrow('discourse-engine error: 500');
     });
   });
