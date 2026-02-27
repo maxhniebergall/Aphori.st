@@ -30,22 +30,16 @@ router.get('/', async (req, res) => {
       const pool = getPool();
       const argumentRepo = createArgumentRepo(pool);
 
-      // Generate query embedding
-      const embeddingResponse = await argumentService.embedContent([q]);
-      const queryEmbedding = embeddingResponse.embeddings_1536[0];
-
-      if (!queryEmbedding) {
-        res.status(500).json({ success: false, error: 'Failed to generate embedding' });
-        return;
-      }
+      // Generate query embedding — realtime, blocking the request-response cycle
+      const realtimeQueryEmbedding = await argumentService.embedForRealtimeSearch(q);
 
       // Search with pgvector
       const v3Repo = createV3HypergraphRepo(pool);
 
       // Run content search and I-node match in parallel
       const [results, similarINodes] = await Promise.all([
-        argumentRepo.semanticSearch(queryEmbedding, limitNum),
-        v3Repo.findSimilarINodes(queryEmbedding, 0.85, 1),
+        argumentRepo.semanticSearch(realtimeQueryEmbedding, limitNum),
+        v3Repo.findSimilarINodes(realtimeQueryEmbedding, 0.85, 1),
       ]);
 
       // Enrich with full content, batching queries to limit concurrent DB operations
