@@ -53,8 +53,8 @@ class DiscourseEngineService {
     return this.request('/health', 'GET');
   }
 
-  async embedContent(texts: string[]) {
-    logger.info('Calling discourse-engine embedContent', { textCount: texts.length });
+  private async _requestEmbeddings(texts: string[]): Promise<{ embeddings_1536: number[][] }> {
+    logger.info('Calling discourse-engine /embed/content', { textCount: texts.length });
 
     const response = await this.request<{ embeddings: number[][] }>(
       '/embed/content',
@@ -67,18 +67,41 @@ class DiscourseEngineService {
   }
 
   /**
-   * V3 analysis: extract neurosymbolic hypergraph from texts
+   * Realtime path: embed a single search query for semantic search.
+   * Called synchronously in the request-response cycle.
    */
-  async analyzeV3(texts: Array<{ id: string; text: string }>): Promise<V3AnalyzeTextResponse> {
-    logger.info('Calling discourse-engine V3 analyze-text', { textCount: texts.length });
+  async embedForRealtimeSearch(query: string): Promise<number[]> {
+    const response = await this._requestEmbeddings([query]);
+    const embedding = response.embeddings_1536[0];
+    if (!embedding) {
+      throw new Error('Failed to generate realtime search embedding');
+    }
+    return embedding;
+  }
+
+  /**
+   * Delayed path: embed a batch of texts during background analysis jobs.
+   * Called from the BullMQ worker, not in a request-response cycle.
+   */
+  async embedForDelayedAnalysis(texts: string[]): Promise<{ embeddings_1536: number[][] }> {
+    return this._requestEmbeddings(texts);
+  }
+
+  /**
+   * Delayed path: extract neurosymbolic hypergraph from texts.
+   * Called only from the BullMQ v3 analysis worker.
+   */
+  async analyzeTextForDelayedJob(texts: Array<{ id: string; text: string }>): Promise<V3AnalyzeTextResponse> {
+    logger.info('Calling discourse-engine V3 analyze-text (delayed job)', { textCount: texts.length });
     return this.request<V3AnalyzeTextResponse>('/v3/analyze-text', 'POST', { texts });
   }
 
   /**
-   * Disambiguate contested terms against known concept candidates.
+   * Delayed path: disambiguate contested terms against known concept candidates.
+   * Called only from the BullMQ v3 analysis worker.
    * Sends 1 HTTP request; discourse engine fans out to N parallel Gemini calls internally.
    */
-  async disambiguateConceptsBatch(
+  async disambiguateConceptsForDelayedJob(
     macroContext: string,
     terms: Array<{
       term: string;
@@ -86,7 +109,7 @@ class DiscourseEngineService {
       candidates: Array<{ id: string; term: string; definition: string; sampleINodeText: string }>;
     }>
   ): Promise<Array<{ term: string; matchedConceptId: string | null; newDefinition: string | null }>> {
-    logger.info('Calling discourse-engine disambiguate-concepts', { termCount: terms.length });
+    logger.info('Calling discourse-engine disambiguate-concepts (delayed job)', { termCount: terms.length });
 
     const response = await this.request<{
       results: Array<{ term: string; matched_concept_id: string | null; new_definition: string | null }>;
