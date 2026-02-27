@@ -31,7 +31,7 @@ router.get('/', async (req, res) => {
       const argumentRepo = createArgumentRepo(pool);
 
       // Generate query embedding — realtime, blocking the request-response cycle
-      const realtimeQueryEmbedding = await argumentService.embedForRealtimeSearch(q);
+      const realtimeQueryEmbedding = await argumentService.embedSearchQuery(q);
 
       // Search with pgvector
       const v3Repo = createV3HypergraphRepo(pool);
