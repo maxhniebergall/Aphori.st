@@ -91,10 +91,11 @@ describe('Search Routes Integration Tests', () => {
       });
       const post2 = await factories.createPost(undefined, { content: 'Sports news and football updates' });
 
-      // Generate REAL embeddings for the posts
+      // Simulate what the delayed worker would have done: embed and store post content
+      // so the search route has indexed data to query against.
       const argumentService = getArgumentService();
-      const embeddings1 = await argumentService.embedContent([post1.content]);
-      const embeddings2 = await argumentService.embedContent([post2.content]);
+      const embeddings1 = await argumentService.embedForDelayedAnalysis([post1.content]);
+      const embeddings2 = await argumentService.embedForDelayedAnalysis([post2.content]);
 
       // Store the embeddings
       await factories.createContentEmbedding('post', post1.id, embeddings1.embeddings_1536[0]);
@@ -123,10 +124,10 @@ describe('Search Routes Integration Tests', () => {
 
       const argumentService = getArgumentService();
 
-      // Create 5 posts with embeddings
+      // Simulate what the delayed worker would have done: embed and store post content.
       for (let i = 0; i < 5; i++) {
         const post = await factories.createPost(undefined, { content: `Test post number ${i}` });
-        const embeddings = await argumentService.embedContent([post.content]);
+        const embeddings = await argumentService.embedForDelayedAnalysis([post.content]);
         await factories.createContentEmbedding('post', post.id, embeddings.embeddings_1536[0]);
       }
 
@@ -161,9 +162,9 @@ describe('Search Routes Integration Tests', () => {
         content: 'Cooking recipes for delicious pasta and Italian cuisine',
       });
 
-      // Generate REAL embeddings
-      const embeddings1 = await argumentService.embedContent([post1.content]);
-      const embeddings2 = await argumentService.embedContent([post2.content]);
+      // Simulate what the delayed worker would have done: embed and store post content.
+      const embeddings1 = await argumentService.embedForDelayedAnalysis([post1.content]);
+      const embeddings2 = await argumentService.embedForDelayedAnalysis([post2.content]);
 
       await factories.createContentEmbedding('post', post1.id, embeddings1.embeddings_1536[0]);
       await factories.createContentEmbedding('post', post2.id, embeddings2.embeddings_1536[0]);
