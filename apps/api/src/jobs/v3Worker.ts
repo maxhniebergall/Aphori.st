@@ -72,13 +72,13 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     await v3Repo.updateRunStatus(run.id, 'processing');
     await job.updateProgress(10);
 
-    // 5. Call discourse engine V3 analysis
+    // 5. Call discourse engine V3 analysis (delayed job — via BullMQ worker)
     logger.info(`V3 worker: calling discourse engine`, { sourceId, runId: run.id });
-    const v3Response = await argumentService.analyzeV3([
+    const delayedAnalysisResponse = await argumentService.analyzeTextForDelayedJob([
       { id: sourceId, text: contentRecord.content }
     ]);
 
-    const analysis = v3Response.analyses[0];
+    const analysis = delayedAnalysisResponse.analyses[0];
     if (!analysis) {
       logger.warn(`V3 worker: discourse engine returned NO analysis`, { sourceId, runId: run.id });
       await v3Repo.updateRunStatus(run.id, 'failed', 'Discourse engine returned no analysis');
@@ -122,24 +122,24 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
     if (allTextsToEmbed.length > 0) {
       logger.info(`V3 worker: embedding ${allTextsToEmbed.length} texts (${aduTexts.length} ADUs + ${termTexts.length} terms)`, { sourceId });
-      const embedResponse = await argumentService.embedContent(allTextsToEmbed);
+      const delayedAduTermEmbedResponse = await argumentService.embedForDelayedAnalysis(allTextsToEmbed);
 
-      if (embedResponse.embeddings_1536.length !== allTextsToEmbed.length) {
+      if (delayedAduTermEmbedResponse.embeddings_1536.length !== allTextsToEmbed.length) {
         throw new Error(
-          `embedContent returned ${embedResponse.embeddings_1536.length} vectors for ${allTextsToEmbed.length} inputs`
+          `embedForDelayedAnalysis returned ${delayedAduTermEmbedResponse.embeddings_1536.length} vectors for ${allTextsToEmbed.length} inputs`
         );
       }
 
       // Split results back
       for (let i = 0; i < aduNodes.length; i++) {
-        if (embedResponse.embeddings_1536[i]) {
-          iNodeEmbeddings.set(aduNodes[i]!.node_id, embedResponse.embeddings_1536[i]!);
+        if (delayedAduTermEmbedResponse.embeddings_1536[i]) {
+          iNodeEmbeddings.set(aduNodes[i]!.node_id, delayedAduTermEmbedResponse.embeddings_1536[i]!);
         }
       }
       for (let i = 0; i < uniqueTerms.length; i++) {
         const idx = aduNodes.length + i;
-        if (embedResponse.embeddings_1536[idx]) {
-          termEmbeddings.set(uniqueTerms[i]!, embedResponse.embeddings_1536[idx]!);
+        if (delayedAduTermEmbedResponse.embeddings_1536[idx]) {
+          termEmbeddings.set(uniqueTerms[i]!, delayedAduTermEmbedResponse.embeddings_1536[idx]!);
         }
       }
     }
@@ -150,11 +150,11 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     const valueEmbeddings = new Map<string, number[]>();
     if (analysis.extracted_values && analysis.extracted_values.length > 0) {
       const valueTexts = analysis.extracted_values.map((v: { text: string }) => v.text);
-      const valEmbedResponse = await argumentService.embedContent(valueTexts);
+      const delayedValueEmbedResponse = await argumentService.embedForDelayedAnalysis(valueTexts);
 
       for (let i = 0; i < analysis.extracted_values.length; i++) {
-        if (valEmbedResponse.embeddings_1536[i]) {
-          valueEmbeddings.set(analysis.extracted_values[i]!.text, valEmbedResponse.embeddings_1536[i]!);
+        if (delayedValueEmbedResponse.embeddings_1536[i]) {
+          valueEmbeddings.set(analysis.extracted_values[i]!.text, delayedValueEmbedResponse.embeddings_1536[i]!);
         }
       }
     }
@@ -263,22 +263,22 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
         };
       });
 
-      // STEP C: Single HTTP call — discourse engine fans out to parallel Gemini calls
+      // STEP C: Single HTTP call — discourse engine fans out to parallel Gemini calls (delayed job)
       const MAX_MACRO_CONTEXT_LENGTH = 8000;
       const truncatedContext = contentRecord.content.length > MAX_MACRO_CONTEXT_LENGTH
         ? contentRecord.content.slice(0, MAX_MACRO_CONTEXT_LENGTH)
         : contentRecord.content;
-      const disambResults = await argumentService.disambiguateConceptsBatch(
+      const delayedDisambResults = await argumentService.disambiguateConceptsForDelayedJob(
         truncatedContext,
         termDisambInputs
       );
 
-      // STEP D: Embed novel definitions (0–1 HTTP calls)
-      const novelTerms = disambResults.filter(r => r.newDefinition !== null);
+      // STEP D: Embed novel definitions (0–1 HTTP calls, delayed job)
+      const novelTerms = delayedDisambResults.filter(r => r.newDefinition !== null);
       const conceptIdForTerm = new Map<string, string>(); // term → concept UUID
 
       // First, map matched concepts — validate that LLM didn't hallucinate an unknown ID
-      for (const r of disambResults) {
+      for (const r of delayedDisambResults) {
         if (r.matchedConceptId) {
           const knownIds = new Set(
             (candidatesPerTerm.get(r.term) ?? []).map(c => c.id)
@@ -297,11 +297,11 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
       if (novelTerms.length > 0) {
         const novelTexts = novelTerms.map(r => `${r.term}: ${r.newDefinition}`);
-        const novelEmbedResponse = await argumentService.embedContent(novelTexts);
+        const delayedNovelDefinitionEmbedResponse = await argumentService.embedForDelayedAnalysis(novelTexts);
 
         await Promise.all(
           novelTerms.map(async (r, idx) => {
-            const embedding = novelEmbedResponse.embeddings_1536[idx];
+            const embedding = delayedNovelDefinitionEmbedResponse.embeddings_1536[idx];
             if (!embedding || !r.newDefinition) return;
 
             const concept = await v3Repo.createConcept(r.term, r.newDefinition, embedding);
