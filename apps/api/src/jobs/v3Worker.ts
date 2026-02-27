@@ -74,7 +74,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
     // 5. Call discourse engine V3 analysis (delayed job — via BullMQ worker)
     logger.info(`V3 worker: calling discourse engine`, { sourceId, runId: run.id });
-    const delayedAnalysisResponse = await argumentService.analyzeTextForDelayedJob([
+    const delayedAnalysisResponse = await argumentService.analyzeText([
       { id: sourceId, text: contentRecord.content }
     ]);
 
@@ -122,11 +122,11 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
     if (allTextsToEmbed.length > 0) {
       logger.info(`V3 worker: embedding ${allTextsToEmbed.length} texts (${aduTexts.length} ADUs + ${termTexts.length} terms)`, { sourceId });
-      const delayedAduTermEmbedResponse = await argumentService.embedForDelayedAnalysis(allTextsToEmbed);
+      const delayedAduTermEmbedResponse = await argumentService.embedTexts(allTextsToEmbed);
 
       if (delayedAduTermEmbedResponse.embeddings_1536.length !== allTextsToEmbed.length) {
         throw new Error(
-          `embedForDelayedAnalysis returned ${delayedAduTermEmbedResponse.embeddings_1536.length} vectors for ${allTextsToEmbed.length} inputs`
+          `embedTexts returned ${delayedAduTermEmbedResponse.embeddings_1536.length} vectors for ${allTextsToEmbed.length} inputs`
         );
       }
 
@@ -150,7 +150,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     const valueEmbeddings = new Map<string, number[]>();
     if (analysis.extracted_values && analysis.extracted_values.length > 0) {
       const valueTexts = analysis.extracted_values.map((v: { text: string }) => v.text);
-      const delayedValueEmbedResponse = await argumentService.embedForDelayedAnalysis(valueTexts);
+      const delayedValueEmbedResponse = await argumentService.embedTexts(valueTexts);
 
       for (let i = 0; i < analysis.extracted_values.length; i++) {
         if (delayedValueEmbedResponse.embeddings_1536[i]) {
@@ -268,7 +268,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       const truncatedContext = contentRecord.content.length > MAX_MACRO_CONTEXT_LENGTH
         ? contentRecord.content.slice(0, MAX_MACRO_CONTEXT_LENGTH)
         : contentRecord.content;
-      const delayedDisambResults = await argumentService.disambiguateConceptsForDelayedJob(
+      const delayedDisambResults = await argumentService.disambiguateConcepts(
         truncatedContext,
         termDisambInputs
       );
@@ -297,7 +297,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
       if (novelTerms.length > 0) {
         const novelTexts = novelTerms.map(r => `${r.term}: ${r.newDefinition}`);
-        const delayedNovelDefinitionEmbedResponse = await argumentService.embedForDelayedAnalysis(novelTexts);
+        const delayedNovelDefinitionEmbedResponse = await argumentService.embedTexts(novelTexts);
 
         await Promise.all(
           novelTerms.map(async (r, idx) => {
