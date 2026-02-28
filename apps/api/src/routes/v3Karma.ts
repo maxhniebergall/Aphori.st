@@ -39,41 +39,6 @@ router.get('/karma/nodes', requireAuth, async (req: Request, res: Response): Pro
   }
 });
 
-// GET /epistemic-notifications — paginated pull-only notification inbox
-router.get('/epistemic-notifications', requireAuth, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const pool = getPool();
-    const repo = createV3GamificationRepo(pool);
-    const limit = Math.min(parseInt(req.query.limit as string || '20', 10), 100);
-    const offset = parseInt(req.query.offset as string || '0', 10);
-
-    const result = await repo.getEpistemicNotifications(req.user!.id, limit, offset);
-    res.json({
-      success: true,
-      data: result.notifications,
-      total: result.total,
-      limit,
-      offset,
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Internal Server Error', message: 'Failed to fetch notifications' });
-  }
-});
-
-// POST /epistemic-notifications/read — mark notifications as read
-router.post('/epistemic-notifications/read', requireAuth, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const pool = getPool();
-    const repo = createV3GamificationRepo(pool);
-    const { notification_ids } = req.body as { notification_ids?: string[] };
-
-    await repo.markNotificationsRead(req.user!.id, notification_ids || []);
-    res.json({ success: true, message: 'Notifications marked as read' });
-  } catch (err) {
-    res.status(500).json({ error: 'Internal Server Error', message: 'Failed to mark notifications as read' });
-  }
-});
-
 // GET /bounties — active crucible escrows
 router.get('/bounties', async (req: Request, res: Response): Promise<void> => {
   try {
