@@ -36,7 +36,7 @@ ALTER TABLE users
 
 -- User karma profiles (daily yield tracking)
 CREATE TABLE v3_user_karma_profiles (
-  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  user_id VARCHAR(255) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   daily_pioneer_yield FLOAT DEFAULT 0,
   daily_builder_yield FLOAT DEFAULT 0,
   daily_critic_yield FLOAT DEFAULT 0,
@@ -47,7 +47,7 @@ CREATE TABLE v3_user_karma_profiles (
 -- Epistemic notifications (pull-only inbox)
 CREATE TABLE v3_epistemic_notifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   type VARCHAR(50) NOT NULL CHECK (type IN ('STREAM_HALTED','BOUNTY_STOLEN','BOUNTY_PAID','BOUNTY_LANGUISHED','UPSTREAM_DEFEATED')),
   payload JSONB NOT NULL DEFAULT '{}',
   is_read BOOLEAN NOT NULL DEFAULT FALSE,
