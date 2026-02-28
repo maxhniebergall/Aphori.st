@@ -1,8 +1,7 @@
 import { Pool } from 'pg';
 import type {
   V3UserKarmaProfile,
-  V3EpistemicNotification,
-  V3EpistemicNotificationType,
+  EpistemicNotificationType,
   V3EscrowStatus,
   V3Source,
   V3KarmaNode,
@@ -199,11 +198,10 @@ export const createV3GamificationRepo = (pool: Pool) => ({
       SET
         pioneer_karma = u.pioneer_karma + data.pioneer,
         builder_karma = u.builder_karma + data.builder,
-        critic_karma = u.critic_karma + data.critic,
-        epistemic_score = u.pioneer_karma + data.pioneer + u.builder_karma + data.builder + u.critic_karma + data.critic
+        critic_karma = u.critic_karma + data.critic
       FROM (
         SELECT
-          unnest($1::uuid[]) as user_id,
+          unnest($1::text[]) as user_id,
           unnest($2::float[]) as pioneer,
           unnest($3::float[]) as builder,
           unnest($4::float[]) as critic
@@ -216,49 +214,13 @@ export const createV3GamificationRepo = (pool: Pool) => ({
 
   async createEpistemicNotification(
     userId: string,
-    type: V3EpistemicNotificationType,
+    type: EpistemicNotificationType,
     payload: Record<string, unknown>
   ): Promise<void> {
     await pool.query(`
-      INSERT INTO v3_epistemic_notifications (user_id, type, payload)
-      VALUES ($1, $2, $3)
+      INSERT INTO notifications (user_id, category, epistemic_type, payload, is_read)
+      VALUES ($1, 'EPISTEMIC', $2, $3, FALSE)
     `, [userId, type, JSON.stringify(payload)]);
-  },
-
-  async getEpistemicNotifications(
-    userId: string,
-    limit: number = 20,
-    offset: number = 0
-  ): Promise<{ notifications: V3EpistemicNotification[]; total: number }> {
-    const [dataResult, countResult] = await Promise.all([
-      pool.query(`
-        SELECT id, user_id, type, payload, is_read, created_at
-        FROM v3_epistemic_notifications
-        WHERE user_id = $1
-        ORDER BY created_at DESC
-        LIMIT $2 OFFSET $3
-      `, [userId, limit, offset]),
-      pool.query(`
-        SELECT COUNT(*) as total FROM v3_epistemic_notifications WHERE user_id = $1
-      `, [userId]),
-    ]);
-    return {
-      notifications: dataResult.rows as V3EpistemicNotification[],
-      total: parseInt(countResult.rows[0].total as string, 10),
-    };
-  },
-
-  async markNotificationsRead(userId: string, notificationIds: string[]): Promise<void> {
-    if (notificationIds.length === 0) {
-      await pool.query(`
-        UPDATE v3_epistemic_notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE
-      `, [userId]);
-    } else {
-      await pool.query(`
-        UPDATE v3_epistemic_notifications SET is_read = TRUE
-        WHERE user_id = $1 AND id = ANY($2::uuid[])
-      `, [userId, notificationIds]);
-    }
   },
 
   // ── Karma Profile Query ──
@@ -274,8 +236,7 @@ export const createV3GamificationRepo = (pool: Pool) => ({
         COALESCE(kp.updated_at, u.updated_at) as updated_at,
         COALESCE(u.pioneer_karma, 0) as pioneer_karma,
         COALESCE(u.builder_karma, 0) as builder_karma,
-        COALESCE(u.critic_karma, 0) as critic_karma,
-        COALESCE(u.epistemic_score, 1.0) as epistemic_score
+        COALESCE(u.critic_karma, 0) as critic_karma
       FROM users u
       LEFT JOIN v3_user_karma_profiles kp ON kp.user_id = u.id
       WHERE u.id = $1 AND u.deleted_at IS NULL
@@ -292,7 +253,6 @@ export const createV3GamificationRepo = (pool: Pool) => ({
       pioneer_karma: parseFloat(r.pioneer_karma as string),
       builder_karma: parseFloat(r.builder_karma as string),
       critic_karma: parseFloat(r.critic_karma as string),
-      epistemic_score: parseFloat(r.epistemic_score as string),
     };
   },
 

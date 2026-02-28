@@ -9,7 +9,6 @@ interface UserRow {
   pioneer_karma: number;
   builder_karma: number;
   critic_karma: number;
-  epistemic_score: number;
   followers_count: number;
   following_count: number;
   notifications_last_viewed_at: Date | null;
@@ -28,7 +27,6 @@ function rowToUser(row: UserRow): User {
     pioneer_karma: row.pioneer_karma,
     builder_karma: row.builder_karma,
     critic_karma: row.critic_karma,
-    epistemic_score: row.epistemic_score,
     followers_count: row.followers_count,
     following_count: row.following_count,
     notifications_last_viewed_at: row.notifications_last_viewed_at
