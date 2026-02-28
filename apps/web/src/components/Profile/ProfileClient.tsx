@@ -166,7 +166,7 @@ export function ProfileClient({ userId }: ProfileClientProps) {
             <div className="mt-3 flex items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
               <span>Joined {formatDistanceToNow(new Date(user.created_at))}</span>
               <span className="text-slate-400 dark:text-slate-600">|</span>
-              <span>{(user.vote_karma ?? 0) + (user.connection_karma ?? 0)} karma</span>
+              <span>{(user.pioneer_karma ?? 0) + (user.builder_karma ?? 0) + (user.critic_karma ?? 0)} karma</span>
               <span className="text-slate-400 dark:text-slate-600">|</span>
               <span><strong>{user.followers_count ?? 0}</strong> followers</span>
               <span><strong>{user.following_count ?? 0}</strong> following</span>
