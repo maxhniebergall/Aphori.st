@@ -6,8 +6,10 @@ export interface User {
   email: string;
   user_type: UserType;
   display_name: string | null;
-  vote_karma: number;
-  connection_karma: number;
+  pioneer_karma: number;
+  builder_karma: number;
+  critic_karma: number;
+  epistemic_score: number;
   followers_count: number;
   following_count: number;
   notifications_last_viewed_at: string | null;
@@ -254,6 +256,12 @@ export interface V3INode {
   span_end: number;
   extraction_confidence: number;
   created_at: string;
+  fact_subtype: 'ENTHYMEME' | 'ANECDOTE' | 'DOCUMENT_REF' | 'ACADEMIC_REF' | null;
+  base_weight: number;
+  evidence_rank: number;
+  is_defeated: boolean;
+  component_id: string | null;
+  node_role: 'ROOT' | 'SUPPORT' | 'ATTACK' | null;
 }
 
 export interface V3SNode {
@@ -266,6 +274,9 @@ export interface V3SNode {
   fallacy_type: string | null;
   fallacy_explanation: string | null;
   created_at: string;
+  escrow_expires_at: string | null;
+  pending_bounty: number | null;
+  escrow_status: 'none' | 'active' | 'paid' | 'stolen' | 'languished';
 }
 
 export interface V3Edge {
@@ -274,6 +285,7 @@ export interface V3Edge {
   node_id: string;
   node_type: V3NodeType;
   role: V3EdgeRole;
+  source_id: string | null;
 }
 
 export interface V3Enthymeme {
@@ -452,4 +464,72 @@ export interface InvestigateResponse {
     nodes_analyzed: number;
     clusters_formed: number;
   };
+}
+
+// V4 Gamification Types
+// Note: V3HypergraphRepo.ts references u.vote_karma in SQL queries; those queries
+// will need updating to use pioneer_karma/builder_karma/critic_karma/epistemic_score
+// once the DB migration is applied.
+
+export type V3FactSubtype = 'ENTHYMEME' | 'ANECDOTE' | 'DOCUMENT_REF' | 'ACADEMIC_REF';
+export type V3NodeRole = 'ROOT' | 'SUPPORT' | 'ATTACK';
+export type V3EscrowStatus = 'none' | 'active' | 'paid' | 'stolen' | 'languished';
+export type V3SourceLevel = 'DOMAIN' | 'DOCUMENT' | 'EXTRACT';
+export type V3EpistemicNotificationType = 'STREAM_HALTED' | 'BOUNTY_STOLEN' | 'BOUNTY_PAID' | 'BOUNTY_LANGUISHED' | 'UPSTREAM_DEFEATED';
+
+export interface V3UserKarmaProfile {
+  user_id: string;
+  daily_pioneer_yield: number;
+  daily_builder_yield: number;
+  daily_critic_yield: number;
+  last_batch_run_at: string | null;
+  updated_at: string;
+  // Totals from users table (joined)
+  pioneer_karma: number;
+  builder_karma: number;
+  critic_karma: number;
+  epistemic_score: number;
+}
+
+export interface V3EpistemicNotification {
+  id: string;
+  user_id: string;
+  type: V3EpistemicNotificationType;
+  payload: Record<string, unknown>;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface V3Source {
+  id: string;
+  level: V3SourceLevel;
+  url: string | null;
+  title: string | null;
+  parent_source_id: string | null;
+  reputation_score: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface V3KarmaNode {
+  id: string;
+  content: string;
+  rewritten_text: string | null;
+  epistemic_type: V3EpistemicType;
+  node_role: V3NodeRole;
+  base_weight: number;
+  evidence_rank: number;
+  is_defeated: boolean;
+  source_type: 'post' | 'reply';
+  source_id: string;
+}
+
+export interface V3ActiveBounty {
+  scheme_node_id: string;
+  pending_bounty: number;
+  escrow_expires_at: string;
+  escrow_status: V3EscrowStatus;
+  // Bridge info
+  component_a_sample: string | null;  // sample I-node content from component A
+  component_b_sample: string | null;  // sample I-node content from component B
 }
