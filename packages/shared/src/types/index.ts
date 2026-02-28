@@ -9,7 +9,6 @@ export interface User {
   pioneer_karma: number;
   builder_karma: number;
   critic_karma: number;
-  epistemic_score: number;
   followers_count: number;
   following_count: number;
   notifications_last_viewed_at: string | null;
@@ -467,9 +466,6 @@ export interface InvestigateResponse {
 }
 
 // V4 Gamification Types
-// Note: V3HypergraphRepo.ts references u.vote_karma in SQL queries; those queries
-// will need updating to use pioneer_karma/builder_karma/critic_karma/epistemic_score
-// once the DB migration is applied.
 
 export type V3FactSubtype = 'ENTHYMEME' | 'ANECDOTE' | 'DOCUMENT_REF' | 'ACADEMIC_REF';
 export type V3NodeRole = 'ROOT' | 'SUPPORT' | 'ATTACK';
@@ -488,17 +484,24 @@ export interface V3UserKarmaProfile {
   pioneer_karma: number;
   builder_karma: number;
   critic_karma: number;
-  epistemic_score: number;
 }
 
-export interface V3EpistemicNotification {
-  id: string;
-  user_id: string;
-  type: V3EpistemicNotificationType;
-  payload: Record<string, unknown>;
-  is_read: boolean;
-  created_at: string;
-}
+export type EpistemicNotificationType =
+  | 'STREAM_HALTED' | 'BOUNTY_STOLEN' | 'BOUNTY_PAID'
+  | 'BOUNTY_LANGUISHED' | 'UPSTREAM_DEFEATED';
+
+export type UnifiedNotification =
+  | (NotificationWithContext & { category: 'SOCIAL' })
+  | {
+      category: 'EPISTEMIC';
+      id: string;
+      user_id: string;
+      epistemic_type: EpistemicNotificationType;
+      payload: Record<string, unknown>;
+      is_read: boolean;
+      created_at: string;
+      updated_at: string;
+    };
 
 export interface V3Source {
   id: string;
