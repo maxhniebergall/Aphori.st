@@ -10,6 +10,40 @@ import { getPool } from '../db/pool.js';
 import { createBullMQConnection } from './redisConnection.js';
 import { enqueueV3Analysis } from './enqueueV3Analysis.js';
 
+// ── V4 helper functions ──
+
+/**
+ * Extracts the first URL found in a string of text.
+ */
+function extractFirstUrl(text: string): string | null {
+  const match = text.match(/https?:\/\/[^\s"'<>]+/);
+  return match ? match[0]! : null;
+}
+
+/**
+ * Returns true if the URL belongs to an academic/scientific source.
+ */
+function isAcademicUrl(url: string): boolean {
+  return (
+    /doi\.org/i.test(url) ||
+    /pubmed\.ncbi\.nlm\.nih\.gov/i.test(url) ||
+    /arxiv\.org/i.test(url) ||
+    /\.edu\b/i.test(url)
+  );
+}
+
+/**
+ * Extracts the SLD/hostname from a URL for source entity resolution.
+ */
+function extractDomain(url: string): string | null {
+  try {
+    const { hostname } = new URL(url);
+    return hostname || null;
+  } catch {
+    return null;
+  }
+}
+
 interface V3AnalysisJobData {
   sourceType: 'post' | 'reply';
   sourceId: string;
@@ -178,6 +212,117 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     );
 
     await job.updateProgress(80);
+
+    // ── V4: Base Weight + Node Role Assignment ──
+    {
+      // Build a set of engine IDs that appear as premises in SUPPORT or ATTACK scheme edges
+      const premiseRoleMap = new Map<string, 'SUPPORT' | 'ATTACK'>(); // engine_id → role
+      const schemeNodes = analysis.hypergraph.nodes.filter(
+        (n: V3HypergraphNode) => n.node_type === 'scheme'
+      );
+      for (const schemeNode of schemeNodes) {
+        const direction = schemeNode.direction; // 'SUPPORT' | 'ATTACK'
+        if (direction !== 'SUPPORT' && direction !== 'ATTACK') continue;
+        const premiseEdges = analysis.hypergraph.edges.filter(
+          (e: V3HypergraphEdge) => e.scheme_node_id === schemeNode.node_id && e.role === 'premise'
+        );
+        for (const edge of premiseEdges) {
+          // If already mapped, first assignment wins
+          if (!premiseRoleMap.has(edge.node_id)) {
+            premiseRoleMap.set(edge.node_id, direction);
+          }
+        }
+      }
+
+      // Detect if this analysis run is for a ghost (assumption-bot) reply
+      const isGhostSource =
+        sourceType === 'reply' &&
+        contentRecord !== null &&
+        'author_id' in contentRecord &&
+        (contentRecord as { author_id: string }).author_id === 'assumption-bot';
+
+      // Process each I-node
+      const updatePromises: Promise<unknown>[] = [];
+      for (const aduNode of aduNodes) {
+        const dbId = engineIdToDbId.get(aduNode.node_id);
+        if (!dbId) continue;
+
+        let factSubtype: string | null = null;
+        let baseWeight: number;
+        let sourceUrl: string | null = null;
+
+        if (isGhostSource) {
+          factSubtype = 'ENTHYMEME';
+          baseWeight = 0.5;
+        } else {
+          const epistemicType = aduNode.fvp_type;
+          if (epistemicType === 'VALUE') {
+            baseWeight = 1.0;
+          } else if (epistemicType === 'POLICY') {
+            baseWeight = 0.0;
+          } else {
+            // FACT — detect URLs
+            const textToSearch = [aduNode.rewritten_text, aduNode.text]
+              .filter((t): t is string => !!t)
+              .join(' ');
+            const url = extractFirstUrl(textToSearch);
+            if (url) {
+              sourceUrl = url;
+              if (isAcademicUrl(url)) {
+                factSubtype = 'ACADEMIC_REF';
+                baseWeight = 5.0;
+              } else {
+                factSubtype = 'DOCUMENT_REF';
+                baseWeight = 2.0;
+              }
+            } else {
+              factSubtype = 'ANECDOTE';
+              baseWeight = 1.0;
+            }
+          }
+        }
+
+        // Determine node_role
+        const schemeRole = premiseRoleMap.get(aduNode.node_id);
+        const nodeRole: string = schemeRole ?? 'ROOT';
+
+        // Source entity resolution for DOCUMENT_REF and ACADEMIC_REF
+        if (sourceUrl && (factSubtype === 'DOCUMENT_REF' || factSubtype === 'ACADEMIC_REF')) {
+          const domain = extractDomain(sourceUrl);
+          if (domain) {
+            updatePromises.push(
+              pool.query(
+                `INSERT INTO v3_sources (level, url, title)
+                 VALUES ('DOMAIN', $1, $2)
+                 ON CONFLICT (url) DO NOTHING`,
+                [domain, domain]
+              ).catch((err: unknown) => {
+                logger.warn('V4: failed to upsert v3_source', {
+                  domain,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              })
+            );
+          }
+        }
+
+        // Batch UPDATE v3_nodes_i
+        updatePromises.push(
+          pool.query(
+            `UPDATE v3_nodes_i SET fact_subtype = $1, base_weight = $2, node_role = $3 WHERE id = $4`,
+            [factSubtype, baseWeight, nodeRole, dbId]
+          )
+        );
+      }
+
+      await Promise.all(updatePromises);
+
+      logger.info('V4: base weight + node role assignment complete', {
+        sourceId,
+        iNodes: aduNodes.length,
+        isGhostSource,
+      });
+    }
 
     // ── Create replies from ghost nodes (assumption-bot) ──
     const ghostNodes = analysis.hypergraph.nodes.filter(
