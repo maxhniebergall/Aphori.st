@@ -26,7 +26,10 @@ import userRoutes from './routes/users.js';
 import notificationRoutes from './routes/notifications.js';
 import statsRoutes from './routes/stats.js';
 import v3Routes from './routes/v3.js';
+import v3KarmaRoutes from './routes/v3Karma.js';
 import internalRoutes from './routes/internal.js';
+import { graphProcessorQueue, closeGraphProcessorQueue } from './jobs/graphProcessorQueue.js';
+import { createNightlyGraphWorker } from './jobs/nightlyGraphProcessor.js';
 
 // Validate config on startup
 validateConfig();
@@ -98,6 +101,7 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/stats', statsRoutes);
 app.use('/api/v3', v3Routes);
+app.use('/api/v3', v3KarmaRoutes);
 
 // Internal service-to-service routes (protected by shared secret, not public auth)
 app.use('/internal', internalRoutes);
@@ -129,6 +133,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
     try {
       await closeV3Queue();
+      await closeGraphProcessorQueue();
       logger.info('Queue and worker closed');
       await closePool();
       logger.info('Database connections closed');
@@ -178,6 +183,20 @@ async function init(): Promise<void> {
     }
 
     isDbReady = true;
+
+    // Register nightly graph processor repeatable job
+    try {
+      await graphProcessorQueue.add('nightly-run', {}, {
+        repeat: { pattern: '0 2 * * *', tz: 'UTC' },
+        jobId: 'nightly-graph-processor-singleton',
+      });
+      createNightlyGraphWorker();
+      logger.info('Nightly graph processor scheduled (02:00 UTC daily)');
+    } catch (error) {
+      logger.warn('Failed to schedule nightly graph processor (non-fatal)', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     // Initialize discourse-engine connection
     try {
