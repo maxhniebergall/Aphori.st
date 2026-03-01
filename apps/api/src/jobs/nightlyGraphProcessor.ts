@@ -9,7 +9,6 @@ const MAX_ER_ITERATIONS = 20;
 const ER_CONVERGENCE_DELTA = 0.001;
 const DEFEAT_THRESHOLD = 1.0; // attacking_weight must exceed supportive_weight by this margin
 const BOUNTY_MIN_ER = 5.0; // minimum ER for bounty to pay out (Outcome C)
-const BOUNTY_WINDFALL_MULTIPLIER = 0.1; // Bounty = |C_A| * |C_B| * windfall_multiplier
 
 const connection = createBullMQConnection('nightly-graph-processor-worker');
 
@@ -31,6 +30,9 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
   ]);
 
   logger.info(`Loaded graph: ${allINodes.length} I-nodes, ${allSNodes.length} S-nodes, ${allEdges.length} edges`);
+  // TODO: each stage performs multi-step writes without a DB transaction. A mid-stage failure
+  // can leave partial state (e.g. escrow cleared but karma not awarded). Fixing this requires
+  // refactoring repo methods to accept a pg PoolClient so stages can be wrapped in BEGIN/COMMIT.
 
   // Build adjacency: iNodeId -> set of connected iNodeIds via S-nodes
   // Only connect undefeated nodes (start from current state — defeat will be recomputed after ER)
@@ -83,47 +85,30 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
     }
   }
 
-  // Assign component IDs (use root representative as UUID)
+  // ── Chronological Pioneer Assignment ──
+  // For each connected component, find the node with the oldest created_at
+  // (tie-break: lexicographic UUID sort). Use that node's ID as the stable
+  // component_id so IDs don't churn between nightly runs.
+  const componentPioneer = new Map<string, { id: string; created_at: string }>();
+  for (const node of allINodes) {
+    const root = find(node.id);
+    const current = componentPioneer.get(root);
+    if (
+      !current ||
+      node.created_at < current.created_at ||
+      (node.created_at === current.created_at && node.id < current.id)
+    ) {
+      componentPioneer.set(root, { id: node.id, created_at: node.created_at });
+    }
+  }
+
   const componentUpdates = allINodes.map(node => ({
     id: node.id,
-    component_id: find(node.id),
+    component_id: componentPioneer.get(find(node.id))!.id,
   }));
   await repo.batchUpdateComponentIds(componentUpdates);
 
-  // Count component sizes
-  const componentSizes = new Map<string, number>();
-  for (const node of allINodes) {
-    const comp = find(node.id);
-    componentSizes.set(comp, (componentSizes.get(comp) || 0) + 1);
-  }
-
-  // Detect bridge S-nodes (connecting two distinct components) and set escrow
-  const sNodeMap = new Map(allSNodes.map(s => [s.id, s]));
-  for (const [schemeId, { premises, conclusions }] of schemeToNodes) {
-    const sNode = sNodeMap.get(schemeId);
-    if (!sNode || sNode.escrow_status !== 'none') continue; // already has escrow
-
-    // Find component roots of premises vs conclusions
-    const premiseComps = new Set(premises.map(id => find(id)));
-    const conclusionComps = new Set(conclusions.map(id => find(id)));
-
-    // Check if this S-node bridges distinct components
-    const allComps = new Set([...premiseComps, ...conclusionComps]);
-    if (allComps.size >= 2) {
-      // Bridge detected — calculate bounty using component sizes
-      const compArray = Array.from(allComps);
-      const sizeA = componentSizes.get(compArray[0]!) || 1;
-      const sizeB = componentSizes.get(compArray[1]!) || 1;
-      const bounty = Math.round(sizeA * sizeB * BOUNTY_WINDFALL_MULTIPLIER);
-
-      if (bounty > 0) {
-        const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
-        await repo.setEscrow(schemeId, bounty, expiresAt);
-        await repo.setBridgeMetadata(schemeId, compArray[0]!, compArray[1]!);
-        logger.info(`Bridge S-node ${schemeId} detected, bounty ${bounty} set`);
-      }
-    }
-  }
+  logger.info(`Component IDs stabilized: ${componentPioneer.size} components across ${allINodes.length} I-nodes`);
 
   // ── Stage 2: EvidenceRank Computation ──
   logger.info('Nightly graph processor: Stage 2 — EvidenceRank Computation');
@@ -135,6 +120,8 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
   // Build support/attack relationships from S-nodes + edges
   // supporter: premise I-node SUPPORTS conclusion I-node via SUPPORT S-node
   // attacker: premise I-node ATTACKS conclusion I-node via ATTACK S-node
+  const sNodeMap = new Map(allSNodes.map(s => [s.id, s]));
+
   type Relationship = { premiseId: string; conclusionId: string; direction: 'SUPPORT' | 'ATTACK' };
   const relationships: Relationship[] = [];
 
@@ -162,10 +149,26 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
     erValues.set(node.id, seed);
   }
 
+  // Precompute adjacency maps to avoid O(n) filter inside the convergence loop
+  const supportersByConclusion = new Map<string, string[]>();
+  const attackersByConclusion = new Map<string, string[]>();
+  for (const rel of relationships) {
+    if (rel.direction === 'SUPPORT') {
+      const arr = supportersByConclusion.get(rel.conclusionId) ?? [];
+      arr.push(rel.premiseId);
+      supportersByConclusion.set(rel.conclusionId, arr);
+    } else {
+      const arr = attackersByConclusion.get(rel.conclusionId) ?? [];
+      arr.push(rel.premiseId);
+      attackersByConclusion.set(rel.conclusionId, arr);
+    }
+  }
+
   // Track which nodes are defeated (start from current, updated per iteration)
   const defeatedSet = new Set<string>(allINodes.filter(n => n.is_defeated).map(n => n.id));
 
   // Outer defeat-co-resolution loop (max 3 rounds)
+  // TODO: verify two-phase defeat/ER interaction against OntologyV4.txt spec before prod
   const MAX_OUTER_LOOPS = 3;
   let outerLoop = 0;
   let outerDefeatChanged = true;
@@ -191,13 +194,13 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
         const seed = Math.max(0, node.vote_score) * node.base_weight;
 
         // Sum ER of nodes undefeated in the PREVIOUS iteration
-        const supportiveER = relationships
-          .filter(r => r.conclusionId === node.id && r.direction === 'SUPPORT' && !defeatedSet.has(r.premiseId))
-          .reduce((sum, r) => sum + (erValues.get(r.premiseId) || 0), 0);
+        const supportiveER = (supportersByConclusion.get(node.id) ?? [])
+          .filter(premiseId => !defeatedSet.has(premiseId))
+          .reduce((sum, premiseId) => sum + (erValues.get(premiseId) || 0), 0);
 
-        const attackingER = relationships
-          .filter(r => r.conclusionId === node.id && r.direction === 'ATTACK' && !defeatedSet.has(r.premiseId))
-          .reduce((sum, r) => sum + (erValues.get(r.premiseId) || 0), 0);
+        const attackingER = (attackersByConclusion.get(node.id) ?? [])
+          .filter(premiseId => !defeatedSet.has(premiseId))
+          .reduce((sum, premiseId) => sum + (erValues.get(premiseId) || 0), 0);
 
         const supportiveWeight = seed + supportiveER;
         const attackingWeight = attackingER;
@@ -333,19 +336,24 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
     const er = escrow.evidence_rank;
 
     if (escrow.is_defeated) {
-      // Outcome A: Stolen
+      // Outcome A: Stolen — split proportionally among all attackers by ER
       await repo.updateEscrowStatus(escrow.id, 'stolen');
-      if (escrow.attacking_author_id) {
-        const stolenAmount = Math.floor(escrow.pending_bounty * 0.5);
+      const stolenAmount = escrow.pending_bounty * 0.5;
+      const attackers = escrow.attackers.filter(a => a.author_id != null);
+      const totalER = attackers.reduce((sum, a) => sum + a.evidence_rank, 0);
+      for (const attacker of attackers) {
+        const share = totalER > 0
+          ? Math.round((attacker.evidence_rank / totalER) * stolenAmount)
+          : Math.round(stolenAmount / attackers.length);
         await repo.batchIncrementUserKarma([{
-          userId: escrow.attacking_author_id,
+          userId: attacker.author_id,
           pioneer: 0,
           builder: 0,
-          critic: stolenAmount,
+          critic: share,
         }]);
-        await repo.createEpistemicNotification(escrow.attacking_author_id, 'BOUNTY_STOLEN', {
+        await repo.createEpistemicNotification(attacker.author_id, 'BOUNTY_STOLEN', {
           scheme_node_id: escrow.id,
-          bounty_earned: stolenAmount,
+          bounty_earned: share,
         });
       }
       if (escrow.author_id) {
