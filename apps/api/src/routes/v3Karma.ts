@@ -44,8 +44,10 @@ router.get('/bounties', async (req: Request, res: Response): Promise<void> => {
   try {
     const pool = getPool();
     const repo = createV3GamificationRepo(pool);
-    const limit = Math.min(parseInt(req.query.limit as string || '20', 10), 100);
-    const offset = parseInt(req.query.offset as string || '0', 10);
+    const parsedLimit = parseInt(req.query.limit as string || '20', 10);
+    const parsedOffset = parseInt(req.query.offset as string || '0', 10);
+    const limit = Math.min(isNaN(parsedLimit) || parsedLimit < 0 ? 20 : parsedLimit, 100);
+    const offset = isNaN(parsedOffset) || parsedOffset < 0 ? 0 : parsedOffset;
 
     const result = await repo.getPendingBounties(limit, offset);
     res.json({
@@ -57,59 +59,6 @@ router.get('/bounties', async (req: Request, res: Response): Promise<void> => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Internal Server Error', message: 'Failed to fetch bounties' });
-  }
-});
-
-// POST /crucible-attack — submit an attacking S-node targeting an active bounty
-// The reply/post containing the attack is submitted through the normal posts/replies endpoints;
-// this endpoint registers the attack as formally targeting the bounty's bridge S-node,
-// ensuring it is evaluated during escrow clearing.
-router.post('/crucible-attack', requireAuth, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { target_scheme_node_id, source_type, source_id } = req.body as {
-      target_scheme_node_id?: string;
-      source_type?: 'post' | 'reply';
-      source_id?: string;
-    };
-
-    if (!target_scheme_node_id || !source_type || !source_id) {
-      res.status(400).json({
-        error: 'Bad Request',
-        message: 'target_scheme_node_id, source_type, and source_id are required',
-      });
-      return;
-    }
-    if (source_type !== 'post' && source_type !== 'reply') {
-      res.status(400).json({ error: 'Bad Request', message: 'source_type must be "post" or "reply"' });
-      return;
-    }
-
-    const pool = getPool();
-    const repo = createV3GamificationRepo(pool);
-
-    // Verify the target is an active escrow
-    const { bounties } = await repo.getPendingBounties(1, 0);
-    const activeBounty = bounties.find(b => b.scheme_node_id === target_scheme_node_id);
-    if (!activeBounty) {
-      res.status(404).json({ error: 'Not Found', message: 'No active bounty found for target_scheme_node_id' });
-      return;
-    }
-
-    // Record the attack association: link the attacking source to the bounty S-node
-    // by inserting an edge from the source's I-node(s) to the bounty scheme node
-    // (the actual I-node linkage is handled by the v3Worker when it processes the source;
-    // here we just validate and acknowledge the intent)
-    res.json({
-      success: true,
-      message: 'Crucible attack registered. Your argument will be evaluated against the bounty during the next nightly batch run.',
-      data: {
-        target_scheme_node_id,
-        bounty: activeBounty.pending_bounty,
-        escrow_expires_at: activeBounty.escrow_expires_at,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Internal Server Error', message: 'Failed to register crucible attack' });
   }
 });
 

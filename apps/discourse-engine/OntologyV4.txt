@@ -783,7 +783,9 @@ The payload JSONB field contains type-specific data:
 
 9.4 Pull Endpoint
 ------------------
-  GET /api/v3/epistemic-notifications
+  Epistemic notifications are delivered via the unified notifications API:
+
+  GET /api/notifications
     Query params:
       unread_only: bool (default true)
       limit: int (default 20, max 100)
@@ -792,8 +794,11 @@ The payload JSONB field contains type-specific data:
     Returns:
       { notifications: [...], total_unread: int }
 
-  POST /api/v3/epistemic-notifications/:id/read
+  POST /api/notifications/:id/read
     Marks a notification as read (sets read_at = NOW()).
+
+  NOTE: The dedicated /api/v3/epistemic-notifications endpoint has been removed.
+  All notification types (epistemic and social) are unified under /api/notifications.
 
 ================================================================================
 10. NIGHTLY BATCH PIPELINE

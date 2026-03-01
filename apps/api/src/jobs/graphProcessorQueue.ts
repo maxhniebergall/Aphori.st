@@ -14,4 +14,5 @@ export const graphProcessorQueue = new Queue('nightly-graph-processor', {
 
 export async function closeGraphProcessorQueue(): Promise<void> {
   await graphProcessorQueue.close();
+  await connection.quit();
 }

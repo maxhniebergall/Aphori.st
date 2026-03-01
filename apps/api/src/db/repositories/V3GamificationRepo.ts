@@ -25,6 +25,7 @@ export interface INodeGraphData {
   source_ref_id: string | null;
   vote_score: number;
   author_id: string | null;
+  created_at: string;
 }
 
 export interface SNodeGraphData {
@@ -91,14 +92,15 @@ export const createV3GamificationRepo = (pool: Pool) => ({
           CASE WHEN ni.source_type = 'post' THEN p.score ELSE r.score END,
           0
         ) as vote_score,
-        CASE WHEN ni.source_type = 'post' THEN p.author_id ELSE r.author_id END as author_id
+        CASE WHEN ni.source_type = 'post' THEN p.author_id ELSE r.author_id END as author_id,
+        ni.created_at
       FROM v3_nodes_i ni
       LEFT JOIN posts p ON ni.source_type = 'post' AND p.id = ni.source_id AND p.deleted_at IS NULL
       LEFT JOIN replies r ON ni.source_type = 'reply' AND r.id = ni.source_id AND r.deleted_at IS NULL
     `);
     return result.rows.map((r: Record<string, unknown>) => ({
       ...r,
-      base_weight: parseFloat(r.base_weight as string) || 1.0,
+      base_weight: (() => { const v = parseFloat(r.base_weight as string); return isNaN(v) ? 1.0 : v; })(),
       evidence_rank: parseFloat(r.evidence_rank as string) || 0.0,
       vote_score: parseInt(r.vote_score as string, 10) || 0,
     })) as INodeGraphData[];
@@ -160,6 +162,65 @@ export const createV3GamificationRepo = (pool: Pool) => ({
       ) as data
       WHERE ni.id = data.id
     `, [ids, componentIds]);
+  },
+
+  async getINodeComponentIds(ids: string[]): Promise<Map<string, string | null>> {
+    if (ids.length === 0) return new Map();
+    const result = await pool.query<{ id: string; component_id: string | null }>(
+      `SELECT id, component_id FROM v3_nodes_i WHERE id = ANY($1)`,
+      [ids]
+    );
+    const map = new Map<string, string | null>();
+    for (const row of result.rows) {
+      map.set(row.id, row.component_id);
+    }
+    return map;
+  },
+
+  async getComponentSizes(componentIds: string[]): Promise<Map<string, number>> {
+    if (componentIds.length === 0) return new Map();
+    const result = await pool.query<{ component_id: string; size: string }>(
+      `SELECT component_id, COUNT(*) as size
+       FROM v3_nodes_i
+       WHERE component_id = ANY($1)
+       GROUP BY component_id`,
+      [componentIds]
+    );
+    const map = new Map<string, number>();
+    for (const row of result.rows) {
+      map.set(row.component_id, parseInt(row.size, 10));
+    }
+    return map;
+  },
+
+  async setBridgeEscrow(
+    schemeNodeId: string,
+    pendingBounty: number,
+    expiresAt: Date,
+    componentAId: string,
+    componentBId: string
+  ): Promise<boolean> {
+    try {
+      const result = await pool.query(
+        `UPDATE v3_nodes_s
+         SET
+           escrow_status = 'active',
+           pending_bounty = $2,
+           escrow_expires_at = $3,
+           component_a_id = $4,
+           component_b_id = $5,
+           is_bridge = TRUE
+         WHERE id = $1 AND escrow_status = 'none'`,
+        [schemeNodeId, pendingBounty, expiresAt, componentAId, componentBId]
+      );
+      return (result.rowCount ?? 0) > 0;
+    } catch (err: unknown) {
+      // Unique constraint violation: another S-node already has an active escrow for this component pair
+      if (typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === '23505') {
+        return false;
+      }
+      throw err;
+    }
   },
 
   // ── Get previous defeat state (to detect flips) ──
@@ -285,7 +346,7 @@ export const createV3GamificationRepo = (pool: Pool) => ({
     `, [userId]);
     return result.rows.map((r: Record<string, unknown>) => ({
       ...r,
-      base_weight: parseFloat(r.base_weight as string) || 1.0,
+      base_weight: (() => { const v = parseFloat(r.base_weight as string); return isNaN(v) ? 1.0 : v; })(),
       evidence_rank: parseFloat(r.evidence_rank as string) || 0.0,
     })) as V3KarmaNode[];
   },
@@ -341,7 +402,7 @@ export const createV3GamificationRepo = (pool: Pool) => ({
     is_defeated: boolean;
     evidence_rank: number;
     author_id: string | null;
-    attacking_author_id: string | null;
+    attackers: Array<{ author_id: string; evidence_rank: number }>;
   }>> {
     const result = await pool.query(`
       SELECT
@@ -351,7 +412,10 @@ export const createV3GamificationRepo = (pool: Pool) => ({
         COALESCE(ni.evidence_rank, 0) as evidence_rank,
         CASE WHEN ni.source_type = 'post' THEN p.author_id ELSE r.author_id END as author_id,
         (
-          SELECT CASE WHEN ni2.source_type = 'post' THEN p2.author_id ELSE r2.author_id END
+          SELECT json_agg(json_build_object(
+            'author_id', CASE WHEN ni2.source_type = 'post' THEN p2.author_id ELSE r2.author_id END,
+            'evidence_rank', COALESCE(ni2.evidence_rank, 0)
+          ))
           FROM v3_edges e2
           JOIN v3_nodes_i ni2 ON ni2.id = e2.node_id
           LEFT JOIN posts p2 ON ni2.source_type = 'post' AND p2.id = ni2.source_id
@@ -363,9 +427,7 @@ export const createV3GamificationRepo = (pool: Pool) => ({
               SELECT 1 FROM v3_edges e3
               WHERE e3.scheme_node_id = s2.id AND e3.role = 'conclusion' AND e3.node_id = ni.id
             )
-          ORDER BY ni2.created_at DESC
-          LIMIT 1
-        ) as attacking_author_id
+        ) as attackers
       FROM v3_nodes_s s
       JOIN v3_edges e ON e.scheme_node_id = s.id AND e.role = 'conclusion' AND e.node_type = 'i_node'
       JOIN v3_nodes_i ni ON ni.id = e.node_id
@@ -379,22 +441,16 @@ export const createV3GamificationRepo = (pool: Pool) => ({
       is_defeated: r.is_defeated as boolean,
       evidence_rank: parseFloat(r.evidence_rank as string) || 0,
       author_id: r.author_id as string | null,
-      attacking_author_id: r.attacking_author_id as string | null,
+      attackers: (r.attackers as Array<{ author_id: string; evidence_rank: number }> | null) ?? [],
     }));
   },
 
   async updateEscrowStatus(schemeNodeId: string, status: 'paid' | 'stolen' | 'languished'): Promise<void> {
     await pool.query(`
-      UPDATE v3_nodes_s SET escrow_status = $2 WHERE id = $1
-    `, [schemeNodeId, status]);
-  },
-
-  async setEscrow(schemeNodeId: string, pendingBounty: number, expiresAt: Date): Promise<void> {
-    await pool.query(`
       UPDATE v3_nodes_s
-      SET escrow_status = 'active', pending_bounty = $2, escrow_expires_at = $3
-      WHERE id = $1 AND escrow_status = 'none'
-    `, [schemeNodeId, pendingBounty, expiresAt]);
+      SET escrow_status = $2, pending_bounty = 0, escrow_expires_at = NULL
+      WHERE id = $1
+    `, [schemeNodeId, status]);
   },
 
   // ── Source (R-Node) Operations ──
@@ -492,13 +548,6 @@ export const createV3GamificationRepo = (pool: Pool) => ({
       WHERE ni.id = $1
     `, [iNodeId]);
     return (result.rows[0]?.author_id as string | undefined) ?? null;
-  },
-
-  async setBridgeMetadata(schemeNodeId: string, componentAId: string, componentBId: string): Promise<void> {
-    await pool.query(
-      `UPDATE v3_nodes_s SET is_bridge = TRUE, component_a_id = $2, component_b_id = $3 WHERE id = $1`,
-      [schemeNodeId, componentAId, componentBId]
-    );
   },
 
   async batchUpdateINodeBaseWeights(updates: Array<{ id: string; base_weight: number }>): Promise<void> {

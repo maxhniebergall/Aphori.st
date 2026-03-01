@@ -191,7 +191,7 @@ describe('Builder Karma (V4)', () => {
     await factories.createUser(); // replier
     await factories.createPost(postAuthor.id);
 
-    // Simulate what the route does via incrementConnectionKarma (now updates builder_karma)
+    // Simulate what the route does via incrementBuilderKarma
     await pool.query(
       'UPDATE users SET builder_karma = builder_karma + 1 WHERE id = $1',
       [postAuthor.id]

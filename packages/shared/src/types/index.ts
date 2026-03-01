@@ -281,7 +281,7 @@ export interface V3SNode {
 export interface V3Edge {
   id: string;
   scheme_node_id: string;
-  node_id: string;
+  node_id: string | null;
   node_type: V3NodeType;
   role: V3EdgeRole;
   source_id: string | null;

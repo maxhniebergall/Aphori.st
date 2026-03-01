@@ -30,6 +30,9 @@ import v3KarmaRoutes from './routes/v3Karma.js';
 import internalRoutes from './routes/internal.js';
 import { graphProcessorQueue, closeGraphProcessorQueue } from './jobs/graphProcessorQueue.js';
 import { createNightlyGraphWorker } from './jobs/nightlyGraphProcessor.js';
+import type { Worker } from 'bullmq';
+
+let nightlyWorker: Worker | null = null;
 
 // Validate config on startup
 validateConfig();
@@ -133,6 +136,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
     try {
       await closeV3Queue();
+      if (nightlyWorker) await nightlyWorker.close();
       await closeGraphProcessorQueue();
       logger.info('Queue and worker closed');
       await closePool();
@@ -190,7 +194,7 @@ async function init(): Promise<void> {
         repeat: { pattern: '0 2 * * *', tz: 'UTC' },
         jobId: 'nightly-graph-processor-singleton',
       });
-      createNightlyGraphWorker();
+      nightlyWorker = createNightlyGraphWorker();
       logger.info('Nightly graph processor scheduled (02:00 UTC daily)');
     } catch (error) {
       logger.warn('Failed to schedule nightly graph processor (non-fatal)', {

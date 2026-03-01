@@ -143,8 +143,7 @@ export const UserRepo = {
     return result.rows[0]?.count === '0';
   },
 
-  async incrementConnectionKarma(userId: string, delta: number = 1): Promise<void> {
-    // V4: connection_karma replaced by builder_karma; updating builder_karma for backwards compat
+  async incrementBuilderKarma(userId: string, delta: number = 1): Promise<void> {
     await query(
       'UPDATE users SET builder_karma = builder_karma + $2 WHERE id = $1 AND deleted_at IS NULL',
       [userId.toLowerCase(), delta]
