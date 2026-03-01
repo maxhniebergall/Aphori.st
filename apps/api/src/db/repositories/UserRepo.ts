@@ -6,8 +6,9 @@ interface UserRow {
   email: string;
   user_type: UserType;
   display_name: string | null;
-  vote_karma: number;
-  connection_karma: number;
+  pioneer_karma: number;
+  builder_karma: number;
+  critic_karma: number;
   followers_count: number;
   following_count: number;
   notifications_last_viewed_at: Date | null;
@@ -23,8 +24,9 @@ function rowToUser(row: UserRow): User {
     email: row.email,
     user_type: row.user_type,
     display_name: row.display_name,
-    vote_karma: row.vote_karma,
-    connection_karma: row.connection_karma,
+    pioneer_karma: row.pioneer_karma,
+    builder_karma: row.builder_karma,
+    critic_karma: row.critic_karma,
     followers_count: row.followers_count,
     following_count: row.following_count,
     notifications_last_viewed_at: row.notifications_last_viewed_at
@@ -141,9 +143,9 @@ export const UserRepo = {
     return result.rows[0]?.count === '0';
   },
 
-  async incrementConnectionKarma(userId: string, delta: number = 1): Promise<void> {
+  async incrementBuilderKarma(userId: string, delta: number = 1): Promise<void> {
     await query(
-      'UPDATE users SET connection_karma = connection_karma + $2 WHERE id = $1 AND deleted_at IS NULL',
+      'UPDATE users SET builder_karma = builder_karma + $2 WHERE id = $1 AND deleted_at IS NULL',
       [userId.toLowerCase(), delta]
     );
   },

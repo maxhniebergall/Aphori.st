@@ -7,14 +7,54 @@ import { PostRepo } from '../db/repositories/PostRepo.js';
 import { ReplyRepo } from '../db/repositories/ReplyRepo.js';
 import { getArgumentService } from '../services/argumentService.js';
 import { getPool } from '../db/pool.js';
+import { createV3GamificationRepo } from '../db/repositories/V3GamificationRepo.js';
 import { createBullMQConnection } from './redisConnection.js';
 import { enqueueV3Analysis } from './enqueueV3Analysis.js';
+
+// ── V4 helper functions ──
+
+/**
+ * Extracts the first URL found in a string of text.
+ */
+function extractFirstUrl(text: string): string | null {
+  const match = text.match(/https?:\/\/[^\s"'<>]+/);
+  return match ? match[0]! : null;
+}
+
+/**
+ * Returns true if the URL belongs to an academic/scientific source.
+ */
+function isAcademicUrl(url: string): boolean {
+  return (
+    /doi\.org/i.test(url) ||
+    /pubmed\.ncbi\.nlm\.nih\.gov/i.test(url) ||
+    /arxiv\.org/i.test(url) ||
+    /\.edu\b/i.test(url)
+  );
+}
+
+/**
+ * Extracts a deduplicated domain from a URL for source entity resolution.
+ * Strips the 'www.' prefix so that www.example.com and example.com resolve to the same source.
+ */
+function extractDomain(url: string): string | null {
+  try {
+    const { hostname } = new URL(url);
+    if (!hostname) return null;
+    return hostname.replace(/^www\./i, '');
+  } catch {
+    return null;
+  }
+}
 
 interface V3AnalysisJobData {
   sourceType: 'post' | 'reply';
   sourceId: string;
   contentHash: string;
 }
+
+const BOUNTY_WINDFALL_MULTIPLIER = 0.1;
+const BRIDGE_ESCROW_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
 
 const connection = createBullMQConnection('v3-worker');
 
@@ -178,6 +218,211 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     );
 
     await job.updateProgress(80);
+
+    // ── Real-Time Bridge Detection ──
+    // Check if any new S-node bridges two previously disconnected argument components.
+    // Component IDs are assigned by the nightly job; new I-nodes (created in this run) will
+    // have component_id = NULL until the next nightly run. A bridge can only be detected when
+    // BOTH sides already have a non-null component_id from a previous run.
+    try {
+      const gamificationRepo = createV3GamificationRepo(pool);
+
+      // Build S-node → {premise DB IDs, conclusion DB IDs} from the analysis edges
+      type SNodeEdges = { premises: string[]; conclusions: string[] };
+      const sNodeEdgeMap = new Map<string, SNodeEdges>();
+      for (const schemeNode of analysis.hypergraph.nodes.filter(
+        (n: V3HypergraphNode) => n.node_type === 'scheme'
+      )) {
+        const sDbId = engineIdToDbId.get(schemeNode.node_id);
+        if (sDbId) sNodeEdgeMap.set(sDbId, { premises: [], conclusions: [] });
+      }
+      for (const edge of analysis.hypergraph.edges) {
+        const sDbId = engineIdToDbId.get(edge.scheme_node_id);
+        const iDbId = engineIdToDbId.get(edge.node_id);
+        if (!sDbId || !iDbId) continue;
+        const entry = sNodeEdgeMap.get(sDbId);
+        if (!entry) continue;
+        if (edge.role === 'premise') entry.premises.push(iDbId);
+        else if (edge.role === 'conclusion') entry.conclusions.push(iDbId);
+      }
+
+      // Collect all unique I-node DB IDs referenced in edges
+      const allINodeDbIds = new Set<string>();
+      for (const { premises, conclusions } of sNodeEdgeMap.values()) {
+        for (const id of [...premises, ...conclusions]) allINodeDbIds.add(id);
+      }
+
+      if (allINodeDbIds.size > 0) {
+        const componentIdMap = await gamificationRepo.getINodeComponentIds([...allINodeDbIds]);
+
+        for (const [sDbId, { premises, conclusions }] of sNodeEdgeMap) {
+          // Only consider I-nodes with an assigned component_id (from a prior nightly run)
+          const premiseComps = new Set(
+            premises.map(id => componentIdMap.get(id)).filter((c): c is string => c != null)
+          );
+          const conclusionComps = new Set(
+            conclusions.map(id => componentIdMap.get(id)).filter((c): c is string => c != null)
+          );
+          if (premiseComps.size === 0 || conclusionComps.size === 0) continue;
+
+          // Bridge: premise and conclusion sides are in different components
+          const compA = conclusionComps.values().next().value as string;
+          const compB = Array.from(premiseComps).find(c => !conclusionComps.has(c));
+          if (!compB) continue;
+
+          const sizes = await gamificationRepo.getComponentSizes([compA, compB]);
+          const sizeA = sizes.get(compA) ?? 1;
+          const sizeB = sizes.get(compB) ?? 1;
+          const bounty = Math.round(sizeA * sizeB * BOUNTY_WINDFALL_MULTIPLIER);
+          if (bounty <= 0) continue;
+
+          const expiresAt = new Date(Date.now() + BRIDGE_ESCROW_TTL_MS);
+          const set = await gamificationRepo.setBridgeEscrow(sDbId, bounty, expiresAt, compA, compB);
+          if (set) {
+            logger.info('Real-time bridge detected', {
+              schemeNodeId: sDbId,
+              compA,
+              compB,
+              sizeA,
+              sizeB,
+              bounty,
+              sourceId,
+            });
+          }
+        }
+      }
+    } catch (bridgeErr: unknown) {
+      logger.warn('Real-time bridge detection failed (non-fatal)', {
+        sourceId,
+        error: bridgeErr instanceof Error ? bridgeErr.message : String(bridgeErr),
+      });
+    }
+
+    // ── V4: Base Weight + Node Role Assignment ──
+    {
+      // Build a set of engine IDs that appear as premises in SUPPORT or ATTACK scheme edges
+      const premiseRoleMap = new Map<string, 'SUPPORT' | 'ATTACK'>(); // engine_id → role
+      const schemeNodes = analysis.hypergraph.nodes.filter(
+        (n: V3HypergraphNode) => n.node_type === 'scheme'
+      );
+      for (const schemeNode of schemeNodes) {
+        const direction = schemeNode.direction; // 'SUPPORT' | 'ATTACK'
+        if (direction !== 'SUPPORT' && direction !== 'ATTACK') continue;
+        const premiseEdges = analysis.hypergraph.edges.filter(
+          (e: V3HypergraphEdge) => e.scheme_node_id === schemeNode.node_id && e.role === 'premise'
+        );
+        for (const edge of premiseEdges) {
+          // If already mapped, first assignment wins
+          if (!premiseRoleMap.has(edge.node_id)) {
+            premiseRoleMap.set(edge.node_id, direction);
+          }
+        }
+      }
+
+      // Detect if this analysis run is for a ghost (assumption-bot) reply
+      const isGhostSource =
+        sourceType === 'reply' &&
+        contentRecord !== null &&
+        'author_id' in contentRecord &&
+        (contentRecord as { author_id: string }).author_id === 'assumption-bot';
+
+      // Process each I-node
+      const updatePromises: Promise<unknown>[] = [];
+      for (const aduNode of aduNodes) {
+        const dbId = engineIdToDbId.get(aduNode.node_id);
+        if (!dbId) continue;
+
+        let factSubtype: string | null = null;
+        let baseWeight: number;
+        let sourceUrl: string | null = null;
+
+        if (isGhostSource) {
+          factSubtype = 'ENTHYMEME';
+          baseWeight = 0.5;
+        } else {
+          const epistemicType = aduNode.fvp_type;
+          if (epistemicType === 'VALUE') {
+            baseWeight = 1.0;
+          } else if (epistemicType === 'POLICY') {
+            baseWeight = 0.0;
+          } else {
+            // FACT — detect URLs
+            const textToSearch = [aduNode.rewritten_text, aduNode.text]
+              .filter((t): t is string => !!t)
+              .join(' ');
+            const url = extractFirstUrl(textToSearch);
+            if (url) {
+              sourceUrl = url;
+              if (isAcademicUrl(url)) {
+                factSubtype = 'ACADEMIC_REF';
+                baseWeight = 5.0;
+              } else {
+                factSubtype = 'DOCUMENT_REF';
+                baseWeight = 2.0;
+              }
+            } else {
+              factSubtype = 'ANECDOTE';
+              baseWeight = 1.0;
+            }
+          }
+        }
+
+        // Determine node_role
+        const schemeRole = premiseRoleMap.get(aduNode.node_id);
+        const nodeRole: string = schemeRole ?? 'ROOT';
+
+        // Source entity resolution for DOCUMENT_REF and ACADEMIC_REF
+        if (sourceUrl && (factSubtype === 'DOCUMENT_REF' || factSubtype === 'ACADEMIC_REF')) {
+          const domain = extractDomain(sourceUrl);
+          if (domain) {
+            updatePromises.push(
+              (async () => {
+                try {
+                  await pool.query(
+                    `INSERT INTO v3_sources (level, url, title)
+                     VALUES ('DOMAIN', $1, $2)
+                     ON CONFLICT (url) DO NOTHING`,
+                    [domain, domain]
+                  );
+                  const sourceResult = await pool.query<{ id: string }>(
+                    `SELECT id FROM v3_sources WHERE url = $1`,
+                    [domain]
+                  );
+                  const sourceId = sourceResult.rows[0]?.id;
+                  if (sourceId) {
+                    await pool.query(
+                      `UPDATE v3_nodes_i SET source_ref_id = $1 WHERE id = $2`,
+                      [sourceId, dbId]
+                    );
+                  }
+                } catch (err: unknown) {
+                  logger.warn('V4: failed to upsert v3_source or link source_ref_id', {
+                    domain,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                }
+              })()
+            );
+          }
+        }
+
+        // Batch UPDATE v3_nodes_i
+        updatePromises.push(
+          pool.query(
+            `UPDATE v3_nodes_i SET fact_subtype = $1, base_weight = $2, node_role = $3 WHERE id = $4`,
+            [factSubtype, baseWeight, nodeRole, dbId]
+          )
+        );
+      }
+
+      await Promise.all(updatePromises);
+
+      logger.info('V4: base weight + node role assignment complete', {
+        sourceId,
+        iNodes: aduNodes.length,
+        isGhostSource,
+      });
+    }
 
     // ── Create replies from ghost nodes (assumption-bot) ──
     const ghostNodes = analysis.hypergraph.nodes.filter(

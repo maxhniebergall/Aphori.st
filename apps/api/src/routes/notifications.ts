@@ -117,7 +117,10 @@ router.post('/viewed', authenticateToken, async (req: Request, res: Response): P
       return;
     }
 
-    await UserRepo.updateNotificationsLastViewedAt(req.user!.id);
+    await Promise.all([
+      UserRepo.updateNotificationsLastViewedAt(req.user!.id),
+      NotificationRepo.markEpistemicRead(req.user!.id),
+    ]);
 
     res.json({
       success: true,
@@ -131,6 +134,35 @@ router.post('/viewed', authenticateToken, async (req: Request, res: Response): P
     const apiError: ApiError = {
       error: 'Internal Server Error',
       message: 'Failed to mark notifications as viewed',
+    };
+    res.status(500).json(apiError);
+  }
+});
+
+/**
+ * POST /notifications/:id/read
+ * Mark a single epistemic notification as read
+ */
+router.post('/:id/read', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = req.params['id'] as string;
+    const updated = await NotificationRepo.markSingleRead(id, req.user!.id);
+    if (!updated) {
+      const apiError: ApiError = {
+        error: 'Not Found',
+        message: 'Notification not found',
+      };
+      res.status(404).json(apiError);
+      return;
+    }
+    res.json({ success: true, message: 'Notification marked as read' });
+  } catch (error) {
+    logger.error('Failed to mark notification as read', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    const apiError: ApiError = {
+      error: 'Internal Server Error',
+      message: 'Failed to mark notification as read',
     };
     res.status(500).json(apiError);
   }

@@ -85,30 +85,32 @@ beforeEach(async () => {
   }
 });
 
-describe('Vote Karma', () => {
-  it('should increment vote_karma on upvote to post', async () => {
+// V4: votes no longer update karma (karma is batch-only via nightly pipeline).
+// Votes only update the post/reply score column via the update_target_score() trigger.
+describe('Vote Score (V4)', () => {
+  it('should increment post score on upvote', async () => {
     const author = await factories.createUser();
     const voter = await factories.createUser();
     const post = await factories.createPost(author.id);
 
     await factories.createVote(voter.id, 'post', post.id, 1);
 
-    const result = await pool.query('SELECT vote_karma FROM users WHERE id = $1', [author.id]);
-    expect(result.rows[0].vote_karma).toBe(1);
+    const result = await pool.query('SELECT score FROM posts WHERE id = $1', [post.id]);
+    expect(result.rows[0].score).toBe(1);
   });
 
-  it('should decrement vote_karma on downvote to post', async () => {
+  it('should decrement post score on downvote', async () => {
     const author = await factories.createUser();
     const voter = await factories.createUser();
     const post = await factories.createPost(author.id);
 
     await factories.createVote(voter.id, 'post', post.id, -1);
 
-    const result = await pool.query('SELECT vote_karma FROM users WHERE id = $1', [author.id]);
-    expect(result.rows[0].vote_karma).toBe(-1);
+    const result = await pool.query('SELECT score FROM posts WHERE id = $1', [post.id]);
+    expect(result.rows[0].score).toBe(-1);
   });
 
-  it('should update vote_karma when vote changes from up to down', async () => {
+  it('should update post score when vote changes from up to down', async () => {
     const author = await factories.createUser();
     const voter = await factories.createUser();
     const post = await factories.createPost(author.id);
@@ -117,29 +119,28 @@ describe('Vote Karma', () => {
     // Change to downvote
     await factories.createVote(voter.id, 'post', post.id, -1);
 
-    const result = await pool.query('SELECT vote_karma FROM users WHERE id = $1', [author.id]);
+    const result = await pool.query('SELECT score FROM posts WHERE id = $1', [post.id]);
     // +1 then -2 delta = -1
-    expect(result.rows[0].vote_karma).toBe(-1);
+    expect(result.rows[0].score).toBe(-1);
   });
 
-  it('should update vote_karma when vote is removed', async () => {
+  it('should update post score when vote is removed', async () => {
     const author = await factories.createUser();
     const voter = await factories.createUser();
     const post = await factories.createPost(author.id);
 
     await factories.createVote(voter.id, 'post', post.id, 1);
 
-    // Remove vote
     await pool.query(
       'DELETE FROM votes WHERE user_id = $1 AND target_type = $2 AND target_id = $3',
       [voter.id, 'post', post.id]
     );
 
-    const result = await pool.query('SELECT vote_karma FROM users WHERE id = $1', [author.id]);
-    expect(result.rows[0].vote_karma).toBe(0);
+    const result = await pool.query('SELECT score FROM posts WHERE id = $1', [post.id]);
+    expect(result.rows[0].score).toBe(0);
   });
 
-  it('should increment vote_karma on upvote to reply', async () => {
+  it('should increment reply score on upvote', async () => {
     const author = await factories.createUser();
     const voter = await factories.createUser();
     const post = await factories.createPost(author.id);
@@ -147,11 +148,11 @@ describe('Vote Karma', () => {
 
     await factories.createVote(voter.id, 'reply', reply.id, 1);
 
-    const result = await pool.query('SELECT vote_karma FROM users WHERE id = $1', [author.id]);
-    expect(result.rows[0].vote_karma).toBe(1);
+    const result = await pool.query('SELECT score FROM replies WHERE id = $1', [reply.id]);
+    expect(result.rows[0].score).toBe(1);
   });
 
-  it('should accumulate vote_karma from multiple voters', async () => {
+  it('should accumulate post score from multiple voters', async () => {
     const author = await factories.createUser();
     const voter1 = await factories.createUser();
     const voter2 = await factories.createUser();
@@ -162,34 +163,51 @@ describe('Vote Karma', () => {
     await factories.createVote(voter2.id, 'post', post.id, 1);
     await factories.createVote(voter3.id, 'post', post.id, -1);
 
-    const result = await pool.query('SELECT vote_karma FROM users WHERE id = $1', [author.id]);
-    expect(result.rows[0].vote_karma).toBe(1);
+    const result = await pool.query('SELECT score FROM posts WHERE id = $1', [post.id]);
+    expect(result.rows[0].score).toBe(1);
+  });
+
+  it('should NOT update karma columns when votes are cast (karma is batch-only)', async () => {
+    const author = await factories.createUser();
+    const voter = await factories.createUser();
+    const post = await factories.createPost(author.id);
+
+    await factories.createVote(voter.id, 'post', post.id, 1);
+
+    const result = await pool.query(
+      'SELECT pioneer_karma, builder_karma, critic_karma FROM users WHERE id = $1',
+      [author.id]
+    );
+    expect(result.rows[0].pioneer_karma).toBe(0);
+    expect(result.rows[0].builder_karma).toBe(0);
+    expect(result.rows[0].critic_karma).toBe(0);
   });
 });
 
-describe('Connection Karma', () => {
-  it('should increment connection_karma when someone replies to your post', async () => {
+// V4: builder_karma replaces connection_karma; still incremented synchronously on reply connections.
+describe('Builder Karma (V4)', () => {
+  it('should increment builder_karma when someone replies to your post', async () => {
     const postAuthor = await factories.createUser();
     await factories.createUser(); // replier
     await factories.createPost(postAuthor.id);
 
-    // Simulate what the route does: increment karma directly
+    // Simulate what the route does via incrementBuilderKarma
     await pool.query(
-      'UPDATE users SET connection_karma = connection_karma + 1 WHERE id = $1',
+      'UPDATE users SET builder_karma = builder_karma + 1 WHERE id = $1',
       [postAuthor.id]
     );
 
-    const result = await pool.query('SELECT connection_karma FROM users WHERE id = $1', [postAuthor.id]);
-    expect(result.rows[0].connection_karma).toBe(1);
+    const result = await pool.query('SELECT builder_karma FROM users WHERE id = $1', [postAuthor.id]);
+    expect(result.rows[0].builder_karma).toBe(1);
   });
 
-  it('should not increment connection_karma for self-replies', async () => {
+  it('should not increment builder_karma for self-replies', async () => {
     const author = await factories.createUser();
     await factories.createPost(author.id);
 
     // Self-reply: no karma increment (the route skips this)
-    const result = await pool.query('SELECT connection_karma FROM users WHERE id = $1', [author.id]);
-    expect(result.rows[0].connection_karma).toBe(0);
+    const result = await pool.query('SELECT builder_karma FROM users WHERE id = $1', [author.id]);
+    expect(result.rows[0].builder_karma).toBe(0);
   });
 });
 

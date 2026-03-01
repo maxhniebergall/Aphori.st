@@ -1,0 +1,1184 @@
+================================================================================
+APHORIST ONTOLOGY V4 — CANONICAL REFERENCE DOCUMENT
+Neurosymbolic Consistency Web with Epistemic Weighting
+================================================================================
+Document Version : 4.0.0
+Date             : 2026-02-27
+Status           : Authoritative
+Audience         : discourse-engine prompt authors, API engineers, product team
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+  1.  Executive Summary
+  2.  The Metamodel (ER Diagram)
+  3.  Node Type Definitions
+  4.  Node Roles
+  5.  Source Ontology (R-Nodes)
+  6.  The EvidenceRank Algorithm
+  7.  Karma System
+  8.  The Crucible (Synthesis Bounties)
+  9.  Epistemic Notifications
+  10. Nightly Batch Pipeline
+  11. Database Schema Summary
+  12. Out of Scope (Phase 2+)
+  Appendix A. Glossary
+  Appendix B. Revision History
+
+================================================================================
+1. EXECUTIVE SUMMARY
+================================================================================
+
+Aphorist V4 introduces Epistemic Weighting to the Neurosymbolic Consistency
+Web (NCW) established in V3. This marks a fundamental transition in the
+platform's incentive structure:
+
+  V3: Engagement-based incentives
+      - Users accumulated karma proportional to vote counts and connection
+        counts on their content. Popularity drove reward.
+
+  V4: Epistemic-rigor-based incentives
+      - Users accumulate karma proportional to the EvidenceRank (ER) of their
+        nodes. ER is a topology-sensitive, iteratively computed score that
+        rewards arguments that survive scrutiny, are well-sourced, and are
+        connected to other high-ER nodes. Popularity alone does not drive
+        reward.
+
+The V4 architecture adds:
+
+  1. Fact subtypes with differential base weights (ENTHYMEME, ANECDOTE,
+     DOCUMENT_REF, ACADEMIC_REF) -- higher-quality evidence seeds the ER
+     algorithm with a larger initial signal.
+
+  2. Source Ontology (R-Nodes) -- a three-level hierarchy (DOMAIN / DOCUMENT /
+     EXTRACT) enabling per-source reputation tracking. Phase 1 deploys
+     domain-level nodes only.
+
+  3. EvidenceRank Algorithm -- a nightly iterative computation that propagates
+     support and attack weights across the argument graph to produce a single
+     scalar score per I-Node.
+
+  4. Defeat Condition -- nodes whose attacking_weight exceeds
+     supportive_weight + 1.0 are marked is_defeated and excluded from karma
+     streams and bounty payouts.
+
+  5. Connected Component Tracking -- Union-Find over I-Node/S-Node adjacency,
+     enabling bridge detection for Crucible bounties.
+
+  6. Role-Differentiated Karma -- pioneer_karma, builder_karma, and
+     critic_karma replace the V3 vote_karma / connection_karma fields,
+     aligning reward to argumentative contribution type.
+
+  7. Epistemic Notifications -- a pull-only notification layer for
+     epistemically significant events (defeat, bounty outcomes, upstream
+     defeat cascade).
+
+All V3 concepts (I-Nodes, S-Nodes, Edges, Enthymemes, Concept Nodes, the
+Crucible escrow mechanism) are preserved and extended. No V3 API surfaces are
+removed in V4.
+
+================================================================================
+2. THE METAMODEL (ER DIAGRAM)
+================================================================================
+
+The following ASCII ER diagram shows all entities and their relationships in the
+V4 ontology. Cardinality notation: ||--o{ (one-to-many), }o--o{ (many-to-many),
+||--|| (one-to-one).
+
+                         +---------------------------+
+                         |          USERS            |
+                         |---------------------------|
+                         | id (PK)                   |
+                         | pioneer_karma             |
+                         | builder_karma             |
+                         | critic_karma              |
+                         | epistemic_score           |
+                         +-------------+-------------+
+                                       |
+                                  1    | owns
+                                       |
+                                  *    |
+              +------------------------+------------------------+
+              |           V3_NODES_I (I-Nodes)                  |
+              |--------------------------------------------------------|
+              | id (PK)                                                |
+              | node_type: FACT | VALUE | POLICY                      |
+              | fact_subtype: ENTHYMEME | ANECDOTE |                  |
+              |              DOCUMENT_REF | ACADEMIC_REF              |
+              | base_weight: FLOAT                                     |
+              | evidence_rank: FLOAT                                   |
+              | is_defeated: BOOL                                      |
+              | component_id: INT                                      |
+              | node_role: ROOT | SUPPORT | ATTACK                    |
+              | text_content: TEXT                                     |
+              | author_id (FK -> USERS)                               |
+              | source_id (FK -> V3_SOURCES, nullable)                |
+              +--------+------------------+--------------------------+
+                       |                  |
+              premise  | role *    role * | conclusion
+                       |                  |
+              +--------+------------------+--------+
+              |           V3_NODES_S (S-Nodes)      |
+              |-------------------------------------|
+              | id (PK)                             |
+              | scheme: SUPPORT | ATTACK            |
+              | escrow_status: none | active |      |
+              |   paid | stolen | languished        |
+              | escrow_expires_at: TIMESTAMP (null) |
+              | pending_bounty: FLOAT               |
+              | is_bridge: BOOL                     |
+              | component_a_id: INT (nullable)      |
+              | component_b_id: INT (nullable)      |
+              +-------------------------------------+
+
+  S-Nodes connect I-Nodes through directed edges:
+
+    +----------+    EDGE (premise role)    +----------+
+    |  I-Node  | ------------------------> |  S-Node  |
+    | (premise)|                           |          |
+    +----------+                           +-----+----+
+                                                 |
+                                  EDGE (conclusion role)
+                                                 |
+                                                 v
+                                           +----------+
+                                           |  I-Node  |
+                                           | (target) |
+                                           +----------+
+
+  ENTHYMEME (ghost node):
+  +----------------------------------------------------------+
+  | Subtype of I-Node FACT. base_weight = 0.5 x reputation. |
+  | Represents implicit/unstated premises in an argument.   |
+  | Distinguished only by fact_subtype = ENTHYMEME.         |
+  +----------------------------------------------------------+
+
+  CONCEPT NODES -- V3_NODES_CONCEPT:
+  +----------------------------------------------------------+
+  | Semantic anchors for semantic search clusters.           |
+  | Not directly part of EvidenceRank computation.          |
+  | Linked to I-Nodes via content_embeddings table.         |
+  +----------------------------------------------------------+
+
+  R-Nodes (Source hierarchy):
+
+    +------------------------------------------+
+    |           V3_SOURCES (R-Nodes)            |
+    |------------------------------------------|
+    | id (PK)                                  |
+    | level: DOMAIN | DOCUMENT | EXTRACT       |
+    | url: TEXT (unique)                       |
+    | display_name: TEXT                       |
+    | reputation_score: FLOAT (0.0-1.0)        |
+    | parent_id (FK -> V3_SOURCES, nullable)   |
+    | created_at: TIMESTAMP                    |
+    +------------------+-----------------------+
+                       |
+                  1    | is cited by
+                       |
+                  *    |
+             (V3_NODES_I.source_id)
+
+  DOMAIN
+    |
+    +-- DOCUMENT
+    |       |
+    |       +-- EXTRACT
+    |
+    +-- DOCUMENT
+            |
+            +-- EXTRACT
+
+  +----------------------------------------------------+
+  |       V3_USER_KARMA_PROFILES                        |
+  |----------------------------------------------------|
+  | id (PK)                                            |
+  | user_id (FK -> USERS)                             |
+  | date: DATE                                         |
+  | pioneer_yield: FLOAT                               |
+  | builder_yield: FLOAT                               |
+  | critic_yield: FLOAT                                |
+  | snapshot_at: TIMESTAMP                             |
+  +----------------------------------------------------+
+
+  +--------------------------------------------------------+
+  |       V3_EPISTEMIC_NOTIFICATIONS                        |
+  |--------------------------------------------------------|
+  | id (PK)                                                |
+  | user_id (FK -> USERS)                                 |
+  | notification_type: STREAM_HALTED | BOUNTY_STOLEN |    |
+  |   BOUNTY_PAID | BOUNTY_LANGUISHED | UPSTREAM_DEFEATED |
+  | related_node_id (FK -> V3_NODES_I, nullable)          |
+  | related_s_node_id (FK -> V3_NODES_S, nullable)        |
+  | payload: JSONB                                         |
+  | created_at: TIMESTAMP                                  |
+  | read_at: TIMESTAMP (nullable)                          |
+  +--------------------------------------------------------+
+
+================================================================================
+3. NODE TYPE DEFINITIONS
+================================================================================
+
+3.1 I-Nodes (Information Nodes)
+--------------------------------
+I-Nodes are the primary propositional units of the argument graph. Every claim,
+premise, value statement, or policy position is represented as an I-Node.
+
+Three top-level types:
+
+  +----------+------------------------------------------------------------------+
+  | Type     | Semantics                                                        |
+  +----------+------------------------------------------------------------------+
+  | FACT     | An empirical or factual claim. Has a fact_subtype and a          |
+  |          | base_weight determined by the subtype and source reputation.     |
+  +----------+------------------------------------------------------------------+
+  | VALUE    | A normative or evaluative statement ("X is good/bad/better").    |
+  |          | base_weight = 1.0 always. ER is driven entirely by votes         |
+  |          | and argument topology; no subtype scaling.                       |
+  +----------+------------------------------------------------------------------+
+  | POLICY   | A prescriptive claim ("We should do X"). base_weight = 0.0.      |
+  |          | ER is topology-derived only -- a POLICY node's score is          |
+  |          | entirely a function of the arguments that support/attack it.     |
+  |          | Bare vote counts do not seed its ER.                             |
+  +----------+------------------------------------------------------------------+
+
+3.2 FACT Subtypes and base_weight
+-----------------------------------
+The base_weight field is set at creation time and is scaled by the reputation
+of the associated source (V3_SOURCES.reputation_score, r in [0.0, 1.0]).
+
+When no source is attached, r = 1.0 (neutral default).
+
+  base_weight = subtype_multiplier x source_reputation_score
+
+  +------------------+---------------------------+------------------------+
+  | Fact Subtype     | subtype_multiplier range  | Notes                  |
+  +------------------+---------------------------+------------------------+
+  | ENTHYMEME        | 0.5x                      | Implicit/ghost premise |
+  |                  |                           | (unstated assumption). |
+  |                  |                           | Always low-confidence. |
+  +------------------+---------------------------+------------------------+
+  | ANECDOTE         | 1.0x                      | Personal testimony,    |
+  |                  |                           | informal observation.  |
+  |                  |                           | Baseline weight.       |
+  +------------------+---------------------------+------------------------+
+  | DOCUMENT_REF     | 2.0x - 5.0x               | Reference to a         |
+  |                  |                           | non-academic document  |
+  |                  |                           | (news, report, book).  |
+  |                  |                           | Exact multiplier set   |
+  |                  |                           | by source reputation.  |
+  +------------------+---------------------------+------------------------+
+  | ACADEMIC_REF     | 5.0x - 10.0x              | Peer-reviewed paper or |
+  |                  |                           | academic source. Exact |
+  |                  |                           | multiplier set by      |
+  |                  |                           | source reputation.     |
+  +------------------+---------------------------+------------------------+
+
+  For DOCUMENT_REF:
+    base_weight = 2.0 + (3.0 x reputation_score)
+    - reputation = 0.0  =>  base_weight = 2.0
+    - reputation = 1.0  =>  base_weight = 5.0
+
+  For ACADEMIC_REF:
+    base_weight = 5.0 + (5.0 x reputation_score)
+    - reputation = 0.0  =>  base_weight = 5.0
+    - reputation = 1.0  =>  base_weight = 10.0
+
+  base_weight is stored at creation. It is recomputed during the nightly
+  Source Reputation Update stage whenever a source's reputation_score changes.
+
+3.3 I-Node Field Reference
+----------------------------
+
+  +------------------+------------+------------------------------------------+
+  | Field            | Type       | Description                              |
+  +------------------+------------+------------------------------------------+
+  | node_type        | ENUM       | FACT | VALUE | POLICY                   |
+  | fact_subtype     | ENUM|NULL  | ENTHYMEME | ANECDOTE | DOCUMENT_REF |   |
+  |                  |            | ACADEMIC_REF. NULL when node_type != FACT|
+  | base_weight      | FLOAT      | Seed signal for EvidenceRank. Computed   |
+  |                  |            | from subtype x source reputation.        |
+  |                  |            | 0.0 for POLICY; 1.0 for VALUE.           |
+  | evidence_rank    | FLOAT      | Output of nightly ER algorithm.          |
+  |                  |            | Initialized to 0.0. Updated nightly.     |
+  | is_defeated      | BOOL       | TRUE when attacking_weight >             |
+  |                  |            | supportive_weight + 1.0. Defeated        |
+  |                  |            | nodes do not contribute ER to            |
+  |                  |            | supporters and do not yield karma.       |
+  | component_id     | INT        | Connected component identifier from      |
+  |                  |            | Union-Find. Shared across all I-Nodes    |
+  |                  |            | and S-Nodes in the same component.       |
+  | node_role        | ENUM       | ROOT | SUPPORT | ATTACK. Set at          |
+  |                  |            | creation, immutable. See Section 4.      |
+  +------------------+------------+------------------------------------------+
+
+================================================================================
+4. NODE ROLES
+================================================================================
+
+Every I-Node is assigned exactly one node_role at creation time. This role is
+immutable -- it cannot change after the node is created.
+
+  +----------+--------------------------------------------------------------+
+  | Role     | Definition                                                   |
+  +----------+--------------------------------------------------------------+
+  | ROOT     | A node with no outgoing S-Node connections. It makes a       |
+  |          | standalone claim -- it supports or attacks nothing else.     |
+  |          | ROOT nodes are the theses, conclusions, and top-level        |
+  |          | positions of the debate. Owners earn pioneer_karma from      |
+  |          | these nodes.                                                 |
+  +----------+--------------------------------------------------------------+
+  | SUPPORT  | A node with at least one outgoing SUPPORT S-Node. The node   |
+  |          | is authored specifically to support another node. Owners     |
+  |          | earn builder_karma from these nodes.                         |
+  +----------+--------------------------------------------------------------+
+  | ATTACK   | A node with at least one outgoing ATTACK S-Node. The node    |
+  |          | is authored specifically to challenge another node. Owners   |
+  |          | earn critic_karma from these nodes (and can earn bounty      |
+  |          | payouts through the Crucible's steal mechanism).             |
+  +----------+--------------------------------------------------------------+
+
+Role assignment rules:
+
+  1. When a user authors a new top-level post (no S-Node target): ROOT.
+  2. When a user authors a reply attached via a SUPPORT S-Node: SUPPORT.
+  3. When a user authors a reply attached via an ATTACK S-Node: ATTACK.
+  4. A node can only have one role. If a user intends a node to both support
+     one claim and attack another, two separate nodes must be created.
+
+Rationale for immutability:
+  Node role determines the karma stream the author participates in. Allowing
+  role mutation would create retroactive karma manipulation vectors. Role is
+  structural identity, not a mutable property.
+
+================================================================================
+5. SOURCE ONTOLOGY (R-NODES)
+================================================================================
+
+5.1 Overview
+-------------
+R-Nodes (Reference Nodes, stored in v3_sources) form a three-level hierarchy
+that tracks the provenance and epistemic reliability of external sources cited
+by FACT I-Nodes.
+
+  +----------+--------------------------------------------------------------+
+  | Level    | Semantics                                                    |
+  +----------+--------------------------------------------------------------+
+  | DOMAIN   | A web domain or institutional entity (e.g., "nature.com",   |
+  |          | "nytimes.com", "CDC"). Represents the top-level trust        |
+  |          | anchor. Phase 1 implements domain-level R-Nodes only.       |
+  +----------+--------------------------------------------------------------+
+  | DOCUMENT | A specific publication, article, or report within a          |
+  |          | domain (Phase 2+). Identified by canonical URL.             |
+  +----------+--------------------------------------------------------------+
+  | EXTRACT  | A specific passage, figure, or data point within a           |
+  |          | document (Phase 2+). Enables fine-grained provenance.       |
+  +----------+--------------------------------------------------------------+
+
+5.2 reputation_score
+---------------------
+Every R-Node carries a reputation_score in [0.0, 1.0] with a default of 1.0.
+
+  reputation_score reflects the community-validated reliability of the source.
+  It is updated nightly during Stage 6 (Source Reputation Update) of the
+  batch pipeline based on the survival ratio of FACT nodes that cite the source.
+
+  weighted_survival_ratio = (sum ER(v) for non-defeated FACT nodes citing src)
+                           / (sum ER(v) for all FACT nodes citing src + eps)
+
+  new_reputation = alpha x old_reputation + (1 - alpha) x weighted_survival_ratio
+
+  where alpha = 0.9  (exponential moving average smoothing factor)
+  and   eps   = 1e-6 (prevents division by zero)
+
+  reputation_score is bounded to [0.0, 1.0] after each update.
+
+5.3 URL-Based Deduplication
+-----------------------------
+R-Nodes are deduplicated by their url field (UNIQUE constraint). When a user
+cites a URL:
+
+  1. The canonical domain is extracted from the URL.
+  2. If a DOMAIN R-Node with that url already exists, it is reused.
+  3. If not, a new DOMAIN R-Node is created with reputation_score = 1.0.
+
+Phase 1 performs deduplication at the domain level only. DOCUMENT and EXTRACT
+deduplication is reserved for Phase 2+.
+
+5.4 How Reputation Affects base_weight
+----------------------------------------
+See Section 3.2 for the per-subtype formulas. In summary:
+
+  base_weight(ENTHYMEME)    = 0.5  (constant; source not applicable)
+  base_weight(ANECDOTE)     = 1.0  (constant; source not applicable)
+  base_weight(DOCUMENT_REF) = 2.0 + 3.0 x reputation_score
+  base_weight(ACADEMIC_REF) = 5.0 + 5.0 x reputation_score
+
+When reputation_score of a cited source changes, all FACT nodes citing that
+source have their base_weight recomputed during Stage 6 of the nightly pipeline.
+This triggers a full EvidenceRank recomputation in the following night's run.
+
+5.5 Phase 1 Scope
+------------------
+Phase 1 deploys DOMAIN-level R-Nodes only. Users attach a source to a FACT
+node by providing a URL; the system extracts the domain and looks up or creates
+the corresponding DOMAIN R-Node. DOCUMENT and EXTRACT level nodes are created
+as placeholder rows only and are not actively managed in Phase 1.
+
+================================================================================
+6. THE EVIDENCERANK ALGORITHM
+================================================================================
+
+6.1 Purpose
+------------
+EvidenceRank (ER) is a scalar measure of the epistemic weight of an I-Node
+within the argument graph. It captures:
+
+  - The intrinsic quality of the node's evidence (base_weight / fact_subtype)
+  - The support it receives from other high-ER nodes
+  - The attacks it receives from other high-ER nodes
+  - Whether it has been defeated
+
+ER propagates through the graph iteratively, so a well-sourced node that is
+also well-supported by other well-sourced nodes achieves the highest scores.
+
+6.2 Computation Schedule
+-------------------------
+EvidenceRank is a GLOBAL NIGHTLY computation. It is NOT computed per-request.
+
+  - Runs as Stage 2 of the Nightly Batch Pipeline (see Section 10).
+  - All ER values from the previous night remain live until the next run.
+  - Real-time ER approximations are not provided.
+
+6.3 Seed Signal
+----------------
+For each I-Node v, the seed signal is:
+
+  S(v) = vote_score(v) x base_weight(v)
+
+  where vote_score(v) = upvotes(v) - downvotes(v), floor 0.
+  (Negative vote scores are treated as 0 for seeding purposes.)
+
+  For POLICY nodes: base_weight = 0.0, so S(v) = 0. POLICY ER is purely
+  topology-derived.
+  For VALUE nodes:  base_weight = 1.0, so S(v) = vote_score(v).
+  For FACT nodes:   S(v) = vote_score(v) x (subtype_multiplier x reputation).
+
+6.4 Iterative Convergence
+--------------------------
+EvidenceRank is computed using the following iterative algorithm:
+
+  Initialization:
+    ER(v) <- S(v)  for all I-Nodes v
+
+  Each iteration (max 20 iterations, convergence threshold delta < 0.001):
+
+    For each I-Node v:
+
+      supportive_weight(v) = S(v)
+                           + sum( ER(s) for all s such that:
+                               exists SUPPORT S-Node linking s -> v
+                               AND is_defeated(s) = FALSE )
+
+      attacking_weight(v)  = sum( ER(a) for all a such that:
+                               exists ATTACK S-Node linking a -> v
+                               AND is_defeated(a) = FALSE )
+
+      ER_new(v) = max(0, supportive_weight(v) - attacking_weight(v))
+
+    Convergence check:
+      delta = max over all v of |ER_new(v) - ER(v)|
+      If delta < 0.001: stop.
+      Else: ER(v) <- ER_new(v) and repeat.
+
+  After convergence (or after 20 iterations, whichever comes first):
+    evidence_rank(v) <- ER(v)  written to v3_nodes_i.evidence_rank
+
+6.5 Defeat Condition
+---------------------
+During Stage 3 (Defeat Resolution), after ER has converged, each I-Node v is
+evaluated:
+
+  is_defeated(v) = TRUE  iff  attacking_weight(v) > supportive_weight(v) + 1.0
+
+The +1.0 margin prevents flip-flopping when attack and support are in near
+balance. A node is only defeated when attackers decisively outweigh defenders.
+
+Defeat effects:
+  - Defeated nodes are excluded from supporters' ER summation (see above).
+  - Defeated nodes yield no karma to their author.
+  - Crucible bounties whose bridge S-Node's conclusion is defeated -> stolen.
+
+Note: Defeat resolution and ER computation are mutually dependent (defeat
+status affects ER; ER affects defeat). The algorithm resolves this by:
+  1. Computing ER without considering defeat (using previous night's
+     is_defeated flags as the initial state).
+  2. Recomputing defeat flags from new ER values.
+  3. If any defeat flag changed: re-run ER computation (max 3 outer loops).
+
+6.6 Pseudocode Summary
+-----------------------
+
+  function compute_evidence_rank(nodes, s_nodes):
+    # Outer loop: defeat-ER co-resolution (max 3 rounds)
+    for outer in 1..3:
+      # Inner loop: ER convergence
+      for iteration in 1..20:
+        er_new = {}
+        for v in nodes:
+          sup_w = S(v) + sum(ER[s] for s in supporters(v) if not s.is_defeated)
+          att_w = sum(ER[a] for a in attackers(v) if not a.is_defeated)
+          er_new[v] = max(0.0, sup_w - att_w)
+        delta = max(|er_new[v] - ER[v]| for v in nodes)
+        ER = er_new
+        if delta < 0.001: break
+
+      # Defeat resolution
+      defeat_changed = False
+      for v in nodes:
+        sup_w = S(v) + sum(ER[s] for s in supporters(v) if not s.is_defeated)
+        att_w = sum(ER[a] for a in attackers(v) if not a.is_defeated)
+        new_defeated = (att_w > sup_w + 1.0)
+        if new_defeated != v.is_defeated:
+          v.is_defeated = new_defeated
+          defeat_changed = True
+
+      if not defeat_changed: break
+
+    return ER, defeat_flags
+
+================================================================================
+7. KARMA SYSTEM
+================================================================================
+
+7.1 Overview
+-------------
+V4 replaces V3's vote_karma and connection_karma with three role-differentiated
+karma currencies:
+
+  +------------------+----------------------------------------------------------+
+  | Karma Type       | Earned By                                                |
+  +------------------+----------------------------------------------------------+
+  | pioneer_karma    | Authors of ROOT I-Nodes, weighted by ER of those        |
+  |                  | nodes. Also paid out for Crucible bridge successes.     |
+  +------------------+----------------------------------------------------------+
+  | builder_karma    | Authors of SUPPORT I-Nodes, weighted by ER.             |
+  +------------------+----------------------------------------------------------+
+  | critic_karma     | Authors of ATTACK I-Nodes, weighted by ER. Also         |
+  |                  | paid for successful bounty steals (Crucible).           |
+  +------------------+----------------------------------------------------------+
+
+7.2 Emission Constant
+----------------------
+The emission constant k = 0.01 governs the rate at which karma is generated
+from ER scores. It is a global tuning parameter applied identically across all
+three karma types.
+
+7.3 Daily Karma Yields
+-----------------------
+Karma is emitted once per nightly batch run (Stage 4) per user per node role.
+
+  pioneer_yield(user) = k x sum( ER(v)
+                            for all v where:
+                              v.author_id = user.id
+                              AND v.node_role = ROOT
+                              AND v.is_defeated = FALSE )
+
+  builder_yield(user) = k x sum( ER(v)
+                            for all v where:
+                              v.author_id = user.id
+                              AND v.node_role = SUPPORT
+                              AND v.is_defeated = FALSE )
+
+  critic_yield(user)  = k x sum( ER(v)
+                            for all v where:
+                              v.author_id = user.id
+                              AND v.node_role = ATTACK
+                              AND v.is_defeated = FALSE )
+
+  These yields are added to users.pioneer_karma, users.builder_karma,
+  users.critic_karma respectively, and recorded in v3_user_karma_profiles
+  for the day.
+
+7.4 epistemic_score
+--------------------
+users.epistemic_score is a derived aggregate:
+
+  epistemic_score = pioneer_karma + builder_karma + critic_karma
+
+It is recomputed at the end of Stage 4 and serves as the single displayed
+reputation metric in the UI. It replaces the V3 composite reputation score.
+
+7.5 Karma Immutability
+-----------------------
+Karma already earned is never removed. Defeat of a node halts future karma
+emission from that node but does not claw back previously earned karma.
+This preserves incentives -- users are rewarded for nodes that were epistemically
+sound at the time, even if they are later defeated by new evidence.
+
+================================================================================
+8. THE CRUCIBLE (SYNTHESIS BOUNTIES)
+================================================================================
+
+8.1 Overview
+-------------
+The Crucible is the mechanism by which users are incentivized to bridge
+disconnected argument clusters. A Crucible bounty is staked on a "bridge"
+S-Node -- an S-Node whose premise I-Node belongs to a different connected
+component than its conclusion I-Node.
+
+8.2 Bridge Detection
+---------------------
+A bridge S-Node is identified during Stage 1 (Connected Component Tracking)
+when:
+
+  component_id(premise_node) != component_id(conclusion_node)
+
+Upon detection:
+  - v3_nodes_s.is_bridge = TRUE
+  - v3_nodes_s.component_a_id = component_id(premise_node)
+  - v3_nodes_s.component_b_id = component_id(conclusion_node)
+  - The bounty system is activated (see Section 8.3)
+
+8.3 Escrow Lifecycle
+---------------------
+When a bridge S-Node is created (or detected):
+
+  1. escrow_status = 'active'
+  2. escrow_expires_at = NOW() + 72 hours
+  3. pending_bounty = (computed by the system; proportional to component sizes)
+
+The escrow is resolved during Stage 5 (Escrow Clearing) of the nightly batch
+run that falls after the 72-hour window closes.
+
+  +-----------------+-----------------------------------------------------------+
+  | escrow_status   | Trigger condition                                         |
+  +-----------------+-----------------------------------------------------------+
+  | none            | Default for all non-bridge S-Nodes.                      |
+  +-----------------+-----------------------------------------------------------+
+  | active          | Bridge detected; within 72-hour window. System has       |
+  |                 | reserved pending_bounty for payout.                      |
+  +-----------------+-----------------------------------------------------------+
+  | stolen          | Window expired AND bridge node's conclusion I-Node       |
+  |                 | is_defeated = TRUE.                                       |
+  |                 | Outcome: 50% of pending_bounty -> critic_karma of        |
+  |                 | the attacker whose ATTACK node caused the defeat.        |
+  |                 | The bridge node author receives nothing.                 |
+  +-----------------+-----------------------------------------------------------+
+  | languished      | Window expired AND is_defeated = FALSE AND               |
+  |                 | ER(conclusion I-Node) < 5.0.                             |
+  |                 | Outcome: no payout. Bounty is destroyed.                 |
+  +-----------------+-----------------------------------------------------------+
+  | paid            | Window expired AND is_defeated = FALSE AND               |
+  |                 | ER(conclusion I-Node) >= 5.0.                            |
+  |                 | Outcome: full pending_bounty -> pioneer_karma of         |
+  |                 | the bridge S-Node's premise I-Node author.               |
+  +-----------------+-----------------------------------------------------------+
+
+8.4 Bounty Steal Mechanics
+---------------------------
+When escrow_status transitions to 'stolen':
+
+  - The defeating attacker is identified as the author of the ATTACK I-Node
+    with the highest ER among all ATTACK nodes targeting the conclusion I-Node.
+  - That attacker's critic_karma is incremented by 0.5 x pending_bounty.
+  - A BOUNTY_STOLEN epistemic notification is sent to:
+      (a) the bridge node author
+      (b) the attacker
+
+8.5 Escrow Diagram
+-------------------
+
+         Bridge S-Node created
+                 |
+                 v
+         escrow_status = 'active'
+         escrow_expires_at = +72h
+                 |
+            72h elapses
+                 |
+         +-------+--------+
+         |                |
+  is_defeated=TRUE   is_defeated=FALSE
+         |                |
+         v           +----+----+
+      STOLEN      ER < 5.0  ER >= 5.0
+                      |         |
+                      v         v
+                 LANGUISHED   PAID
+
+================================================================================
+9. EPISTEMIC NOTIFICATIONS
+================================================================================
+
+9.1 Overview
+-------------
+Epistemic Notifications inform users of significant events in the argument graph
+that affect their karma streams or the validity of their positions.
+
+All notifications are PULL-ONLY. The system does not push notifications to
+clients. Users (or their agents) must actively poll the endpoint:
+
+  GET /api/v3/epistemic-notifications
+
+This is an intentional design choice: epistemic events are not urgent in the
+way social media mentions are. The pull model reduces noise and encourages
+deliberate engagement.
+
+9.2 Notification Types
+-----------------------
+
+  +----------------------+------------------------------------------------------+
+  | Type                 | Trigger and meaning                                  |
+  +----------------------+------------------------------------------------------+
+  | STREAM_HALTED        | A node authored by this user has become              |
+  |                      | is_defeated = TRUE. Future karma emissions from      |
+  |                      | this node are halted. Includes node ID and the       |
+  |                      | final ER values of the attacking nodes.              |
+  +----------------------+------------------------------------------------------+
+  | BOUNTY_STOLEN        | A bridge S-Node authored by this user had its        |
+  |                      | conclusion node defeated. The attacker has           |
+  |                      | received 50% of the bounty as critic_karma.          |
+  |                      | Includes attacker node ID, bounty amount,            |
+  |                      | attacker user ID.                                    |
+  +----------------------+------------------------------------------------------+
+  | BOUNTY_PAID          | A bridge S-Node authored by this user survived       |
+  |                      | the 72h window with ER >= 5.0. Full bounty paid     |
+  |                      | as pioneer_karma. Includes bounty amount and         |
+  |                      | final ER of conclusion node.                         |
+  +----------------------+------------------------------------------------------+
+  | BOUNTY_LANGUISHED    | A bridge S-Node authored by this user survived       |
+  |                      | the 72h window but ER < 5.0. No payout.             |
+  |                      | Includes final ER and threshold.                     |
+  +----------------------+------------------------------------------------------+
+  | UPSTREAM_DEFEATED    | A node that was providing significant ER support     |
+  |                      | to one of this user's nodes has itself been          |
+  |                      | defeated. The user's node's ER has decreased         |
+  |                      | as a result. Includes the upstream node ID, the      |
+  |                      | user's affected node ID, and the ER delta.           |
+  +----------------------+------------------------------------------------------+
+
+9.3 Notification Schema
+------------------------
+See Section 11 (Database Schema Summary) for the full field list of
+v3_epistemic_notifications.
+
+The payload JSONB field contains type-specific data:
+
+  STREAM_HALTED:
+    { "node_id": ..., "attacking_weight": ..., "supportive_weight": ... }
+
+  BOUNTY_STOLEN:
+    { "s_node_id": ..., "bounty_amount": ..., "attacker_user_id": ...,
+      "attacker_node_id": ... }
+
+  BOUNTY_PAID:
+    { "s_node_id": ..., "bounty_amount": ..., "conclusion_er": ... }
+
+  BOUNTY_LANGUISHED:
+    { "s_node_id": ..., "conclusion_er": ..., "er_threshold": 5.0 }
+
+  UPSTREAM_DEFEATED:
+    { "upstream_node_id": ..., "affected_node_id": ..., "er_delta": ... }
+
+9.4 Pull Endpoint
+------------------
+  Epistemic notifications are delivered via the unified notifications API:
+
+  GET /api/notifications
+    Query params:
+      unread_only: bool (default true)
+      limit: int (default 20, max 100)
+      offset: int (default 0)
+
+    Returns:
+      { notifications: [...], total_unread: int }
+
+  POST /api/notifications/:id/read
+    Marks a notification as read (sets read_at = NOW()).
+
+  NOTE: The dedicated /api/v3/epistemic-notifications endpoint has been removed.
+  All notification types (epistemic and social) are unified under /api/notifications.
+
+================================================================================
+10. NIGHTLY BATCH PIPELINE
+================================================================================
+
+The Nightly Batch Pipeline runs once per day (configurable schedule; default
+02:00 UTC) and executes six sequential stages. Each stage is transactional.
+Failure of any stage halts the pipeline and triggers an alert; the previous
+night's values remain live.
+
+  +------------------------------------------------------------------------+
+  |  NIGHTLY BATCH PIPELINE                                                |
+  |                                                                        |
+  |  Stage 1  ->  Stage 2  ->  Stage 3  ->  Stage 4  ->  Stage 5  ->  Stage 6 |
+  |                                                                        |
+  |   [CC]        [ER]         [DR]          [KP]         [EC]         [SR]    |
+  |                                                                        |
+  |  Connected  Evidence    Defeat       Karma       Escrow       Source  |
+  |  Component  Rank        Resolution   Stream      Clearing     Reputa- |
+  |  Tracking   Compute                  Payout                   tion    |
+  +------------------------------------------------------------------------+
+
+10.1 Stage 1 -- Connected Component Tracking (Union-Find)
+----------------------------------------------------------
+  Algorithm: Union-Find (disjoint set union) over the undirected adjacency
+  graph of I-Nodes and S-Nodes.
+
+  Process:
+    1. Initialize each I-Node as its own singleton component.
+    2. For each S-Node, union the components of its premise I-Node and its
+       conclusion I-Node.
+    3. Assign component_id = root of Union-Find tree to all I-Nodes in the
+       same component.
+    4. Detect bridge S-Nodes: any S-Node where premise and conclusion were in
+       different components BEFORE the union.
+
+  Outputs:
+    - v3_nodes_i.component_id updated for all I-Nodes.
+    - v3_nodes_s.is_bridge, component_a_id, component_b_id updated.
+
+10.2 Stage 2 -- EvidenceRank Computation
+-----------------------------------------
+  Executes the full EvidenceRank algorithm described in Section 6.
+
+  Outputs:
+    - v3_nodes_i.evidence_rank updated for all I-Nodes.
+
+10.3 Stage 3 -- Defeat Resolution
+-----------------------------------
+  For each I-Node, compute defeat condition and generate notifications.
+
+  Process:
+    1. For each I-Node v, compute attacking_weight and supportive_weight using
+       the converged ER values from Stage 2.
+    2. If attacking_weight(v) > supportive_weight(v) + 1.0:
+         - Set v.is_defeated = TRUE
+         - If v was not previously defeated: generate STREAM_HALTED
+           notification for v.author.
+         - For each I-Node u that had v as a supporter (SUPPORT S-Node v->u):
+             - Compute ER delta for u.
+             - If delta > 0: generate UPSTREAM_DEFEATED notification for
+               u.author.
+    3. If attacking_weight(v) <= supportive_weight(v) + 1.0:
+         - Set v.is_defeated = FALSE (node may recover from defeat)
+
+  Outputs:
+    - v3_nodes_i.is_defeated updated.
+    - v3_epistemic_notifications rows inserted.
+
+10.4 Stage 4 -- Karma Stream Payout
+-------------------------------------
+  Compute and apply daily karma yields for all users.
+
+  Process:
+    1. For each user, compute pioneer_yield, builder_yield, critic_yield
+       using the formulas in Section 7.3.
+    2. Increment users.pioneer_karma, builder_karma, critic_karma.
+    3. Recompute users.epistemic_score = sum of all three karma fields.
+    4. Insert a row into v3_user_karma_profiles with today's yields and a
+       snapshot timestamp.
+
+  Outputs:
+    - users.pioneer_karma, builder_karma, critic_karma, epistemic_score updated.
+    - v3_user_karma_profiles rows inserted.
+
+10.5 Stage 5 -- Escrow Clearing
+---------------------------------
+  Resolve all Crucible bounties whose 72-hour windows have closed.
+
+  Process:
+    For each S-Node where escrow_status = 'active'
+                      AND escrow_expires_at < NOW():
+
+      1. Fetch conclusion I-Node c.
+      2. Evaluate:
+           IF c.is_defeated:
+             - escrow_status = 'stolen'
+             - Find defeating attacker (highest-ER ATTACK node targeting c)
+             - Increment attacker.critic_karma += 0.5 x pending_bounty
+             - Generate BOUNTY_STOLEN notifications for bridge author + attacker
+           ELIF c.evidence_rank < 5.0:
+             - escrow_status = 'languished'
+             - Generate BOUNTY_LANGUISHED notification for bridge author
+           ELSE:
+             - escrow_status = 'paid'
+             - Increment bridge_author.pioneer_karma += pending_bounty
+             - Generate BOUNTY_PAID notification for bridge author
+      3. Set pending_bounty = 0 (escrow released)
+
+  Outputs:
+    - v3_nodes_s.escrow_status updated for resolved bounties.
+    - v3_nodes_s.pending_bounty zeroed.
+    - users karma fields updated (steal or paid outcomes).
+    - v3_epistemic_notifications rows inserted.
+
+10.6 Stage 6 -- Source Reputation Update
+------------------------------------------
+  Update reputation_score for all DOMAIN R-Nodes based on the survival ratio
+  of their cited FACT I-Nodes.
+
+  Process:
+    For each R-Node r (level = DOMAIN) with at least one citing I-Node:
+      1. Compute:
+           total_er    = sum( ER(v) for all FACT v where source_id = r.id )
+           survived_er = sum( ER(v) for all FACT v where source_id = r.id
+                                              AND is_defeated = FALSE )
+           survival_ratio = survived_er / (total_er + 1e-6)
+      2. Update:
+           r.reputation_score = clamp(
+             0.9 x r.reputation_score + 0.1 x survival_ratio,
+             0.0, 1.0
+           )
+      3. Recompute base_weight for all FACT nodes citing r (DOCUMENT_REF and
+         ACADEMIC_REF subtypes) using updated reputation_score.
+
+  Outputs:
+    - v3_sources.reputation_score updated.
+    - v3_nodes_i.base_weight updated for affected FACT nodes.
+
+================================================================================
+11. DATABASE SCHEMA SUMMARY
+================================================================================
+
+This section lists key tables and their V4-new or V4-modified columns.
+Full DDL is in apps/api/src/db/migrations/.
+
+11.1 v3_nodes_i (I-Nodes)
+--------------------------
+  New/modified columns in V4:
+
+  +-----------------+--------------+-------------------------------------------+
+  | Column          | Type         | Notes                                     |
+  +-----------------+--------------+-------------------------------------------+
+  | fact_subtype    | ENUM | NULL  | ENTHYMEME | ANECDOTE |                    |
+  |                 |              | DOCUMENT_REF | ACADEMIC_REF              |
+  |                 |              | NULL for VALUE and POLICY nodes.          |
+  | base_weight     | FLOAT        | Default 0.0. Set per subtype/source.      |
+  | evidence_rank   | FLOAT        | Default 0.0. Updated nightly.             |
+  | is_defeated     | BOOL         | Default FALSE. Updated nightly.           |
+  | component_id    | INT | NULL   | Updated nightly by Union-Find.            |
+  | node_role       | ENUM         | ROOT | SUPPORT | ATTACK.                 |
+  |                 |              | Immutable after creation.                 |
+  | source_id       | INT | NULL   | FK -> v3_sources.id                       |
+  +-----------------+--------------+-------------------------------------------+
+
+11.2 v3_nodes_s (S-Nodes)
+--------------------------
+  New/modified columns in V4:
+
+  +------------------+--------------+------------------------------------------+
+  | Column           | Type         | Notes                                    |
+  +------------------+--------------+------------------------------------------+
+  | escrow_expires_at| TIMESTAMP    | NULL for non-bridge S-Nodes.             |
+  | pending_bounty   | FLOAT        | Default 0.0.                             |
+  | escrow_status    | ENUM         | none | active | paid |                   |
+  |                  |              | stolen | languished. Default 'none'.     |
+  | is_bridge        | BOOL         | Default FALSE.                           |
+  | component_a_id   | INT | NULL   | Set when is_bridge = TRUE.               |
+  | component_b_id   | INT | NULL   | Set when is_bridge = TRUE.               |
+  +------------------+--------------+------------------------------------------+
+
+11.3 users (modified columns)
+------------------------------
+  V4 replaces vote_karma and connection_karma with:
+
+  +-----------------+--------+---------------------------------------------------+
+  | Column          | Type   | Notes                                             |
+  +-----------------+--------+---------------------------------------------------+
+  | pioneer_karma   | FLOAT  | Default 0.0. Accumulated from ROOT nodes.         |
+  | builder_karma   | FLOAT  | Default 0.0. Accumulated from SUPPORT nodes.      |
+  | critic_karma    | FLOAT  | Default 0.0. From ATTACK nodes + steals.          |
+  | epistemic_score | FLOAT  | Derived: sum of all three karma fields.           |
+  |                 |        | Replaces V3 reputation score.                     |
+  +-----------------+--------+---------------------------------------------------+
+
+  Deprecated (migration removes or aliases):
+    vote_karma        -> subsumed into pioneer/builder/critic karma
+    connection_karma  -> subsumed into pioneer/builder/critic karma
+
+11.4 v3_user_karma_profiles (new table)
+----------------------------------------
+  Records per-user per-day karma yields for historical analysis.
+
+  +----------------+---------------+---------------------------------------------+
+  | Column         | Type          | Notes                                       |
+  +----------------+---------------+---------------------------------------------+
+  | id             | SERIAL PK     |                                             |
+  | user_id        | INT FK        | -> users.id                                 |
+  | date           | DATE          | The batch run date.                         |
+  | pioneer_yield  | FLOAT         | pioneer_karma earned this day.              |
+  | builder_yield  | FLOAT         | builder_karma earned this day.              |
+  | critic_yield   | FLOAT         | critic_karma earned this day.               |
+  | snapshot_at    | TIMESTAMP     | When this row was written.                  |
+  +----------------+---------------+---------------------------------------------+
+
+  UNIQUE constraint: (user_id, date)
+
+11.5 v3_epistemic_notifications (new table)
+--------------------------------------------
+
+  +------------------+--------------+--------------------------------------------+
+  | Column           | Type         | Notes                                      |
+  +------------------+--------------+--------------------------------------------+
+  | id               | SERIAL PK    |                                            |
+  | user_id          | INT FK       | -> users.id                                |
+  | notification_type| ENUM         | STREAM_HALTED | BOUNTY_STOLEN |            |
+  |                  |              | BOUNTY_PAID | BOUNTY_LANGUISHED |          |
+  |                  |              | UPSTREAM_DEFEATED                          |
+  | related_node_id  | INT FK | NULL| -> v3_nodes_i.id                           |
+  | related_s_node_id| INT FK | NULL| -> v3_nodes_s.id                           |
+  | payload          | JSONB        | Type-specific data (see Section 9.3)       |
+  | created_at       | TIMESTAMP    | Default NOW()                              |
+  | read_at          | TIMESTAMP    | NULL until user reads.                     |
+  +------------------+--------------+--------------------------------------------+
+
+  INDEX on (user_id, read_at) for efficient unread queries.
+
+11.6 v3_sources (new table -- R-Nodes)
+----------------------------------------
+
+  +------------------+--------------+--------------------------------------------+
+  | Column           | Type         | Notes                                      |
+  +------------------+--------------+--------------------------------------------+
+  | id               | SERIAL PK    |                                            |
+  | level            | ENUM         | DOMAIN | DOCUMENT | EXTRACT               |
+  | url              | TEXT UNIQUE  | Canonical URL for deduplication.           |
+  | display_name     | TEXT         | Human-readable name.                       |
+  | reputation_score | FLOAT        | 0.0-1.0. Default 1.0.                      |
+  | parent_id        | INT FK | NULL| -> v3_sources.id (self-referential)        |
+  |                  |              | NULL for DOMAIN nodes.                     |
+  | created_at       | TIMESTAMP    | Default NOW()                              |
+  +------------------+--------------+--------------------------------------------+
+
+================================================================================
+12. OUT OF SCOPE (PHASE 2+)
+================================================================================
+
+The following features are designed and partially specified but are explicitly
+excluded from the V4 Phase 1 implementation. They must not be built, stubbed,
+or referenced in Phase 1 code without explicit product approval.
+
+  +---------------------------------+-------------------------------------+
+  | Feature                         | Planned Phase                       |
+  +---------------------------------+-------------------------------------+
+  | Epistemic Mirroring             | Phase 2                             |
+  |   (per-user belief state        |                                     |
+  |   tracking across argument      |                                     |
+  |   updates)                      |                                     |
+  +---------------------------------+-------------------------------------+
+  | Vector-Partitioned Disjoint     | Phase 2                             |
+  | Sets (VPDS)                     |                                     |
+  |   (semantic clustering of       |                                     |
+  |   connected components using    |                                     |
+  |   pgvector)                     |                                     |
+  +---------------------------------+-------------------------------------+
+  | Node2Vec Graph Embeddings       | Phase 2                             |
+  |   (graph-structure embeddings   |                                     |
+  |   for argument topology         |                                     |
+  |   similarity)                   |                                     |
+  +---------------------------------+-------------------------------------+
+  | Dual-Space Clustering           | Phase 3                             |
+  |   (joint semantic + topological |                                     |
+  |   clustering)                   |                                     |
+  +---------------------------------+-------------------------------------+
+  | DOCUMENT-level R-Nodes          | Phase 2                             |
+  |   (per-article source tracking) |                                     |
+  +---------------------------------+-------------------------------------+
+  | EXTRACT-level R-Nodes           | Phase 3                             |
+  |   (per-passage source tracking) |                                     |
+  +---------------------------------+-------------------------------------+
+  | MCP Tools                       | Phase 2                             |
+  |   (Model Context Protocol       |                                     |
+  |   integration for AI agent      |                                     |
+  |   argument authoring)           |                                     |
+  +---------------------------------+-------------------------------------+
+
+================================================================================
+APPENDIX A. GLOSSARY
+================================================================================
+
+  ADU          Argumentative Discourse Unit. A minimal propositional unit
+               extracted from user text. In V4, ADUs map to I-Nodes.
+
+  ATTACK       An S-Node scheme indicating the premise I-Node challenges or
+               contradicts the conclusion I-Node. Also: an I-Node node_role
+               indicating the node was authored to challenge another.
+
+  base_weight  The intrinsic seed signal for EvidenceRank computation,
+               determined by FACT subtype and source reputation.
+
+  builder_karma  Karma accumulated by authors of SUPPORT nodes.
+
+  component_id   The connected component identifier assigned by Union-Find.
+
+  critic_karma   Karma accumulated by authors of ATTACK nodes and bounty
+               stealers.
+
+  Crucible     The synthesis bounty mechanism rewarding bridge node authors.
+
+  defeat       The condition where attacking_weight > supportive_weight + 1.0,
+               halting a node's karma emissions.
+
+  emission constant (k)  Global scalar (0.01) controlling karma yield rates.
+
+  enthymeme    An implicit, unstated premise in an argument. Represented as
+               a FACT I-Node with subtype ENTHYMEME and base_weight 0.5.
+
+  epistemic_score  User-level aggregate of pioneer + builder + critic karma.
+
+  EvidenceRank (ER)  The nightly-computed scalar weight of an I-Node in the
+               argument graph.
+
+  I-Node       Information Node. A propositional unit in the argument graph.
+               Types: FACT, VALUE, POLICY.
+
+  is_bridge    Boolean field on S-Nodes indicating the S-Node connects two
+               previously disconnected components.
+
+  is_defeated  Boolean field on I-Nodes indicating the node has been overcome
+               by attackers.
+
+  NCW          Neurosymbolic Consistency Web. The V3/V4 architecture combining
+               neural embeddings for semantic search with symbolic argumentation
+               graph logic.
+
+  node_role    Immutable structural role of an I-Node: ROOT, SUPPORT, or ATTACK.
+
+  pioneer_karma  Karma accumulated by authors of ROOT nodes and paid bounties.
+
+  R-Node       Reference Node. A source in the three-level source ontology
+               (DOMAIN / DOCUMENT / EXTRACT).
+
+  reputation_score  A float in [0.0, 1.0] on R-Nodes reflecting community-
+               validated source reliability.
+
+  S-Node       Scheme Node. A relation node connecting two I-Nodes via a
+               SUPPORT or ATTACK relation.
+
+  SUPPORT      An S-Node scheme indicating the premise I-Node corroborates
+               the conclusion I-Node. Also: an I-Node node_role.
+
+  Union-Find   Disjoint set data structure used in Stage 1 of the nightly
+               pipeline for connected component tracking.
+
+================================================================================
+APPENDIX B. REVISION HISTORY
+================================================================================
+
+  V1.0 -- Initial ontology. I-Nodes, S-Nodes, basic vote-based reputation.
+
+  V2.0 -- Enthymemes, Concept Nodes, semantic search via content_embeddings.
+
+  V3.0 -- Neurosymbolic Consistency Web. Crucible bounties, connected component
+          tracking. vote_karma and connection_karma introduced.
+
+  V4.0 -- Epistemic Weighting. EvidenceRank algorithm, FACT subtypes,
+          base_weight, Source Ontology (R-Nodes), role-differentiated karma
+          (pioneer/builder/critic), defeat condition, epistemic notifications.
+          vote_karma/connection_karma replaced by pioneer/builder/critic karma.
+
+================================================================================
+END OF DOCUMENT
+================================================================================

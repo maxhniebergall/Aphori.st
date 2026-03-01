@@ -1,5 +1,5 @@
 import { query } from '../pool.js';
-import type { Notification, NotificationWithContext, UserType } from '@chitin/shared';
+import type { Notification, NotificationWithContext, UnifiedNotification, EpistemicNotificationType, UserType } from '@chitin/shared';
 
 interface NotificationRow {
   id: string;
@@ -81,7 +81,7 @@ export const NotificationRepo = {
     limit: number = 25,
     cursor?: string,
     lastViewedAt?: string | null
-  ): Promise<{ items: NotificationWithContext[]; cursor: string | null; hasMore: boolean }> {
+  ): Promise<{ items: UnifiedNotification[]; cursor: string | null; hasMore: boolean }> {
     const params: unknown[] = [userId, limit + 1];
     let cursorClause = '';
 
@@ -90,7 +90,7 @@ export const NotificationRepo = {
       params.push(cursor);
     }
 
-    const result = await query<NotificationWithContextRow>(
+    const result = await query<NotificationWithContextRow & { category: string; epistemic_type: string | null; payload: Record<string, unknown> | null; is_read: boolean }>(
       `SELECT
         n.*,
         CASE
@@ -119,16 +119,31 @@ export const NotificationRepo = {
     );
 
     const hasMore = result.rows.length > limit;
-    const items = result.rows.slice(0, limit);
-    const nextCursor = hasMore && items.length > 0
-      ? (items[items.length - 1]!.updated_at as Date).toISOString()
+    const rows = result.rows.slice(0, limit);
+    const nextCursor = hasMore && rows.length > 0
+      ? (rows[rows.length - 1]!.updated_at as Date).toISOString()
       : null;
 
-    return {
-      items: items.map(row => rowToNotificationWithContext(row, lastViewedAt ?? null)),
-      cursor: nextCursor,
-      hasMore,
-    };
+    const items: UnifiedNotification[] = rows.map(row => {
+      if (row.category === 'EPISTEMIC') {
+        return {
+          category: 'EPISTEMIC' as const,
+          id: row.id,
+          user_id: row.user_id,
+          epistemic_type: row.epistemic_type as EpistemicNotificationType,
+          payload: row.payload ?? {},
+          is_read: row.is_read,
+          created_at: (row.created_at as Date).toISOString(),
+          updated_at: (row.updated_at as Date).toISOString(),
+        };
+      }
+      return {
+        ...rowToNotificationWithContext(row, lastViewedAt ?? null),
+        category: 'SOCIAL' as const,
+      };
+    });
+
+    return { items, cursor: nextCursor, hasMore };
   },
 
   async upsertForFollowers(
@@ -151,18 +166,54 @@ export const NotificationRepo = {
   },
 
   async countNew(userId: string, lastViewedAt: string | null): Promise<number> {
-    if (!lastViewedAt) {
-      const result = await query<{ count: string }>(
-        'SELECT COUNT(*) AS count FROM notifications WHERE user_id = $1',
+    const [socialResult, epistemicResult] = await Promise.all([
+      lastViewedAt
+        ? query<{ count: string }>(
+            `SELECT COUNT(*) AS count FROM notifications
+             WHERE user_id = $1 AND category = 'SOCIAL' AND updated_at > $2`,
+            [userId, lastViewedAt]
+          )
+        : query<{ count: string }>(
+            `SELECT COUNT(*) AS count FROM notifications WHERE user_id = $1 AND category = 'SOCIAL'`,
+            [userId]
+          ),
+      query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM notifications
+         WHERE user_id = $1 AND category = 'EPISTEMIC' AND is_read = FALSE`,
         [userId]
-      );
-      return parseInt(result.rows[0]?.count ?? '0', 10);
-    }
+      ),
+    ]);
+    const social = parseInt(socialResult.rows[0]?.count ?? '0', 10);
+    const epistemic = parseInt(epistemicResult.rows[0]?.count ?? '0', 10);
+    return social + epistemic;
+  },
 
-    const result = await query<{ count: string }>(
-      'SELECT COUNT(*) AS count FROM notifications WHERE user_id = $1 AND updated_at > $2',
-      [userId, lastViewedAt]
+  async markEpistemicRead(userId: string): Promise<void> {
+    await query(
+      `UPDATE notifications SET is_read = TRUE
+       WHERE user_id = $1 AND category = 'EPISTEMIC' AND is_read = FALSE`,
+      [userId]
     );
-    return parseInt(result.rows[0]?.count ?? '0', 10);
+  },
+
+  async markSingleRead(id: string, userId: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE notifications SET is_read = TRUE
+       WHERE id = $1 AND user_id = $2 AND category = 'EPISTEMIC'`,
+      [id, userId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
+  async createEpistemicNotification(
+    userId: string,
+    type: EpistemicNotificationType,
+    payload: Record<string, unknown>
+  ): Promise<void> {
+    await query(
+      `INSERT INTO notifications (user_id, category, epistemic_type, payload, is_read)
+       VALUES ($1, 'EPISTEMIC', $2, $3, FALSE)`,
+      [userId, type, JSON.stringify(payload)]
+    );
   },
 };

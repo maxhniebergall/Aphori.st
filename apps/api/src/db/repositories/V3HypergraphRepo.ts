@@ -653,7 +653,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
            WHEN pn.source_type = 'post' THEN p.score
            ELSE r.score
          END as vote_score,
-         COALESCE(u.vote_karma, 0) as user_karma,
+         COALESCE(u.pioneer_karma + u.builder_karma + u.critic_karma, 0) as user_karma,
          CASE
            WHEN pn.source_type = 'post' THEN p.id
            ELSE r.post_id
