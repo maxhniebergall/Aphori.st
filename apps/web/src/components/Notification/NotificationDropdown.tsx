@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { notificationsApi } from '@/lib/api';
 import { formatDistanceToNow } from '@/lib/utils';
-import type { UnifiedNotification, NotificationWithContext } from '@chitin/shared';
+import type { UnifiedNotification } from '@chitin/shared';
 
 export function NotificationDropdown() {
   const { token } = useAuth();
