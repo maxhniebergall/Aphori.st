@@ -12,6 +12,7 @@ interface InsightPopoverProps {
   onClose: () => void;
   onAction: (action: 'search' | 'reply') => void;
   isUnsupported?: boolean;
+  isAttacked?: boolean;
   fallacyInfo?: { type: string; explanation: string };
   postId?: string;
 }
@@ -23,6 +24,7 @@ export function InsightPopover({
   onClose,
   onAction,
   isUnsupported,
+  isAttacked,
   fallacyInfo,
   postId,
 }: InsightPopoverProps) {
@@ -58,16 +60,7 @@ export function InsightPopover({
     };
   }, [onClose]);
 
-  const getReplyButtonLabel = () => {
-    // Fallacious and supported claims both use the generic "Reply to this" label;
-    // only unsupported, non-fallacious claims encourage adding a supporting premise.
-    if (isUnsupported && !fallacyInfo) {
-      return 'Add supporting premise';
-    }
-    return 'Reply to this';
-  };
-
-  const replyButtonLabel = getReplyButtonLabel();
+  const replyButtonLabel = 'Reply to this';
 
   return createPortal(
     <div
@@ -105,6 +98,15 @@ export function InsightPopover({
         </div>
       )}
 
+      {/* Attacked banner – orange, shown when claim has been challenged */}
+      {isAttacked && !fallacyInfo && (
+        <div className="mb-3 p-2 bg-orange-50 dark:bg-orange-900/20 rounded border border-orange-200 dark:border-orange-800">
+          <p className="text-xs font-semibold text-orange-800 dark:text-orange-200">
+            ⚔ This claim has been challenged.
+          </p>
+        </div>
+      )}
+
       {/* Extracted values */}
       {extractedValues.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1">
@@ -121,22 +123,13 @@ export function InsightPopover({
 
       {/* Actions */}
       <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-        {!isUnsupported && !fallacyInfo ? (
-          <Link
-            href={`/investigate/${iNode.id}?postId=${postId ?? ''}`}
-            onClick={onClose}
-            className="flex-1 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded transition-colors text-center"
-          >
-            Investigate
-          </Link>
-        ) : (
-          <button
-            onClick={() => onAction('search')}
-            className="flex-1 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded transition-colors"
-          >
-            Search similar
-          </button>
-        )}
+        <Link
+          href={`/investigate/${iNode.id}?postId=${postId ?? ''}`}
+          onClick={onClose}
+          className="flex-1 px-2 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded transition-colors text-center"
+        >
+          Investigate
+        </Link>
         <button
           onClick={() => onAction('reply')}
           className="flex-1 px-2 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded transition-colors"

@@ -8,6 +8,7 @@ import {
   getExtractedValues,
   getUnsupportedINodeIds,
   getFallaciousINodeIds,
+  getAttackedINodeIds,
 } from '@/lib/v3Helpers';
 import type { V3Subgraph, V3INode } from '@chitin/shared';
 
@@ -23,12 +24,19 @@ interface AugmentedTextProps {
 function getHighlightStyle(
   iNodeId: string,
   unsupportedIds: Set<string>,
-  fallaciousIds: Map<string, { type: string; explanation: string }>
+  fallaciousIds: Map<string, { type: string; explanation: string }>,
+  attackedIds: Set<string>
 ): { underline: string; hover: string } {
   if (fallaciousIds.has(iNodeId)) {
     return {
       underline: 'decoration-red-500/60',
       hover: 'hover:bg-red-50/50 dark:hover:bg-red-900/20',
+    };
+  }
+  if (attackedIds.has(iNodeId)) {
+    return {
+      underline: 'decoration-orange-400/70',
+      hover: 'hover:bg-orange-50/50 dark:hover:bg-orange-900/20',
     };
   }
   if (unsupportedIds.has(iNodeId)) {
@@ -66,6 +74,7 @@ export function AugmentedText({
 
   const unsupportedIds = useMemo(() => getUnsupportedINodeIds(subgraph), [subgraph]);
   const fallaciousIds = useMemo(() => getFallaciousINodeIds(subgraph), [subgraph]);
+  const attackedIds = useMemo(() => getAttackedINodeIds(subgraph), [subgraph]);
 
   const handleSpanClick = useCallback(
     (iNode: V3INode, e: React.MouseEvent<HTMLSpanElement>) => {
@@ -99,9 +108,11 @@ export function AugmentedText({
         }
 
         const iNode = seg.iNode;
-        const { underline, hover } = getHighlightStyle(iNode.id, unsupportedIds, fallaciousIds);
+        const { underline, hover } = getHighlightStyle(iNode.id, unsupportedIds, fallaciousIds, attackedIds);
         const highlightStatus = fallaciousIds.has(iNode.id)
           ? 'fallacious'
+          : attackedIds.has(iNode.id)
+          ? 'attacked'
           : unsupportedIds.has(iNode.id)
           ? 'unsupported'
           : 'supported';
@@ -126,6 +137,7 @@ export function AugmentedText({
           onClose={handlePopoverClose}
           onAction={handlePopoverAction}
           isUnsupported={unsupportedIds.has(activeINode.id)}
+          isAttacked={attackedIds.has(activeINode.id)}
           fallacyInfo={fallaciousIds.get(activeINode.id)}
           postId={postId}
         />
