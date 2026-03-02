@@ -20,8 +20,7 @@ TABLE OF CONTENTS
   8.  The Crucible (Synthesis Bounties)
   9.  Epistemic Notifications
   10. Nightly Batch Pipeline
-  11. Database Schema Summary
-  12. Out of Scope (Phase 2+)
+  11. Out of Scope (Phase 2+)
   Appendix A. Glossary
   Appendix B. Revision History
 
@@ -87,12 +86,6 @@ V4 ontology. Cardinality notation: ||--o{ (one-to-many), }o--o{ (many-to-many),
 
                          +---------------------------+
                          |          USERS            |
-                         |---------------------------|
-                         | id (PK)                   |
-                         | pioneer_karma             |
-                         | builder_karma             |
-                         | critic_karma              |
-                         | epistemic_score           |
                          +-------------+-------------+
                                        |
                                   1    | owns
@@ -100,35 +93,12 @@ V4 ontology. Cardinality notation: ||--o{ (one-to-many), }o--o{ (many-to-many),
                                   *    |
               +------------------------+------------------------+
               |           V3_NODES_I (I-Nodes)                  |
-              |--------------------------------------------------------|
-              | id (PK)                                                |
-              | node_type: FACT | VALUE | POLICY                      |
-              | fact_subtype: ENTHYMEME | ANECDOTE |                  |
-              |              DOCUMENT_REF | ACADEMIC_REF              |
-              | base_weight: FLOAT                                     |
-              | evidence_rank: FLOAT                                   |
-              | is_defeated: BOOL                                      |
-              | component_id: INT                                      |
-              | node_role: ROOT | SUPPORT | ATTACK                    |
-              | text_content: TEXT                                     |
-              | author_id (FK -> USERS)                               |
-              | source_id (FK -> V3_SOURCES, nullable)                |
               +--------+------------------+--------------------------+
                        |                  |
               premise  | role *    role * | conclusion
                        |                  |
               +--------+------------------+--------+
               |           V3_NODES_S (S-Nodes)      |
-              |-------------------------------------|
-              | id (PK)                             |
-              | scheme: SUPPORT | ATTACK            |
-              | escrow_status: none | active |      |
-              |   paid | stolen | languished        |
-              | escrow_expires_at: TIMESTAMP (null) |
-              | pending_bounty: FLOAT               |
-              | is_bridge: BOOL                     |
-              | component_a_id: INT (nullable)      |
-              | component_b_id: INT (nullable)      |
               +-------------------------------------+
 
   S-Nodes connect I-Nodes through directed edges:
@@ -164,14 +134,6 @@ V4 ontology. Cardinality notation: ||--o{ (one-to-many), }o--o{ (many-to-many),
 
     +------------------------------------------+
     |           V3_SOURCES (R-Nodes)            |
-    |------------------------------------------|
-    | id (PK)                                  |
-    | level: DOMAIN | DOCUMENT | EXTRACT       |
-    | url: TEXT (unique)                       |
-    | display_name: TEXT                       |
-    | reputation_score: FLOAT (0.0-1.0)        |
-    | parent_id (FK -> V3_SOURCES, nullable)   |
-    | created_at: TIMESTAMP                    |
     +------------------+-----------------------+
                        |
                   1    | is cited by
@@ -191,28 +153,10 @@ V4 ontology. Cardinality notation: ||--o{ (one-to-many), }o--o{ (many-to-many),
 
   +----------------------------------------------------+
   |       V3_USER_KARMA_PROFILES                        |
-  |----------------------------------------------------|
-  | id (PK)                                            |
-  | user_id (FK -> USERS)                             |
-  | date: DATE                                         |
-  | pioneer_yield: FLOAT                               |
-  | builder_yield: FLOAT                               |
-  | critic_yield: FLOAT                                |
-  | snapshot_at: TIMESTAMP                             |
   +----------------------------------------------------+
 
   +--------------------------------------------------------+
-  |       V3_EPISTEMIC_NOTIFICATIONS                        |
-  |--------------------------------------------------------|
-  | id (PK)                                                |
-  | user_id (FK -> USERS)                                 |
-  | notification_type: STREAM_HALTED | BOUNTY_STOLEN |    |
-  |   BOUNTY_PAID | BOUNTY_LANGUISHED | UPSTREAM_DEFEATED |
-  | related_node_id (FK -> V3_NODES_I, nullable)          |
-  | related_s_node_id (FK -> V3_NODES_S, nullable)        |
-  | payload: JSONB                                         |
-  | created_at: TIMESTAMP                                  |
-  | read_at: TIMESTAMP (nullable)                          |
+  |              NOTIFICATIONS (unified)                    |
   +--------------------------------------------------------+
 
 ================================================================================
@@ -287,30 +231,11 @@ When no source is attached, r = 1.0 (neutral default).
   base_weight is stored at creation. It is recomputed during the nightly
   Source Reputation Update stage whenever a source's reputation_score changes.
 
-3.3 I-Node Field Reference
-----------------------------
-
-  +------------------+------------+------------------------------------------+
-  | Field            | Type       | Description                              |
-  +------------------+------------+------------------------------------------+
-  | node_type        | ENUM       | FACT | VALUE | POLICY                   |
-  | fact_subtype     | ENUM|NULL  | ENTHYMEME | ANECDOTE | DOCUMENT_REF |   |
-  |                  |            | ACADEMIC_REF. NULL when node_type != FACT|
-  | base_weight      | FLOAT      | Seed signal for EvidenceRank. Computed   |
-  |                  |            | from subtype x source reputation.        |
-  |                  |            | 0.0 for POLICY; 1.0 for VALUE.           |
-  | evidence_rank    | FLOAT      | Output of nightly ER algorithm.          |
-  |                  |            | Initialized to 0.0. Updated nightly.     |
-  | is_defeated      | BOOL       | TRUE when attacking_weight >             |
-  |                  |            | supportive_weight + 1.0. Defeated        |
-  |                  |            | nodes do not contribute ER to            |
-  |                  |            | supporters and do not yield karma.       |
-  | component_id     | INT        | Connected component identifier from      |
-  |                  |            | Union-Find. Shared across all I-Nodes    |
-  |                  |            | and S-Nodes in the same component.       |
-  | node_role        | ENUM       | ROOT | SUPPORT | ATTACK. Set at          |
-  |                  |            | creation, immutable. See Section 4.      |
-  +------------------+------------+------------------------------------------+
+3.3 I-Node Fields (conceptual)
+--------------------------------
+Key fields and their semantics are described inline in the sections above and
+in the Glossary (Appendix A). For authoritative column definitions, types, and
+constraints see the database migrations in apps/api/src/db/migrations/.
 
 ================================================================================
 4. NODE ROLES
@@ -602,12 +527,13 @@ Karma is emitted once per nightly batch run (Stage 4) per user per node role.
 
 7.4 epistemic_score
 --------------------
-users.epistemic_score is a derived aggregate:
+epistemic_score is a DERIVED-ONLY value; it is NOT stored as a column:
 
   epistemic_score = pioneer_karma + builder_karma + critic_karma
 
-It is recomputed at the end of Stage 4 and serves as the single displayed
-reputation metric in the UI. It replaces the V3 composite reputation score.
+It is computed on-the-fly (e.g. at query time or in the API layer) and serves
+as the single displayed reputation metric in the UI. It replaces the V3
+composite reputation score. (migration 033 removed the stored column.)
 
 7.5 Karma Immutability
 -----------------------
@@ -758,60 +684,32 @@ deliberate engagement.
   |                      | user's affected node ID, and the ER delta.           |
   +----------------------+------------------------------------------------------+
 
-9.3 Notification Schema
+9.3 Notification Storage
 ------------------------
 Epistemic notifications are stored in the unified notifications table with
-category='EPISTEMIC'. See apps/api/src/db/migrations/ for the full schema.
+category='EPISTEMIC'. Each row carries a payload JSONB field with
+type-specific data (node IDs, karma amounts, ER values, etc.).
 
-The payload JSONB field contains type-specific data:
-
-  STREAM_HALTED:
-    { "node_id": ..., "attacking_weight": ..., "supportive_weight": ... }
-
-  BOUNTY_STOLEN:
-    { "s_node_id": ..., "bounty_amount": ..., "attacker_user_id": ...,
-      "attacker_node_id": ... }
-
-  BOUNTY_PAID:
-    { "s_node_id": ..., "bounty_amount": ..., "conclusion_er": ... }
-
-  BOUNTY_LANGUISHED:
-    { "s_node_id": ..., "conclusion_er": ..., "er_threshold": 5.0 }
-
-  UPSTREAM_DEFEATED:
-    { "upstream_node_id": ..., "affected_node_id": ..., "er_delta": ... }
+For the authoritative column definitions and payload shapes see:
+  - apps/api/src/db/migrations/ (schema)
+  - API specification (payload field contracts per type)
 
 9.4 Pull Endpoint
 ------------------
-  Epistemic and social notifications are unified under the existing
-  notifications API:
+  Epistemic and social notifications are served from the same unified
+  notifications API endpoint. The API supports paginated listing, an
+  unread count query, and mark-as-read operations.
 
-  GET /api/v1/notifications
-    Query params:
-      limit: int (default 25, max 100)
-      cursor: string (optional, for pagination)
-
-    Returns paginated notifications of both category='SOCIAL' and
-    category='EPISTEMIC', sorted by recency.
-
-  GET /api/v1/notifications/new-count
-    Returns count of new/unread notifications since last viewed.
-
-  POST /api/v1/notifications/viewed
-    Marks all notifications as viewed (updates last_viewed_at and sets
-    is_read=TRUE for all epistemic notifications).
-
-  POST /api/v1/notifications/:id/read
-    Marks a single epistemic notification as read.
+  For route paths, query parameters, and response shapes see the API
+  specification.
 
 ================================================================================
 10. NIGHTLY BATCH PIPELINE
 ================================================================================
 
 The Nightly Batch Pipeline runs once per day (configurable schedule; default
-02:00 UTC) and executes six sequential stages. Each stage is transactional.
-Failure of any stage halts the pipeline and triggers an alert; the previous
-night's values remain live.
+02:00 UTC) and executes six sequential stages. Failure of any stage halts the
+pipeline and triggers an alert; the previous night's values remain live.
 
   +------------------------------------------------------------------------+
   |  NIGHTLY BATCH PIPELINE                                                |
@@ -880,12 +778,12 @@ night's values remain live.
     1. For each user, compute pioneer_yield, builder_yield, critic_yield
        using the formulas in Section 7.3.
     2. Increment users.pioneer_karma, builder_karma, critic_karma.
-    3. Recompute users.epistemic_score = sum of all three karma fields.
-    4. Upsert v3_user_karma_profiles with today's yields.
+    3. Upsert v3_user_karma_profiles with today's yields.
 
   Outputs:
-    - users.pioneer_karma, builder_karma, critic_karma, epistemic_score updated.
+    - users.pioneer_karma, builder_karma, critic_karma updated.
     - v3_user_karma_profiles rows inserted.
+    (epistemic_score is derived on-the-fly; it is not a stored column.)
 
 10.5 Stage 5 -- Escrow Clearing
 ---------------------------------
@@ -1015,7 +913,8 @@ APPENDIX A. GLOSSARY
   enthymeme    An implicit, unstated premise in an argument. Represented as
                a FACT I-Node with subtype ENTHYMEME and base_weight 0.5.
 
-  epistemic_score  User-level aggregate of pioneer + builder + critic karma.
+  epistemic_score  Derived (not stored) sum of pioneer + builder + critic karma.
+               Computed on-the-fly as the displayed reputation metric in the UI.
 
   EvidenceRank (ER)  The nightly-computed scalar weight of an I-Node in the
                argument graph.
