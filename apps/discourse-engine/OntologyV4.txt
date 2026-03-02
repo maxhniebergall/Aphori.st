@@ -661,9 +661,9 @@ run that falls after the 72-hour window closes.
   +-----------------+-----------------------------------------------------------+
   | stolen          | Window expired AND bridge node's conclusion I-Node       |
   |                 | is_defeated = TRUE.                                       |
-  |                 | Outcome: 50% of pending_bounty -> critic_karma of        |
-  |                 | the attacker whose ATTACK node caused the defeat.        |
-  |                 | The bridge node author receives nothing.                 |
+  |                 | Outcome: 50% of pending_bounty split among all           |
+  |                 | attacking authors proportionally by ER. The bridge       |
+  |                 | node author receives nothing.                            |
   +-----------------+-----------------------------------------------------------+
   | languished      | Window expired AND is_defeated = FALSE AND               |
   |                 | ER(conclusion I-Node) < 5.0.                             |
@@ -679,12 +679,12 @@ run that falls after the 72-hour window closes.
 ---------------------------
 When escrow_status transitions to 'stolen':
 
-  - The defeating attacker is identified as the author of the ATTACK I-Node
-    with the highest ER among all ATTACK nodes targeting the conclusion I-Node.
-  - That attacker's critic_karma is incremented by 0.5 x pending_bounty.
-  - A BOUNTY_STOLEN epistemic notification is sent to:
-      (a) the bridge node author
-      (b) the attacker
+  - All ATTACK I-Nodes targeting the conclusion I-Node are identified.
+  - 50% of pending_bounty is distributed among their authors proportionally
+    by each attacker's ER (evidence_rank). Each attacker's critic_karma is
+    incremented by (attacker_er / total_attacking_er) x 0.5 x pending_bounty.
+  - A BOUNTY_STOLEN epistemic notification is sent to each attacker and to
+    the bridge node author.
 
 8.5 Escrow Diagram
 -------------------
@@ -717,9 +717,9 @@ Epistemic Notifications inform users of significant events in the argument graph
 that affect their karma streams or the validity of their positions.
 
 All notifications are PULL-ONLY. The system does not push notifications to
-clients. Users (or their agents) must actively poll the endpoint:
-
-  GET /api/v3/epistemic-notifications
+clients. Users (or their agents) must actively poll the unified notifications
+endpoint (see Section 9.4). Epistemic and social notifications are served from
+the same API.
 
 This is an intentional design choice: epistemic events are not urgent in the
 way social media mentions are. The pull model reduces noise and encourages
@@ -737,10 +737,10 @@ deliberate engagement.
   |                      | final ER values of the attacking nodes.              |
   +----------------------+------------------------------------------------------+
   | BOUNTY_STOLEN        | A bridge S-Node authored by this user had its        |
-  |                      | conclusion node defeated. The attacker has           |
-  |                      | received 50% of the bounty as critic_karma.          |
-  |                      | Includes attacker node ID, bounty amount,            |
-  |                      | attacker user ID.                                    |
+  |                      | conclusion node defeated. Attacking authors          |
+  |                      | split 50% of the bounty as critic_karma              |
+  |                      | proportionally by ER. Includes this attacker's       |
+  |                      | node ID, karma amount received, and user ID.         |
   +----------------------+------------------------------------------------------+
   | BOUNTY_PAID          | A bridge S-Node authored by this user survived       |
   |                      | the 72h window with ER >= 5.0. Full bounty paid     |
@@ -760,8 +760,9 @@ deliberate engagement.
 
 9.3 Notification Schema
 ------------------------
-See Section 11 (Database Schema Summary) for the full field list of
-v3_epistemic_notifications.
+Epistemic notifications are stored in the unified notifications table with
+category='EPISTEMIC'. See Section 11 (Database Schema Summary) for the full
+field list.
 
 The payload JSONB field contains type-specific data:
 
@@ -783,22 +784,26 @@ The payload JSONB field contains type-specific data:
 
 9.4 Pull Endpoint
 ------------------
-  Epistemic notifications are delivered via the unified notifications API:
+  Epistemic and social notifications are unified under the existing
+  notifications API:
 
-  GET /api/notifications
+  GET /api/v1/notifications
     Query params:
-      unread_only: bool (default true)
-      limit: int (default 20, max 100)
-      offset: int (default 0)
+      limit: int (default 25, max 100)
+      cursor: string (optional, for pagination)
 
-    Returns:
-      { notifications: [...], total_unread: int }
+    Returns paginated notifications of both category='SOCIAL' and
+    category='EPISTEMIC', sorted by recency.
 
-  POST /api/notifications/:id/read
-    Marks a notification as read (sets read_at = NOW()).
+  GET /api/v1/notifications/new-count
+    Returns count of new/unread notifications since last viewed.
 
-  NOTE: The dedicated /api/v3/epistemic-notifications endpoint has been removed.
-  All notification types (epistemic and social) are unified under /api/notifications.
+  POST /api/v1/notifications/viewed
+    Marks all notifications as viewed (updates last_viewed_at and sets
+    is_read=TRUE for all epistemic notifications).
+
+  POST /api/v1/notifications/:id/read
+    Marks a single epistemic notification as read.
 
 ================================================================================
 10. NIGHTLY BATCH PIPELINE
@@ -859,7 +864,7 @@ night's values remain live.
            notification for v.author.
          - For each I-Node u that had v as a supporter (SUPPORT S-Node v->u):
              - Compute ER delta for u.
-             - If delta > 0: generate UPSTREAM_DEFEATED notification for
+             - If delta < 0: generate UPSTREAM_DEFEATED notification for
                u.author.
     3. If attacking_weight(v) <= supportive_weight(v) + 1.0:
          - Set v.is_defeated = FALSE (node may recover from defeat)
@@ -896,9 +901,9 @@ night's values remain live.
       2. Evaluate:
            IF c.is_defeated:
              - escrow_status = 'stolen'
-             - Find defeating attacker (highest-ER ATTACK node targeting c)
-             - Increment attacker.critic_karma += 0.5 x pending_bounty
-             - Generate BOUNTY_STOLEN notifications for bridge author + attacker
+             - Find all ATTACK nodes targeting c; compute each attacker's ER share
+             - For each attacker: critic_karma += (attacker_er / total_er) x 0.5 x pending_bounty
+             - Generate BOUNTY_STOLEN notification for each attacker + bridge author
            ELIF c.evidence_rank < 5.0:
              - escrow_status = 'languished'
              - Generate BOUNTY_LANGUISHED notification for bridge author
