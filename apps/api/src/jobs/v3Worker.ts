@@ -300,6 +300,8 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
     // ── V4: Base Weight + Node Role Assignment ──
     {
+      const gamificationRepo = createV3GamificationRepo(pool);
+
       // Build a set of engine IDs that appear as premises in SUPPORT or ATTACK scheme edges
       const premiseRoleMap = new Map<string, 'SUPPORT' | 'ATTACK'>(); // engine_id → role
       const schemeNodes = analysis.hypergraph.nodes.filter(
@@ -378,20 +380,8 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
             updatePromises.push(
               (async () => {
                 try {
-                  const sourceResult = await pool.query<{ id: string }>(
-                    `INSERT INTO v3_sources (level, url, title)
-                     VALUES ('DOMAIN', $1, $2)
-                     ON CONFLICT (url) DO UPDATE SET url = EXCLUDED.url
-                     RETURNING id`,
-                    [domain, domain]
-                  );
-                  const sourceRefId = sourceResult.rows[0]?.id;
-                  if (sourceRefId) {
-                    await pool.query(
-                      `UPDATE v3_nodes_i SET source_ref_id = $1 WHERE id = $2`,
-                      [sourceRefId, dbId]
-                    );
-                  }
+                  const source = await gamificationRepo.upsertSource(domain, 'DOMAIN', domain);
+                  await gamificationRepo.linkINodeSourceRef(dbId, source.id);
                 } catch (err: unknown) {
                   logger.warn('V4: failed to upsert v3_source or link source_ref_id', {
                     domain,
@@ -403,16 +393,17 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
           }
         }
 
-        // Batch UPDATE v3_nodes_i
+        // Update v3_nodes_i V4 attributes via repo
         updatePromises.push(
-          pool.query(
-            `UPDATE v3_nodes_i SET fact_subtype = $1, base_weight = $2, node_role = $3 WHERE id = $4`,
-            [factSubtype, baseWeight, nodeRole, dbId]
-          )
+          gamificationRepo.setINodeV4Attributes(dbId, factSubtype, baseWeight, nodeRole)
         );
       }
 
-      await Promise.all(updatePromises);
+      // Chunk concurrent DB mutations to avoid overwhelming the connection pool
+      const CHUNK_SIZE = 50;
+      for (let i = 0; i < updatePromises.length; i += CHUNK_SIZE) {
+        await Promise.all(updatePromises.slice(i, i + CHUNK_SIZE));
+      }
 
       logger.info('V4: base weight + node role assignment complete', {
         sourceId,
