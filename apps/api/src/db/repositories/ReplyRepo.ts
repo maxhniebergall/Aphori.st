@@ -244,6 +244,61 @@ export const ReplyRepo = {
     };
   },
 
+  async findByParentReplyId(
+    parentReplyId: string,
+    limit: number,
+    cursor?: string,
+    sort: 'top' | 'new' | 'controversial' | 'evidence' = 'evidence'
+  ): Promise<PaginatedResponse<ReplyWithAuthor>> {
+    const params: unknown[] = [parentReplyId, limit + 1];
+    let cursorCondition = '';
+
+    if (cursor) {
+      cursorCondition = 'AND r.created_at < $3';
+      params.push(cursor);
+    }
+
+    // 'evidence' is handled upstream by syntheticThreadService before this
+    // function is called; fall back to score-based ordering if reached directly.
+    let orderBy: string;
+    switch (sort) {
+      case 'new':
+        orderBy = 'r.created_at DESC';
+        break;
+      case 'controversial':
+        orderBy = 'r.vote_count DESC, ABS(r.score) ASC, r.created_at DESC';
+        break;
+      case 'top':
+      case 'evidence':
+      default:
+        orderBy = 'r.score DESC, r.created_at DESC';
+        break;
+    }
+
+    const result = await query<ReplyWithAuthorRow>(
+      `SELECT r.*, u.display_name as author_display_name, u.user_type as author_user_type
+       FROM replies r
+       JOIN users u ON r.author_id = u.id
+       WHERE r.parent_reply_id = $1 AND r.deleted_at IS NULL ${cursorCondition}
+       ORDER BY ${orderBy}
+       LIMIT $2`,
+      params
+    );
+
+    const hasMore = result.rows.length > limit;
+    const items = result.rows.slice(0, limit).map(rowToReplyWithAuthor);
+
+    const nextCursor = hasMore && items.length > 0
+      ? items[items.length - 1]!.created_at
+      : null;
+
+    return {
+      items,
+      cursor: nextCursor,
+      hasMore,
+    };
+  },
+
   async findThreadedByPostId(postId: string): Promise<ReplyWithAuthor[]> {
     const result = await query<ReplyWithAuthorRow>(
       `SELECT r.*, u.display_name as author_display_name, u.user_type as author_user_type
