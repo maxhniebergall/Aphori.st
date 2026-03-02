@@ -535,3 +535,22 @@ export interface V3ActiveBounty {
   component_a_sample: string | null;  // sample I-node content from component A
   component_b_sample: string | null;  // sample I-node content from component B
 }
+
+// IBA (Interleaved Bridge Algorithm) — Evidence Sort Types
+
+export interface SyntheticReplyWithAuthor extends ReplyWithAuthor {
+  targeted_adu_ids: string[];        // parent ADU IDs this reply addresses
+  final_score: number;
+  bridge_count: number;
+  direction: 'SUPPORT' | 'ATTACK' | 'MIXED';
+  hasReplies: boolean;               // reply_count > 0
+  continueThreadUrl?: string;        // set on depth-3 replies that have children: '/reply/:id'
+  children: SyntheticReplyWithAuthor[];  // pre-fetched depth+1 replies (empty at depth 3)
+}
+
+export interface SyntheticThreadResponse {
+  items: SyntheticReplyWithAuthor[];  // depth-1 replies with embedded children to depth 3
+  cursor: string | null;
+  hasMore: boolean;
+  fallback: boolean;                 // true → no V3 data, client should fall back to 'top'
+}
