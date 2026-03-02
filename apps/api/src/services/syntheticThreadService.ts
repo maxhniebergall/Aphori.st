@@ -38,7 +38,7 @@ export function scoreAndGroup(
   // Score each reply
   const scored = new Map<string, ScoredCandidate>();
   for (const [replyId, candidates] of replyMap) {
-    const targetedAduIds = [...new Set(candidates.map(c => c.parent_adu_id))];
+    const targetedAduIds = [...new Set(candidates.map(c => c.parent_adu_id))].sort();
     const bridgeCount = targetedAduIds.length;
     const bridgeMultiplier = 1.0 + 0.5 * (bridgeCount - 1);
 
@@ -180,7 +180,10 @@ export async function buildSyntheticThread(
   }
 
   // Paginate using offset cursor
-  const offset = cursor ? parseInt(cursor, 10) : 0;
+  const rawOffset = cursor ? parseInt(cursor, 10) : 0;
+  const offset = Number.isFinite(rawOffset) && Number.isInteger(rawOffset) && rawOffset >= 0
+    ? Math.min(rawOffset, orderedReplyIds.length)
+    : 0;
   const pageIds = orderedReplyIds.slice(offset, offset + limit);
   const hasMore = offset + limit < orderedReplyIds.length;
   const nextCursor = hasMore ? String(offset + limit) : null;
