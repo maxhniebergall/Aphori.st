@@ -35,7 +35,7 @@ export function getFallaciousINodeIds(
       if (conclusionEdge) {
         // Assumption: at most one fallacious S-node per I-node conclusion.
         // If multiple fallacious S-nodes share a conclusion, last-write-wins.
-        result.set(conclusionEdge.node_id, {
+        result.set(conclusionEdge.node_id!, {
           type: sNode.fallacy_type,
           explanation: sNode.fallacy_explanation ?? '',
         });
