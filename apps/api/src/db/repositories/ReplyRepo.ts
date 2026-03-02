@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { query, withTransaction } from '../pool.js';
 import type { Reply, ReplyWithAuthor, CreateReplyInput, PaginatedResponse } from '@chitin/shared';
+import { AppError } from '../../middleware/errorHandler.js';
 
 interface ReplyRow {
   id: string;
@@ -204,20 +205,26 @@ export const ReplyRepo = {
     // Keyset cursor encodes all sort columns as JSON to avoid row skips/duplication
     // across pages when ordering on multi-column keys.
     if (cursor) {
-      const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8')) as Record<string, unknown>;
+      let decoded: Record<string, unknown>;
+      try {
+        decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8')) as Record<string, unknown>;
+        if (!decoded || typeof decoded !== 'object') throw new Error('invalid shape');
+      } catch {
+        throw new AppError(400, 'INVALID_CURSOR', 'Malformed pagination cursor');
+      }
       switch (sort) {
         case 'top':
-          cursorCondition = 'AND (r.score < $3 OR (r.score = $3 AND r.created_at < $4))';
-          params.push(decoded.score, decoded.created_at);
+          cursorCondition = 'AND (r.score < $3 OR (r.score = $3 AND r.created_at < $4) OR (r.score = $3 AND r.created_at = $4 AND r.id < $5))';
+          params.push(decoded.score, decoded.created_at, decoded.id);
           break;
         case 'controversial':
-          cursorCondition = 'AND (r.vote_count < $3 OR (r.vote_count = $3 AND ABS(r.score) > $4) OR (r.vote_count = $3 AND ABS(r.score) = $4 AND r.created_at < $5))';
-          params.push(decoded.vote_count, decoded.abs_score, decoded.created_at);
+          cursorCondition = 'AND (r.vote_count < $3 OR (r.vote_count = $3 AND ABS(r.score) > $4) OR (r.vote_count = $3 AND ABS(r.score) = $4 AND r.created_at < $5) OR (r.vote_count = $3 AND ABS(r.score) = $4 AND r.created_at = $5 AND r.id < $6))';
+          params.push(decoded.vote_count, decoded.abs_score, decoded.created_at, decoded.id);
           break;
         case 'new':
         default:
-          cursorCondition = 'AND r.created_at < $3';
-          params.push(decoded.created_at);
+          cursorCondition = 'AND (r.created_at < $3 OR (r.created_at = $3 AND r.id < $4))';
+          params.push(decoded.created_at, decoded.id);
           break;
       }
     }
@@ -225,14 +232,14 @@ export const ReplyRepo = {
     let orderBy: string;
     switch (sort) {
       case 'top':
-        orderBy = 'r.score DESC, r.created_at DESC';
+        orderBy = 'r.score DESC, r.created_at DESC, r.id DESC';
         break;
       case 'controversial':
-        orderBy = 'r.vote_count DESC, ABS(r.score) ASC, r.created_at DESC';
+        orderBy = 'r.vote_count DESC, ABS(r.score) ASC, r.created_at DESC, r.id DESC';
         break;
       case 'new':
       default:
-        orderBy = 'r.created_at DESC';
+        orderBy = 'r.created_at DESC, r.id DESC';
         break;
     }
 
@@ -255,13 +262,13 @@ export const ReplyRepo = {
       let payload: Record<string, unknown>;
       switch (sort) {
         case 'top':
-          payload = { score: last.score, created_at: last.created_at };
+          payload = { score: last.score, created_at: last.created_at, id: last.id };
           break;
         case 'controversial':
-          payload = { vote_count: (last as ReplyWithAuthor & { vote_count?: number }).vote_count ?? 0, abs_score: Math.abs(last.score), created_at: last.created_at };
+          payload = { vote_count: (last as ReplyWithAuthor & { vote_count?: number }).vote_count ?? 0, abs_score: Math.abs(last.score), created_at: last.created_at, id: last.id };
           break;
         default:
-          payload = { created_at: last.created_at };
+          payload = { created_at: last.created_at, id: last.id };
           break;
       }
       nextCursor = Buffer.from(JSON.stringify(payload)).toString('base64');
@@ -285,21 +292,27 @@ export const ReplyRepo = {
     let cursorCondition = '';
 
     if (cursor) {
-      const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8')) as Record<string, unknown>;
+      let decoded: Record<string, unknown>;
+      try {
+        decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8')) as Record<string, unknown>;
+        if (!decoded || typeof decoded !== 'object') throw new Error('invalid shape');
+      } catch {
+        throw new AppError(400, 'INVALID_CURSOR', 'Malformed pagination cursor');
+      }
       switch (sort) {
         case 'top':
         case 'evidence':
-          cursorCondition = 'AND (r.score < $3 OR (r.score = $3 AND r.created_at < $4))';
-          params.push(decoded.score, decoded.created_at);
+          cursorCondition = 'AND (r.score < $3 OR (r.score = $3 AND r.created_at < $4) OR (r.score = $3 AND r.created_at = $4 AND r.id < $5))';
+          params.push(decoded.score, decoded.created_at, decoded.id);
           break;
         case 'controversial':
-          cursorCondition = 'AND (r.vote_count < $3 OR (r.vote_count = $3 AND ABS(r.score) > $4) OR (r.vote_count = $3 AND ABS(r.score) = $4 AND r.created_at < $5))';
-          params.push(decoded.vote_count, decoded.abs_score, decoded.created_at);
+          cursorCondition = 'AND (r.vote_count < $3 OR (r.vote_count = $3 AND ABS(r.score) > $4) OR (r.vote_count = $3 AND ABS(r.score) = $4 AND r.created_at < $5) OR (r.vote_count = $3 AND ABS(r.score) = $4 AND r.created_at = $5 AND r.id < $6))';
+          params.push(decoded.vote_count, decoded.abs_score, decoded.created_at, decoded.id);
           break;
         case 'new':
         default:
-          cursorCondition = 'AND r.created_at < $3';
-          params.push(decoded.created_at);
+          cursorCondition = 'AND (r.created_at < $3 OR (r.created_at = $3 AND r.id < $4))';
+          params.push(decoded.created_at, decoded.id);
           break;
       }
     }
@@ -307,15 +320,15 @@ export const ReplyRepo = {
     let orderBy: string;
     switch (sort) {
       case 'new':
-        orderBy = 'r.created_at DESC';
+        orderBy = 'r.created_at DESC, r.id DESC';
         break;
       case 'controversial':
-        orderBy = 'r.vote_count DESC, ABS(r.score) ASC, r.created_at DESC';
+        orderBy = 'r.vote_count DESC, ABS(r.score) ASC, r.created_at DESC, r.id DESC';
         break;
       case 'top':
       case 'evidence':
       default:
-        orderBy = 'r.score DESC, r.created_at DESC';
+        orderBy = 'r.score DESC, r.created_at DESC, r.id DESC';
         break;
     }
 
@@ -338,13 +351,13 @@ export const ReplyRepo = {
       let payload: Record<string, unknown>;
       switch (sort) {
         case 'controversial':
-          payload = { vote_count: (last as ReplyWithAuthor & { vote_count?: number }).vote_count ?? 0, abs_score: Math.abs(last.score), created_at: last.created_at };
+          payload = { vote_count: (last as ReplyWithAuthor & { vote_count?: number }).vote_count ?? 0, abs_score: Math.abs(last.score), created_at: last.created_at, id: last.id };
           break;
         case 'new':
-          payload = { created_at: last.created_at };
+          payload = { created_at: last.created_at, id: last.id };
           break;
         default:
-          payload = { score: last.score, created_at: last.created_at };
+          payload = { score: last.score, created_at: last.created_at, id: last.id };
           break;
       }
       nextCursor = Buffer.from(JSON.stringify(payload)).toString('base64');
