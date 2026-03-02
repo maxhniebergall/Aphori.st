@@ -1,7 +1,7 @@
 import { getPool } from '../db/pool.js';
 import { createV3HypergraphRepo } from '../db/repositories/V3HypergraphRepo.js';
-import { query } from '../db/pool.js';
-import type { SyntheticReplyWithAuthor, SyntheticThreadResponse } from '@chitin/shared';
+import { ReplyRepo } from '../db/repositories/ReplyRepo.js';
+import type { SyntheticReplyWithAuthor, SyntheticThreadResponse, ReplyWithAuthor } from '@chitin/shared';
 
 interface CandidateRow {
   reply_id: string;
@@ -12,28 +12,6 @@ interface CandidateRow {
   degree_centrality: number;
 }
 
-interface ReplyRow {
-  id: string;
-  post_id: string;
-  author_id: string;
-  parent_reply_id: string | null;
-  target_adu_id: string | null;
-  content: string;
-  analysis_content_hash: string;
-  depth: number;
-  path: string;
-  score: number;
-  reply_count: number;
-  quoted_text: string | null;
-  quoted_source_type: 'post' | 'reply' | null;
-  quoted_source_id: string | null;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at: Date | null;
-  author_display_name: string | null;
-  author_user_type: 'human' | 'agent';
-}
-
 interface ScoredCandidate {
   reply_id: string;
   targeted_adu_ids: string[];
@@ -42,7 +20,7 @@ interface ScoredCandidate {
   direction: 'SUPPORT' | 'ATTACK' | 'MIXED';
 }
 
-function scoreAndGroup(
+export function scoreAndGroup(
   rows: CandidateRow[],
   parentScore: number
 ): { byAdu: Map<string, ScoredCandidate[]>; byReplyId: Map<string, ScoredCandidate> } {
@@ -112,7 +90,7 @@ function scoreAndGroup(
   return { byAdu, byReplyId: scored };
 }
 
-function interleave(byAdu: Map<string, ScoredCandidate[]>): string[] {
+export function interleave(byAdu: Map<string, ScoredCandidate[]>): string[] {
   const groups = [...byAdu.values()];
   const seenReplyIds = new Set<string>();
   const result: string[] = [];
@@ -136,26 +114,8 @@ function interleave(byAdu: Map<string, ScoredCandidate[]>): string[] {
   return result;
 }
 
-async function hydrateReplies(replyIds: string[]): Promise<Map<string, ReplyRow>> {
-  if (replyIds.length === 0) return new Map();
-
-  const result = await query<ReplyRow>(
-    `SELECT r.*, u.display_name AS author_display_name, u.user_type AS author_user_type
-     FROM replies r
-     JOIN users u ON r.author_id = u.id
-     WHERE r.id = ANY($1) AND r.deleted_at IS NULL`,
-    [replyIds]
-  );
-
-  const map = new Map<string, ReplyRow>();
-  for (const row of result.rows) {
-    map.set(row.id, row);
-  }
-  return map;
-}
-
 function rowToSynthetic(
-  row: ReplyRow,
+  row: ReplyWithAuthor,
   scored: ScoredCandidate,
   children: SyntheticReplyWithAuthor[],
   currentDepth: number
@@ -178,14 +138,10 @@ function rowToSynthetic(
     quoted_text: row.quoted_text,
     quoted_source_type: row.quoted_source_type,
     quoted_source_id: row.quoted_source_id,
-    created_at: (row.created_at as Date).toISOString(),
-    updated_at: (row.updated_at as Date).toISOString(),
-    deleted_at: row.deleted_at ? (row.deleted_at as Date).toISOString() : null,
-    author: {
-      id: row.author_id,
-      display_name: row.author_display_name,
-      user_type: row.author_user_type,
-    },
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    deleted_at: row.deleted_at,
+    author: row.author,
     targeted_adu_ids: scored.targeted_adu_ids,
     final_score: scored.final_score,
     bridge_count: scored.bridge_count,
@@ -204,18 +160,13 @@ export async function buildSyntheticThread(
   currentDepth: number = 1,
   parentScore: number = 0
 ): Promise<SyntheticThreadResponse> {
-  const pool = getPool();
-  const v3Repo = createV3HypergraphRepo(pool);
+  const v3Repo = createV3HypergraphRepo(getPool());
 
   // Fetch candidate rows
   const rows = await v3Repo.getCandidatesForSyntheticThread(parentType, parentId);
 
   if (rows.length === 0) {
-    // No V3 analysis or no replies targeting parent ADUs
-    if (currentDepth === 1) {
-      return { items: [], cursor: null, hasMore: false, fallback: true };
-    }
-    return { items: [], cursor: null, hasMore: false, fallback: false };
+    return { items: [], cursor: null, hasMore: false, fallback: currentDepth === 1 };
   }
 
   // Score and group
@@ -225,10 +176,7 @@ export async function buildSyntheticThread(
   const orderedReplyIds = interleave(byAdu);
 
   if (orderedReplyIds.length === 0) {
-    if (currentDepth === 1) {
-      return { items: [], cursor: null, hasMore: false, fallback: true };
-    }
-    return { items: [], cursor: null, hasMore: false, fallback: false };
+    return { items: [], cursor: null, hasMore: false, fallback: currentDepth === 1 };
   }
 
   // Paginate using offset cursor
@@ -237,29 +185,42 @@ export async function buildSyntheticThread(
   const hasMore = offset + limit < orderedReplyIds.length;
   const nextCursor = hasMore ? String(offset + limit) : null;
 
-  // Hydrate
-  const replyRowMap = await hydrateReplies(pageIds);
+  // Hydrate all page replies in one query (moved to repo)
+  const replyRowMap = await ReplyRepo.findByIds(pageIds);
 
-  // Build results, recursing as needed
+  // Batch-fetch children for all qualifying replies in parallel
+  const childResultMap = new Map<string, SyntheticReplyWithAuthor[]>();
+  if (currentDepth < 3) {
+    const repliesNeedingChildren = pageIds.filter(id => (replyRowMap.get(id)?.reply_count ?? 0) > 0);
+    if (repliesNeedingChildren.length > 0) {
+      const childResults = await Promise.all(
+        repliesNeedingChildren.map(async replyId => {
+          const row = replyRowMap.get(replyId)!;
+          const childResult = await buildSyntheticThread(
+            'reply',
+            replyId,
+            5,
+            undefined,
+            currentDepth + 1,
+            row.score
+          );
+          return [replyId, childResult.items] as const;
+        })
+      );
+      for (const [id, children] of childResults) {
+        childResultMap.set(id, children);
+      }
+    }
+  }
+
+  // Build results in original ranked order
   const items: SyntheticReplyWithAuthor[] = [];
   for (const replyId of pageIds) {
     const row = replyRowMap.get(replyId);
     const scored = scoredMap.get(replyId);
     if (!row || !scored) continue;
 
-    let children: SyntheticReplyWithAuthor[] = [];
-    if (currentDepth < 3 && row.reply_count > 0) {
-      const childResult = await buildSyntheticThread(
-        'reply',
-        replyId,
-        5,
-        undefined,
-        currentDepth + 1,
-        row.score
-      );
-      children = childResult.items;
-    }
-
+    const children = childResultMap.get(replyId) ?? [];
     items.push(rowToSynthetic(row, scored, children, currentDepth));
   }
 
