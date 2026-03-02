@@ -815,6 +815,64 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     );
     return result.rows;
   },
+
+  // ── IBA (Interleaved Bridge Algorithm) ──
+
+  async getCandidatesForSyntheticThread(
+    parentType: 'post' | 'reply',
+    parentId: string
+  ): Promise<Array<{
+    reply_id: string;
+    i_node_id: string;
+    parent_adu_id: string;
+    direction: string;
+    evidence_rank: number;
+    degree_centrality: number;
+  }>> {
+    const result = await pool.query(
+      `WITH parent_adus AS (
+         SELECT id AS adu_id
+         FROM v3_nodes_i
+         WHERE source_type = $1 AND source_id = $2
+       ),
+       degree_centrality AS (
+         SELECT e.node_id AS i_node_id, COUNT(DISTINCT e.scheme_node_id) AS degree_centrality
+         FROM v3_edges e
+         WHERE e.role = 'premise' AND e.node_type = 'i_node'
+         GROUP BY e.node_id
+       )
+       SELECT DISTINCT
+         prem_i.source_id AS reply_id,
+         prem_i.id AS i_node_id,
+         pa.adu_id AS parent_adu_id,
+         s.direction,
+         prem_i.evidence_rank,
+         COALESCE(dc.degree_centrality, 1) AS degree_centrality
+       FROM parent_adus pa
+       JOIN v3_edges conc_e
+         ON conc_e.node_id = pa.adu_id
+         AND conc_e.role = 'conclusion'
+         AND conc_e.node_type = 'i_node'
+       JOIN v3_nodes_s s ON s.id = conc_e.scheme_node_id
+       JOIN v3_edges prem_e
+         ON prem_e.scheme_node_id = s.id
+         AND prem_e.role = 'premise'
+         AND prem_e.node_type = 'i_node'
+       JOIN v3_nodes_i prem_i ON prem_i.id = prem_e.node_id
+       LEFT JOIN degree_centrality dc ON dc.i_node_id = prem_i.id
+       WHERE prem_i.source_type = 'reply'
+         AND prem_i.source_id != $2`,
+      [parentType, parentId]
+    );
+    return result.rows.map(row => ({
+      reply_id: row.reply_id,
+      i_node_id: row.i_node_id,
+      parent_adu_id: row.parent_adu_id,
+      direction: row.direction,
+      evidence_rank: parseFloat(row.evidence_rank) || 0,
+      degree_centrality: parseInt(row.degree_centrality) || 1,
+    }));
+  },
 });
 
 export type V3HypergraphRepo = ReturnType<typeof createV3HypergraphRepo>;
