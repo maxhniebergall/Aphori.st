@@ -45,6 +45,19 @@ export function getFallaciousINodeIds(
   return result;
 }
 
+/** Returns the set of I-node IDs that are the conclusion of any ATTACK scheme edge */
+export function getAttackedINodeIds(subgraph: V3Subgraph): Set<string> {
+  const sNodeById = new Map(subgraph.s_nodes.map(s => [s.id, s] as const));
+  const attackedIds = new Set(
+    subgraph.edges
+      .filter(e => e.role === 'conclusion' && e.node_type === 'i_node')
+      .filter(e => sNodeById.get(e.scheme_node_id)?.direction === 'ATTACK')
+      .map(e => e.node_id)
+      .filter((id): id is string => id !== null)
+  );
+  return attackedIds;
+}
+
 /** Filter I-nodes for a specific source (post or reply) */
 export function filterSubgraphBySource(
   subgraph: V3Subgraph,
