@@ -3,11 +3,19 @@ import { postsApi } from '@/lib/api';
 import { PostPageClient } from '@/components/Post/PostPageClient';
 
 interface PostPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ sort?: string }>;
 }
 
-export default async function PostPage({ params }: PostPageProps) {
+const VALID_SERVER_SORTS = ['top', 'new', 'controversial'] as const;
+type ServerSort = typeof VALID_SERVER_SORTS[number];
+
+export default async function PostPage({ params, searchParams }: PostPageProps) {
   const { id } = await params;
+  const { sort: sortParam } = await searchParams;
+  const serverSort: ServerSort = VALID_SERVER_SORTS.includes(sortParam as ServerSort)
+    ? (sortParam as ServerSort)
+    : 'top';
 
   let post;
   let replies;
@@ -15,11 +23,11 @@ export default async function PostPage({ params }: PostPageProps) {
   try {
     [post, replies] = await Promise.all([
       postsApi.getPost(id),
-      postsApi.getReplies(id, 50, undefined, undefined, 'top'),
+      postsApi.getReplies(id, 50, undefined, undefined, serverSort),
     ]);
   } catch (error) {
     notFound();
   }
 
-  return <PostPageClient post={post} replies={replies} />;
+  return <PostPageClient post={post} replies={replies} initialSort={sortParam} />;
 }

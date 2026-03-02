@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { PostDetail } from './PostDetail';
 import { ReplyThread } from '@/components/Reply/ReplyThread';
@@ -13,9 +13,10 @@ import type { PostWithAuthor, ReplyWithAuthor, PaginatedResponse } from '@chitin
 interface PostPageClientProps {
   post: PostWithAuthor;
   replies: PaginatedResponse<ReplyWithAuthor>;
+  initialSort?: string;
 }
 
-export function PostPageClient({ post, replies }: PostPageClientProps) {
+export function PostPageClient({ post, replies, initialSort }: PostPageClientProps) {
   const router = useRouter();
   const [activeQuote, setActiveQuote] = useState<QuoteData | null>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -64,14 +65,17 @@ export function PostPageClient({ post, replies }: PostPageClientProps) {
             onClearQuote={handleClearQuote}
           />
         </div>
-        <ReplyThread
-          postId={post.id}
-          initialReplies={replies}
-          userVotes={replyVotes}
-          onQuote={handleQuote}
-          onSearch={handleSearch}
-          v3Subgraph={v3Subgraph}
-        />
+        <Suspense fallback={<div className="p-8 text-center text-slate-500 dark:text-slate-400">Loading replies…</div>}>
+          <ReplyThread
+            postId={post.id}
+            initialReplies={replies}
+            initialSort={initialSort}
+            userVotes={replyVotes}
+            onQuote={handleQuote}
+            onSearch={handleSearch}
+            v3Subgraph={v3Subgraph}
+          />
+        </Suspense>
       </div>
     </div>
   );

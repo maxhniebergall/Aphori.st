@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { postsApi } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { ReplyCard } from './ReplyCard';
@@ -21,6 +22,7 @@ const sortLabels: Record<SortOption, string> = {
 interface ReplyThreadProps {
   postId: string;
   initialReplies: PaginatedResponse<ReplyWithAuthor>;
+  initialSort?: string;
   userVotes?: Record<string, VoteValue>;
   onQuote?: (quote: QuoteData) => void;
   onSearch?: (text: string) => void;
@@ -105,10 +107,19 @@ function SyntheticReplyRenderer({
   );
 }
 
-export function ReplyThread({ postId, initialReplies, userVotes, onQuote, onSearch, v3Subgraph }: ReplyThreadProps) {
+const VALID_SORTS: SortOption[] = ['top', 'new', 'controversial', 'evidence'];
+
+export function ReplyThread({ postId, initialReplies, initialSort, userVotes, onQuote, onSearch, v3Subgraph }: ReplyThreadProps) {
   const { token } = useAuth();
-  const [sort, setSort] = useState<SortOption>('evidence');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const rawSort = searchParams.get('sort');
+  const sort: SortOption = VALID_SORTS.includes(rawSort as SortOption) ? (rawSort as SortOption) : 'evidence';
   const [collapsedReplies, setCollapsedReplies] = useState<Set<string>>(new Set());
+
+  const setSort = (option: SortOption) => {
+    router.replace(`?sort=${option}`, { scroll: false });
+  };
 
   const toggleCollapse = (id: string) =>
     setCollapsedReplies(prev => {
@@ -136,7 +147,7 @@ export function ReplyThread({ postId, initialReplies, userVotes, onQuote, onSear
       (shouldFallbackToTop ? 'top' : sort) as 'top' | 'new' | 'controversial'
     ),
     enabled: sort !== 'evidence' || shouldFallbackToTop,
-    initialData: sort === 'top' ? initialReplies : undefined,
+    initialData: sort === (initialSort ?? 'top') ? initialReplies : undefined,
     staleTime: 30 * 1000,
   });
 
