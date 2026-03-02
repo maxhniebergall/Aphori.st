@@ -761,8 +761,7 @@ deliberate engagement.
 9.3 Notification Schema
 ------------------------
 Epistemic notifications are stored in the unified notifications table with
-category='EPISTEMIC'. See Section 11 (Database Schema Summary) for the full
-field list.
+category='EPISTEMIC'. See apps/api/src/db/migrations/ for the full schema.
 
 The payload JSONB field contains type-specific data:
 
@@ -871,7 +870,7 @@ night's values remain live.
 
   Outputs:
     - v3_nodes_i.is_defeated updated.
-    - v3_epistemic_notifications rows inserted.
+    - Epistemic notifications inserted.
 
 10.4 Stage 4 -- Karma Stream Payout
 -------------------------------------
@@ -882,8 +881,7 @@ night's values remain live.
        using the formulas in Section 7.3.
     2. Increment users.pioneer_karma, builder_karma, critic_karma.
     3. Recompute users.epistemic_score = sum of all three karma fields.
-    4. Insert a row into v3_user_karma_profiles with today's yields and a
-       snapshot timestamp.
+    4. Upsert v3_user_karma_profiles with today's yields.
 
   Outputs:
     - users.pioneer_karma, builder_karma, critic_karma, epistemic_score updated.
@@ -917,7 +915,7 @@ night's values remain live.
     - v3_nodes_s.escrow_status updated for resolved bounties.
     - v3_nodes_s.pending_bounty zeroed.
     - users karma fields updated (steal or paid outcomes).
-    - v3_epistemic_notifications rows inserted.
+    - Epistemic notifications inserted.
 
 10.6 Stage 6 -- Source Reputation Update
 ------------------------------------------
@@ -944,121 +942,7 @@ night's values remain live.
     - v3_nodes_i.base_weight updated for affected FACT nodes.
 
 ================================================================================
-11. DATABASE SCHEMA SUMMARY
-================================================================================
-
-This section lists key tables and their V4-new or V4-modified columns.
-Full DDL is in apps/api/src/db/migrations/.
-
-11.1 v3_nodes_i (I-Nodes)
---------------------------
-  New/modified columns in V4:
-
-  +-----------------+--------------+-------------------------------------------+
-  | Column          | Type         | Notes                                     |
-  +-----------------+--------------+-------------------------------------------+
-  | fact_subtype    | ENUM | NULL  | ENTHYMEME | ANECDOTE |                    |
-  |                 |              | DOCUMENT_REF | ACADEMIC_REF              |
-  |                 |              | NULL for VALUE and POLICY nodes.          |
-  | base_weight     | FLOAT        | Default 0.0. Set per subtype/source.      |
-  | evidence_rank   | FLOAT        | Default 0.0. Updated nightly.             |
-  | is_defeated     | BOOL         | Default FALSE. Updated nightly.           |
-  | component_id    | INT | NULL   | Updated nightly by Union-Find.            |
-  | node_role       | ENUM         | ROOT | SUPPORT | ATTACK.                 |
-  |                 |              | Immutable after creation.                 |
-  | source_id       | INT | NULL   | FK -> v3_sources.id                       |
-  +-----------------+--------------+-------------------------------------------+
-
-11.2 v3_nodes_s (S-Nodes)
---------------------------
-  New/modified columns in V4:
-
-  +------------------+--------------+------------------------------------------+
-  | Column           | Type         | Notes                                    |
-  +------------------+--------------+------------------------------------------+
-  | escrow_expires_at| TIMESTAMP    | NULL for non-bridge S-Nodes.             |
-  | pending_bounty   | FLOAT        | Default 0.0.                             |
-  | escrow_status    | ENUM         | none | active | paid |                   |
-  |                  |              | stolen | languished. Default 'none'.     |
-  | is_bridge        | BOOL         | Default FALSE.                           |
-  | component_a_id   | INT | NULL   | Set when is_bridge = TRUE.               |
-  | component_b_id   | INT | NULL   | Set when is_bridge = TRUE.               |
-  +------------------+--------------+------------------------------------------+
-
-11.3 users (modified columns)
-------------------------------
-  V4 replaces vote_karma and connection_karma with:
-
-  +-----------------+--------+---------------------------------------------------+
-  | Column          | Type   | Notes                                             |
-  +-----------------+--------+---------------------------------------------------+
-  | pioneer_karma   | FLOAT  | Default 0.0. Accumulated from ROOT nodes.         |
-  | builder_karma   | FLOAT  | Default 0.0. Accumulated from SUPPORT nodes.      |
-  | critic_karma    | FLOAT  | Default 0.0. From ATTACK nodes + steals.          |
-  | epistemic_score | FLOAT  | Derived: sum of all three karma fields.           |
-  |                 |        | Replaces V3 reputation score.                     |
-  +-----------------+--------+---------------------------------------------------+
-
-  Deprecated (migration removes or aliases):
-    vote_karma        -> subsumed into pioneer/builder/critic karma
-    connection_karma  -> subsumed into pioneer/builder/critic karma
-
-11.4 v3_user_karma_profiles (new table)
-----------------------------------------
-  Records per-user per-day karma yields for historical analysis.
-
-  +----------------+---------------+---------------------------------------------+
-  | Column         | Type          | Notes                                       |
-  +----------------+---------------+---------------------------------------------+
-  | id             | SERIAL PK     |                                             |
-  | user_id        | INT FK        | -> users.id                                 |
-  | date           | DATE          | The batch run date.                         |
-  | pioneer_yield  | FLOAT         | pioneer_karma earned this day.              |
-  | builder_yield  | FLOAT         | builder_karma earned this day.              |
-  | critic_yield   | FLOAT         | critic_karma earned this day.               |
-  | snapshot_at    | TIMESTAMP     | When this row was written.                  |
-  +----------------+---------------+---------------------------------------------+
-
-  UNIQUE constraint: (user_id, date)
-
-11.5 v3_epistemic_notifications (new table)
---------------------------------------------
-
-  +------------------+--------------+--------------------------------------------+
-  | Column           | Type         | Notes                                      |
-  +------------------+--------------+--------------------------------------------+
-  | id               | SERIAL PK    |                                            |
-  | user_id          | INT FK       | -> users.id                                |
-  | notification_type| ENUM         | STREAM_HALTED | BOUNTY_STOLEN |            |
-  |                  |              | BOUNTY_PAID | BOUNTY_LANGUISHED |          |
-  |                  |              | UPSTREAM_DEFEATED                          |
-  | related_node_id  | INT FK | NULL| -> v3_nodes_i.id                           |
-  | related_s_node_id| INT FK | NULL| -> v3_nodes_s.id                           |
-  | payload          | JSONB        | Type-specific data (see Section 9.3)       |
-  | created_at       | TIMESTAMP    | Default NOW()                              |
-  | read_at          | TIMESTAMP    | NULL until user reads.                     |
-  +------------------+--------------+--------------------------------------------+
-
-  INDEX on (user_id, read_at) for efficient unread queries.
-
-11.6 v3_sources (new table -- R-Nodes)
-----------------------------------------
-
-  +------------------+--------------+--------------------------------------------+
-  | Column           | Type         | Notes                                      |
-  +------------------+--------------+--------------------------------------------+
-  | id               | SERIAL PK    |                                            |
-  | level            | ENUM         | DOMAIN | DOCUMENT | EXTRACT               |
-  | url              | TEXT UNIQUE  | Canonical URL for deduplication.           |
-  | display_name     | TEXT         | Human-readable name.                       |
-  | reputation_score | FLOAT        | 0.0-1.0. Default 1.0.                      |
-  | parent_id        | INT FK | NULL| -> v3_sources.id (self-referential)        |
-  |                  |              | NULL for DOMAIN nodes.                     |
-  | created_at       | TIMESTAMP    | Default NOW()                              |
-  +------------------+--------------+--------------------------------------------+
-
-================================================================================
-12. OUT OF SCOPE (PHASE 2+)
+11. OUT OF SCOPE (PHASE 2+)
 ================================================================================
 
 The following features are designed and partially specified but are explicitly
