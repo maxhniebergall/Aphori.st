@@ -16,12 +16,22 @@ ALTER TABLE notifications
 
 -- Migrate epistemic rows from old table into unified table
 INSERT INTO notifications (id, user_id, category, epistemic_type, payload, is_read, created_at, updated_at)
-SELECT id, user_id, 'EPISTEMIC', type, payload, is_read, created_at, created_at
+SELECT id, user_id, 'EPISTEMIC', type, payload, is_read, created_at, updated_at
 FROM v3_epistemic_notifications
 ON CONFLICT (id) DO NOTHING;
 
 -- Drop old table
 DROP TABLE v3_epistemic_notifications;
+
+-- Enforce category-dependent integrity constraints
+-- SOCIAL rows must have target fields; EPISTEMIC rows must have epistemic_type
+ALTER TABLE notifications
+  ADD CONSTRAINT chk_social_requires_target CHECK (
+    category = 'EPISTEMIC' OR (target_type IS NOT NULL AND target_id IS NOT NULL)
+  ),
+  ADD CONSTRAINT chk_epistemic_requires_type CHECK (
+    category = 'SOCIAL' OR epistemic_type IS NOT NULL
+  );
 
 -- Add indexes for unified queries
 CREATE INDEX idx_notifications_unread ON notifications(user_id, is_read) WHERE is_read = FALSE;

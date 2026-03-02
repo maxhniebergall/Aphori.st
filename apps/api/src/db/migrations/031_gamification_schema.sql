@@ -31,8 +31,7 @@ ALTER TABLE users
   DROP COLUMN IF EXISTS connection_karma,
   ADD COLUMN pioneer_karma FLOAT NOT NULL DEFAULT 0.0,
   ADD COLUMN builder_karma FLOAT NOT NULL DEFAULT 0.0,
-  ADD COLUMN critic_karma FLOAT NOT NULL DEFAULT 0.0,
-  ADD COLUMN epistemic_score FLOAT NOT NULL DEFAULT 1.0;
+  ADD COLUMN critic_karma FLOAT NOT NULL DEFAULT 0.0;
 
 -- User karma profiles (daily yield tracking)
 CREATE TABLE v3_user_karma_profiles (
@@ -51,7 +50,8 @@ CREATE TABLE v3_epistemic_notifications (
   type VARCHAR(50) NOT NULL CHECK (type IN ('STREAM_HALTED','BOUNTY_STOLEN','BOUNTY_PAID','BOUNTY_LANGUISHED','UPSTREAM_DEFEATED')),
   payload JSONB NOT NULL DEFAULT '{}',
   is_read BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_v3_notif_user ON v3_epistemic_notifications(user_id, created_at DESC);
 CREATE INDEX idx_v3_notif_unread ON v3_epistemic_notifications(user_id) WHERE is_read = FALSE;
