@@ -1,5 +1,5 @@
 import { Queue, QueueEvents } from 'bullmq';
-import { logger } from '../utils/logger.js';
+import { logger } from '../logger.js';
 import { createBullMQConnection } from './redisConnection.js';
 
 const connection = createBullMQConnection('v3-queue');

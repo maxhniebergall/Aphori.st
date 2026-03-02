@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { Redis } from 'ioredis';
 import { config } from '../config.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../logger.js';
 
 const KEY_PREFIX = 'ip_block:';
 const DEFAULT_TTL_S = 86400; // 24 hours

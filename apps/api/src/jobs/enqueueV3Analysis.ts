@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { v3Queue } from './v3Queue.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../logger.js';
 
 export async function enqueueV3Analysis(
   sourceType: 'post' | 'reply',

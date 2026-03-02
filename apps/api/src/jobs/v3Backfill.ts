@@ -9,7 +9,7 @@
  */
 import { getPool, closePool } from '../db/pool.js';
 import { enqueueV3Analysis } from './enqueueV3Analysis.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../logger.js';
 
 interface BackfillOptions {
   batchSize: number;

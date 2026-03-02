@@ -1,6 +1,6 @@
 import { Redis } from 'ioredis';
 import { config } from '../config.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../logger.js';
 
 /**
  * Create a Redis connection configured for BullMQ with proper retry backoff.

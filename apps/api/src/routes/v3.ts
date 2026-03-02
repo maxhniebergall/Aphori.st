@@ -6,7 +6,7 @@ import { ReplyRepo } from '../db/repositories/ReplyRepo.js';
 import { enqueueV3Analysis } from '../jobs/enqueueV3Analysis.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { combinedRateLimiter } from '../middleware/rateLimit.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../logger.js';
 import {
   runRankingPipeline,
   detectGhostNodes,

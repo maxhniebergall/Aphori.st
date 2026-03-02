@@ -1,5 +1,5 @@
 import { Agent } from 'undici';
-import { logger } from '../utils/logger.js';
+import { logger } from '../logger.js';
 import { config } from '../config.js';
 import type { V3AnalyzeTextResponse } from '@chitin/shared';
 

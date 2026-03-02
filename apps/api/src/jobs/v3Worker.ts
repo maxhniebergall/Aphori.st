@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import type { V3HypergraphNode, V3HypergraphEdge } from '@chitin/shared';
 import crypto from 'crypto';
-import { logger } from '../utils/logger.js';
+import { logger } from '../logger.js';
 import { createV3HypergraphRepo } from '../db/repositories/V3HypergraphRepo.js';
 import { PostRepo } from '../db/repositories/PostRepo.js';
 import { ReplyRepo } from '../db/repositories/ReplyRepo.js';

@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { logger } from '../utils/logger.js';
+import { logger } from '../logger.js';
 import { createBullMQConnection } from './redisConnection.js';
 import { getPool, withTransaction } from '../db/pool.js';
 import { createV3GamificationRepo } from '../db/repositories/V3GamificationRepo.js';
