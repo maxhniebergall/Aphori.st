@@ -1,5 +1,6 @@
 import { Router, Request, Response, IRouter } from 'express';
 import { authenticateToken as requireAuth } from '../middleware/auth.js';
+import { combinedRateLimiter } from '../middleware/rateLimit.js';
 import { getPool } from '../db/pool.js';
 import { createV3GamificationRepo } from '../db/repositories/V3GamificationRepo.js';
 import logger from '../logger.js';
@@ -7,7 +8,7 @@ import logger from '../logger.js';
 const router: IRouter = Router();
 
 // GET /karma/profile — user's karma totals + daily yields
-router.get('/karma/profile', requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get('/karma/profile', requireAuth, combinedRateLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const pool = getPool();
     const repo = createV3GamificationRepo(pool);
@@ -24,7 +25,7 @@ router.get('/karma/profile', requireAuth, async (req: Request, res: Response): P
 });
 
 // GET /karma/nodes — user's yielding I-nodes grouped by role
-router.get('/karma/nodes', requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get('/karma/nodes', requireAuth, combinedRateLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const pool = getPool();
     const repo = createV3GamificationRepo(pool);
@@ -43,7 +44,7 @@ router.get('/karma/nodes', requireAuth, async (req: Request, res: Response): Pro
 });
 
 // GET /bounties — active crucible escrows
-router.get('/bounties', requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get('/bounties', requireAuth, combinedRateLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const pool = getPool();
     const repo = createV3GamificationRepo(pool);
