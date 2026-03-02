@@ -255,12 +255,12 @@ export interface V3INode {
   span_end: number;
   extraction_confidence: number;
   created_at: string;
-  fact_subtype: 'ENTHYMEME' | 'ANECDOTE' | 'DOCUMENT_REF' | 'ACADEMIC_REF' | null;
+  fact_subtype: V3FactSubtype | null;
   base_weight: number;
   evidence_rank: number;
   is_defeated: boolean;
   component_id: string | null;
-  node_role: 'ROOT' | 'SUPPORT' | 'ATTACK' | null;
+  node_role: V3NodeRole | null;
 }
 
 export interface V3SNode {
@@ -275,7 +275,7 @@ export interface V3SNode {
   created_at: string;
   escrow_expires_at: string | null;
   pending_bounty: number | null;
-  escrow_status: 'none' | 'active' | 'paid' | 'stolen' | 'languished';
+  escrow_status: V3EscrowStatus;
 }
 
 export interface V3Edge {
