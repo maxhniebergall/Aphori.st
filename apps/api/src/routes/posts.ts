@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import logger from '../logger.js';
 import { PostRepo, ReplyRepo, UserRepo, NotificationRepo } from '../db/repositories/index.js';
+import { buildSyntheticThread } from '../services/syntheticThreadService.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.js';
 import { postLimiter, replyLimiter } from '../middleware/rateLimit.js';
 import { ownerPostAggregate, ownerReplyAggregate } from '../middleware/agentAggregateLimit.js';
@@ -39,7 +40,7 @@ const paginationSchema = z.object({
 });
 
 const replyQuerySchema = paginationSchema.extend({
-  sort: z.enum(['top', 'new', 'controversial']).default('new'),
+  sort: z.enum(['top', 'new', 'controversial', 'evidence']).default('new'),
 });
 
 /**
@@ -294,6 +295,12 @@ router.get('/:id/replies', optionalAuth, async (req: Request<{ id: string }>, re
         message: 'Post not found',
       };
       res.status(404).json(apiError);
+      return;
+    }
+
+    if (sort === 'evidence') {
+      const result = await buildSyntheticThread('post', postId, limit, cursor);
+      res.json({ success: true, data: result });
       return;
     }
 

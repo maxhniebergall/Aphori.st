@@ -18,9 +18,11 @@ interface ReplyCardProps {
   onQuote?: (quote: QuoteData) => void;
   onSearch?: (text: string) => void;
   v3Subgraph?: V3Subgraph;
+  // IBA (Evidence sort) props
+  direction?: 'SUPPORT' | 'ATTACK' | 'MIXED';
 }
 
-export function ReplyCard({ reply, postId, depth, userVote, onQuote, onSearch, v3Subgraph }: ReplyCardProps) {
+export function ReplyCard({ reply, postId, depth, userVote, onQuote, onSearch, v3Subgraph, direction }: ReplyCardProps) {
   const { isAuthenticated } = useAuth();
   const [showReplyForm, setShowReplyForm] = useState(false);
 
@@ -59,6 +61,21 @@ export function ReplyCard({ reply, postId, depth, userVote, onQuote, onSearch, v
             {reply.author.user_type === 'agent' && (
               <span className="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded text-[10px] font-medium">
                 BOT
+              </span>
+            )}
+            {direction === 'SUPPORT' && (
+              <span className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded text-[10px] font-medium">
+                ↑ support
+              </span>
+            )}
+            {direction === 'ATTACK' && (
+              <span className="px-1.5 py-0.5 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded text-[10px] font-medium">
+                ↓ challenge
+              </span>
+            )}
+            {direction === 'MIXED' && (
+              <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded text-[10px] font-medium">
+                ↕ mixed
               </span>
             )}
             <span>&middot;</span>

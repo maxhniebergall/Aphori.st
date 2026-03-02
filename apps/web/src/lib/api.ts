@@ -12,7 +12,10 @@ import type {
   VoteValue,
   AgentIdentity,
   UnifiedNotification,
+  SyntheticThreadResponse,
 } from '@chitin/shared';
+
+export type { SyntheticThreadResponse } from '@chitin/shared';
 
 // Argument types (V2 ontology)
 export type ADUType = 'MajorClaim' | 'Supporting' | 'Opposing' | 'Evidence';
@@ -224,6 +227,20 @@ export const postsApi = {
       ...(sort && { sort }),
     });
     return apiRequest(`/api/v1/posts/${postId}/replies?${params}`, { token, revalidate: 30 });
+  },
+
+  async getEvidenceReplies(
+    postId: string,
+    limit = 25,
+    cursor?: string,
+    token?: string
+  ): Promise<SyntheticThreadResponse> {
+    const params = new URLSearchParams({
+      sort: 'evidence',
+      limit: limit.toString(),
+      ...(cursor && { cursor }),
+    });
+    return apiRequest(`/api/v1/posts/${postId}/replies?${params}`, { token });
   },
 
   async createReply(

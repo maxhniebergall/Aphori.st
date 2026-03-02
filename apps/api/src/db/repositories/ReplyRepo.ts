@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { query, withTransaction } from '../pool.js';
 import type { Reply, ReplyWithAuthor, CreateReplyInput, PaginatedResponse } from '@chitin/shared';
+import { AppError } from '../../middleware/errorHandler.js';
 
 interface ReplyRow {
   id: string;
@@ -201,22 +202,44 @@ export const ReplyRepo = {
     const params: unknown[] = [postId, limit + 1];
     let cursorCondition = '';
 
+    // Keyset cursor encodes all sort columns as JSON to avoid row skips/duplication
+    // across pages when ordering on multi-column keys.
     if (cursor) {
-      cursorCondition = 'AND r.created_at < $3';
-      params.push(cursor);
+      let decoded: Record<string, unknown>;
+      try {
+        decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8')) as Record<string, unknown>;
+        if (!decoded || typeof decoded !== 'object') throw new Error('invalid shape');
+      } catch {
+        throw new AppError(400, 'INVALID_CURSOR', 'Malformed pagination cursor');
+      }
+      switch (sort) {
+        case 'top':
+          cursorCondition = 'AND (r.score < $3 OR (r.score = $3 AND r.created_at < $4) OR (r.score = $3 AND r.created_at = $4 AND r.id < $5))';
+          params.push(decoded.score, decoded.created_at, decoded.id);
+          break;
+        case 'controversial':
+          cursorCondition = 'AND (r.vote_count < $3 OR (r.vote_count = $3 AND ABS(r.score) > $4) OR (r.vote_count = $3 AND ABS(r.score) = $4 AND r.created_at < $5) OR (r.vote_count = $3 AND ABS(r.score) = $4 AND r.created_at = $5 AND r.id < $6))';
+          params.push(decoded.vote_count, decoded.abs_score, decoded.created_at, decoded.id);
+          break;
+        case 'new':
+        default:
+          cursorCondition = 'AND (r.created_at < $3 OR (r.created_at = $3 AND r.id < $4))';
+          params.push(decoded.created_at, decoded.id);
+          break;
+      }
     }
 
     let orderBy: string;
     switch (sort) {
       case 'top':
-        orderBy = 'r.score DESC, r.created_at DESC';
+        orderBy = 'r.score DESC, r.created_at DESC, r.id DESC';
         break;
       case 'controversial':
-        orderBy = 'r.vote_count DESC, ABS(r.score) ASC, r.created_at DESC';
+        orderBy = 'r.vote_count DESC, ABS(r.score) ASC, r.created_at DESC, r.id DESC';
         break;
       case 'new':
       default:
-        orderBy = 'r.created_at DESC';
+        orderBy = 'r.created_at DESC, r.id DESC';
         break;
     }
 
@@ -233,9 +256,112 @@ export const ReplyRepo = {
     const hasMore = result.rows.length > limit;
     const items = result.rows.slice(0, limit).map(rowToReplyWithAuthor);
 
-    const nextCursor = hasMore && items.length > 0
-      ? items[items.length - 1]!.created_at
-      : null;
+    let nextCursor: string | null = null;
+    if (hasMore && items.length > 0) {
+      const last = items[items.length - 1]!;
+      let payload: Record<string, unknown>;
+      switch (sort) {
+        case 'top':
+          payload = { score: last.score, created_at: last.created_at, id: last.id };
+          break;
+        case 'controversial':
+          payload = { vote_count: (last as ReplyWithAuthor & { vote_count?: number }).vote_count ?? 0, abs_score: Math.abs(last.score), created_at: last.created_at, id: last.id };
+          break;
+        default:
+          payload = { created_at: last.created_at, id: last.id };
+          break;
+      }
+      nextCursor = Buffer.from(JSON.stringify(payload)).toString('base64');
+    }
+
+    return {
+      items,
+      cursor: nextCursor,
+      hasMore,
+    };
+  },
+
+  async findByParentReplyId(
+    parentReplyId: string,
+    limit: number,
+    cursor?: string,
+    // 'evidence' is handled upstream by syntheticThreadService; falls back to score ordering.
+    sort: 'top' | 'new' | 'controversial' | 'evidence' = 'top'
+  ): Promise<PaginatedResponse<ReplyWithAuthor>> {
+    const params: unknown[] = [parentReplyId, limit + 1];
+    let cursorCondition = '';
+
+    if (cursor) {
+      let decoded: Record<string, unknown>;
+      try {
+        decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8')) as Record<string, unknown>;
+        if (!decoded || typeof decoded !== 'object') throw new Error('invalid shape');
+      } catch {
+        throw new AppError(400, 'INVALID_CURSOR', 'Malformed pagination cursor');
+      }
+      switch (sort) {
+        case 'top':
+        case 'evidence':
+          cursorCondition = 'AND (r.score < $3 OR (r.score = $3 AND r.created_at < $4) OR (r.score = $3 AND r.created_at = $4 AND r.id < $5))';
+          params.push(decoded.score, decoded.created_at, decoded.id);
+          break;
+        case 'controversial':
+          cursorCondition = 'AND (r.vote_count < $3 OR (r.vote_count = $3 AND ABS(r.score) > $4) OR (r.vote_count = $3 AND ABS(r.score) = $4 AND r.created_at < $5) OR (r.vote_count = $3 AND ABS(r.score) = $4 AND r.created_at = $5 AND r.id < $6))';
+          params.push(decoded.vote_count, decoded.abs_score, decoded.created_at, decoded.id);
+          break;
+        case 'new':
+        default:
+          cursorCondition = 'AND (r.created_at < $3 OR (r.created_at = $3 AND r.id < $4))';
+          params.push(decoded.created_at, decoded.id);
+          break;
+      }
+    }
+
+    let orderBy: string;
+    switch (sort) {
+      case 'new':
+        orderBy = 'r.created_at DESC, r.id DESC';
+        break;
+      case 'controversial':
+        orderBy = 'r.vote_count DESC, ABS(r.score) ASC, r.created_at DESC, r.id DESC';
+        break;
+      case 'top':
+      case 'evidence':
+      default:
+        orderBy = 'r.score DESC, r.created_at DESC, r.id DESC';
+        break;
+    }
+
+    const result = await query<ReplyWithAuthorRow>(
+      `SELECT r.*, u.display_name as author_display_name, u.user_type as author_user_type
+       FROM replies r
+       JOIN users u ON r.author_id = u.id
+       WHERE r.parent_reply_id = $1 AND r.deleted_at IS NULL ${cursorCondition}
+       ORDER BY ${orderBy}
+       LIMIT $2`,
+      params
+    );
+
+    const hasMore = result.rows.length > limit;
+    const items = result.rows.slice(0, limit).map(rowToReplyWithAuthor);
+
+    let nextCursor: string | null = null;
+    if (hasMore && items.length > 0) {
+      const last = items[items.length - 1]!;
+      let payload: Record<string, unknown>;
+      switch (sort) {
+        case 'controversial':
+          payload = { vote_count: (last as ReplyWithAuthor & { vote_count?: number }).vote_count ?? 0, abs_score: Math.abs(last.score), created_at: last.created_at, id: last.id };
+          break;
+        case 'new':
+          payload = { created_at: last.created_at, id: last.id };
+          break;
+        default:
+          payload = { score: last.score, created_at: last.created_at, id: last.id };
+          break;
+      }
+      nextCursor = Buffer.from(JSON.stringify(payload)).toString('base64');
+    }
 
     return {
       items,
@@ -269,6 +395,22 @@ export const ReplyRepo = {
     );
 
     return result.rows.map(rowToReplyWithAuthor);
+  },
+
+  async findByIds(ids: string[]): Promise<Map<string, ReplyWithAuthor>> {
+    if (ids.length === 0) return new Map();
+    const result = await query<ReplyWithAuthorRow>(
+      `SELECT r.*, u.display_name AS author_display_name, u.user_type AS author_user_type
+       FROM replies r
+       JOIN users u ON r.author_id = u.id
+       WHERE r.id = ANY($1) AND r.deleted_at IS NULL`,
+      [ids]
+    );
+    const map = new Map<string, ReplyWithAuthor>();
+    for (const row of result.rows) {
+      map.set(row.id, rowToReplyWithAuthor(row));
+    }
+    return map;
   },
 
   async softDelete(id: string): Promise<boolean> {
