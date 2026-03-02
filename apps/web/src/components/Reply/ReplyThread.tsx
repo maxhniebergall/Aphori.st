@@ -180,7 +180,7 @@ export function ReplyThread({ postId, initialReplies, userVotes, onQuote, onSear
     [effectiveSort, evidenceData]
   );
 
-  const isLoading = sort === 'evidence' ? isEvidenceLoading : isStandardLoading;
+  const isLoading = effectiveSort === 'evidence' ? isEvidenceLoading : isStandardLoading;
 
   const isEmpty = effectiveSort === 'evidence'
     ? syntheticItems.length === 0
