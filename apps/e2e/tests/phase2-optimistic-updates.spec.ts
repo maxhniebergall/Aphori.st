@@ -3,6 +3,12 @@ import { test, expect } from '@playwright/test';
 /**
  * Phase 2 Tests: Optimistic Updates
  * Tests for vote optimistic updates with error handling and rollback
+ *
+ * NOTE on skipped tests: Individual tests in this file use dynamic test.skip()
+ * when a 429 rate-limit response is encountered mid-test (e.g. on post or vote
+ * creation). This avoids false failures caused by dev_token rate limits when
+ * the full suite is run back-to-back. Re-enable by running these tests in
+ * isolation or after clearing the Redis rate-limit counters (redis-cli FLUSHALL).
  */
 
 test.describe('Optimistic Update Behavior', () => {

@@ -7,6 +7,12 @@ import { test, expect } from '@playwright/test';
  * Note: These tests verify rate limit headers are present and that
  * the rate limiting middleware is applied. Full exhaustion tests
  * would require many requests and are marked as slow.
+ *
+ * NOTE on skipped tests: Several reply and vote tests use test.skip(!postId, ...)
+ * in their body. postId is set in beforeEach by creating a post; if that creation
+ * is itself rate-limited (429), postId remains undefined and the dependent test is
+ * skipped to avoid misleading failures. To re-enable, run in isolation or flush
+ * Redis counters first (redis-cli FLUSHALL).
  */
 
 test.describe('Per-Action Rate Limits', () => {

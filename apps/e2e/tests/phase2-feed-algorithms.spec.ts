@@ -3,6 +3,12 @@ import { test, expect } from '@playwright/test';
 /**
  * Phase 2 Tests: Feed Sorting Algorithms
  * Tests for rising and controversial feed algorithms
+ *
+ * NOTE on skipped tests: The "rising sort should return recent posts" test uses
+ * dynamic test.skip() when a 429 rate-limit response is received on post creation.
+ * This avoids false failures when the suite is run after heavy use of dev_token.
+ * To re-enable reliably, run this file in isolation or flush Redis counters first
+ * (redis-cli FLUSHALL).
  */
 
 test.describe('Feed Sorting Algorithms', () => {
