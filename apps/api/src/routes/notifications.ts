@@ -143,9 +143,17 @@ router.post('/viewed', authenticateToken, async (req: Request, res: Response): P
  * POST /notifications/:id/read
  * Mark a single epistemic notification as read
  */
+const notificationIdSchema = z.object({ id: z.string().uuid() });
+
 router.post('/:id/read', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   try {
-    const id = req.params['id'] as string;
+    const parseResult = notificationIdSchema.safeParse(req.params);
+    if (!parseResult.success) {
+      const apiError: ApiError = { error: 'Validation Error', message: 'Invalid notification ID format' };
+      res.status(400).json(apiError);
+      return;
+    }
+    const { id } = parseResult.data;
     const updated = await NotificationRepo.markSingleRead(id, req.user!.id);
     if (!updated) {
       const apiError: ApiError = {

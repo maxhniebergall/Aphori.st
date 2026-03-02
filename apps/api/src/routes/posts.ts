@@ -215,7 +215,7 @@ router.post('/:id/replies', authenticateToken, ownerReplyAggregate, replyLimiter
       })
     );
 
-    // Connection karma + notification (best-effort, fire-and-forget)
+    // Builder karma + notification (best-effort, fire-and-forget)
     const parentAuthorId = parentReply ? parentReply.author_id : post.author_id;
     if (req.user!.id !== parentAuthorId) {
       const targetType = parentReply ? 'reply' as const : 'post' as const;
