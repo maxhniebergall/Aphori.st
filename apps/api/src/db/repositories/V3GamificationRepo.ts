@@ -453,6 +453,54 @@ export const createV3GamificationRepo = (pool: Pool) => ({
     `, [schemeNodeId, status]);
   },
 
+  async resolveEscrowAtomically(
+    schemeNodeId: string,
+    status: 'paid' | 'stolen' | 'languished',
+    karmaIncrements: KarmaIncrement[],
+    notifications: Array<{ userId: string; type: EpistemicNotificationType; payload: Record<string, unknown> }>
+  ): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(`
+        UPDATE v3_nodes_s
+        SET escrow_status = $2, pending_bounty = 0, escrow_expires_at = NULL
+        WHERE id = $1
+      `, [schemeNodeId, status]);
+
+      if (karmaIncrements.length > 0) {
+        const userIds = karmaIncrements.map(u => u.userId);
+        const pioneers = karmaIncrements.map(u => u.pioneer);
+        const builders = karmaIncrements.map(u => u.builder);
+        const critics = karmaIncrements.map(u => u.critic);
+        await client.query(`
+          UPDATE users u SET
+            pioneer_karma = u.pioneer_karma + data.pioneer,
+            builder_karma = u.builder_karma + data.builder,
+            critic_karma  = u.critic_karma  + data.critic
+          FROM UNNEST($1::text[], $2::float[], $3::float[], $4::float[])
+               AS data(user_id, pioneer, builder, critic)
+          WHERE u.id = data.user_id AND u.deleted_at IS NULL
+        `, [userIds, pioneers, builders, critics]);
+      }
+
+      for (const notif of notifications) {
+        await client.query(`
+          INSERT INTO notifications (user_id, category, epistemic_type, payload, is_read)
+          VALUES ($1, 'EPISTEMIC', $2, $3, FALSE)
+        `, [notif.userId, notif.type, JSON.stringify(notif.payload)]);
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
   // ── Source (R-Node) Operations ──
 
   async upsertSource(url: string, level: string = 'DOMAIN', title?: string): Promise<V3Source> {
