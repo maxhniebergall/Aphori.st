@@ -37,8 +37,8 @@ export function PostComposer() {
         setTitle('');
         setContent('');
       }
-    } catch (e) {
-      console.error('Failed to restore draft:', e);
+    } catch {
+      // Silently ignore localStorage read errors (e.g. private browsing restrictions)
     }
   }, [isOpen]);
 
@@ -62,8 +62,8 @@ export function PostComposer() {
           timestamp: Date.now(),
         };
         localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-      } catch (e) {
-        console.error('Failed to save draft:', e);
+      } catch {
+        // Silently ignore localStorage write errors (e.g. storage quota exceeded)
       }
     }, DRAFT_DEBOUNCE_MS);
 
@@ -83,8 +83,8 @@ export function PostComposer() {
       // Clear draft from localStorage
       try {
         localStorage.removeItem(DRAFT_KEY);
-      } catch (e) {
-        console.error('Failed to clear draft:', e);
+      } catch {
+        // Silently ignore localStorage removal errors
       }
 
       queryClient.invalidateQueries({ queryKey: ['feed'] });
@@ -178,8 +178,8 @@ export function PostComposer() {
                     setContent('');
                     try {
                       localStorage.removeItem(DRAFT_KEY);
-                    } catch (e) {
-                      console.error('Failed to clear draft:', e);
+                    } catch {
+                      // Silently ignore localStorage removal errors
                     }
                     setIsOpen(false);
                     setShowDeleteConfirm(false);
