@@ -386,7 +386,7 @@ export const createV3GamificationRepo = (pool: Pool) => ({
     return {
       bounties: dataResult.rows.map((r: Record<string, unknown>) => ({
         scheme_node_id: r.scheme_node_id as string,
-        pending_bounty: parseInt(r.pending_bounty as string, 10) || 0,
+        pending_bounty: parseFloat(r.pending_bounty as string) || 0,
         escrow_expires_at: r.escrow_expires_at as string,
         escrow_status: r.escrow_status as V3EscrowStatus,
         component_a_sample: r.component_a_sample as string | null,
@@ -437,7 +437,7 @@ export const createV3GamificationRepo = (pool: Pool) => ({
     `);
     return result.rows.map((r: Record<string, unknown>) => ({
       id: r.id as string,
-      pending_bounty: parseInt(r.pending_bounty as string, 10) || 0,
+      pending_bounty: parseFloat(r.pending_bounty as string) || 0,
       is_defeated: r.is_defeated as boolean,
       evidence_rank: parseFloat(r.evidence_rank as string) || 0,
       author_id: r.author_id as string | null,
@@ -463,11 +463,16 @@ export const createV3GamificationRepo = (pool: Pool) => ({
     try {
       await client.query('BEGIN');
 
-      await client.query(`
+      const escrowResult = await client.query(`
         UPDATE v3_nodes_s
         SET escrow_status = $2, pending_bounty = 0, escrow_expires_at = NULL
-        WHERE id = $1
+        WHERE id = $1 AND escrow_status = 'active'
       `, [schemeNodeId, status]);
+      if ((escrowResult.rowCount ?? 0) === 0) {
+        // Already resolved by another worker — skip without error
+        await client.query('COMMIT');
+        return;
+      }
 
       if (karmaIncrements.length > 0) {
         const userIds = karmaIncrements.map(u => u.userId);
@@ -600,22 +605,34 @@ export const createV3GamificationRepo = (pool: Pool) => ({
 
   async batchUpdateINodeBaseWeights(updates: Array<{ id: string; base_weight: number }>): Promise<void> {
     if (updates.length === 0) return;
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      for (const update of updates) {
-        await client.query(
-          'UPDATE v3_nodes_i SET base_weight = $1 WHERE id = $2',
-          [update.base_weight, update.id]
-        );
-      }
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    const ids = updates.map(u => u.id);
+    const weights = updates.map(u => u.base_weight);
+    await pool.query(`
+      UPDATE v3_nodes_i AS ni
+      SET base_weight = data.base_weight
+      FROM (
+        SELECT unnest($1::uuid[]) as id, unnest($2::float[]) as base_weight
+      ) as data
+      WHERE ni.id = data.id
+    `, [ids, weights]);
+  },
+  async linkINodeSourceRef(iNodeId: string, sourceRefId: string): Promise<void> {
+    await pool.query(
+      `UPDATE v3_nodes_i SET source_ref_id = $1 WHERE id = $2`,
+      [sourceRefId, iNodeId]
+    );
+  },
+
+  async setINodeV4Attributes(
+    iNodeId: string,
+    factSubtype: string | null,
+    baseWeight: number,
+    nodeRole: string
+  ): Promise<void> {
+    await pool.query(
+      `UPDATE v3_nodes_i SET fact_subtype = $1, base_weight = $2, node_role = $3 WHERE id = $4`,
+      [factSubtype, baseWeight, nodeRole, iNodeId]
+    );
   },
 });
 
