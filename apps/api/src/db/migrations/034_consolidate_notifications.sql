@@ -2,7 +2,7 @@
 
 -- Add discriminator and epistemic columns to the existing notifications table
 ALTER TABLE notifications
-  ADD COLUMN category VARCHAR(20) NOT NULL DEFAULT 'SOCIAL',
+  ADD COLUMN category VARCHAR(20) NOT NULL DEFAULT 'SOCIAL' CHECK (category IN ('SOCIAL', 'EPISTEMIC')),
   ADD COLUMN epistemic_type VARCHAR(50) CHECK (epistemic_type IN (
     'STREAM_HALTED','BOUNTY_STOLEN','BOUNTY_PAID','BOUNTY_LANGUISHED','UPSTREAM_DEFEATED'
   )),

@@ -2,6 +2,7 @@ import { Router, Request, Response, IRouter } from 'express';
 import { authenticateToken as requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/pool.js';
 import { createV3GamificationRepo } from '../db/repositories/V3GamificationRepo.js';
+import logger from '../logger.js';
 
 const router: IRouter = Router();
 
@@ -17,6 +18,7 @@ router.get('/karma/profile', requireAuth, async (req: Request, res: Response): P
     }
     res.json({ success: true, data: profile });
   } catch (err) {
+    logger.error('Failed to fetch karma profile', { error: err instanceof Error ? err.message : String(err) });
     res.status(500).json({ error: 'Internal Server Error', message: 'Failed to fetch karma profile' });
   }
 });
@@ -35,12 +37,13 @@ router.get('/karma/nodes', requireAuth, async (req: Request, res: Response): Pro
     };
     res.json({ success: true, data: grouped });
   } catch (err) {
+    logger.error('Failed to fetch karma nodes', { error: err instanceof Error ? err.message : String(err) });
     res.status(500).json({ error: 'Internal Server Error', message: 'Failed to fetch karma nodes' });
   }
 });
 
 // GET /bounties — active crucible escrows
-router.get('/bounties', async (req: Request, res: Response): Promise<void> => {
+router.get('/bounties', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const pool = getPool();
     const repo = createV3GamificationRepo(pool);
@@ -58,6 +61,7 @@ router.get('/bounties', async (req: Request, res: Response): Promise<void> => {
       offset,
     });
   } catch (err) {
+    logger.error('Failed to fetch bounties', { error: err instanceof Error ? err.message : String(err) });
     res.status(500).json({ error: 'Internal Server Error', message: 'Failed to fetch bounties' });
   }
 });

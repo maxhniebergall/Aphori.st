@@ -388,11 +388,11 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
                     `SELECT id FROM v3_sources WHERE url = $1`,
                     [domain]
                   );
-                  const sourceId = sourceResult.rows[0]?.id;
-                  if (sourceId) {
+                  const sourceRefId = sourceResult.rows[0]?.id;
+                  if (sourceRefId) {
                     await pool.query(
                       `UPDATE v3_nodes_i SET source_ref_id = $1 WHERE id = $2`,
-                      [sourceId, dbId]
+                      [sourceRefId, dbId]
                     );
                   }
                 } catch (err: unknown) {
