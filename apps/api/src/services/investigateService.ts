@@ -55,7 +55,7 @@ export interface RankedNode extends SubgraphNode {
  * where S(v) = vote_score * (1 + log(1 + user_karma) / 10)
  * Truncated to min 0 (fully defeated nodes).
  */
-export function calculateEvidenceRank(
+function calculateEvidenceRank(
   nodes: SubgraphNode[],
   schemeEdges: SchemeEdge[],
   focalNodeId: string,
@@ -127,7 +127,7 @@ export function calculateEvidenceRank(
  *
  * Time complexity: O(V * E) via Brandes' algorithm.
  */
-export function calculateHingeCentrality(
+function calculateHingeCentrality(
   nodeIds: string[],
   schemeEdges: SchemeEdge[]
 ): Map<string, number> {
@@ -210,7 +210,7 @@ export function calculateHingeCentrality(
  * Used to enforce viewpoint diversity in the final ranked output.
  * Returns cluster ID (0..k-1) for each node in the same order as `nodes`.
  */
-export function kMeansClustering(
+function kMeansClustering(
   embeddings: Array<number[] | null>,
   k: number,
   maxIterations: number = 50
