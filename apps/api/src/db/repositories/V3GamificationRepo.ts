@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import type {
   V3UserKarmaProfile,
   EpistemicNotificationType,
@@ -124,13 +124,13 @@ export const createV3GamificationRepo = (pool: Pool) => ({
 
   // ── EvidenceRank Batch Updates ──
 
-  async batchUpdateEvidenceRanks(updates: ERUpdate[]): Promise<void> {
+  async batchUpdateEvidenceRanks(updates: ERUpdate[], client?: PoolClient): Promise<void> {
     if (updates.length === 0) return;
     const ids = updates.map(u => u.id);
     const ranks = updates.map(u => u.evidence_rank);
     const defeated = updates.map(u => u.is_defeated);
 
-    await pool.query(`
+    await (client ?? pool).query(`
       UPDATE v3_nodes_i AS ni
       SET
         evidence_rank = data.evidence_rank,
@@ -147,12 +147,12 @@ export const createV3GamificationRepo = (pool: Pool) => ({
 
   // ── Component ID Batch Updates ──
 
-  async batchUpdateComponentIds(updates: ComponentUpdate[]): Promise<void> {
+  async batchUpdateComponentIds(updates: ComponentUpdate[], client?: PoolClient): Promise<void> {
     if (updates.length === 0) return;
     const ids = updates.map(u => u.id);
     const componentIds = updates.map(u => u.component_id);
 
-    await pool.query(`
+    await (client ?? pool).query(`
       UPDATE v3_nodes_i AS ni
       SET component_id = data.component_id
       FROM (
@@ -234,8 +234,8 @@ export const createV3GamificationRepo = (pool: Pool) => ({
 
   // ── Karma Profiles ──
 
-  async upsertKarmaProfile(userId: string, yields: KarmaYields): Promise<void> {
-    await pool.query(`
+  async upsertKarmaProfile(userId: string, yields: KarmaYields, client?: PoolClient): Promise<void> {
+    await (client ?? pool).query(`
       INSERT INTO v3_user_karma_profiles (user_id, daily_pioneer_yield, daily_builder_yield, daily_critic_yield, last_batch_run_at, updated_at)
       VALUES ($1, $2, $3, $4, NOW(), NOW())
       ON CONFLICT (user_id) DO UPDATE SET
@@ -247,14 +247,14 @@ export const createV3GamificationRepo = (pool: Pool) => ({
     `, [userId, yields.pioneer, yields.builder, yields.critic]);
   },
 
-  async batchIncrementUserKarma(updates: KarmaIncrement[]): Promise<void> {
+  async batchIncrementUserKarma(updates: KarmaIncrement[], client?: PoolClient): Promise<void> {
     if (updates.length === 0) return;
     const userIds = updates.map(u => u.userId);
     const pioneers = updates.map(u => u.pioneer);
     const builders = updates.map(u => u.builder);
     const critics = updates.map(u => u.critic);
 
-    await pool.query(`
+    await (client ?? pool).query(`
       UPDATE users AS u
       SET
         pioneer_karma = u.pioneer_karma + data.pioneer,
@@ -276,9 +276,10 @@ export const createV3GamificationRepo = (pool: Pool) => ({
   async createEpistemicNotification(
     userId: string,
     type: EpistemicNotificationType,
-    payload: Record<string, unknown>
+    payload: Record<string, unknown>,
+    client?: PoolClient
   ): Promise<void> {
-    await pool.query(`
+    await (client ?? pool).query(`
       INSERT INTO notifications (user_id, category, epistemic_type, payload, is_read)
       VALUES ($1, 'EPISTEMIC', $2, $3, FALSE)
     `, [userId, type, JSON.stringify(payload)]);
@@ -520,11 +521,11 @@ export const createV3GamificationRepo = (pool: Pool) => ({
     return result.rows[0] as V3Source;
   },
 
-  async batchUpdateSourceReputation(updates: Array<{ id: string; score: number }>): Promise<void> {
+  async batchUpdateSourceReputation(updates: Array<{ id: string; score: number }>, client?: PoolClient): Promise<void> {
     if (updates.length === 0) return;
     const ids = updates.map(u => u.id);
     const scores = updates.map(u => u.score);
-    await pool.query(`
+    await (client ?? pool).query(`
       UPDATE v3_sources AS vs
       SET reputation_score = data.score, updated_at = NOW()
       FROM (
@@ -603,11 +604,11 @@ export const createV3GamificationRepo = (pool: Pool) => ({
     return (result.rows[0]?.author_id as string | undefined) ?? null;
   },
 
-  async batchUpdateINodeBaseWeights(updates: Array<{ id: string; base_weight: number }>): Promise<void> {
+  async batchUpdateINodeBaseWeights(updates: Array<{ id: string; base_weight: number }>, client?: PoolClient): Promise<void> {
     if (updates.length === 0) return;
     const ids = updates.map(u => u.id);
     const weights = updates.map(u => u.base_weight);
-    await pool.query(`
+    await (client ?? pool).query(`
       UPDATE v3_nodes_i AS ni
       SET base_weight = data.base_weight
       FROM (

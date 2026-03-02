@@ -1,7 +1,7 @@
 import { Worker, Job } from 'bullmq';
 import { logger } from '../utils/logger.js';
 import { createBullMQConnection } from './redisConnection.js';
-import { getPool } from '../db/pool.js';
+import { getPool, withTransaction } from '../db/pool.js';
 import { createV3GamificationRepo } from '../db/repositories/V3GamificationRepo.js';
 
 const EMISSION_CONSTANT = 0.01;
@@ -30,9 +30,6 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
   ]);
 
   logger.info(`Loaded graph: ${allINodes.length} I-nodes, ${allSNodes.length} S-nodes, ${allEdges.length} edges`);
-  // TODO: each stage performs multi-step writes without a DB transaction. A mid-stage failure
-  // can leave partial state (e.g. escrow cleared but karma not awarded). Fixing this requires
-  // refactoring repo methods to accept a pg PoolClient so stages can be wrapped in BEGIN/COMMIT.
 
   // Build adjacency: iNodeId -> set of connected iNodeIds via S-nodes
   // Components are defeat-independent; defeat will be recomputed after ER based on weights.
@@ -267,29 +264,31 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
     evidence_rank: erValues.get(node.id) || 0,
     is_defeated: defeatedSet.has(node.id),
   }));
-  await repo.batchUpdateEvidenceRanks(erUpdates);
 
   // Find newly defeated nodes (was undefeated, now defeated)
   const newlyDefeated = allINodes.filter(
     node => defeatedSet.has(node.id) && !previouslyDefeated.has(node.id)
   );
 
-  // Generate STREAM_HALTED notifications for authors of newly defeated nodes
-  for (const node of newlyDefeated) {
-    if (node.author_id) {
-      await repo.createEpistemicNotification(node.author_id, 'STREAM_HALTED', {
-        i_node_id: node.id,
-        content_preview: node.content.slice(0, 120),
-        source_type: node.source_type,
-        source_id: node.source_id,
-      });
-    }
-  }
+  // Pre-fetch upstream dependents before the write transaction
+  const upstreamDeps = newlyDefeated.length > 0
+    ? await repo.getUpstreamDependents(newlyDefeated.map(n => n.id))
+    : [];
 
-  // Find upstream nodes that depended on newly defeated nodes
-  if (newlyDefeated.length > 0) {
-    const newlyDefeatedIds = newlyDefeated.map(n => n.id);
-    const upstreamDeps = await repo.getUpstreamDependents(newlyDefeatedIds);
+  // Atomically write ER updates + all notifications for this stage
+  await withTransaction(async (client) => {
+    await repo.batchUpdateEvidenceRanks(erUpdates, client);
+
+    for (const node of newlyDefeated) {
+      if (node.author_id) {
+        await repo.createEpistemicNotification(node.author_id, 'STREAM_HALTED', {
+          i_node_id: node.id,
+          content_preview: node.content.slice(0, 120),
+          source_type: node.source_type,
+          source_id: node.source_id,
+        }, client);
+      }
+    }
 
     for (const dep of upstreamDeps) {
       if (dep.upstream_author_id) {
@@ -300,10 +299,10 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
           affected_node_id: dep.upstream_node_id,
           defeated_premise_id: dep.defeated_premise_id,
           er_delta: upstreamER - prevER,
-        });
+        }, client);
       }
     }
-  }
+  });
 
   logger.info(`Defeat resolution: ${newlyDefeated.length} newly defeated nodes, notifications generated`);
 
@@ -332,13 +331,17 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
     else if (node.node_role === 'ATTACK') karma.critic += yield_;
   }
 
-  // Upsert karma profiles and increment user karma
+  // Atomically upsert karma profiles and increment user karma
   const karmaIncrements: Array<{ userId: string; pioneer: number; builder: number; critic: number }> = [];
   for (const [userId, yields] of userKarmaMap) {
-    await repo.upsertKarmaProfile(userId, { pioneer: yields.pioneer, builder: yields.builder, critic: yields.critic });
     karmaIncrements.push({ userId, ...yields });
   }
-  await repo.batchIncrementUserKarma(karmaIncrements);
+  await withTransaction(async (client) => {
+    for (const increment of karmaIncrements) {
+      await repo.upsertKarmaProfile(increment.userId, { pioneer: increment.pioneer, builder: increment.builder, critic: increment.critic }, client);
+    }
+    await repo.batchIncrementUserKarma(karmaIncrements, client);
+  });
   logger.info(`Karma payout: ${karmaIncrements.length} users updated`);
 
   // ── Stage 5: Escrow Clearing ──
@@ -424,10 +427,7 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
     const newScore = Math.max(0.0, Math.min(1.0, 0.9 * currentScore + 0.1 * survivalRatio));
     return { id: source.id, score: newScore };
   });
-  await repo.batchUpdateSourceReputation(sourceReputationUpdates);
-  logger.info(`Source reputation: ${sourceReputationUpdates.length} domains updated`);
-
-  // Recompute base_weight for FACT nodes citing updated sources
+  // Compute base_weight updates before the write transaction
   const updatedScoreMap = new Map(sourceReputationUpdates.map(u => [u.id, u.score]));
   const iNodeBaseWeightUpdates: Array<{ id: string; base_weight: number }> = [];
   for (const source of sourcesWithCitations) {
@@ -445,8 +445,16 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
       }
     }
   }
+
+  // Atomically write reputation updates and base_weight recomputation together
+  await withTransaction(async (client) => {
+    await repo.batchUpdateSourceReputation(sourceReputationUpdates, client);
+    if (iNodeBaseWeightUpdates.length > 0) {
+      await repo.batchUpdateINodeBaseWeights(iNodeBaseWeightUpdates, client);
+    }
+  });
+  logger.info(`Source reputation: ${sourceReputationUpdates.length} domains updated`);
   if (iNodeBaseWeightUpdates.length > 0) {
-    await repo.batchUpdateINodeBaseWeights(iNodeBaseWeightUpdates);
     logger.info(`Base weight recomputed for ${iNodeBaseWeightUpdates.length} I-nodes`);
   }
 
