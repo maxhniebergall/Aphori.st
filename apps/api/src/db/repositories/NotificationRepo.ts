@@ -166,26 +166,17 @@ export const NotificationRepo = {
   },
 
   async countNew(userId: string, lastViewedAt: string | null): Promise<number> {
-    const [socialResult, epistemicResult] = await Promise.all([
-      lastViewedAt
-        ? query<{ count: string }>(
-            `SELECT COUNT(*) AS count FROM notifications
-             WHERE user_id = $1 AND category = 'SOCIAL' AND updated_at > $2`,
-            [userId, lastViewedAt]
-          )
-        : query<{ count: string }>(
-            `SELECT COUNT(*) AS count FROM notifications WHERE user_id = $1 AND category = 'SOCIAL'`,
-            [userId]
-          ),
-      query<{ count: string }>(
-        `SELECT COUNT(*) AS count FROM notifications
-         WHERE user_id = $1 AND category = 'EPISTEMIC' AND is_read = FALSE`,
-        [userId]
-      ),
-    ]);
-    const social = parseInt(socialResult.rows[0]?.count ?? '0', 10);
-    const epistemic = parseInt(epistemicResult.rows[0]?.count ?? '0', 10);
-    return social + epistemic;
+    const result = await query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM notifications
+       WHERE user_id = $1
+         AND (
+           (category = 'SOCIAL' AND ($2::timestamptz IS NULL OR updated_at > $2))
+           OR
+           (category = 'EPISTEMIC' AND is_read = FALSE)
+         )`,
+      [userId, lastViewedAt]
+    );
+    return parseInt(result.rows[0]?.count ?? '0', 10);
   },
 
   async markEpistemicRead(userId: string): Promise<void> {

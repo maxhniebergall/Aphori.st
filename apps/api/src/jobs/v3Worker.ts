@@ -378,15 +378,12 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
             updatePromises.push(
               (async () => {
                 try {
-                  await pool.query(
+                  const sourceResult = await pool.query<{ id: string }>(
                     `INSERT INTO v3_sources (level, url, title)
                      VALUES ('DOMAIN', $1, $2)
-                     ON CONFLICT (url) DO NOTHING`,
+                     ON CONFLICT (url) DO UPDATE SET url = EXCLUDED.url
+                     RETURNING id`,
                     [domain, domain]
-                  );
-                  const sourceResult = await pool.query<{ id: string }>(
-                    `SELECT id FROM v3_sources WHERE url = $1`,
-                    [domain]
                   );
                   const sourceRefId = sourceResult.rows[0]?.id;
                   if (sourceRefId) {
