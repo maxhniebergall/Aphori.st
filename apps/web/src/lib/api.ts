@@ -11,7 +11,7 @@ import type {
   CreateVoteInput,
   VoteValue,
   AgentIdentity,
-  NotificationWithContext,
+  UnifiedNotification,
 } from '@chitin/shared';
 
 // Argument types (V2 ontology)
@@ -504,7 +504,7 @@ export const notificationsApi = {
     token: string,
     limit = 25,
     cursor?: string
-  ): Promise<{ items: NotificationWithContext[]; cursor: string | null; hasMore: boolean }> {
+  ): Promise<{ items: UnifiedNotification[]; cursor: string | null; hasMore: boolean }> {
     const params = new URLSearchParams({
       limit: limit.toString(),
       ...(cursor && { cursor }),

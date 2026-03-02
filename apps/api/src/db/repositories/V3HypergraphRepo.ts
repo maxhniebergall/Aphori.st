@@ -440,7 +440,8 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     const [iNodes, sNodes, edges, enthymemes, socratic, values] = await Promise.all([
       pool.query<V3INode>(
         `SELECT id, analysis_run_id, source_type, source_id, content, rewritten_text,
-                epistemic_type, fvp_confidence, span_start, span_end, extraction_confidence, created_at
+                epistemic_type, fvp_confidence, span_start, span_end, extraction_confidence, created_at,
+                fact_subtype, base_weight, evidence_rank, is_defeated, component_id, node_role
          FROM v3_nodes_i WHERE source_type = $1 AND source_id = $2
          ORDER BY span_start`,
         [sourceType, sourceId]
@@ -495,7 +496,8 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       pool.query<V3INode>(
         `SELECT i.id, i.analysis_run_id, i.source_type, i.source_id, i.content,
                 i.rewritten_text, i.epistemic_type, i.fvp_confidence, i.span_start, i.span_end,
-                i.extraction_confidence, i.created_at
+                i.extraction_confidence, i.created_at,
+                i.fact_subtype, i.base_weight, i.evidence_rank, i.is_defeated, i.component_id, i.node_role
          FROM v3_nodes_i i
          WHERE (i.source_type = 'post' AND i.source_id = $1)
             OR (i.source_type = 'reply' AND i.source_id IN (SELECT id FROM replies WHERE post_id = $1))
@@ -558,6 +560,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     const result = await pool.query(
       `SELECT id, analysis_run_id, source_type, source_id, content, rewritten_text,
               epistemic_type, fvp_confidence, span_start, span_end, extraction_confidence, created_at,
+              fact_subtype, base_weight, evidence_rank, is_defeated, component_id, node_role,
               embedding
        FROM v3_nodes_i WHERE id = $1`,
       [iNodeId]
@@ -653,7 +656,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
            WHEN pn.source_type = 'post' THEN p.score
            ELSE r.score
          END as vote_score,
-         COALESCE(u.vote_karma, 0) as user_karma,
+         COALESCE(u.pioneer_karma + u.builder_karma + u.critic_karma, 0) as user_karma,
          CASE
            WHEN pn.source_type = 'post' THEN p.id
            ELSE r.post_id
@@ -802,6 +805,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     const result = await pool.query(
       `SELECT id, analysis_run_id, source_type, source_id, content, rewritten_text,
               epistemic_type, fvp_confidence, span_start, span_end, extraction_confidence, created_at,
+              fact_subtype, base_weight, evidence_rank, is_defeated, component_id, node_role,
               (1 - (embedding <=> $1::vector)) as similarity
        FROM v3_nodes_i
        WHERE embedding IS NOT NULL AND (1 - (embedding <=> $1::vector)) > $2

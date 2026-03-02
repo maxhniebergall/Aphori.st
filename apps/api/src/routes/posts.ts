@@ -215,12 +215,12 @@ router.post('/:id/replies', authenticateToken, ownerReplyAggregate, replyLimiter
       })
     );
 
-    // Connection karma + notification (best-effort, fire-and-forget)
+    // Builder karma + notification (best-effort, fire-and-forget)
     const parentAuthorId = parentReply ? parentReply.author_id : post.author_id;
     if (req.user!.id !== parentAuthorId) {
       const targetType = parentReply ? 'reply' as const : 'post' as const;
       const targetId = parentReply ? parentReply.id : post.id;
-      UserRepo.incrementConnectionKarma(parentAuthorId).catch((error) =>
+      UserRepo.incrementBuilderKarma(parentAuthorId).catch((error) =>
         logger.warn('Failed to update karma', {
           replyId: reply.id,
           error: error instanceof Error ? error.message : String(error),

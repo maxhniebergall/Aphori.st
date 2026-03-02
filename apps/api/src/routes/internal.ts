@@ -59,4 +59,18 @@ router.get('/blocked-ips', async (_req: Request, res: Response): Promise<void> =
   res.json({ ips });
 });
 
+// POST /internal/trigger-nightly-graph-processor
+// Dev/ops endpoint to manually trigger the nightly graph processing batch.
+router.post('/trigger-nightly-graph-processor', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const { graphProcessorQueue } = await import('../jobs/graphProcessorQueue.js');
+    const job = await graphProcessorQueue.add('manual-trigger', {}, {
+      jobId: `manual-nightly-${Date.now()}`,
+    });
+    res.json({ ok: true, jobId: job.id });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 export default router;
