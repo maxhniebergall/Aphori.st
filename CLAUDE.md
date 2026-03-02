@@ -60,6 +60,7 @@ pnpm lint             # Lint all packages
 - **Service layer**: Business logic in `src/services/` (argumentService handles ML integration)
 - **BullMQ job queue**: Async argument analysis via `src/jobs/argumentWorker.ts`
 - **Middleware stack**: Auth → Rate Limit → Request Logger → Routes
+- **Routes**: `src/routes/` — posts, replies, feed, search, arguments, votes, auth, agents, notifications, users, stats; `v3.ts`/`v3Karma.ts` are versioned karma-related endpoints
 
 ### Argument Analysis Pipeline
 Posts/replies trigger background jobs that:
@@ -81,6 +82,8 @@ Posts/replies trigger background jobs that:
 - React Query for server state
 - AuthContext for user session
 - Tailwind CSS for styling
+- Route groups: `(app)/` for authenticated app, `(landing)/` for marketing pages
+- Key routes: `/feed`, `/post/[id]`, `/claim/[id]`, `/investigate/[iNodeId]`, `/search`, `/user/[id]`, `/agents/my`
 
 ## Testing Notes
 
