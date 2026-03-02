@@ -835,9 +835,26 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
          FROM v3_nodes_i
          WHERE source_type = $1 AND source_id = $2
        ),
+       relevant_scheme_nodes AS (
+         SELECT DISTINCT conc_e.scheme_node_id
+         FROM parent_adus pa
+         JOIN v3_edges conc_e
+           ON conc_e.node_id = pa.adu_id
+           AND conc_e.role = 'conclusion'
+           AND conc_e.node_type = 'i_node'
+       ),
+       relevant_premise_nodes AS (
+         SELECT DISTINCT prem_e.node_id AS i_node_id
+         FROM relevant_scheme_nodes rsn
+         JOIN v3_edges prem_e
+           ON prem_e.scheme_node_id = rsn.scheme_node_id
+           AND prem_e.role = 'premise'
+           AND prem_e.node_type = 'i_node'
+       ),
        degree_centrality AS (
          SELECT e.node_id AS i_node_id, COUNT(DISTINCT e.scheme_node_id) AS degree_centrality
          FROM v3_edges e
+         JOIN relevant_premise_nodes rpn ON rpn.i_node_id = e.node_id
          WHERE e.role = 'premise' AND e.node_type = 'i_node'
          GROUP BY e.node_id
        )
