@@ -92,7 +92,7 @@ V4 ontology. Cardinality notation: ||--o{ (one-to-many), }o--o{ (many-to-many),
                          | pioneer_karma             |
                          | builder_karma             |
                          | critic_karma              |
-                         | epistemic_score           |
+
                          +-------------+-------------+
                                        |
                                   1    | owns
