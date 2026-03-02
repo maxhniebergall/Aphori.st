@@ -26,7 +26,7 @@ vi.mock('../../config.js', () => ({
   },
 }));
 
-vi.mock('../../utils/logger.js', () => ({
+vi.mock('../../logger.js', () => ({
   logger: {
     debug: vi.fn(),
     warn: vi.fn(),
@@ -106,7 +106,7 @@ describe('blockIP', () => {
   });
 
   it('logs a warning when Redis throws', async () => {
-    const { logger } = await import('../../utils/logger.js');
+    const { logger } = await import('../../logger.js');
     mockSetex.mockRejectedValue(new Error('timeout'));
     await blockIP('bad.ip');
     expect(logger.warn).toHaveBeenCalledWith(

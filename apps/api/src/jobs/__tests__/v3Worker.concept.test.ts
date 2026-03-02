@@ -16,9 +16,9 @@ const mockV3Repo = vi.hoisted(() => ({
 }));
 
 const mockArgumentService = vi.hoisted(() => ({
-  analyzeV3: vi.fn(),
-  embedContent: vi.fn(),
-  disambiguateConceptsBatch: vi.fn(),
+  analyzeText: vi.fn(),
+  embedTexts: vi.fn(),
+  disambiguateConcepts: vi.fn(),
 }));
 
 const mockLogger = vi.hoisted(() => ({
@@ -34,6 +34,15 @@ const mockPostFindById = vi.hoisted(() => vi.fn());
 
 vi.mock('bullmq', () => ({
   Worker: vi.fn().mockImplementation(() => ({ on: vi.fn() })),
+  Queue: vi.fn().mockImplementation(() => ({
+    add: vi.fn(),
+    close: vi.fn(),
+    waitUntilReady: vi.fn().mockResolvedValue(undefined),
+  })),
+  QueueEvents: vi.fn().mockImplementation(() => ({
+    on: vi.fn(),
+    close: vi.fn(),
+  })),
 }));
 
 vi.mock('../redisConnection.js', () => ({
@@ -41,7 +50,7 @@ vi.mock('../redisConnection.js', () => ({
 }));
 
 vi.mock('../../db/pool.js', () => ({
-  getPool: vi.fn(() => ({})),
+  getPool: vi.fn(() => ({ query: vi.fn() })),
 }));
 
 vi.mock('../../db/repositories/PostRepo.js', () => ({
@@ -60,7 +69,7 @@ vi.mock('../../services/argumentService.js', () => ({
   getArgumentService: vi.fn(() => mockArgumentService),
 }));
 
-vi.mock('../../utils/logger.js', () => ({
+vi.mock('../../logger.js', () => ({
   logger: mockLogger,
 }));
 
@@ -134,47 +143,47 @@ beforeEach(() => {
   mockV3Repo.getConceptMapsForINodes.mockResolvedValue([]);
   mockV3Repo.createEquivocationFlag.mockResolvedValue(undefined);
 
-  mockArgumentService.analyzeV3.mockResolvedValue({
+  mockArgumentService.analyzeText.mockResolvedValue({
     analyses: [makeAnalysis()],
   });
   // Default: correct number of embeddings (1 adu text + 0 terms = 1)
-  mockArgumentService.embedContent.mockResolvedValue({
+  mockArgumentService.embedTexts.mockResolvedValue({
     embeddings_1536: [FAKE_EMBEDDING],
   });
-  mockArgumentService.disambiguateConceptsBatch.mockResolvedValue([]);
+  mockArgumentService.disambiguateConcepts.mockResolvedValue([]);
 });
 
 describe('v3Worker — embedding length assertion', () => {
   it('throws when embedContent returns fewer vectors than inputs', async () => {
     const HV_TERMS = ['justice'];
-    mockArgumentService.analyzeV3.mockResolvedValue({
+    mockArgumentService.analyzeText.mockResolvedValue({
       analyses: [makeAnalysis(HV_TERMS)],
     });
     // 1 adu + 1 term = 2 inputs, but we return only 1 vector → mismatch
-    mockArgumentService.embedContent.mockResolvedValue({
+    mockArgumentService.embedTexts.mockResolvedValue({
       embeddings_1536: [FAKE_EMBEDDING], // should be 2
     });
 
     const job = makeJob();
     await expect(processV3Analysis(job as any)).rejects.toThrow(
-      /embedContent returned 1 vectors for 2 inputs/
+      /embedTexts returned 1 vectors for 2 inputs/
     );
   });
 
   it('does not throw when embedContent returns the correct number of vectors', async () => {
     const HV_TERMS = ['democracy'];
-    mockArgumentService.analyzeV3.mockResolvedValue({
+    mockArgumentService.analyzeText.mockResolvedValue({
       analyses: [makeAnalysis(HV_TERMS)],
     });
     // 1 adu + 1 term = 2 inputs, return 2 vectors
-    mockArgumentService.embedContent.mockResolvedValue({
+    mockArgumentService.embedTexts.mockResolvedValue({
       embeddings_1536: [FAKE_EMBEDDING, FAKE_EMBEDDING],
     });
-    mockArgumentService.disambiguateConceptsBatch.mockResolvedValue([
+    mockArgumentService.disambiguateConcepts.mockResolvedValue([
       { term: 'democracy', matchedConceptId: null, newDefinition: 'Rule by the people' },
     ]);
     // novelTerms embed call returns 1 vector
-    mockArgumentService.embedContent
+    mockArgumentService.embedTexts
       .mockResolvedValueOnce({ embeddings_1536: [FAKE_EMBEDDING, FAKE_EMBEDDING] })
       .mockResolvedValueOnce({ embeddings_1536: [FAKE_EMBEDDING] });
 
@@ -186,18 +195,18 @@ describe('v3Worker — embedding length assertion', () => {
 describe('v3Worker — matchedConceptId validation', () => {
   it('logs a warning and treats unknown matchedConceptId as novel', async () => {
     const HV_TERMS = ['equity'];
-    mockArgumentService.analyzeV3.mockResolvedValue({
+    mockArgumentService.analyzeText.mockResolvedValue({
       analyses: [makeAnalysis(HV_TERMS)],
     });
     // 1 adu + 1 term = 2 embeddings
-    mockArgumentService.embedContent.mockResolvedValue({
+    mockArgumentService.embedTexts.mockResolvedValue({
       embeddings_1536: [FAKE_EMBEDDING, FAKE_EMBEDDING],
     });
     // No candidates found in DB for 'equity'
     mockV3Repo.findSimilarConcepts.mockResolvedValue([]);
     // LLM hallucinated an unknown concept ID
     const hallucinatedId = 'unknown-concept-id-xyz';
-    mockArgumentService.disambiguateConceptsBatch.mockResolvedValue([
+    mockArgumentService.disambiguateConcepts.mockResolvedValue([
       { term: 'equity', matchedConceptId: hallucinatedId, newDefinition: null },
     ]);
 
@@ -216,10 +225,10 @@ describe('v3Worker — matchedConceptId validation', () => {
   it('uses a valid matchedConceptId without calling createConcept', async () => {
     const HV_TERMS = ['freedom'];
     const validConceptId = 'existing-concept-uuid';
-    mockArgumentService.analyzeV3.mockResolvedValue({
+    mockArgumentService.analyzeText.mockResolvedValue({
       analyses: [makeAnalysis(HV_TERMS)],
     });
-    mockArgumentService.embedContent.mockResolvedValue({
+    mockArgumentService.embedTexts.mockResolvedValue({
       embeddings_1536: [FAKE_EMBEDDING, FAKE_EMBEDDING],
     });
     // DB returns one candidate with our validConceptId
@@ -227,7 +236,7 @@ describe('v3Worker — matchedConceptId validation', () => {
       { id: validConceptId, term: 'freedom', definition: 'Absence of coercion', sampleINodeText: 'some text' },
     ]);
     // LLM matched to the valid candidate
-    mockArgumentService.disambiguateConceptsBatch.mockResolvedValue([
+    mockArgumentService.disambiguateConcepts.mockResolvedValue([
       { term: 'freedom', matchedConceptId: validConceptId, newDefinition: null },
     ]);
 
@@ -248,15 +257,15 @@ describe('v3Worker — matchedConceptId validation', () => {
 describe('v3Worker — novel concept creation', () => {
   it('calls createConcept and linkINodeToConcept for a novel term', async () => {
     const HV_TERMS = ['sovereignty'];
-    mockArgumentService.analyzeV3.mockResolvedValue({
+    mockArgumentService.analyzeText.mockResolvedValue({
       analyses: [makeAnalysis(HV_TERMS)],
     });
     // 1 adu + 1 term = 2 embeddings for first call
-    mockArgumentService.embedContent
+    mockArgumentService.embedTexts
       .mockResolvedValueOnce({ embeddings_1536: [FAKE_EMBEDDING, FAKE_EMBEDDING] }) // main embed
       .mockResolvedValueOnce({ embeddings_1536: [FAKE_EMBEDDING] }); // novel definition embed
     mockV3Repo.findSimilarConcepts.mockResolvedValue([]);
-    mockArgumentService.disambiguateConceptsBatch.mockResolvedValue([
+    mockArgumentService.disambiguateConcepts.mockResolvedValue([
       { term: 'sovereignty', matchedConceptId: null, newDefinition: 'Supreme authority over a territory' },
     ]);
     const newConceptId = 'new-concept-uuid';
@@ -290,14 +299,14 @@ describe('v3Worker — macro_context truncation', () => {
     mockPostFindById.mockResolvedValue({ id: 'test-post-1', content: longContent });
 
     const HV_TERMS = ['term'];
-    mockArgumentService.analyzeV3.mockResolvedValue({
+    mockArgumentService.analyzeText.mockResolvedValue({
       analyses: [makeAnalysis(HV_TERMS)],
     });
     // 1 adu + 1 term = 2 embeddings
-    mockArgumentService.embedContent
+    mockArgumentService.embedTexts
       .mockResolvedValueOnce({ embeddings_1536: [FAKE_EMBEDDING, FAKE_EMBEDDING] })
       .mockResolvedValueOnce({ embeddings_1536: [FAKE_EMBEDDING] });
-    mockArgumentService.disambiguateConceptsBatch.mockResolvedValue([
+    mockArgumentService.disambiguateConcepts.mockResolvedValue([
       { term: 'term', matchedConceptId: null, newDefinition: 'some definition' },
     ]);
 
@@ -305,7 +314,7 @@ describe('v3Worker — macro_context truncation', () => {
     await processV3Analysis(job as any);
 
     // Verify disambiguateConceptsBatch was called with truncated context (≤ 8000 chars)
-    const [[calledContext]] = mockArgumentService.disambiguateConceptsBatch.mock.calls;
+    const [[calledContext]] = mockArgumentService.disambiguateConcepts.mock.calls;
     expect(typeof calledContext).toBe('string');
     expect((calledContext as string).length).toBeLessThanOrEqual(8000);
   });
