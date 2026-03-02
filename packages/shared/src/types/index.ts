@@ -471,7 +471,6 @@ export type V3FactSubtype = 'ENTHYMEME' | 'ANECDOTE' | 'DOCUMENT_REF' | 'ACADEMI
 export type V3NodeRole = 'ROOT' | 'SUPPORT' | 'ATTACK';
 export type V3EscrowStatus = 'none' | 'active' | 'paid' | 'stolen' | 'languished';
 export type V3SourceLevel = 'DOMAIN' | 'DOCUMENT' | 'EXTRACT';
-export type V3EpistemicNotificationType = 'STREAM_HALTED' | 'BOUNTY_STOLEN' | 'BOUNTY_PAID' | 'BOUNTY_LANGUISHED' | 'UPSTREAM_DEFEATED';
 
 export interface V3UserKarmaProfile {
   user_id: string;
