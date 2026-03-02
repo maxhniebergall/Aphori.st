@@ -17,7 +17,7 @@ CREATE INDEX idx_v3_i_nodes_defeated ON v3_nodes_i(is_defeated);
 -- Extend v3_nodes_s with Crucible escrow columns
 ALTER TABLE v3_nodes_s
   ADD COLUMN escrow_expires_at TIMESTAMPTZ,
-  ADD COLUMN pending_bounty INT,
+  ADD COLUMN pending_bounty DOUBLE PRECISION,
   ADD COLUMN escrow_status VARCHAR(20) DEFAULT 'none' CHECK (escrow_status IN ('none','active','paid','stolen','languished')),
   ADD COLUMN is_bridge BOOLEAN NOT NULL DEFAULT FALSE,
   ADD COLUMN component_a_id UUID,

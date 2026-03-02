@@ -1,5 +1,10 @@
 -- Consolidate v3_epistemic_notifications into the existing notifications table
 
+-- Make target_type and target_id nullable to allow EPISTEMIC notifications without a target
+ALTER TABLE notifications
+  ALTER COLUMN target_type DROP NOT NULL,
+  ALTER COLUMN target_id DROP NOT NULL;
+
 -- Add discriminator and epistemic columns to the existing notifications table
 ALTER TABLE notifications
   ADD COLUMN category VARCHAR(20) NOT NULL DEFAULT 'SOCIAL' CHECK (category IN ('SOCIAL', 'EPISTEMIC')),
