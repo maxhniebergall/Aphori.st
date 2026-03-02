@@ -61,31 +61,35 @@ CREATE INDEX idx_v3_notif_unread ON v3_epistemic_notifications(user_id) WHERE is
 -- karma balance increments happen exclusively via the nightly batch pipeline.
 CREATE OR REPLACE FUNCTION update_target_score()
 RETURNS TRIGGER AS $$
-DECLARE
-    score_delta INTEGER;
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        score_delta := NEW.value;
-    ELSIF TG_OP = 'UPDATE' THEN
-        score_delta := NEW.value - OLD.value;
-    ELSIF TG_OP = 'DELETE' THEN
-        score_delta := -OLD.value;
-    END IF;
-
-    IF TG_OP = 'DELETE' THEN
-        IF OLD.target_type = 'post' THEN
-            UPDATE posts SET score = score + score_delta WHERE id = OLD.target_id;
-        ELSE
-            UPDATE replies SET score = score + score_delta WHERE id = OLD.target_id;
-        END IF;
-        RETURN OLD;
-    ELSE
         IF NEW.target_type = 'post' THEN
-            UPDATE posts SET score = score + score_delta WHERE id = NEW.target_id;
+            UPDATE posts SET score = score + NEW.value WHERE id = NEW.target_id;
         ELSE
-            UPDATE replies SET score = score + score_delta WHERE id = NEW.target_id;
+            UPDATE replies SET score = score + NEW.value WHERE id = NEW.target_id;
         END IF;
         RETURN NEW;
+    ELSIF TG_OP = 'UPDATE' THEN
+        -- Always reverse the old target then apply to the new target so that
+        -- retargeting (target_id or target_type changes) is handled correctly.
+        IF OLD.target_type = 'post' THEN
+            UPDATE posts SET score = score - OLD.value WHERE id = OLD.target_id;
+        ELSE
+            UPDATE replies SET score = score - OLD.value WHERE id = OLD.target_id;
+        END IF;
+        IF NEW.target_type = 'post' THEN
+            UPDATE posts SET score = score + NEW.value WHERE id = NEW.target_id;
+        ELSE
+            UPDATE replies SET score = score + NEW.value WHERE id = NEW.target_id;
+        END IF;
+        RETURN NEW;
+    ELSIF TG_OP = 'DELETE' THEN
+        IF OLD.target_type = 'post' THEN
+            UPDATE posts SET score = score - OLD.value WHERE id = OLD.target_id;
+        ELSE
+            UPDATE replies SET score = score - OLD.value WHERE id = OLD.target_id;
+        END IF;
+        RETURN OLD;
     END IF;
 END;
 $$ LANGUAGE plpgsql;
