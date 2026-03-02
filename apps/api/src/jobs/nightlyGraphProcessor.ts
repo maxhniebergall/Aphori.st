@@ -35,7 +35,7 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
   // refactoring repo methods to accept a pg PoolClient so stages can be wrapped in BEGIN/COMMIT.
 
   // Build adjacency: iNodeId -> set of connected iNodeIds via S-nodes
-  // Only connect undefeated nodes (start from current state — defeat will be recomputed after ER)
+  // Components are defeat-independent; defeat will be recomputed after ER based on weights.
   // Use Union-Find for component detection
   const parent = new Map<string, string>();
   const rank = new Map<string, number>();
@@ -293,9 +293,13 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
 
     for (const dep of upstreamDeps) {
       if (dep.upstream_author_id) {
+        const upstreamER = erValues.get(dep.upstream_node_id) ?? 0;
+        const prevER = allINodes.find(n => n.id === dep.upstream_node_id)?.evidence_rank ?? 0;
         await repo.createEpistemicNotification(dep.upstream_author_id, 'UPSTREAM_DEFEATED', {
           upstream_node_id: dep.upstream_node_id,
+          affected_node_id: dep.upstream_node_id,
           defeated_premise_id: dep.defeated_premise_id,
+          er_delta: upstreamER - prevER,
         });
       }
     }
@@ -424,9 +428,10 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
   logger.info(`Source reputation: ${sourceReputationUpdates.length} domains updated`);
 
   // Recompute base_weight for FACT nodes citing updated sources
+  const updatedScoreMap = new Map(sourceReputationUpdates.map(u => [u.id, u.score]));
   const iNodeBaseWeightUpdates: Array<{ id: string; base_weight: number }> = [];
   for (const source of sourcesWithCitations) {
-    const updatedScore = sourceReputationUpdates.find(u => u.id === source.id)?.score ?? source.reputation_score;
+    const updatedScore = updatedScoreMap.get(source.id) ?? source.reputation_score;
     for (const iNode of allINodes) {
       if (iNode.source_ref_id !== source.id) continue;
       let newBaseWeight = iNode.base_weight;
