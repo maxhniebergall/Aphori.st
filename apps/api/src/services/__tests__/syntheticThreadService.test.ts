@@ -145,12 +145,12 @@ describe('interleave', () => {
 
   it('round-robins across ADU groups', () => {
     const group1 = [
-      { reply_id: 'r1', targeted_adu_ids: ['adu1'], final_score: 10, bridge_count: 1, direction: 'SUPPORT' as const },
-      { reply_id: 'r3', targeted_adu_ids: ['adu1'], final_score: 3, bridge_count: 1, direction: 'SUPPORT' as const },
+      { reply_id: 'r1', targeted_adu_ids: ['adu1'], final_score: 10, bridge_count: 1, direction: 'SUPPORT' as 'SUPPORT' | 'ATTACK' | 'MIXED' },
+      { reply_id: 'r3', targeted_adu_ids: ['adu1'], final_score: 3, bridge_count: 1, direction: 'SUPPORT' as 'SUPPORT' | 'ATTACK' | 'MIXED' },
     ];
     const group2 = [
-      { reply_id: 'r2', targeted_adu_ids: ['adu2'], final_score: 8, bridge_count: 1, direction: 'ATTACK' as const },
-      { reply_id: 'r4', targeted_adu_ids: ['adu2'], final_score: 2, bridge_count: 1, direction: 'ATTACK' as const },
+      { reply_id: 'r2', targeted_adu_ids: ['adu2'], final_score: 8, bridge_count: 1, direction: 'ATTACK' as 'SUPPORT' | 'ATTACK' | 'MIXED' },
+      { reply_id: 'r4', targeted_adu_ids: ['adu2'], final_score: 2, bridge_count: 1, direction: 'ATTACK' as 'SUPPORT' | 'ATTACK' | 'MIXED' },
     ];
     const byAdu = new Map([['adu1', group1], ['adu2', group2]]);
     const result = interleave(byAdu);
