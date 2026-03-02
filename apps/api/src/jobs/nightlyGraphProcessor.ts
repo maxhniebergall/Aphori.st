@@ -167,33 +167,27 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
   // Track which nodes are defeated (start from current, updated per iteration)
   const defeatedSet = new Set<string>(allINodes.filter(n => n.is_defeated).map(n => n.id));
 
-  // Outer defeat-co-resolution loop (max 3 rounds)
-  // TODO: verify two-phase defeat/ER interaction against OntologyV4.txt spec before prod
+  // Two-phase outer defeat-co-resolution loop (OntologyV4 Section 6.5):
+  // Phase 1: Converge ER with FIXED defeat flags from the previous outer round.
+  // Phase 2: Recompute defeat from converged ER values.
+  // Repeat outer loop only if defeat flags changed.
   const MAX_OUTER_LOOPS = 3;
   let outerLoop = 0;
   let outerDefeatChanged = true;
-  let prevOuterDefeated = new Set<string>(allINodes.filter(n => n.is_defeated).map(n => n.id));
 
   while (outerLoop < MAX_OUTER_LOOPS && outerDefeatChanged) {
-    // Reset defeated set from previous outer round
-    defeatedSet.clear();
-    for (const id of prevOuterDefeated) defeatedSet.add(id);
-
-    // Inner ER convergence loop
+    // Phase 1: Converge ER with defeat flags fixed at defeatedSet (from previous outer round).
     let innerIterations = 0;
     let innerMaxDelta = Infinity;
 
     while (innerIterations < MAX_ER_ITERATIONS && innerMaxDelta > ER_CONVERGENCE_DELTA) {
       innerMaxDelta = 0;
       const newErValues = new Map<string, number>();
-      // Two-phase: compute new defeat states from PREVIOUS iteration's values,
-      // then apply atomically to avoid node-ordering bias.
-      const newDefeatedSet = new Set<string>();
 
       for (const node of allINodes) {
         const seed = Math.max(0, node.vote_score) * node.base_weight;
 
-        // Sum ER of nodes undefeated in the PREVIOUS iteration
+        // Use fixed defeatedSet — do NOT update defeat flags inside this loop
         const supportiveER = (supportersByConclusion.get(node.id) ?? [])
           .filter(premiseId => !defeatedSet.has(premiseId))
           .reduce((sum, premiseId) => sum + (erValues.get(premiseId) || 0), 0);
@@ -205,40 +199,56 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
         const supportiveWeight = seed + supportiveER;
         const attackingWeight = attackingER;
 
-        const isDefeated = attackingWeight > supportiveWeight + DEFEAT_THRESHOLD;
-        if (isDefeated) newDefeatedSet.add(node.id);
-
-        const newER = isDefeated ? 0 : Math.max(0, supportiveWeight - attackingWeight);
+        // Defeated nodes contribute 0 ER to others but ER is still computed for convergence check
+        const newER = defeatedSet.has(node.id)
+          ? 0
+          : Math.max(0, supportiveWeight - attackingWeight);
         newErValues.set(node.id, newER);
 
         const delta = Math.abs(newER - (erValues.get(node.id) || 0));
         if (delta > innerMaxDelta) innerMaxDelta = delta;
       }
 
-      // Apply both maps atomically after the full pass
       for (const [id, er] of newErValues) {
         erValues.set(id, er);
-      }
-      defeatedSet.clear();
-      for (const id of newDefeatedSet) {
-        defeatedSet.add(id);
       }
       innerIterations++;
     }
 
-    // Check if defeat flags changed vs previous outer round
-    outerDefeatChanged = false;
-    for (const id of defeatedSet) {
-      if (!prevOuterDefeated.has(id)) { outerDefeatChanged = true; break; }
-    }
-    if (!outerDefeatChanged) {
-      for (const id of prevOuterDefeated) {
-        if (!defeatedSet.has(id)) { outerDefeatChanged = true; break; }
+    // Phase 2: Recompute defeat flags from converged ER values.
+    const newDefeatedSet = new Set<string>();
+    for (const node of allINodes) {
+      const seed = Math.max(0, node.vote_score) * node.base_weight;
+      const supportiveER = (supportersByConclusion.get(node.id) ?? [])
+        .filter(premiseId => !defeatedSet.has(premiseId))
+        .reduce((sum, premiseId) => sum + (erValues.get(premiseId) || 0), 0);
+      const attackingER = (attackersByConclusion.get(node.id) ?? [])
+        .filter(premiseId => !defeatedSet.has(premiseId))
+        .reduce((sum, premiseId) => sum + (erValues.get(premiseId) || 0), 0);
+      const supportiveWeight = seed + supportiveER;
+      if (attackingER > supportiveWeight + DEFEAT_THRESHOLD) {
+        newDefeatedSet.add(node.id);
       }
     }
 
-    // Update prevOuterDefeated for next round
-    prevOuterDefeated = new Set(defeatedSet);
+    // Check if defeat flags changed
+    outerDefeatChanged = false;
+    for (const id of newDefeatedSet) {
+      if (!defeatedSet.has(id)) { outerDefeatChanged = true; break; }
+    }
+    if (!outerDefeatChanged) {
+      for (const id of defeatedSet) {
+        if (!newDefeatedSet.has(id)) { outerDefeatChanged = true; break; }
+      }
+    }
+
+    // Zero out ER for newly defeated nodes before next outer round
+    for (const id of newDefeatedSet) {
+      erValues.set(id, 0);
+    }
+
+    defeatedSet.clear();
+    for (const id of newDefeatedSet) defeatedSet.add(id);
     outerLoop++;
   }
 
@@ -337,56 +347,61 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
 
     if (escrow.is_defeated) {
       // Outcome A: Stolen — split proportionally among all attackers by ER
-      await repo.updateEscrowStatus(escrow.id, 'stolen');
       const stolenAmount = escrow.pending_bounty * 0.5;
       const attackers = escrow.attackers.filter(a => a.author_id != null);
       const totalER = attackers.reduce((sum, a) => sum + a.evidence_rank, 0);
-      for (const attacker of attackers) {
-        const share = totalER > 0
-          ? Math.round((attacker.evidence_rank / totalER) * stolenAmount)
-          : Math.round(stolenAmount / attackers.length);
-        await repo.batchIncrementUserKarma([{
-          userId: attacker.author_id,
-          pioneer: 0,
-          builder: 0,
-          critic: share,
-        }]);
-        await repo.createEpistemicNotification(attacker.author_id, 'BOUNTY_STOLEN', {
-          scheme_node_id: escrow.id,
-          bounty_earned: share,
+
+      if (attackers.length === 0) {
+        // No valid attackers — treat as languished (no payout)
+        const notifications = escrow.author_id ? [{
+          userId: escrow.author_id,
+          type: 'BOUNTY_LANGUISHED' as const,
+          payload: { scheme_node_id: escrow.id, evidence_rank: er, reason: 'no_attackers' },
+        }] : [];
+        await repo.resolveEscrowAtomically(escrow.id, 'languished', [], notifications);
+      } else {
+        const karmaIncrements = attackers.map(attacker => {
+          const share = totalER > 0
+            ? (attacker.evidence_rank / totalER) * stolenAmount
+            : stolenAmount / attackers.length;
+          return { userId: attacker.author_id, pioneer: 0, builder: 0, critic: share };
         });
-      }
-      if (escrow.author_id) {
-        await repo.createEpistemicNotification(escrow.author_id, 'BOUNTY_STOLEN', {
-          scheme_node_id: escrow.id,
-          bounty_lost: escrow.pending_bounty,
-        });
+        const notifications = [
+          ...attackers.map((attacker, i) => ({
+            userId: attacker.author_id,
+            type: 'BOUNTY_STOLEN' as const,
+            payload: { scheme_node_id: escrow.id, bounty_earned: karmaIncrements[i]!.critic },
+          })),
+          ...(escrow.author_id ? [{
+            userId: escrow.author_id,
+            type: 'BOUNTY_STOLEN' as const,
+            payload: { scheme_node_id: escrow.id, bounty_lost: escrow.pending_bounty },
+          }] : []),
+        ];
+        await repo.resolveEscrowAtomically(escrow.id, 'stolen', karmaIncrements, notifications);
       }
     } else if (er < BOUNTY_MIN_ER) {
       // Outcome B: Languished
-      await repo.updateEscrowStatus(escrow.id, 'languished');
-      if (escrow.author_id) {
-        await repo.createEpistemicNotification(escrow.author_id, 'BOUNTY_LANGUISHED', {
-          scheme_node_id: escrow.id,
-          evidence_rank: er,
-          min_required: BOUNTY_MIN_ER,
-        });
-      }
+      const notifications = escrow.author_id ? [{
+        userId: escrow.author_id,
+        type: 'BOUNTY_LANGUISHED' as const,
+        payload: { scheme_node_id: escrow.id, evidence_rank: er, min_required: BOUNTY_MIN_ER },
+      }] : [];
+      await repo.resolveEscrowAtomically(escrow.id, 'languished', [], notifications);
     } else {
       // Outcome C: Paid
-      await repo.updateEscrowStatus(escrow.id, 'paid');
-      if (escrow.author_id) {
-        await repo.batchIncrementUserKarma([{
-          userId: escrow.author_id,
-          pioneer: escrow.pending_bounty,
-          builder: 0,
-          critic: 0,
-        }]);
-        await repo.createEpistemicNotification(escrow.author_id, 'BOUNTY_PAID', {
-          scheme_node_id: escrow.id,
-          bounty_earned: escrow.pending_bounty,
-        });
-      }
+      const karmaIncrements = escrow.author_id ? [{
+        userId: escrow.author_id,
+        pioneer: escrow.pending_bounty,
+        builder: 0,
+        critic: 0,
+      }] : [];
+      const notifications = escrow.author_id ? [{
+        userId: escrow.author_id,
+        type: 'BOUNTY_PAID' as const,
+        payload: { scheme_node_id: escrow.id, bounty_earned: escrow.pending_bounty },
+      }] : [];
+      await repo.resolveEscrowAtomically(escrow.id, 'paid', karmaIncrements, notifications);
     }
   }
   logger.info(`Escrow clearing: ${expiredEscrows.length} escrows resolved`);
