@@ -27,6 +27,84 @@ interface ReplyThreadProps {
   v3Subgraph?: V3Subgraph;
 }
 
+interface SyntheticReplyRendererProps {
+  reply: SyntheticReplyWithAuthor;
+  depth: number;
+  postId: string;
+  userVotes?: Record<string, VoteValue>;
+  onQuote?: (quote: QuoteData) => void;
+  onSearch?: (text: string) => void;
+  v3Subgraph?: V3Subgraph;
+  collapsedReplies: Set<string>;
+  toggleCollapse: (id: string) => void;
+}
+
+function SyntheticReplyRenderer({
+  reply,
+  depth,
+  postId,
+  userVotes,
+  onQuote,
+  onSearch,
+  v3Subgraph,
+  collapsedReplies,
+  toggleCollapse,
+}: SyntheticReplyRendererProps) {
+  return (
+    <div key={reply.id}>
+      <ReplyCard
+        reply={reply}
+        postId={postId}
+        depth={depth}
+        userVote={userVotes?.[reply.id]}
+        onQuote={onQuote}
+        onSearch={onSearch}
+        v3Subgraph={v3Subgraph}
+        direction={reply.direction}
+      />
+      {reply.continueThreadUrl ? (
+        <div className="ml-8 pl-4 py-2">
+          <Link
+            href={reply.continueThreadUrl}
+            className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+          >
+            Continue thread →
+          </Link>
+        </div>
+      ) : reply.children.length > 0 ? (
+        <div className="relative ml-4 pl-4">
+          <button
+            className="absolute left-0 top-0 bottom-0 w-4 flex items-center justify-center group"
+            onClick={() => toggleCollapse(reply.id)}
+            aria-label={collapsedReplies.has(reply.id) ? 'Expand thread' : 'Collapse thread'}
+          >
+            <span className="w-0.5 h-full bg-slate-200 dark:bg-slate-700 group-hover:bg-slate-400 dark:group-hover:bg-slate-500 transition-colors" />
+          </button>
+          {!collapsedReplies.has(reply.id) && reply.children.map(child => (
+            <SyntheticReplyRenderer
+              key={child.id}
+              reply={child}
+              depth={depth + 1}
+              postId={postId}
+              userVotes={userVotes}
+              onQuote={onQuote}
+              onSearch={onSearch}
+              v3Subgraph={v3Subgraph}
+              collapsedReplies={collapsedReplies}
+              toggleCollapse={toggleCollapse}
+            />
+          ))}
+          {collapsedReplies.has(reply.id) && (
+            <div className="py-1 text-[10px] text-slate-400 dark:text-slate-500">
+              {reply.children.length} replies hidden
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function ReplyThread({ postId, initialReplies, userVotes, onQuote, onSearch, v3Subgraph }: ReplyThreadProps) {
   const { token } = useAuth();
   const [sort, setSort] = useState<SortOption>('evidence');
@@ -40,26 +118,32 @@ export function ReplyThread({ postId, initialReplies, userVotes, onQuote, onSear
     });
 
   // Evidence sort: fetch pre-nested SyntheticThreadResponse
-  const { data: evidenceData } = useQuery({
+  const { data: evidenceData, isLoading: isEvidenceLoading } = useQuery({
     queryKey: ['replies', postId, 'evidence'],
     queryFn: () => postsApi.getEvidenceReplies(postId, 25, undefined, token ?? undefined),
     enabled: sort === 'evidence',
     staleTime: 30 * 1000,
   });
 
-  // Standard sorts: fetch flat list and build tree client-side
-  const { data: standardData } = useQuery({
-    queryKey: ['replies', postId, sort],
-    queryFn: () => postsApi.getReplies(postId, 100, undefined, token ?? undefined, sort as 'top' | 'new' | 'controversial'),
-    enabled: sort !== 'evidence',
+  const shouldFallbackToTop = sort === 'evidence' && evidenceData?.fallback === true;
+
+  // Standard sorts: fetch flat list and build tree client-side.
+  // Also enabled when evidence sort falls back to top.
+  const { data: standardData, isLoading: isStandardLoading } = useQuery({
+    queryKey: ['replies', postId, shouldFallbackToTop ? 'top' : sort],
+    queryFn: () => postsApi.getReplies(
+      postId, 100, undefined, token ?? undefined,
+      (shouldFallbackToTop ? 'top' : sort) as 'top' | 'new' | 'controversial'
+    ),
+    enabled: sort !== 'evidence' || shouldFallbackToTop,
     initialData: sort === 'top' ? initialReplies : undefined,
     staleTime: 30 * 1000,
   });
 
   const effectiveSort = useMemo(() => {
-    if (sort === 'evidence' && evidenceData?.fallback) return 'top';
+    if (shouldFallbackToTop) return 'top';
     return sort;
-  }, [sort, evidenceData]);
+  }, [sort, shouldFallbackToTop]);
 
   const standardReplies = useMemo(() => standardData?.items ?? [], [standardData]);
 
@@ -96,63 +180,11 @@ export function ReplyThread({ postId, initialReplies, userVotes, onQuote, onSear
     [effectiveSort, evidenceData]
   );
 
+  const isLoading = sort === 'evidence' ? isEvidenceLoading : isStandardLoading;
+
   const isEmpty = effectiveSort === 'evidence'
     ? syntheticItems.length === 0
     : rootReplies.length === 0;
-
-  if (isEmpty && sort !== 'evidence') {
-    return (
-      <div className="p-8 text-center text-slate-500 dark:text-slate-400">
-        No replies yet. Be the first to reply!
-      </div>
-    );
-  }
-
-  // Recursive renderer for IBA synthetic replies (pre-nested)
-  const renderSyntheticReply = (reply: SyntheticReplyWithAuthor, depth: number = 0) => {
-    return (
-      <div key={reply.id}>
-        <ReplyCard
-          reply={reply}
-          postId={postId}
-          depth={depth}
-          userVote={userVotes?.[reply.id]}
-          onQuote={onQuote}
-          onSearch={onSearch}
-          v3Subgraph={v3Subgraph}
-          direction={reply.direction}
-          hasReplies={reply.hasReplies}
-          continueThreadUrl={reply.continueThreadUrl}
-        />
-        {reply.continueThreadUrl ? (
-          <div className="ml-8 pl-4 py-2">
-            <Link
-              href={reply.continueThreadUrl}
-              className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
-            >
-              Continue thread →
-            </Link>
-          </div>
-        ) : reply.children.length > 0 ? (
-          <div className="relative ml-4 pl-4">
-            <button
-              className="absolute left-0 top-0 bottom-0 w-4 flex items-center justify-center group"
-              onClick={() => toggleCollapse(reply.id)}
-              aria-label={collapsedReplies.has(reply.id) ? 'Expand thread' : 'Collapse thread'}
-            >
-              <span className="w-0.5 h-full bg-slate-200 dark:bg-slate-700 group-hover:bg-slate-400 dark:group-hover:bg-slate-500 transition-colors" />
-            </button>
-            {!collapsedReplies.has(reply.id) && reply.children.map(child => renderSyntheticReply(child, depth + 1))}
-            {collapsedReplies.has(reply.id) && (
-              <div className="py-1 text-[10px] text-slate-400 dark:text-slate-500">
-                {reply.children.length} replies hidden
-              </div>
-            )}
-          </div>
-        ) : null}
-      </div>
-    );
-  };
 
   // Standard renderer for non-evidence sorts
   const renderReply = (reply: ReplyWithAuthor, depth: number = 0) => {
@@ -211,14 +243,31 @@ export function ReplyThread({ postId, initialReplies, userVotes, onQuote, onSear
         ))}
       </div>
 
-      {isEmpty ? (
+      {isLoading ? (
+        <div className="p-8 text-center text-slate-500 dark:text-slate-400">
+          Loading replies…
+        </div>
+      ) : isEmpty ? (
         <div className="p-8 text-center text-slate-500 dark:text-slate-400">
           No replies yet. Be the first to reply!
         </div>
       ) : (
         <div className="divide-y divide-slate-200 dark:divide-slate-700">
           {effectiveSort === 'evidence'
-            ? syntheticItems.map((reply) => renderSyntheticReply(reply as SyntheticReplyWithAuthor))
+            ? syntheticItems.map((reply) => (
+                <SyntheticReplyRenderer
+                  key={reply.id}
+                  reply={reply}
+                  depth={0}
+                  postId={postId}
+                  userVotes={userVotes}
+                  onQuote={onQuote}
+                  onSearch={onSearch}
+                  v3Subgraph={v3Subgraph}
+                  collapsedReplies={collapsedReplies}
+                  toggleCollapse={toggleCollapse}
+                />
+              ))
             : rootReplies.map((reply) => renderReply(reply))
           }
         </div>

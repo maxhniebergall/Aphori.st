@@ -20,8 +20,6 @@ interface ReplyCardProps {
   v3Subgraph?: V3Subgraph;
   // IBA (Evidence sort) props
   direction?: 'SUPPORT' | 'ATTACK' | 'MIXED';
-  hasReplies?: boolean;
-  continueThreadUrl?: string;
 }
 
 export function ReplyCard({ reply, postId, depth, userVote, onQuote, onSearch, v3Subgraph, direction }: ReplyCardProps) {
