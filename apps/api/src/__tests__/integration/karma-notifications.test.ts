@@ -184,18 +184,24 @@ describe('Vote Score (V4)', () => {
   });
 });
 
+// Mirrors the route's karma logic: increment builder_karma only when replier !== author.
+async function applyBuilderKarma(replierId: string, authorId: string): Promise<void> {
+  if (replierId !== authorId) {
+    await pool.query(
+      'UPDATE users SET builder_karma = builder_karma + 1 WHERE id = $1',
+      [authorId]
+    );
+  }
+}
+
 // V4: builder_karma replaces connection_karma; still incremented synchronously on reply connections.
 describe('Builder Karma (V4)', () => {
   it('should increment builder_karma when someone replies to your post', async () => {
     const postAuthor = await factories.createUser();
-    await factories.createUser(); // replier
+    const replier = await factories.createUser();
     await factories.createPost(postAuthor.id);
 
-    // Simulate what the route does via incrementBuilderKarma
-    await pool.query(
-      'UPDATE users SET builder_karma = builder_karma + 1 WHERE id = $1',
-      [postAuthor.id]
-    );
+    await applyBuilderKarma(replier.id, postAuthor.id);
 
     const result = await pool.query('SELECT builder_karma FROM users WHERE id = $1', [postAuthor.id]);
     expect(result.rows[0].builder_karma).toBe(1);
@@ -205,7 +211,9 @@ describe('Builder Karma (V4)', () => {
     const author = await factories.createUser();
     await factories.createPost(author.id);
 
-    // Self-reply: no karma increment (the route skips this)
+    // Self-reply: replierId === authorId, so karma must stay at 0
+    await applyBuilderKarma(author.id, author.id);
+
     const result = await pool.query('SELECT builder_karma FROM users WHERE id = $1', [author.id]);
     expect(result.rows[0].builder_karma).toBe(0);
   });
