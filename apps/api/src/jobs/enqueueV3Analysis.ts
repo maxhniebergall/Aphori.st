@@ -5,7 +5,8 @@ import { logger } from '../logger.js';
 export async function enqueueV3Analysis(
   sourceType: 'post' | 'reply',
   sourceId: string,
-  content: string
+  content: string,
+  parent?: { sourceType: 'post' | 'reply'; sourceId: string }
 ): Promise<string> {
   const contentHash = crypto.createHash('sha256').update(content).digest('hex');
   const jobId = `v3-${sourceType}-${sourceId}-${contentHash.substring(0, 8)}`;
@@ -13,7 +14,26 @@ export async function enqueueV3Analysis(
   const redisStatus = (v3Queue as any).client?.status ?? 'unknown';
   logger.info(`V3 enqueue: attempting job ${jobId}`, { sourceType, sourceId, redisStatus });
 
-  const job = await v3Queue.add('v3-analyze', { sourceType, sourceId, contentHash }, {
+  const payload: {
+    sourceType: 'post' | 'reply';
+    sourceId: string;
+    contentHash: string;
+    contentText: string;
+    parentSourceType?: 'post' | 'reply';
+    parentSourceId?: string;
+  } = {
+    sourceType,
+    sourceId,
+    contentHash,
+    contentText: content,
+  };
+
+  if (parent) {
+    payload.parentSourceType = parent.sourceType;
+    payload.parentSourceId = parent.sourceId;
+  }
+
+  const job = await v3Queue.add('v3-analyze', payload, {
     jobId,
     attempts: 2,
     backoff: {

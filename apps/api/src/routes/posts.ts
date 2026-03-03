@@ -54,7 +54,8 @@ router.post('/', authenticateToken, ownerPostAggregate, postLimiter, async (req:
     const post = await PostRepo.create(req.user!.id, input);
 
     // Enqueue analysis jobs (best-effort)
-    enqueueV3Analysis('post', post.id, input.content).catch((error) =>
+    const postTextToAnalyze = `${input.title}\n\n${input.content}`;
+    enqueueV3Analysis('post', post.id, postTextToAnalyze).catch((error) =>
       logger.error('V3 enqueue FAILED for post', {
         postId: post.id,
         error: error instanceof Error ? error.message : String(error),
@@ -208,7 +209,10 @@ router.post('/:id/replies', authenticateToken, ownerReplyAggregate, replyLimiter
     }
 
     // Enqueue V3 analysis job (best-effort, fire-and-forget)
-    enqueueV3Analysis('reply', reply.id, input.content).catch((error) =>
+    const replyParent = input.parent_reply_id
+      ? { sourceType: 'reply' as const, sourceId: input.parent_reply_id }
+      : { sourceType: 'post' as const, sourceId: postId };
+    enqueueV3Analysis('reply', reply.id, input.content, replyParent).catch((error) =>
       logger.error('V3 enqueue FAILED for reply', {
         replyId: reply.id,
         error: error instanceof Error ? error.message : String(error),
