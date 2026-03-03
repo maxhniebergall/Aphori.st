@@ -595,6 +595,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
         const dedupResults = await argumentService.deduplicateINodes(truncatedContext, dedupInputs);
 
         // D4 + D5: validate and persist
+        let actualPersistedCount = 0;
         for (const result of dedupResults) {
           if (!result.canonicalINodeId || result.dedupFailed) continue;
 
@@ -612,10 +613,10 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
           await v3Repo.setCanonicalINode(result.newINodeId, result.canonicalINodeId);
           logger.info(`V3 dedup: marked ${result.newINodeId} as duplicate of ${result.canonicalINodeId}`, { sourceId });
+          actualPersistedCount++;
         }
 
-        const duplicateCount = dedupResults.filter(r => r.canonicalINodeId && !r.dedupFailed).length;
-        logger.info(`V3 dedup: ${duplicateCount}/${iNodesWithCandidates.length} I-nodes deduplicated`, { sourceId });
+        logger.info(`V3 dedup: ${actualPersistedCount}/${iNodesWithCandidates.length} I-nodes deduplicated`, { sourceId });
       } else {
         logger.info('V3 dedup: no cross-source candidates found, all I-nodes are novel', { sourceId });
       }
