@@ -84,24 +84,23 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       return;
     }
 
-    // Use contentText from job payload (may include post title for posts).
-    // If absent (jobs enqueued before this field was added), fall back to DB content
-    // and skip hash verification to avoid false mismatches.
-    const textForAnalysis = contentText ?? contentRecord.content;
+    // contentHash is always present; contentText must also be present for hash verification.
+    if (contentText === undefined) {
+      throw new Error(
+        `V3 worker: contentHash provided but contentText is missing for ${sourceType} ${sourceId} — cannot verify integrity`
+      );
+    }
+
+    const textForAnalysis = contentText;
 
     logger.info(`V3 worker: fetched content (${textForAnalysis.length} chars)`, { sourceType, sourceId });
 
-    // 2. Verify content hash for idempotency (only when contentText was explicitly provided)
-    if (contentText !== undefined) {
-      const currentHash = crypto.createHash('sha256').update(textForAnalysis).digest('hex');
-      if (currentHash !== contentHash) {
-        logger.warn(`V3 worker: content hash mismatch, skipping`, {
-          sourceId,
-          expected: contentHash.substring(0, 8),
-          actual: currentHash.substring(0, 8),
-        });
-        return;
-      }
+    // 2. Verify content hash for idempotency
+    const currentHash = crypto.createHash('sha256').update(textForAnalysis).digest('hex');
+    if (currentHash !== contentHash) {
+      throw new Error(
+        `V3 worker: content hash mismatch for ${sourceType} ${sourceId} — expected ${contentHash.substring(0, 8)}, got ${currentHash.substring(0, 8)}`
+      );
     }
 
     // 3. Check idempotency via analysis runs
