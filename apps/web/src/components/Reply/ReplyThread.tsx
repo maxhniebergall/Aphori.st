@@ -54,7 +54,7 @@ function SyntheticReplyRenderer({
   toggleCollapse,
 }: SyntheticReplyRendererProps) {
   return (
-    <div key={reply.id}>
+    <div key={reply.id} id={`reply-${reply.id}`}>
       <ReplyCard
         reply={reply}
         postId={postId}
@@ -230,7 +230,7 @@ export function ReplyThread({ postId, initialReplies, initialSort, userVotes, on
     const isCollapsed = collapsedReplies.has(reply.id);
 
     return (
-      <div key={reply.id}>
+      <div key={reply.id} id={`reply-${reply.id}`}>
         <ReplyCard
           reply={reply}
           postId={postId}
