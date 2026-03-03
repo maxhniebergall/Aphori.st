@@ -2,9 +2,27 @@
 
 ## Official Documentation
 
+- **Models**: https://ai.google.dev/gemini-api/docs/models
 - **Structured Output Guide**: https://ai.google.dev/gemini-api/docs/structured-output
 - **Prompt Design Strategies**: https://ai.google.dev/gemini-api/docs/prompting-strategies
-- **Vertex AI Documentation**: https://cloud.google.com/vertex-ai/generative-ai/docs/multimodal/control-generated-output
+- **Context Caching**: https://ai.google.dev/gemini-api/docs/caching
+- **Pricing**: https://ai.google.dev/gemini-api/docs/pricing
+
+## Current Models (as of 2026)
+
+| Model ID | Use Case | Input ($/1M) | Output ($/1M) | Speed (tok/s) |
+|----------|----------|--------------|---------------|---------------|
+| `gemini-3.1-flash-lite` | Best price-performance overall | $0.25 | $1.50 | 363 |
+| `gemini-2.5-flash` | Strong reasoning, 1M context window | $0.30 | $2.50 | 249 |
+| `gemini-2.5-flash-lite` | Cheapest, fastest for simple tasks | $0.10 | $0.40 | 366 |
+| `gemini-2.5-pro` | Complex reasoning, highest quality | varies | varies | — |
+| `gemini-3.1-pro-preview` | State-of-the-art, agentic/coding | $2.00–4.00 | $12.00–18.00 | — |
+
+Source: https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-3-1-flash-lite/
+
+**Caching discounts**: 75% on Gemini 2.0/2.5; 90% on Gemini 2.5+ (implicit). Storage: $1.00/1M tokens/hr.
+
+**Batch API**: 50% discount on standard rates for non-real-time workloads.
 
 ## Structured Output Configuration
 
@@ -14,7 +32,7 @@
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-09-2025' });
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 const schema = {
   type: SchemaType.OBJECT,
@@ -170,31 +188,34 @@ console.log({
   promptTokenCount: usageMetadata.promptTokenCount,
   candidatesTokenCount: usageMetadata.candidatesTokenCount,
   totalTokenCount: usageMetadata.totalTokenCount,
-  cachedContentTokenCount: usageMetadata.cachedContentTokenCount // If using caching
+  cachedContentTokenCount: usageMetadata.cachedContentTokenCount, // implicit or explicit cache hits
+  thoughtsTokenCount: usageMetadata.thoughtsTokenCount,           // thinking models only
 });
 ```
 
-### Cost Calculation (Gemini 2.5 Flash-Lite)
+### Cost Calculation
 
-**Pricing (per 1M tokens)**:
-- Text/Image/Video Input: $0.10
-- Audio Input: $0.30
-- Output (including thinking): $0.40
-
-**Token Rates**:
+**Token Rates for multimodal input**:
 - Audio: 32 tokens/second
 - Video: 263 tokens/second
+
+**Gemini 2.5 Flash-Lite pricing (per 1M tokens)**:
+- Text/Image/Video Input: $0.10
+- Output (including thinking): $0.40
 
 ```typescript
 const AUDIO_TOKENS_PER_SECOND = 32;
 const VIDEO_TOKENS_PER_SECOND = 263;
-const PRICE_INPUT_TEXT = 0.10;
-const PRICE_INPUT_AUDIO = 0.30;
-const PRICE_OUTPUT = 0.40;
 
-const inputCost = (usageMetadata.promptTokenCount / 1_000_000) * PRICE_INPUT_AUDIO;
+// Example: 2.5 Flash-Lite
+const PRICE_INPUT = 0.10;  // per 1M tokens
+const PRICE_OUTPUT = 0.40; // per 1M tokens
+// Cached tokens billed at 75-90% discount
+
+const inputCost = (usageMetadata.promptTokenCount / 1_000_000) * PRICE_INPUT;
+const cachedCost = (usageMetadata.cachedContentTokenCount / 1_000_000) * PRICE_INPUT * 0.10; // 90% off
 const outputCost = (usageMetadata.candidatesTokenCount / 1_000_000) * PRICE_OUTPUT;
-const totalCost = inputCost + outputCost;
+const totalCost = inputCost + cachedCost + outputCost;
 ```
 
 ## Multimodal Input

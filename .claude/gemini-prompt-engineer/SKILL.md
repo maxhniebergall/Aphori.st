@@ -1,13 +1,27 @@
 ---
 name: gemini-prompt-engineer
-description: Iteratively improve and optimize Gemini API prompts using 2025 prompt engineering best practices, structured output techniques, and Gemini-specific strategies. Use this skill when working with Gemini prompts, analyzing prompt performance, implementing structured output schemas, or debugging Gemini API responses.
+description: Iteratively improve and optimize Gemini API prompts using 2026 prompt engineering best practices, structured output techniques, context caching, and Gemini-specific strategies. Use this skill when working with Gemini prompts, analyzing prompt performance, implementing structured output schemas, debugging Gemini API responses, or implementing context caching for cost reduction.
 ---
 
 # Gemini Prompt Engineer
 
 ## Overview
 
-Systematically analyze, iterate, and optimize prompts for Google's Gemini API using evidence-based prompt engineering techniques from 2025. This skill provides a structured framework for improving prompt quality, implementing structured JSON output, and maximizing Gemini's unique capabilities including multimodal processing, chain-of-thought reasoning, and coreference resolution.
+Systematically analyze, iterate, and optimize prompts for Google's Gemini API using evidence-based prompt engineering techniques. This skill provides a structured framework for improving prompt quality, implementing structured JSON output, leveraging context caching, and maximizing Gemini's unique capabilities including multimodal processing, chain-of-thought reasoning, and coreference resolution.
+
+## Current Model Reference (as of 2026)
+
+| Model | Best For | Input ($/1M) | Output ($/1M) | Speed (tok/s) |
+|-------|----------|--------------|---------------|---------------|
+| `gemini-3.1-flash-lite` | **Best price-performance overall** | $0.25 | $1.50 | 363 |
+| `gemini-2.5-flash` | Strong reasoning, long context (1M) | $0.30 | $2.50 | 249 |
+| `gemini-2.5-flash-lite` | Cheapest, fastest for simple tasks | $0.10 | $0.40 | 366 |
+| `gemini-2.5-pro` | Complex reasoning, coding, highest quality | varies | varies | — |
+| `gemini-3.1-pro-preview` | State-of-the-art, agentic, coding | $2.00–4.00 | $12.00–18.00 | — |
+
+**Recommendation**: Use `gemini-3.1-flash-lite` as the default workhorse — it outperforms `gemini-2.5-flash` on most benchmarks at lower cost. Use `gemini-2.5-pro` or `gemini-3.1-pro-preview` for complex reasoning. Use `gemini-2.5-flash` when you need the 1M token context window.
+
+See `references/gemini_api_reference.md` for full parameter specs, schema syntax, and pricing.
 
 ## Core Capabilities
 
@@ -374,13 +388,42 @@ Optimize Gemini generation config parameters:
 **Problem**: Schema + prompt + input too large
 **Solution**: Shorten schema descriptions, reduce examples, use references to external docs
 
+### 8. Context Caching
+
+Reduce costs and latency when the same large content is reused across requests. See `references/context_caching.md` for full details and code examples.
+
+**Two mechanisms:**
+
+- **Implicit caching** (automatic): Enabled by default on Gemini 2.5+ models. No code changes needed — cache hits apply a **75-90% discount** automatically. Savings appear in `usageMetadata.cachedContentTokenCount`.
+- **Explicit caching** (manual): You create a named cache with a TTL and reference it by ID. Guarantees savings for predictable workloads.
+
+**Prompt structure for maximum cache hits:**
+```
+[STATIC: system instructions, large documents, reference data]  ← cached prefix
+[DYNAMIC: user query, variable data]                             ← appended per request
+```
+
+**When to use explicit caching:**
+- Large system prompts (>1K tokens) reused across many requests
+- Repeated analysis of the same document, video, or codebase
+- Chatbots with extensive, stable context
+
+**Minimum token thresholds for explicit caching:**
+
+| Model | Min Tokens |
+|-------|------------|
+| Gemini 2.5 Flash | 1,024 |
+| Gemini 2.5 Pro | 4,096 |
+| Gemini 3 Flash Preview | 1,024 |
+| Gemini 3.1 Pro Preview | 4,096 |
+
 ## Resources
 
 ### references/
 
-- `gemini_api_reference.md`: Official Gemini API structured output documentation, parameter specs, schema syntax
-- `prompt_patterns.md`: Comprehensive collection of prompt templates for common use cases (classification, extraction, summarization, Q&A)
-- `schema_examples.md`: Production-tested responseSchema examples with annotations
+- `gemini_api_reference.md`: Gemini API structured output docs, parameter specs, schema syntax, pricing
+- `prompt_patterns.md`: Prompt templates for common use cases (classification, extraction, summarization, Q&A)
+- `context_caching.md`: Context caching guide — explicit vs implicit, code examples, cost optimization patterns
 
 ### scripts/
 
@@ -517,3 +560,6 @@ ${userInput}`;
 8. **Implement coreference resolution** for conversational/narrative inputs
 9. **Leverage multimodal capabilities** explicitly for video/image inputs
 10. **Iterate systematically** - one change at a time, test, compare, document
+11. **Structure prompts for caching** - static content first, dynamic content last
+12. **Monitor `cachedContentTokenCount`** in usageMetadata to verify cache hits
+13. **Use explicit caching** for large stable contexts (system prompts, docs, codebases)
