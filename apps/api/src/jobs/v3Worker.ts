@@ -242,17 +242,20 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     // For ghost nodes that identified a parent context i_node they are attacking,
     // insert a v3_edges row linking the scheme to that parent i_node as conclusion (ATTACK).
     if (parentINodes.length > 0) {
+      // The discourse engine receives parentINodes with their actual DB UUIDs as `id`,
+      // so parent_context_target_id returned by the engine is already a DB UUID.
+      const parentINodeIdSet = new Set(parentINodes.map((n: { id: string; text: string }) => n.id));
+
       const ghostNodes = analysis.hypergraph.nodes.filter(
         (n: V3HypergraphNode) => n.node_type === 'ghost'
       );
       for (const ghostNode of ghostNodes) {
-        const parentTargetEngineId = ghostNode.parent_context_target_id;
-        if (!parentTargetEngineId) continue;
+        const parentTargetDbId = ghostNode.parent_context_target_id;
+        if (!parentTargetDbId) continue;
 
-        const parentTargetDbId = engineIdToDbId.get(parentTargetEngineId);
-        if (!parentTargetDbId) {
-          logger.warn('V3 worker: parent_context_target_id not found in engineIdToDbId', {
-            parentTargetEngineId,
+        if (!parentINodeIdSet.has(parentTargetDbId)) {
+          logger.warn('V3 worker: parent_context_target_id not found in parentINodes', {
+            parentTargetDbId,
             sourceId,
           });
           continue;
