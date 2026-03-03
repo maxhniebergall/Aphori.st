@@ -9,7 +9,6 @@ import { getArgumentService } from '../services/argumentService.js';
 import { getPool } from '../db/pool.js';
 import { createV3GamificationRepo } from '../db/repositories/V3GamificationRepo.js';
 import { createBullMQConnection } from './redisConnection.js';
-import { enqueueV3Analysis } from './enqueueV3Analysis.js';
 
 // ── V4 helper functions ──
 
@@ -51,6 +50,9 @@ interface V3AnalysisJobData {
   sourceType: 'post' | 'reply';
   sourceId: string;
   contentHash: string;
+  contentText: string;
+  parentSourceType?: 'post' | 'reply';
+  parentSourceId?: string;
 }
 
 const BOUNTY_WINDFALL_MULTIPLIER = 0.1;
@@ -59,7 +61,7 @@ const BRIDGE_ESCROW_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
 const connection = createBullMQConnection('v3-worker');
 
 export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<void> {
-  const { sourceType, sourceId, contentHash } = job.data;
+  const { sourceType, sourceId, contentHash, contentText, parentSourceType, parentSourceId } = job.data;
   const pool = getPool();
   const v3Repo = createV3HypergraphRepo(pool);
   const argumentService = getArgumentService();
@@ -72,7 +74,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
   });
 
   try {
-    // 1. Fetch content from DB via repositories
+    // 1. Fetch content record from DB (for author_id check and concept disambiguation context)
     const contentRecord = sourceType === 'post'
       ? await PostRepo.findById(sourceId)
       : await ReplyRepo.findById(sourceId);
@@ -82,10 +84,14 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       return;
     }
 
-    logger.info(`V3 worker: fetched content (${contentRecord.content.length} chars)`, { sourceType, sourceId });
+    // Use contentText from job payload (may include post title for posts)
+    // Verify hash matches the payload content for idempotency
+    const textForAnalysis = contentText ?? contentRecord.content;
+
+    logger.info(`V3 worker: fetched content (${textForAnalysis.length} chars)`, { sourceType, sourceId });
 
     // 2. Verify content hash for idempotency
-    const currentHash = crypto.createHash('sha256').update(contentRecord.content).digest('hex');
+    const currentHash = crypto.createHash('sha256').update(textForAnalysis).digest('hex');
     if (currentHash !== contentHash) {
       logger.warn(`V3 worker: content hash mismatch, skipping`, {
         sourceId,
@@ -112,11 +118,21 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     await v3Repo.updateRunStatus(run.id, 'processing');
     await job.updateProgress(10);
 
-    // 5. Call discourse engine V3 analysis (delayed job — via BullMQ worker)
-    logger.info(`V3 worker: calling discourse engine`, { sourceId, runId: run.id });
-    const delayedAnalysisResponse = await argumentService.analyzeText([
-      { id: sourceId, text: contentRecord.content }
-    ]);
+    // 5. Fetch parent i_nodes for cross-source attack detection
+    const parentINodes = parentSourceId
+      ? await v3Repo.getINodesBySource(parentSourceType!, parentSourceId)
+      : [];
+
+    // 6. Call discourse engine V3 analysis (delayed job — via BullMQ worker)
+    logger.info(`V3 worker: calling discourse engine`, { sourceId, runId: run.id, parentINodeCount: parentINodes.length });
+    const analyzeTextInput: { id: string; text: string; context_nodes?: Array<{ id: string; text: string }> } = {
+      id: sourceId,
+      text: textForAnalysis,
+    };
+    if (parentINodes.length > 0) {
+      analyzeTextInput.context_nodes = parentINodes;
+    }
+    const delayedAnalysisResponse = await argumentService.analyzeText([analyzeTextInput]);
 
     const analysis = delayedAnalysisResponse.analyses[0];
     if (!analysis) {
@@ -134,7 +150,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
     await job.updateProgress(40);
 
-    // 6. STEP A: Collect I-Node texts + all unique high_variance_terms,
+    // 7. STEP A: Collect I-Node texts + all unique high_variance_terms,
     //    then embed them all in a single merged call.
     const aduNodes = analysis.hypergraph.nodes.filter(
       (n): n is V3HypergraphNode & { node_type: 'adu' } => n.node_type === 'adu'
@@ -218,6 +234,63 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     );
 
     await job.updateProgress(80);
+
+    // ── Cross-Source Attack Edge Persistence ──
+    // For ghost nodes that identified a parent context i_node they are attacking,
+    // insert a v3_edges row linking the scheme to that parent i_node as conclusion (ATTACK).
+    if (parentINodes.length > 0) {
+      const ghostNodes = analysis.hypergraph.nodes.filter(
+        (n: V3HypergraphNode) => n.node_type === 'ghost'
+      );
+      for (const ghostNode of ghostNodes) {
+        const parentTargetId = ghostNode.parent_context_target_id;
+        if (!parentTargetId) continue;
+
+        // Find the scheme node for this ghost via edges
+        const ghostEdge = analysis.hypergraph.edges.find(
+          (e: V3HypergraphEdge) => e.node_id === ghostNode.node_id && e.role === 'premise'
+        );
+        if (!ghostEdge) continue;
+
+        const sDbId = engineIdToDbId.get(ghostEdge.scheme_node_id);
+        if (!sDbId) continue;
+
+        // Find the scheme node to check direction
+        const schemeNode = analysis.hypergraph.nodes.find(
+          (n: V3HypergraphNode) => n.node_type === 'scheme' && n.node_id === ghostEdge.scheme_node_id
+        );
+
+        try {
+          await pool.query(
+            `INSERT INTO v3_edges (scheme_node_id, node_id, node_type, role)
+             VALUES ($1, $2, 'i_node', 'conclusion')
+             ON CONFLICT DO NOTHING`,
+            [sDbId, parentTargetId]
+          );
+
+          // Update parent i_node node_role to ATTACK if this scheme is an ATTACK
+          if (schemeNode?.direction === 'ATTACK') {
+            await pool.query(
+              `UPDATE v3_nodes_i SET node_role = 'ATTACK' WHERE id = $1`,
+              [parentTargetId]
+            );
+          }
+
+          logger.info('V3 worker: cross-source attack edge persisted', {
+            schemeDbId: sDbId,
+            parentINodeId: parentTargetId,
+            direction: schemeNode?.direction,
+            sourceId,
+          });
+        } catch (err) {
+          logger.warn('V3 worker: failed to persist cross-source attack edge', {
+            error: err instanceof Error ? err.message : String(err),
+            schemeDbId: sDbId,
+            parentINodeId: parentTargetId,
+          });
+        }
+      }
+    }
 
     // ── Real-Time Bridge Detection ──
     // Check if any new S-node bridges two previously disconnected argument components.
@@ -413,42 +486,43 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     }
 
     // ── Create replies from ghost nodes (assumption-bot) ──
+    // Ghost replies are created for UX display but NOT re-enqueued for analysis
+    // (cross-source edges are handled via parent_context_target_id above).
     const ghostNodes = analysis.hypergraph.nodes.filter(
       (n: V3HypergraphNode) => n.node_type === 'ghost'
     );
     if (ghostNodes.length > 0) {
-      let postId: string;
+      let ghostPostId: string;
       let parentReplyId: string | undefined;
       if (sourceType === 'post') {
-        postId = sourceId;
+        ghostPostId = sourceId;
       } else {
         const parentReply = await ReplyRepo.findById(sourceId);
         if (!parentReply) {
           logger.warn(`V3 worker: could not find parent reply for ghost nodes`, { sourceId });
-          postId = '';
+          ghostPostId = '';
         } else {
-          postId = parentReply.post_id;
+          ghostPostId = parentReply.post_id;
           parentReplyId = sourceId;
         }
       }
 
-      if (postId) {
+      if (ghostPostId) {
         for (const ghostNode of ghostNodes) {
           const ghostText = ghostNode.ghost_text || ghostNode.text || '';
           if (!ghostText) continue;
           try {
-            const botReply = await ReplyRepo.create(postId, 'assumption-bot', {
+            await ReplyRepo.create(ghostPostId, 'assumption-bot', {
               content: ghostText,
               parent_reply_id: parentReplyId,
             });
-            await enqueueV3Analysis('reply', botReply.id, ghostText);
           } catch (err) {
             logger.warn(`V3 worker: failed to create ghost reply for node ${ghostNode.node_id}`, {
               error: err instanceof Error ? err.message : String(err),
             });
           }
         }
-        logger.info(`V3 worker: created ${ghostNodes.length} ghost replies as assumption-bot`, { sourceId });
+        logger.info(`V3 worker: created ${ghostNodes.length} ghost replies as assumption-bot (no re-enqueue)`, { sourceId });
       }
     }
 
@@ -498,9 +572,9 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
       // STEP C: Single HTTP call — discourse engine fans out to parallel Gemini calls (delayed job)
       const MAX_MACRO_CONTEXT_LENGTH = 8000;
-      const truncatedContext = contentRecord.content.length > MAX_MACRO_CONTEXT_LENGTH
-        ? contentRecord.content.slice(0, MAX_MACRO_CONTEXT_LENGTH)
-        : contentRecord.content;
+      const truncatedContext = textForAnalysis.length > MAX_MACRO_CONTEXT_LENGTH
+        ? textForAnalysis.slice(0, MAX_MACRO_CONTEXT_LENGTH)
+        : textForAnalysis;
       const delayedDisambResults = await argumentService.disambiguateConcepts(
         truncatedContext,
         termDisambInputs
