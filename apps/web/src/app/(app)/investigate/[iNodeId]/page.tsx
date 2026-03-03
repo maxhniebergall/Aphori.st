@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { v3Api } from '@/lib/api';
 import type { InvestigateResponse } from '@/lib/api';
+import type { V3Subgraph } from '@chitin/shared';
+import { AugmentedText } from '@/components/Argument/AugmentedText';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -105,8 +107,8 @@ function ThreadNode({ node, rank }: {
           )}
         </div>
 
-        {/* Content */}
-        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+        {/* Extracted claim — the ADU text */}
+        <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed font-medium">
           {displayText}
         </p>
 
@@ -124,33 +126,35 @@ function ThreadNode({ node, rank }: {
           </div>
         )}
 
-        {/* Source + scores */}
-        <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-          {node.source_post_id && (
-            <>
-              <Link
-                href={`/post/${node.source_post_id}`}
-                className="hover:text-primary-600 dark:hover:text-primary-400 truncate max-w-[200px]"
-              >
-                {node.source_title ?? 'View post'}
-              </Link>
-              {node.source_author && (
-                <>
-                  <span>&middot;</span>
-                  <span>by {node.source_author}</span>
-                </>
-              )}
-            </>
-          )}
-          {(node.evidence_rank > 0 || node.hinge_centrality > 0) && (
-            <>
-              <span>&middot;</span>
-              <span className="text-slate-400 dark:text-slate-500" title="Evidence Rank × Hinge Centrality">
-                score {node.final_score.toFixed(2)}
-              </span>
-            </>
-          )}
-        </div>
+        {/* Source attribution */}
+        {node.source_post_id && (
+          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+            <Link
+              href={
+                node.source_type === 'reply'
+                  ? `/post/${node.source_post_id}#reply-${node.source_id}`
+                  : `/post/${node.source_post_id}`
+              }
+              className="hover:text-primary-600 dark:hover:text-primary-400"
+            >
+              source thread
+            </Link>
+            {node.source_author && (
+              <>
+                <span>&middot;</span>
+                <span>by {node.source_author}</span>
+              </>
+            )}
+            {(node.evidence_rank > 0 || node.hinge_centrality > 0) && (
+              <>
+                <span>&middot;</span>
+                <span title="Evidence Rank × Hinge Centrality">
+                  score {node.final_score.toFixed(2)}
+                </span>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -194,6 +198,7 @@ export default function InvestigatePage() {
   const [data, setData] = useState<InvestigateResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sourceSubgraph, setSourceSubgraph] = useState<V3Subgraph | null>(null);
 
   useEffect(() => {
     if (!iNodeId) return;
@@ -206,6 +211,13 @@ export default function InvestigatePage() {
       if (!cancelled) {
         setData(result);
         setLoading(false);
+
+        // Fetch source subgraph for ADU highlighting on the focal node's source text
+        if (result.focal_node.source_post_id) {
+          v3Api.getSourceGraph(result.focal_node.source_type, result.focal_node.source_id)
+            .then(sg => { if (!cancelled) setSourceSubgraph(sg); })
+            .catch(() => { /* subgraph is optional, highlighting just won't show */ });
+        }
       }
     }).catch(err => {
       if (!cancelled) {
@@ -250,34 +262,56 @@ export default function InvestigatePage() {
         <>
           {/* Focal node */}
           <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-primary-600 dark:text-primary-400">
-                Focal claim
-              </span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                · {EPISTEMIC_LABELS[data.focal_node.epistemic_type] ?? data.focal_node.epistemic_type.toLowerCase()}
-                · {Math.round(data.focal_node.fvp_confidence * 100)}% confidence
-              </span>
-            </div>
-            <p className="text-sm font-medium text-slate-800 dark:text-slate-200 leading-relaxed">
-              {data.focal_node.rewritten_text ?? data.focal_node.content}
-            </p>
-            {data.focal_node.source_post_id && (
-              <div className="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                <Link
-                  href={`/post/${data.focal_node.source_post_id}`}
-                  className="hover:text-primary-600 dark:hover:text-primary-400"
-                >
-                  {data.focal_node.source_title ?? 'View source post'}
-                </Link>
-                {data.focal_node.source_author && (
-                  <>
-                    <span>&middot;</span>
-                    <span>by {data.focal_node.source_author}</span>
-                  </>
+
+            {/* Source post context — shown first so users see where the claim came from */}
+            {data.focal_node.source_title && (
+              <blockquote className="mb-3 pl-4 border-l-2 border-slate-300 dark:border-slate-600 italic text-sm text-slate-700 dark:text-slate-300">
+                {sourceSubgraph ? (
+                  <AugmentedText
+                    text={data.focal_node.source_title}
+                    sourceType={data.focal_node.source_type}
+                    sourceId={data.focal_node.source_id}
+                    subgraph={sourceSubgraph}
+                    postId={data.focal_node.source_post_id}
+                  />
+                ) : (
+                  <p className="whitespace-pre-wrap leading-relaxed">
+                    &ldquo;{data.focal_node.source_title}&rdquo;
+                  </p>
                 )}
-              </div>
+                <footer className="mt-2 not-italic text-xs text-slate-500 dark:text-slate-400">
+                  {data.focal_node.source_post_id ? (
+                    <Link
+                      href={`/post/${data.focal_node.source_post_id}`}
+                      className="hover:text-primary-600 dark:hover:text-primary-400"
+                    >
+                      &mdash; {data.focal_node.source_author ?? 'View post'}
+                    </Link>
+                  ) : (
+                    data.focal_node.source_author && <span>&mdash; {data.focal_node.source_author}</span>
+                  )}
+                </footer>
+              </blockquote>
             )}
+
+            {/* Extracted focal claim */}
+            <div>
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-primary-600 dark:text-primary-400">
+                  Focal claim
+                </span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                  · {EPISTEMIC_LABELS[data.focal_node.epistemic_type] ?? data.focal_node.epistemic_type.toLowerCase()}
+                  · {Math.round(data.focal_node.fvp_confidence * 100)}% confidence
+                </span>
+              </div>
+              <p className="text-base font-semibold text-slate-900 dark:text-white leading-snug">
+                {data.focal_node.rewritten_text ?? data.focal_node.content}
+              </p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                Claim extracted from the source post above. Underlined text shows other analyzed claims.
+              </p>
+            </div>
           </div>
 
           {/* Stats */}
@@ -311,11 +345,18 @@ export default function InvestigatePage() {
 
           {/* Synthetic thread */}
           {data.synthetic_thread.length > 0 ? (
-            <div className="divide-y divide-slate-200 dark:divide-slate-700">
-              {data.synthetic_thread.map((node: InvestigateResponse['synthetic_thread'][number], i: number) => (
-                <ThreadNode key={node.i_node_id} node={node} rank={i + 1} />
-              ))}
-            </div>
+            <>
+              <div className="px-4 py-2 bg-slate-50/50 dark:bg-slate-800/20">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Arguments about this claim
+                </p>
+              </div>
+              <div className="divide-y divide-slate-200 dark:divide-slate-700">
+                {data.synthetic_thread.map((node: InvestigateResponse['synthetic_thread'][number], i: number) => (
+                  <ThreadNode key={node.i_node_id} node={node} rank={i + 1} />
+                ))}
+              </div>
+            </>
           ) : (
             <div className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm">
               No arguments have been made about this claim yet.{' '}
