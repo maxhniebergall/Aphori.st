@@ -532,6 +532,100 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       }
     }
 
+    // ── I-Node Deduplication Phase ──
+    // Runs after persistHypergraph so all I-nodes have stable DB UUIDs.
+    // D1. Parallel findSimilarINodesAcrossSource() per I-node (DB queries only)
+    // D2. Filter to I-nodes that have ≥1 candidate
+    // D3. Single HTTP call → deduplicateINodes() → discourse-engine fans out in parallel
+    // D4. Validate: LLM-returned canonicalINodeId must be in the known candidate set
+    // D5. setCanonicalINode() for confirmed duplicates
+    try {
+      // D1: parallel DB candidate retrieval for all I-nodes with embeddings
+      type INodeDedupCandidate = { id: string; content: string; epistemic_type: string; similarity: number };
+      const candidatesPerDbId = new Map<string, INodeDedupCandidate[]>();
+
+      await Promise.all(
+        aduNodes.map(async (aduNode) => {
+          const dbId = engineIdToDbId.get(aduNode.node_id);
+          if (!dbId) return;
+          const embedding = iNodeEmbeddings.get(aduNode.node_id);
+          if (!embedding) return;
+
+          const similar = await v3Repo.findSimilarINodesAcrossSource(
+            embedding,
+            sourceType,
+            sourceId,
+            0.78,
+            5
+          );
+          candidatesPerDbId.set(dbId, similar);
+        })
+      );
+
+      // D2: only process I-nodes that have at least one candidate
+      const iNodesWithCandidates = aduNodes.filter(aduNode => {
+        const dbId = engineIdToDbId.get(aduNode.node_id);
+        return dbId && (candidatesPerDbId.get(dbId)?.length ?? 0) > 0;
+      });
+
+      if (iNodesWithCandidates.length > 0) {
+        logger.info(`V3 dedup: ${iNodesWithCandidates.length} I-nodes have candidates`, { sourceId });
+
+        // D3: single HTTP call; discourse-engine fans out to parallel Gemini calls
+        const MAX_MACRO_CONTEXT_LENGTH = 8000;
+        const truncatedContext = textForAnalysis.length > MAX_MACRO_CONTEXT_LENGTH
+          ? textForAnalysis.slice(0, MAX_MACRO_CONTEXT_LENGTH)
+          : textForAnalysis;
+
+        const dedupInputs = iNodesWithCandidates.map(aduNode => {
+          const dbId = engineIdToDbId.get(aduNode.node_id)!;
+          const candidates = candidatesPerDbId.get(dbId)!;
+          return {
+            newINodeId: dbId,
+            newINodeText: aduNode.rewritten_text || aduNode.text || '',
+            epistemicType: aduNode.fvp_type || 'FACT',
+            candidates: candidates.map(c => ({
+              id: c.id,
+              text: c.content,
+              epistemicType: c.epistemic_type,
+            })),
+          };
+        });
+
+        const dedupResults = await argumentService.deduplicateINodes(truncatedContext, dedupInputs);
+
+        // D4 + D5: validate and persist
+        for (const result of dedupResults) {
+          if (!result.canonicalINodeId || result.dedupFailed) continue;
+
+          // Security check: returned canonicalINodeId must be in the known candidate set
+          const knownCandidateIds = new Set(
+            (candidatesPerDbId.get(result.newINodeId) ?? []).map(c => c.id)
+          );
+          if (!knownCandidateIds.has(result.canonicalINodeId)) {
+            logger.warn(`V3 dedup: LLM returned unknown canonicalINodeId for ${result.newINodeId}, skipping`, {
+              canonicalINodeId: result.canonicalINodeId,
+              knownCandidates: Array.from(knownCandidateIds),
+            });
+            continue;
+          }
+
+          await v3Repo.setCanonicalINode(result.newINodeId, result.canonicalINodeId);
+          logger.info(`V3 dedup: marked ${result.newINodeId} as duplicate of ${result.canonicalINodeId}`, { sourceId });
+        }
+
+        const duplicateCount = dedupResults.filter(r => r.canonicalINodeId && !r.dedupFailed).length;
+        logger.info(`V3 dedup: ${duplicateCount}/${iNodesWithCandidates.length} I-nodes deduplicated`, { sourceId });
+      } else {
+        logger.info('V3 dedup: no cross-source candidates found, all I-nodes are novel', { sourceId });
+      }
+    } catch (dedupErr: unknown) {
+      logger.warn('V3 I-node deduplication failed (non-fatal)', {
+        sourceId,
+        error: dedupErr instanceof Error ? dedupErr.message : String(dedupErr),
+      });
+    }
+
     // ── Concept Disambiguation Phase ──
     // Only runs if there are high-variance terms to process.
 
