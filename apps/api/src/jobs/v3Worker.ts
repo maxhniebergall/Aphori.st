@@ -164,7 +164,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       const hvt: string[] = aduNode.high_variance_terms ?? [];
       for (const term of hvt) {
         if (!termToINodeEngineId.has(term)) {
-          termToINodeEngineId.set(term, aduNode.node_id_engine_origin);
+          termToINodeEngineId.set(term, aduNode.node_id);
         }
       }
     }
@@ -191,7 +191,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       // Split results back
       for (let i = 0; i < aduNodes.length; i++) {
         if (delayedAduTermEmbedResponse.embeddings_1536[i]) {
-          iNodeEmbeddings.set(aduNodes[i]!.node_id_engine_origin, delayedAduTermEmbedResponse.embeddings_1536[i]!);
+          iNodeEmbeddings.set(aduNodes[i]!.node_id, delayedAduTermEmbedResponse.embeddings_1536[i]!);
         }
       }
       for (let i = 0; i < uniqueTerms.length; i++) {
@@ -262,7 +262,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
         // Find the scheme node for this ghost via edges
         const ghostEdge = analysis.hypergraph.edges.find(
-          (e: V3HypergraphEdge) => e.node_id_engine_origin === ghostNode.node_id_engine_origin && e.role === 'premise'
+          (e: V3HypergraphEdge) => e.node_id === ghostNode.node_id && e.role === 'premise'
         );
         if (!ghostEdge) continue;
 
@@ -271,7 +271,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
         // Find the scheme node to check direction
         const schemeNode = analysis.hypergraph.nodes.find(
-          (n: V3HypergraphNode) => n.node_type === 'scheme' && n.node_id_engine_origin === ghostEdge.scheme_node_id
+          (n: V3HypergraphNode) => n.node_type === 'scheme' && n.node_id === ghostEdge.scheme_node_id
         );
 
         try {
@@ -312,12 +312,12 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       for (const schemeNode of analysis.hypergraph.nodes.filter(
         (n: V3HypergraphNode) => n.node_type === 'scheme'
       )) {
-        const sDbId = engineIdToDbId.get(schemeNode.node_id_engine_origin);
+        const sDbId = engineIdToDbId.get(schemeNode.node_id);
         if (sDbId) sNodeEdgeMap.set(sDbId, { premises: [], conclusions: [] });
       }
       for (const edge of analysis.hypergraph.edges) {
         const sDbId = engineIdToDbId.get(edge.scheme_node_id);
-        const iDbId = engineIdToDbId.get(edge.node_id_engine_origin);
+        const iDbId = engineIdToDbId.get(edge.node_id);
         if (!sDbId || !iDbId) continue;
         const entry = sNodeEdgeMap.get(sDbId);
         if (!entry) continue;
@@ -390,12 +390,12 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
         const direction = schemeNode.direction; // 'SUPPORT' | 'ATTACK'
         if (direction !== 'SUPPORT' && direction !== 'ATTACK') continue;
         const premiseEdges = analysis.hypergraph.edges.filter(
-          (e: V3HypergraphEdge) => e.scheme_node_id === schemeNode.node_id_engine_origin && e.role === 'premise'
+          (e: V3HypergraphEdge) => e.scheme_node_id === schemeNode.node_id && e.role === 'premise'
         );
         for (const edge of premiseEdges) {
           // If already mapped, first assignment wins
-          if (!premiseRoleMap.has(edge.node_id_engine_origin)) {
-            premiseRoleMap.set(edge.node_id_engine_origin, direction);
+          if (!premiseRoleMap.has(edge.node_id)) {
+            premiseRoleMap.set(edge.node_id, direction);
           }
         }
       }
@@ -410,7 +410,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       // Process each I-node
       const updatePromises: Promise<unknown>[] = [];
       for (const aduNode of aduNodes) {
-        const dbId = engineIdToDbId.get(aduNode.node_id_engine_origin);
+        const dbId = engineIdToDbId.get(aduNode.node_id);
         if (!dbId) continue;
 
         let factSubtype: string | null = null;
@@ -449,7 +449,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
         }
 
         // Determine node_role
-        const schemeRole = premiseRoleMap.get(aduNode.node_id_engine_origin);
+        const schemeRole = premiseRoleMap.get(aduNode.node_id);
         const nodeRole: string = schemeRole ?? 'ROOT';
 
         // Source entity resolution for DOCUMENT_REF and ACADEMIC_REF
@@ -515,7 +515,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
       if (ghostPostId) {
         for (const ghostNode of ghostNodes) {
-          const ghostText = ghostNode.ghost_text || ghostNode.text || '';
+          const ghostText = ghostNode.text || '';
           if (!ghostText) continue;
           try {
             await ReplyRepo.create(ghostPostId, 'assumption-bot', {
@@ -523,7 +523,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
               parent_reply_id: parentReplyId,
             });
           } catch (err) {
-            logger.warn(`V3 worker: failed to create ghost reply for node ${ghostNode.node_id_engine_origin}`, {
+            logger.warn(`V3 worker: failed to create ghost reply for node ${ghostNode.node_id}`, {
               error: err instanceof Error ? err.message : String(err),
             });
           }
@@ -567,7 +567,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       // Use the first I-Node that contains each term (rewritten_text preferred)
       const termDisambInputs = uniqueTerms.map(term => {
         const iNodeEngineId = termToINodeEngineId.get(term)!;
-        const iNodeNode = aduNodes.find(n => n.node_id_engine_origin === iNodeEngineId);
+        const iNodeNode = aduNodes.find(n => n.node_id === iNodeEngineId);
         const targetINodeText: string = iNodeNode?.rewritten_text || iNodeNode?.text || term;
         return {
           term,
@@ -626,7 +626,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       // STEP E: Link I-Nodes to concepts (DB only)
       await Promise.all(
         aduNodes.map(async (aduNode) => {
-          const dbINodeId = engineIdToDbId.get(aduNode.node_id_engine_origin);
+          const dbINodeId = engineIdToDbId.get(aduNode.node_id);
           if (!dbINodeId) return;
 
           const hvt: string[] = aduNode.high_variance_terms ?? [];
@@ -641,7 +641,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 
       // STEP F: Equivocation check (DB only)
       const allINodeDbIds = aduNodes
-        .map(n => engineIdToDbId.get(n.node_id_engine_origin))
+        .map(n => engineIdToDbId.get(n.node_id))
         .filter((id): id is string => !!id);
 
       if (allINodeDbIds.length > 0) {
@@ -662,27 +662,27 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
         );
 
         for (const schemeNode of schemeNodes) {
-          const schemeDbId = engineIdToDbId.get(schemeNode.node_id_engine_origin);
+          const schemeDbId = engineIdToDbId.get(schemeNode.node_id);
           if (!schemeDbId) continue;
 
           // Get premise and conclusion I-Node db IDs via edges
           const schemeEdges = analysis.hypergraph.edges.filter(
-            (e: V3HypergraphEdge) => e.scheme_node_id === schemeNode.node_id_engine_origin
+            (e: V3HypergraphEdge) => e.scheme_node_id === schemeNode.node_id
           );
 
           if (schemeEdges.length === 0) {
-            logger.debug(`V3: No edges found for scheme node ${schemeNode.node_id_engine_origin}, skipping equivocation check`);
+            logger.debug(`V3: No edges found for scheme node ${schemeNode.node_id}, skipping equivocation check`);
             continue;
           }
 
           const premiseDbIds = schemeEdges
             .filter((e: V3HypergraphEdge) => e.role === 'premise')
-            .map((e: V3HypergraphEdge) => engineIdToDbId.get(e.node_id_engine_origin))
+            .map((e: V3HypergraphEdge) => engineIdToDbId.get(e.node_id))
             .filter((id): id is string => !!id);
 
           const conclusionDbId = schemeEdges
             .filter((e: V3HypergraphEdge) => e.role === 'conclusion')
-            .map((e: V3HypergraphEdge) => engineIdToDbId.get(e.node_id_engine_origin))
+            .map((e: V3HypergraphEdge) => engineIdToDbId.get(e.node_id))
             .find((id): id is string => !!id);
 
           if (!conclusionDbId || premiseDbIds.length === 0) continue;

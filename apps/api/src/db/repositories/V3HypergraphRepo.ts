@@ -167,14 +167,14 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
         );
 
         for (let i = 0; i < aduNodes.length; i++) {
-          engineIdToDbId.set(aduNodes[i]!.node_id_engine_origin, iResult.rows[i]!.id);
+          engineIdToDbId.set(aduNodes[i]!.node_id, iResult.rows[i]!.id);
         }
 
         // Update embeddings for I-Nodes if provided
         if (iNodeEmbeddings && iNodeEmbeddings.size > 0) {
           for (const aduNode of aduNodes) {
-            const embedding = iNodeEmbeddings.get(aduNode.node_id_engine_origin);
-            const dbId = engineIdToDbId.get(aduNode.node_id_engine_origin);
+            const embedding = iNodeEmbeddings.get(aduNode.node_id);
+            const dbId = engineIdToDbId.get(aduNode.node_id);
             if (embedding && dbId) {
               await client.query(
                 `UPDATE v3_nodes_i SET embedding = $1 WHERE id = $2`,
@@ -209,7 +209,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
         );
 
         for (let i = 0; i < schemeNodes.length; i++) {
-          engineIdToDbId.set(schemeNodes[i]!.node_id_engine_origin, sResult.rows[i]!.id);
+          engineIdToDbId.set(schemeNodes[i]!.node_id, sResult.rows[i]!.id);
         }
       }
 
@@ -219,9 +219,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       // otherwise pass null into the NOT NULL scheme_id column.
       const ghostNodes = nodes.filter((n: V3HypergraphNode) => n.node_type === 'ghost');
       const resolvableGhostNodes = ghostNodes.filter((n: V3HypergraphNode) => {
-        const parts = n.node_id_engine_origin.split('::');
-        if (parts.length < 2) return false;
-        return engineIdToDbId.has(parts[1]!);
+        return !!n.scheme_node_id && engineIdToDbId.has(n.scheme_node_id);
       });
       const droppedGhosts = ghostNodes.length - resolvableGhostNodes.length;
       if (droppedGhosts > 0) {
@@ -234,12 +232,11 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
         }).join(',');
 
         const gParams = resolvableGhostNodes.flatMap((n: V3HypergraphNode) => {
-          const schemeEngineId = n.node_id_engine_origin.split('::')[1]!;
-          const schemeDbId = engineIdToDbId.get(schemeEngineId)!;
+          const schemeDbId = engineIdToDbId.get(n.scheme_node_id!)!;
           return [
             schemeDbId,
-            n.ghost_text || n.text || '',
-            n.ghost_fvp_type || n.fvp_type || 'FACT',
+            n.text || '',
+            n.fvp_type || 'FACT',
             n.probability ?? 0.5,
           ];
         });
@@ -252,7 +249,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
         );
 
         for (let i = 0; i < resolvableGhostNodes.length; i++) {
-          engineIdToDbId.set(resolvableGhostNodes[i]!.node_id_engine_origin, gResult.rows[i]!.id);
+          engineIdToDbId.set(resolvableGhostNodes[i]!.node_id, gResult.rows[i]!.id);
         }
       }
 
@@ -260,7 +257,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       if (edges.length > 0) {
         const validEdges = edges.filter((e: V3HypergraphEdge) => {
           const schemeId = engineIdToDbId.get(e.scheme_node_id);
-          const nodeId = engineIdToDbId.get(e.node_id_engine_origin);
+          const nodeId = engineIdToDbId.get(e.node_id);
           return schemeId && nodeId;
         });
 
@@ -271,11 +268,11 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
           }).join(',');
 
           const eParams = validEdges.flatMap((e: V3HypergraphEdge) => {
-            const nodeEngineEntry = nodes.find((n: V3HypergraphNode) => n.node_id_engine_origin === e.node_id_engine_origin);
+            const nodeEngineEntry = nodes.find((n: V3HypergraphNode) => n.node_id === e.node_id);
             const nodeType = nodeEngineEntry?.node_type === 'ghost' ? 'ghost' : 'i_node';
             return [
               engineIdToDbId.get(e.scheme_node_id)!,
-              engineIdToDbId.get(e.node_id_engine_origin)!,
+              engineIdToDbId.get(e.node_id)!,
               nodeType,
               e.role,
             ];
