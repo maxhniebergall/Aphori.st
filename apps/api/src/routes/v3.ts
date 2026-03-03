@@ -223,9 +223,8 @@ router.get('/investigate/:iNodeId', combinedRateLimiter, async (req, res) => {
         : Promise.resolve({ rows: [] as { id: string; title: string; display_name: string; user_id: string }[] }),
       focalNode.source_type === 'reply'
         ? pool.query(
-            `SELECT r.id, r.post_id, p.title, u.display_name, u.id as user_id
+            `SELECT r.id, r.post_id, r.content AS title, u.display_name, u.id as user_id
              FROM replies r
-             JOIN posts p ON r.post_id = p.id
              JOIN users u ON r.author_id = u.id
              WHERE r.id = $1 AND r.deleted_at IS NULL`,
             [focalNode.source_id]

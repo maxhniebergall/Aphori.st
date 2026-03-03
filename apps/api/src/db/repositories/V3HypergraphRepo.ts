@@ -663,7 +663,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
          END as source_post_id,
          CASE
            WHEN pn.source_type = 'post' THEN p.title
-           ELSE pp.title
+           ELSE r.content
          END as source_title,
          u.display_name as source_author,
          u.id as source_author_id
