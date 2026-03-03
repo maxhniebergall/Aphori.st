@@ -833,12 +833,61 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
               fact_subtype, base_weight, evidence_rank, is_defeated, component_id, node_role,
               (1 - (embedding <=> $1::vector)) as similarity
        FROM v3_nodes_i
-       WHERE embedding IS NOT NULL AND (1 - (embedding <=> $1::vector)) > $2
+       WHERE embedding IS NOT NULL
+         AND canonical_i_node_id IS NULL
+         AND (1 - (embedding <=> $1::vector)) > $2
        ORDER BY similarity DESC
        LIMIT $3`,
       [JSON.stringify(embedding), threshold, limit]
     );
     return result.rows;
+  },
+
+  /**
+   * Find canonical I-nodes (canonical_i_node_id IS NULL) similar to the given embedding,
+   * excluding I-nodes from the current source (no within-source dedup).
+   */
+  async findSimilarINodesAcrossSource(
+    embedding: number[],
+    excludeSourceType: 'post' | 'reply',
+    excludeSourceId: string,
+    threshold: number = 0.78,
+    limit: number = 5
+  ): Promise<Array<{ id: string; content: string; epistemic_type: string; similarity: number }>> {
+    const fetchLimit = limit * 3;
+    const result = await pool.query(
+      `SELECT id, content, epistemic_type,
+              (1 - (embedding <=> $1::vector)) as similarity
+       FROM v3_nodes_i
+       WHERE embedding IS NOT NULL
+         AND canonical_i_node_id IS NULL
+         AND NOT (source_type = $2 AND source_id = $3)
+       ORDER BY embedding <=> $1::vector
+       LIMIT $4`,
+      [JSON.stringify(embedding), excludeSourceType, excludeSourceId, fetchLimit]
+    );
+    return result.rows
+      .map((r: { id: string; content: string; epistemic_type: string; similarity: string }) => ({
+        id: r.id,
+        content: r.content,
+        epistemic_type: r.epistemic_type,
+        similarity: parseFloat(r.similarity),
+      }))
+      .filter((r: { similarity: number }) => r.similarity >= threshold)
+      .slice(0, limit);
+  },
+
+  /**
+   * Mark an I-node as a duplicate of a canonical I-node.
+   * The IS NULL guard is idempotent on job retry.
+   */
+  async setCanonicalINode(iNodeId: string, canonicalINodeId: string): Promise<void> {
+    await pool.query(
+      `UPDATE v3_nodes_i
+       SET canonical_i_node_id = $2
+       WHERE id = $1 AND canonical_i_node_id IS NULL`,
+      [iNodeId, canonicalINodeId]
+    );
   },
 
   // ── IBA (Interleaved Bridge Algorithm) ──

@@ -96,6 +96,48 @@ class DiscourseEngineService {
   }
 
   /**
+   * Deduplicate new I-nodes against existing canonical I-node candidates via the realtime Gemini API.
+   * Sends 1 HTTP request; discourse engine fans out to N parallel Gemini calls internally.
+   */
+  async deduplicateINodes(
+    macroContext: string,
+    iNodes: Array<{
+      newINodeId: string;
+      newINodeText: string;
+      epistemicType: string;
+      candidates: Array<{ id: string; text: string; epistemicType: string }>;
+    }>
+  ): Promise<Array<{ newINodeId: string; canonicalINodeId: string | null; dedupFailed: boolean }>> {
+    logger.info('Calling discourse-engine deduplicate-i-nodes', { iNodeCount: iNodes.length });
+
+    const response = await this.request<{
+      results: Array<{ new_i_node_id: string; canonical_i_node_id: string | null; dedup_failed: boolean }>;
+    }>(
+      '/v3/deduplicate-i-nodes',
+      'POST',
+      {
+        macro_context: macroContext,
+        i_nodes: iNodes.map(n => ({
+          new_i_node_id: n.newINodeId,
+          new_i_node_text: n.newINodeText,
+          epistemic_type: n.epistemicType,
+          candidates: n.candidates.map(c => ({
+            id: c.id,
+            text: c.text,
+            epistemic_type: c.epistemicType,
+          })),
+        })),
+      }
+    );
+
+    return response.results.map(r => ({
+      newINodeId: r.new_i_node_id,
+      canonicalINodeId: r.canonical_i_node_id,
+      dedupFailed: r.dedup_failed,
+    }));
+  }
+
+  /**
    * Disambiguate contested terms against known concept candidates via the realtime Gemini API.
    * Sends 1 HTTP request; discourse engine fans out to N parallel Gemini calls internally.
    */
