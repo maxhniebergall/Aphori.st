@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { postsApi } from '@/lib/api';
@@ -27,6 +27,7 @@ interface ReplyThreadProps {
   onQuote?: (quote: QuoteData) => void;
   onSearch?: (text: string) => void;
   v3Subgraph?: V3Subgraph;
+  replyCount?: number;
 }
 
 interface SyntheticReplyRendererProps {
@@ -109,13 +110,17 @@ function SyntheticReplyRenderer({
 
 const VALID_SORTS: SortOption[] = ['top', 'new', 'controversial', 'evidence'];
 
-export function ReplyThread({ postId, initialReplies, initialSort, userVotes, onQuote, onSearch, v3Subgraph }: ReplyThreadProps) {
+export function ReplyThread({ postId, initialReplies, initialSort, userVotes, onQuote, onSearch, v3Subgraph, replyCount }: ReplyThreadProps) {
   const { token } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const rawSort = searchParams.get('sort');
   const sort: SortOption = VALID_SORTS.includes(rawSort as SortOption) ? (rawSort as SortOption) : 'evidence';
   const [collapsedReplies, setCollapsedReplies] = useState<Set<string>>(new Set());
+  const [accumulatedItems, setAccumulatedItems] = useState<SyntheticReplyWithAuthor[]>([]);
+  const [evidenceHasMore, setEvidenceHasMore] = useState(false);
+  const [evidenceCursor, setEvidenceNextCursor] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const setSort = (option: SortOption) => {
     router.replace(`?sort=${option}`, { scroll: false });
@@ -135,6 +140,27 @@ export function ReplyThread({ postId, initialReplies, initialSort, userVotes, on
     enabled: sort === 'evidence',
     staleTime: 30 * 1000,
   });
+
+  useEffect(() => {
+    if (evidenceData) {
+      setAccumulatedItems(evidenceData.items ?? []);
+      setEvidenceHasMore(evidenceData.hasMore ?? false);
+      setEvidenceNextCursor(evidenceData.cursor ?? null);
+    }
+  }, [evidenceData]);
+
+  const loadMoreEvidence = async () => {
+    if (!evidenceCursor || isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const more = await postsApi.getEvidenceReplies(postId, 25, evidenceCursor, token ?? undefined);
+      setAccumulatedItems(prev => [...prev, ...(more.items ?? [])]);
+      setEvidenceHasMore(more.hasMore ?? false);
+      setEvidenceNextCursor(more.cursor ?? null);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const shouldFallbackToTop = sort === 'evidence' && evidenceData?.fallback === true;
 
@@ -186,15 +212,16 @@ export function ReplyThread({ postId, initialReplies, initialSort, userVotes, on
     return { rootReplies: roots, childrenMap: map };
   }, [standardReplies, effectiveSort]);
 
-  const syntheticItems = useMemo(
-    () => (effectiveSort === 'evidence' ? (evidenceData?.items ?? []) : []),
-    [effectiveSort, evidenceData]
-  );
+  const syntheticItems = effectiveSort === 'evidence' ? accumulatedItems : [];
 
   const isLoading = effectiveSort === 'evidence' ? isEvidenceLoading : isStandardLoading;
 
+  const hiddenRepliesCount = effectiveSort === 'evidence' && replyCount != null && replyCount > syntheticItems.length
+    ? replyCount - syntheticItems.length
+    : 0;
+
   const isEmpty = effectiveSort === 'evidence'
-    ? syntheticItems.length === 0
+    ? syntheticItems.length === 0 && hiddenRepliesCount === 0
     : rootReplies.length === 0;
 
   // Standard renderer for non-evidence sorts
@@ -281,6 +308,28 @@ export function ReplyThread({ postId, initialReplies, initialSort, userVotes, on
               ))
             : rootReplies.map((reply) => renderReply(reply))
           }
+          {effectiveSort === 'evidence' && evidenceHasMore && (
+            <div className="px-4 py-3 text-center">
+              <button
+                onClick={loadMoreEvidence}
+                disabled={isLoadingMore}
+                className="text-sm text-primary-600 dark:text-primary-400 hover:underline disabled:opacity-50"
+              >
+                {isLoadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            </div>
+          )}
+          {effectiveSort === 'evidence' && !evidenceHasMore && hiddenRepliesCount > 0 && (
+            <div className="px-4 py-3 text-center text-xs text-slate-400 dark:text-slate-500">
+              {hiddenRepliesCount} {hiddenRepliesCount === 1 ? 'reply is' : 'replies are'} not shown in Evidence sort.{' '}
+              <button
+                onClick={() => setSort('top')}
+                className="text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                View all replies →
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

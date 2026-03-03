@@ -74,6 +74,7 @@ export function PostPageClient({ post, replies, initialSort }: PostPageClientPro
             onQuote={handleQuote}
             onSearch={handleSearch}
             v3Subgraph={v3Subgraph}
+            replyCount={post.reply_count}
           />
         </Suspense>
       </div>
