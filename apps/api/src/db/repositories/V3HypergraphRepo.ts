@@ -70,6 +70,34 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     );
   },
 
+  async getINodesBySource(
+    sourceType: 'post' | 'reply',
+    sourceId: string
+  ): Promise<Array<{ id: string; text: string }>> {
+    const result = await pool.query(
+      `SELECT id, content AS text FROM v3_nodes_i
+       WHERE source_type = $1 AND source_id = $2`,
+      [sourceType, sourceId]
+    );
+    return result.rows;
+  },
+
+  async insertCrossSourceEdge(schemeDbId: string, iNodeDbId: string): Promise<void> {
+    await pool.query(
+      `INSERT INTO v3_edges (scheme_node_id, node_id, node_type, role)
+       VALUES ($1, $2, 'i_node', 'conclusion')
+       ON CONFLICT DO NOTHING`,
+      [schemeDbId, iNodeDbId]
+    );
+  },
+
+  async updateINodeRole(iNodeDbId: string, role: string): Promise<void> {
+    await pool.query(
+      `UPDATE v3_nodes_i SET node_role = $2 WHERE id = $1`,
+      [iNodeDbId, role]
+    );
+  },
+
   async getRunStatus(
     sourceType: 'post' | 'reply',
     sourceId: string
@@ -139,14 +167,14 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
         );
 
         for (let i = 0; i < aduNodes.length; i++) {
-          engineIdToDbId.set(aduNodes[i]!.node_id, iResult.rows[i]!.id);
+          engineIdToDbId.set(aduNodes[i]!.node_id_engine_origin, iResult.rows[i]!.id);
         }
 
         // Update embeddings for I-Nodes if provided
         if (iNodeEmbeddings && iNodeEmbeddings.size > 0) {
           for (const aduNode of aduNodes) {
-            const embedding = iNodeEmbeddings.get(aduNode.node_id);
-            const dbId = engineIdToDbId.get(aduNode.node_id);
+            const embedding = iNodeEmbeddings.get(aduNode.node_id_engine_origin);
+            const dbId = engineIdToDbId.get(aduNode.node_id_engine_origin);
             if (embedding && dbId) {
               await client.query(
                 `UPDATE v3_nodes_i SET embedding = $1 WHERE id = $2`,
@@ -181,7 +209,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
         );
 
         for (let i = 0; i < schemeNodes.length; i++) {
-          engineIdToDbId.set(schemeNodes[i]!.node_id, sResult.rows[i]!.id);
+          engineIdToDbId.set(schemeNodes[i]!.node_id_engine_origin, sResult.rows[i]!.id);
         }
       }
 
@@ -191,7 +219,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       // otherwise pass null into the NOT NULL scheme_id column.
       const ghostNodes = nodes.filter((n: V3HypergraphNode) => n.node_type === 'ghost');
       const resolvableGhostNodes = ghostNodes.filter((n: V3HypergraphNode) => {
-        const parts = n.node_id.split('::');
+        const parts = n.node_id_engine_origin.split('::');
         if (parts.length < 2) return false;
         return engineIdToDbId.has(parts[1]!);
       });
@@ -206,7 +234,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
         }).join(',');
 
         const gParams = resolvableGhostNodes.flatMap((n: V3HypergraphNode) => {
-          const schemeEngineId = n.node_id.split('::')[1]!;
+          const schemeEngineId = n.node_id_engine_origin.split('::')[1]!;
           const schemeDbId = engineIdToDbId.get(schemeEngineId)!;
           return [
             schemeDbId,
@@ -224,7 +252,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
         );
 
         for (let i = 0; i < resolvableGhostNodes.length; i++) {
-          engineIdToDbId.set(resolvableGhostNodes[i]!.node_id, gResult.rows[i]!.id);
+          engineIdToDbId.set(resolvableGhostNodes[i]!.node_id_engine_origin, gResult.rows[i]!.id);
         }
       }
 
@@ -232,7 +260,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       if (edges.length > 0) {
         const validEdges = edges.filter((e: V3HypergraphEdge) => {
           const schemeId = engineIdToDbId.get(e.scheme_node_id);
-          const nodeId = engineIdToDbId.get(e.node_id);
+          const nodeId = engineIdToDbId.get(e.node_id_engine_origin);
           return schemeId && nodeId;
         });
 
@@ -243,11 +271,11 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
           }).join(',');
 
           const eParams = validEdges.flatMap((e: V3HypergraphEdge) => {
-            const nodeEngineEntry = nodes.find((n: V3HypergraphNode) => n.node_id === e.node_id);
+            const nodeEngineEntry = nodes.find((n: V3HypergraphNode) => n.node_id_engine_origin === e.node_id_engine_origin);
             const nodeType = nodeEngineEntry?.node_type === 'ghost' ? 'ghost' : 'i_node';
             return [
               engineIdToDbId.get(e.scheme_node_id)!,
-              engineIdToDbId.get(e.node_id)!,
+              engineIdToDbId.get(e.node_id_engine_origin)!,
               nodeType,
               e.role,
             ];
@@ -663,7 +691,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
          END as source_post_id,
          CASE
            WHEN pn.source_type = 'post' THEN p.title
-           ELSE pp.title
+           ELSE r.content
          END as source_title,
          u.display_name as source_author,
          u.id as source_author_id

@@ -328,7 +328,7 @@ export interface V3Subgraph {
 
 // V3 Discourse Engine Response Types
 export interface V3HypergraphNode {
-  node_id: string;
+  node_id_engine_origin: string;
   node_type: 'adu' | 'scheme' | 'ghost';
   // ADU fields
   text?: string;
@@ -348,11 +348,12 @@ export interface V3HypergraphNode {
   ghost_text?: string;
   ghost_fvp_type?: V3EpistemicType;
   probability?: number;
+  parent_context_target_id?: string;
 }
 
 export interface V3HypergraphEdge {
   scheme_node_id: string;
-  node_id: string;
+  node_id_engine_origin: string;
   role: V3EdgeRole;
 }
 
