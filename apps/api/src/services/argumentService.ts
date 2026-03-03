@@ -90,7 +90,7 @@ class DiscourseEngineService {
   /**
    * Extract neurosymbolic hypergraph from texts via the realtime Gemini API.
    */
-  async analyzeText(texts: Array<{ id: string; text: string }>): Promise<V3AnalyzeTextResponse> {
+  async analyzeText(texts: Array<{ id: string; text: string; context_nodes?: Array<{ id: string; text: string }> }>): Promise<V3AnalyzeTextResponse> {
     logger.info('Calling discourse-engine V3 analyze-text', { textCount: texts.length });
     return this.request<V3AnalyzeTextResponse>('/v3/analyze-text', 'POST', { texts });
   }

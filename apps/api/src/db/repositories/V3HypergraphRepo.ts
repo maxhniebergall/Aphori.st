@@ -70,6 +70,18 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     );
   },
 
+  async getINodesBySource(
+    sourceType: 'post' | 'reply',
+    sourceId: string
+  ): Promise<Array<{ id: string; text: string }>> {
+    const result = await pool.query(
+      `SELECT id, text FROM v3_nodes_i
+       WHERE source_type = $1 AND source_id = $2`,
+      [sourceType, sourceId]
+    );
+    return result.rows;
+  },
+
   async getRunStatus(
     sourceType: 'post' | 'reply',
     sourceId: string

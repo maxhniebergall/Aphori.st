@@ -348,6 +348,7 @@ export interface V3HypergraphNode {
   ghost_text?: string;
   ghost_fvp_type?: V3EpistemicType;
   probability?: number;
+  parent_context_target_id?: string;
 }
 
 export interface V3HypergraphEdge {
