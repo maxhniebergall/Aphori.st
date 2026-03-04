@@ -239,9 +239,22 @@ async function dropDb(adminPool: Pool, pool: Pool, dbName: string): Promise<void
     console.log(`\n=== Phase 2: Ingesting ${items.length} arguments with organic dedup ===`);
     console.log(`  (vector threshold=${VECTOR_THRESHOLD}, candidate limit=${CANDIDATE_LIMIT})`);
 
-    // Arguments are already short atomic claims — embed directly (no extraction needed).
+    // Rewrite arguments to fully self-contained claims (resolves any pronouns/references).
+    // Arguments are already short but may contain implicit references to the debate topic.
+    // source_text = topic statement gives the LLM the context needed.
+    console.log(`  Rewriting ${items.length} argument texts...`);
+    const rewriteResults = await argumentService.rewriteAdus(
+      items.map(i => ({ id: i.id, text: i.argument, sourceText: i.topic }))
+    );
+    const rewrittenOf = new Map(
+      rewriteResults.map(r => [r.id, r.rewriteFailed ? null : r.rewrittenText])
+    );
+    console.log(`  Rewrites done. Failed: ${rewriteResults.filter(r => r.rewriteFailed).length}`);
+
+    // Embed rewritten texts (fall back to original on failure).
+    const textsToEmbed = items.map(i => rewrittenOf.get(i.id) ?? i.argument);
     console.log(`  Embedding ${items.length} argument texts...`);
-    const { embeddings_1536: embeddings } = await argumentService.embedTexts(items.map(i => i.argument));
+    const { embeddings_1536: embeddings } = await argumentService.embedTexts(textsToEmbed);
     console.log(`  Embeddings done.`);
 
     // Insert + dedup each argument sequentially so earlier insertions become candidates.
@@ -266,13 +279,14 @@ async function dropDb(adminPool: Pool, pool: Pool, dbName: string): Promise<void
       const runId = run!.id;
 
       const dbId = crypto.randomUUID();
+      const rewrittenText = rewrittenOf.get(item.id) ?? item.argument;
       await testPool.query(
         `INSERT INTO v3_nodes_i (id, analysis_run_id, source_type, source_id,
            content, rewritten_text, epistemic_type, fvp_confidence,
            span_start, span_end, extraction_confidence, base_weight, evidence_rank,
            embedding)
-         VALUES ($1, $2, 'post', $3, $4, $4, 'FACT', 1.0, 0, $5, 1.0, 1.0, 1.0, $6)`,
-        [dbId, runId, sourceId, item.argument.substring(0, 4000), item.argument.length, JSON.stringify(embedding)]
+         VALUES ($1, $2, 'post', $3, $4, $5, 'FACT', 1.0, 0, $6, 1.0, 1.0, 1.0, $7)`,
+        [dbId, runId, sourceId, item.argument.substring(0, 4000), rewrittenText.substring(0, 4000), item.argument.length, JSON.stringify(embedding)]
       );
       item.dbINodeId = dbId;
 
@@ -290,7 +304,7 @@ async function dropDb(adminPool: Pool, pool: Pool, dbName: string): Promise<void
 
       const [dedupResult] = await argumentService.deduplicateINodes(macroContext, [{
         newINodeId: dbId,
-        newINodeText: item.argument,
+        newINodeText: rewrittenText,
         epistemicType: 'FACT',
         candidates: candidates.map(c => ({ id: c.id, text: c.content, epistemicType: c.epistemic_type })),
       }]);
