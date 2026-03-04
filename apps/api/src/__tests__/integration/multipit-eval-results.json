@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-03-04T19:05:07.657Z",
+  "dataset": "MultiPIT-expert-test",
+  "pairsEvaluated": 557,
+  "sentencesIngested": 579,
+  "vectorThreshold": 0.78,
+  "candidateLimit": 5,
+  "metric": "per-pair-paraphrase-dedup",
+  "note": "TP=label=1 & same_canonical, FN=label=1 & diff_canonical, TN=label=0 & diff_canonical, FP=label=0 & same_canonical",
+  "results": {
+    "precision": 0.6625386996904025,
+    "recall": 0.84251968503937,
+    "f1": 0.7417677642980935,
+    "accuracy": 0.7324955116696589,
+    "tp": 214,
+    "fp": 109,
+    "fn": 40,
+    "tn": 194
+  }
+}
