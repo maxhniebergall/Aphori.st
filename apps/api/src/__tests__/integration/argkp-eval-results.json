@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-03-04T16:00:20.049Z",
+  "dataset": "IBM-ArgKP-train",
+  "itemsIngested": 205,
+  "topicsEvaluated": 1,
+  "clustersEvaluated": 10,
+  "avgClusterSize": 20.5,
+  "vectorThreshold": 0.78,
+  "candidateLimit": 5,
+  "metric": "per-argument-dedup-F1",
+  "note": "TP=correctly merged to same key_point cluster canonical, FP=wrong cluster or spurious, FN=should merge but did not, TN=correctly novel (first of cluster)",
+  "allItems": {
+    "precision": 0.22602739726027396,
+    "recall": 0.4024390243902439,
+    "f1": 0.2894736842105263,
+    "tp": 33,
+    "fp": 113,
+    "fn": 49,
+    "tn": 10
+  },
+  "byTopic": {
+    "Assisted suicide should be a criminal offence": {
+      "precision": 0.22602739726027396,
+      "recall": 0.4024390243902439,
+      "f1": 0.2894736842105263,
+      "tp": 33,
+      "fp": 113,
+      "fn": 49,
+      "tn": 10
+    }
+  }
+}

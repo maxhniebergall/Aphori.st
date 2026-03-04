@@ -138,6 +138,28 @@ class DiscourseEngineService {
   }
 
   /**
+   * Rewrite ADU texts to be fully self-contained (coreference resolved).
+   * Delegates to discourse-engine which batches items sharing the same source_text.
+   */
+  async rewriteAdus(
+    adus: Array<{ id: string; text: string; sourceText?: string }>
+  ): Promise<Array<{ id: string; rewrittenText: string; rewriteFailed: boolean }>> {
+    logger.info('Calling discourse-engine /v3/rewrite-adus', { aduCount: adus.length });
+
+    const response = await this.request<{
+      results: Array<{ id: string; rewritten_text: string; rewrite_failed: boolean }>;
+    }>('/v3/rewrite-adus', 'POST', {
+      adus: adus.map(a => ({ id: a.id, text: a.text, source_text: a.sourceText ?? '' })),
+    });
+
+    return response.results.map(r => ({
+      id: r.id,
+      rewrittenText: r.rewritten_text,
+      rewriteFailed: r.rewrite_failed,
+    }));
+  }
+
+  /**
    * Disambiguate contested terms against known concept candidates via the realtime Gemini API.
    * Sends 1 HTTP request; discourse engine fans out to N parallel Gemini calls internally.
    */
