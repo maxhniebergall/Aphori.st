@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-03-04T16:21:34.860Z",
+  "timestamp": "2026-03-04T16:34:17.446Z",
   "dataset": "IBM-ArgKP-train",
   "itemsIngested": 205,
   "topicsEvaluated": 1,
@@ -10,22 +10,22 @@
   "metric": "per-argument-dedup-F1",
   "note": "TP=correctly merged to same key_point cluster canonical, FP=wrong cluster or spurious, FN=should merge but did not, TN=correctly novel (first of cluster)",
   "allItems": {
-    "precision": 0.2052980132450331,
-    "recall": 0.41333333333333333,
-    "f1": 0.2743362831858407,
-    "tp": 31,
-    "fp": 120,
-    "fn": 44,
+    "precision": 0.25,
+    "recall": 0.44047619047619047,
+    "f1": 0.3189655172413793,
+    "tp": 37,
+    "fp": 111,
+    "fn": 47,
     "tn": 10
   },
   "byTopic": {
     "Assisted suicide should be a criminal offence": {
-      "precision": 0.2052980132450331,
-      "recall": 0.41333333333333333,
-      "f1": 0.2743362831858407,
-      "tp": 31,
-      "fp": 120,
-      "fn": 44,
+      "precision": 0.25,
+      "recall": 0.44047619047619047,
+      "f1": 0.3189655172413793,
+      "tp": 37,
+      "fp": 111,
+      "fn": 47,
       "tn": 10
     }
   }
