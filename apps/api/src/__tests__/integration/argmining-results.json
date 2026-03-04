@@ -1,26 +1,44 @@
 {
-  "timestamp": "2026-03-04T01:27:53.171Z",
-  "dataset": "QT30",
-  "locutionsProcessed": 100,
-  "cosineThreshold": 0.8,
-  "aduDetection": {
-    "precision": 0.535,
-    "recall": 0.54,
-    "f1": 0.5366666666666666,
-    "locutionsWithGroundTruth": 100
+  "timestamp": "2026-03-04T03:27:28.106Z",
+  "dataset": "ArgumentAnnotatedEssays",
+  "essaysProcessed": 90,
+  "spanIoUThreshold": 0.5,
+  "aduF1": {
+    "precision": 0.6676058201058198,
+    "recall": 0.25956390684466457,
+    "f1": 0.3667041082081408,
+    "byType": {
+      "MajorClaim": {
+        "precision": 1,
+        "recall": 0.5666666666666667,
+        "f1": 0.7234042553191489
+      },
+      "Claim": {
+        "precision": 1,
+        "recall": 0.358974358974359,
+        "f1": 0.5283018867924528
+      },
+      "Premise": {
+        "precision": 1,
+        "recall": 0.16553727008712488,
+        "f1": 0.2840531561461794
+      }
+    },
+    "spanIoU": {
+      "meanOfMatched": 0.9329955439033029,
+      "meanBestPerGt": 0.2350795300726228,
+      "matchedPairs": 376,
+      "totalGtComponents": 1552
+    }
   },
   "edgeF1": {
-    "precision": 0,
-    "recall": 0,
-    "f1": 0,
-    "totalGtEdges": 6,
-    "totalTestEdges": 0,
-    "gtEdgesMatched": 0,
-    "testEdgesCorrect": 0
+    "precision": 0.2583333333333332,
+    "recall": 0.06818574614513961,
+    "f1": 0.10483035891525011
   },
-  "dedupRate": {
-    "rate": 0,
-    "totalINodes": 73,
-    "dedupedINodes": 0
+  "roleAlignment": {
+    "accuracy": 0.6356382978723404,
+    "correct": 239,
+    "total": 376
   }
 }

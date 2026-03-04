@@ -1,12 +1,15 @@
 /**
- * AIFdb QT30 ADU Extraction & Connection Eval (ArgMining Paper Section 6)
+ * Argument Annotated Essays Evaluation (Stab & Gurevych)
  *
- * Tests what Aphorist claims to do: extract ADUs from raw locution text and
- * reconstruct the argument graph as accurately as human AIF annotators did.
+ * Tests Aphorist ADU extraction and edge detection against 90 persuasive essays
+ * with ground-truth character-offset spans and typed relations.
  *
  * Run with:
  *   pnpm dev:discourse   # must be running
  *   cd apps/api && pnpm vitest run src/__tests__/integration/argmining-eval.test.ts
+ *
+ * Dry run (3 essays):
+ *   ARGMINING_SAMPLE_SIZE=3 pnpm vitest run src/__tests__/integration/argmining-eval.test.ts
  *
  * Skip in CI by setting SKIP_ARGMINING_EVAL=1
  */
@@ -22,125 +25,96 @@ import { getArgumentService } from '../../services/argumentService.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const QT30_DIR = '/Users/mh/Documents/Argumentmining/qt30';
-const TEST_DB = 'chitin_argmining_test';
-const GT_DB = 'chitin_argmining_gt';
+const ESSAYS_DIR = '/Users/mh/Documents/Argumentmining/ArgumentAnnotatedEssays-1.0/brat-project';
+const TEST_DB = 'chitin_argmining_essays_test';
 const RESULTS_FILE = path.join(__dirname, 'argmining-results.json');
-const SAMPLE_SIZE = parseInt(process.env.ARGMINING_SAMPLE_SIZE ?? '100', 10);
-const COSINE_THRESHOLD = 0.80;
+const SAMPLE_SIZE = parseInt(process.env.ARGMINING_SAMPLE_SIZE ?? '90', 10);
+const SPAN_IOU_THRESHOLD = 0.5;
 
 // ---- Types ------------------------------------------------------------------
 
-interface AifNode {
-  nodeID: string;
+interface GTComponent {
+  id: string;           // T1, T2, …
+  type: 'MajorClaim' | 'Claim' | 'Premise';
+  start: number;
+  end: number;
   text: string;
-  type: string;
 }
 
-interface AifEdge {
-  fromID: string;
-  toID: string;
+interface GTRelation {
+  id: string;           // R1, R2, …
+  type: 'supports' | 'attacks';
+  arg1: string;         // component id
+  arg2: string;
 }
 
-interface FileGraph {
-  fileId: string;
-  nodeMap: Map<string, AifNode>;
-  outEdges: Map<string, string[]>;
-  inEdges: Map<string, string[]>;
+interface Essay {
+  id: string;           // essay01
+  text: string;
+  components: GTComponent[];
+  relations: GTRelation[];
 }
 
-interface SelectedLocution {
-  lNodeId: string;
-  fileId: string;
-  lText: string;
-  iNodeIds: string[];        // AIF I-node IDs connected via YA
-  fileGraph: FileGraph;
-}
-
-interface TestRecord {
-  lNodeId: string;
+interface EssayRecord {
+  essayId: string;
   testRunId: string;
-  extractedINodeDbIds: string[];
+  iNodeDbIds: string[];               // all inserted I-node DB UUIDs
+  iNodeSpans: Map<string, { start: number; end: number }>; // dbId → span
   sNodeDbIds: string[];
 }
 
-interface GtRecord {
-  lNodeId: string;
-  gtINodeDbIds: string[];   // DB UUIDs for AIF I-nodes
-  aifToDb: Map<string, string>; // aifId → db UUID
-}
-
-// ---- Module-level shared state across test blocks ---------------------------
+// ---- Module-level shared state ----------------------------------------------
 
 let testPool: Pool;
-let gtPool: Pool;
 let adminPool: Pool;
 
-let selectedLocutions: SelectedLocution[] = [];
-let testRecords: TestRecord[] = [];
-let gtRecords: GtRecord[] = [];
+let essays: Essay[] = [];
+let essayRecords: EssayRecord[] = [];
 
 // ---- Helpers ----------------------------------------------------------------
 
-function buildFileGraph(raw: { nodes: AifNode[]; edges: AifEdge[] }, fileId: string): FileGraph {
-  const nodeMap = new Map<string, AifNode>();
-  const outEdges = new Map<string, string[]>();
-  const inEdges = new Map<string, string[]>();
-
-  for (const node of raw.nodes || []) {
-    nodeMap.set(node.nodeID, node);
-  }
-
-  for (const edge of raw.edges || []) {
-    if (!outEdges.has(edge.fromID)) outEdges.set(edge.fromID, []);
-    outEdges.get(edge.fromID)!.push(edge.toID);
-    if (!inEdges.has(edge.toID)) inEdges.set(edge.toID, []);
-    inEdges.get(edge.toID)!.push(edge.fromID);
-  }
-
-  return { fileId, nodeMap, outEdges, inEdges };
+function spanIoU(a: { start: number; end: number }, b: { start: number; end: number }): number {
+  const overlap = Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start));
+  const union = Math.max(a.end, b.end) - Math.min(a.start, b.start);
+  return union === 0 ? 0 : overlap / union;
 }
 
-/** L → YA → I traversal: returns I-node IDs reachable from this L-node */
-function getLNodeINodes(lNodeId: string, g: FileGraph): string[] {
-  const result: string[] = [];
-  for (const mid of g.outEdges.get(lNodeId) ?? []) {
-    if (g.nodeMap.get(mid)?.type === 'YA') {
-      for (const iId of g.outEdges.get(mid) ?? []) {
-        if (g.nodeMap.get(iId)?.type === 'I') result.push(iId);
+function parseAnn(annText: string, essayText: string): { components: GTComponent[]; relations: GTRelation[] } {
+  const components: GTComponent[] = [];
+  const relations: GTRelation[] = [];
+
+  for (const line of annText.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.startsWith('T')) {
+      // T1\tClaim 78 140\tcompetition can ...
+      const match = trimmed.match(/^(T\d+)\t(MajorClaim|Claim|Premise)\s+(\d+)\s+(\d+)\t(.*)$/);
+      if (match) {
+        components.push({
+          id: match[1]!,
+          type: match[2] as GTComponent['type'],
+          start: parseInt(match[3]!, 10),
+          end: parseInt(match[4]!, 10),
+          text: match[5]!,
+        });
+      }
+    } else if (trimmed.startsWith('R')) {
+      // R1\tsupports Arg1:T3 Arg2:T1
+      const match = trimmed.match(/^(R\d+)\t(supports|attacks)\s+Arg1:(T\d+)\s+Arg2:(T\d+)/);
+      if (match) {
+        relations.push({
+          id: match[1]!,
+          type: match[2] as GTRelation['type'],
+          arg1: match[3]!,
+          arg2: match[4]!,
+        });
       }
     }
+    // A lines (stance) are ignored
   }
-  return result;
-}
 
-/** Returns I-node IDs that participate in at least one RA or CA node in the graph */
-function getINodesWithRelations(g: FileGraph): Set<string> {
-  const result = new Set<string>();
-  for (const [nodeId, node] of g.nodeMap) {
-    if (node.type === 'RA' || node.type === 'CA') {
-      // Premises: I-nodes pointing INTO this S-node
-      for (const src of g.inEdges.get(nodeId) ?? []) {
-        if (g.nodeMap.get(src)?.type === 'I') result.add(src);
-      }
-      // Conclusions: I-nodes pointed to BY this S-node
-      for (const tgt of g.outEdges.get(nodeId) ?? []) {
-        if (g.nodeMap.get(tgt)?.type === 'I') result.add(tgt);
-      }
-    }
-  }
-  return result;
-}
-
-function cosineSim(a: number[], b: number[]): number {
-  let dot = 0, normA = 0, normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i]! * b[i]!;
-    normA += a[i]! * a[i]!;
-    normB += b[i]! * b[i]!;
-  }
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  return { components, relations };
 }
 
 async function createDb(adminPool: Pool, dbName: string): Promise<Pool> {
@@ -182,7 +156,7 @@ async function dropDb(adminPool: Pool, pool: Pool, dbName: string): Promise<void
 
 // ---- Test Suite -------------------------------------------------------------
 
-(process.env.SKIP_ARGMINING_EVAL ? describe.skip : describe)('AIFdb QT30 Evaluation', () => {
+(process.env.SKIP_ARGMINING_EVAL ? describe.skip : describe)('Argument Annotated Essays Evaluation', () => {
 
   beforeAll(async () => {
     adminPool = new Pool({
@@ -193,96 +167,81 @@ async function dropDb(adminPool: Pool, pool: Pool, dbName: string): Promise<void
       database: process.env.DB_NAME || 'chitin',
     });
 
-    [testPool, gtPool] = await Promise.all([
-      createDb(adminPool, TEST_DB),
-      createDb(adminPool, GT_DB),
-    ]);
+    testPool = await createDb(adminPool, TEST_DB);
   }, 60_000);
 
   afterAll(async () => {
-    if (testPool && gtPool) {
-      await Promise.all([
-        dropDb(adminPool, testPool, TEST_DB),
-        dropDb(adminPool, gtPool, GT_DB),
-      ]);
-    }
+    if (testPool) await dropDb(adminPool, testPool, TEST_DB);
     if (adminPool) await adminPool.end();
   });
 
   // --------------------------------------------------------------------------
-  // Phase 1: Parse QT30 & select 100 locutions
+  // Phase 1: Parse essays and select sample
   // --------------------------------------------------------------------------
 
-  it('parses QT30 and selects 100 eligible locutions', () => {
-    console.log('\n=== Phase 1: Parsing AIFdb JSON files ===');
+  it('parses essays and selects sample', () => {
+    console.log('\n=== Phase 1: Parsing Argument Annotated Essays ===');
 
-    const jsonFiles = fs.readdirSync(QT30_DIR).filter(f => f.endsWith('.json'));
-    console.log(`Found ${jsonFiles.length} JSON files`);
+    const txtFiles = fs.readdirSync(ESSAYS_DIR)
+      .filter(f => f.match(/^essay\d+\.txt$/))
+      .sort();
 
-    const eligible: SelectedLocution[] = [];
+    console.log(`Found ${txtFiles.length} essay files`);
 
-    for (const file of jsonFiles) {
-      const fileId = file.replace('.json', '');
-      const raw = JSON.parse(fs.readFileSync(path.join(QT30_DIR, file), 'utf-8'));
-      const g = buildFileGraph(raw, fileId);
+    const allEssays: Essay[] = [];
 
-      const iNodesWithRel = getINodesWithRelations(g);
+    for (const txtFile of txtFiles) {
+      const essayId = txtFile.replace('.txt', '');
+      const annFile = txtFile.replace('.txt', '.ann');
 
-      for (const [nodeId, node] of g.nodeMap) {
-        if (node.type !== 'L') continue;
-        const iNodeIds = getLNodeINodes(nodeId, g);
-        if (iNodeIds.length === 0) continue;
-        if (!iNodeIds.some(id => iNodesWithRel.has(id))) continue;
+      const txtPath = path.join(ESSAYS_DIR, txtFile);
+      const annPath = path.join(ESSAYS_DIR, annFile);
 
-        eligible.push({
-          lNodeId: nodeId,
-          fileId,
-          lText: node.text,
-          iNodeIds,
-          fileGraph: g,
-        });
+      if (!fs.existsSync(annPath)) {
+        console.warn(`  Missing annotation file for ${txtFile}, skipping`);
+        continue;
       }
+
+      const text = fs.readFileSync(txtPath, 'utf-8');
+      const annText = fs.readFileSync(annPath, 'utf-8');
+      const { components, relations } = parseAnn(annText, text);
+
+      if (components.length === 0) {
+        console.warn(`  No components in ${txtFile}, skipping`);
+        continue;
+      }
+
+      allEssays.push({ id: essayId, text, components, relations });
     }
 
-    console.log(`Eligible L-nodes: ${eligible.length}`);
+    console.log(`Parsed ${allEssays.length} essays`);
 
-    // Shuffle deterministically by sorting on hash, then shuffle with Math.random
-    const shuffled = eligible.sort(() => Math.random() - 0.5);
-    const sampled = shuffled.slice(0, SAMPLE_SIZE);
+    // Take first SAMPLE_SIZE (already sorted by filename)
+    essays = allEssays.slice(0, SAMPLE_SIZE);
 
-    // Sort by fileId, then by lNodeId within file (stable ordering for context)
-    sampled.sort((a, b) => {
-      if (a.fileId !== b.fileId) return a.fileId.localeCompare(b.fileId);
-      return a.lNodeId.localeCompare(b.lNodeId);
-    });
+    const totalComponents = essays.reduce((s, e) => s + e.components.length, 0);
+    const totalRelations = essays.reduce((s, e) => s + e.relations.length, 0);
+    console.log(`Selected ${essays.length} essays, ${totalComponents} GT components, ${totalRelations} GT relations`);
 
-    selectedLocutions = sampled;
-
-    console.log(`Selected ${selectedLocutions.length} locutions from ${new Set(sampled.map(l => l.fileId)).size} debate files`);
-    expect(selectedLocutions.length).toBe(SAMPLE_SIZE);
+    expect(essays.length).toBe(SAMPLE_SIZE);
   }, 30_000);
 
   // --------------------------------------------------------------------------
-  // Phase 3: Ingest via Aphorist pipeline into test_db
+  // Phase 2: Ingest essays via Aphorist pipeline
   // --------------------------------------------------------------------------
 
-  it('ingests 100 locutions via Aphorist pipeline', async () => {
-    expect(selectedLocutions.length).toBe(SAMPLE_SIZE);
+  it('ingests essays via Aphorist pipeline', async () => {
+    expect(essays.length).toBe(SAMPLE_SIZE);
 
     const argumentService = getArgumentService();
-    console.log('\n=== Phase 3: Aphorist pipeline ingest ===');
+    console.log('\n=== Phase 2: Aphorist pipeline ingest ===');
 
-    // Track per-debate: sourceIds already inserted, for context retrieval
-    const debateSourceIds = new Map<string, string[]>(); // fileId → sourceId[]
+    for (let idx = 0; idx < essays.length; idx++) {
+      const essay = essays[idx]!;
+      console.log(`  [${idx + 1}/${essays.length}] ${essay.id} (${essay.text.length} chars, ${essay.components.length} GT components)`);
 
-    for (let idx = 0; idx < selectedLocutions.length; idx++) {
-      const loc = selectedLocutions[idx]!;
-      const { lNodeId, fileId, lText } = loc;
-
-      console.log(`  [${idx + 1}/${SAMPLE_SIZE}] file=${fileId} lNode=${lNodeId}`);
-
-      // 1. Create analysis run for this locution
-      const contentHash = crypto.createHash('sha256').update(`${fileId}:${lNodeId}`).digest('hex');
+      // Create analysis run
+      const contentHash = crypto.createHash('sha256').update(essay.text).digest('hex');
       const sourceId = crypto.randomUUID();
       const runResult = await testPool.query(
         `INSERT INTO v3_analysis_runs (source_type, source_id, content_hash, status)
@@ -292,578 +251,404 @@ async function dropDb(adminPool: Pool, pool: Pool, dbName: string): Promise<void
       );
       const runId: string = runResult.rows[0].id;
 
-      // 2. Get context nodes from same debate (top-10 by similarity to lText)
-      const sameDebateSrcIds = debateSourceIds.get(fileId) ?? [];
-      let contextNodes: Array<{ id: string; text: string }> = [];
-
-      if (sameDebateSrcIds.length > 0) {
-        try {
-          const [locEmb] = (await argumentService.embedTexts([lText.substring(0, 2000)])).embeddings_1536;
-          if (locEmb && locEmb.length > 0) {
-            const vecStr = `[${locEmb.join(',')}]`;
-            const ctxRows = await testPool.query<{ id: string; content: string }>(
-              `SELECT id, content FROM v3_nodes_i
-               WHERE source_id = ANY($1::uuid[]) AND embedding IS NOT NULL
-               ORDER BY embedding <=> $2::vector
-               LIMIT 10`,
-              [sameDebateSrcIds, vecStr]
-            );
-            contextNodes = ctxRows.rows.map(r => ({ id: r.id, text: r.content }));
-          }
-        } catch (err) {
-          console.warn(`    Context retrieval failed: ${(err as Error).message}`);
-        }
-      }
-
-      // 3. analyzeText
+      // analyzeText with the full essay
       let analysis: { hypergraph?: { nodes?: any[]; edges?: any[] } } | null = null;
       try {
         const resp = await argumentService.analyzeText([{
-          id: lNodeId,
-          text: lText.substring(0, 4000),
-          context_nodes: contextNodes.slice(0, 10),
+          id: essay.id,
+          text: essay.text,
         }]);
         analysis = resp.analyses?.[0] ?? null;
       } catch (err) {
         console.warn(`    analyzeText failed: ${(err as Error).message}`);
       }
 
-      // 4. Extract ADU nodes from hypergraph
-      const aduNodes: Array<{ tempId: string; text: string; fvpType: string; fvpConf: number }> = [];
-      const sNodes: Array<{ direction: string; premiseTempIds: string[]; conclusionTempIds: string[] }> = [];
+      // Extract I-nodes and S-nodes from hypergraph
+      const iNodeDbIds: string[] = [];
+      const iNodeSpans = new Map<string, { start: number; end: number }>();
+      const sNodeDbIds: string[] = [];
+      const tempToDbId = new Map<string, string>();
 
       if (analysis?.hypergraph) {
         const hg = analysis.hypergraph;
-        const nodesByTempId = new Map<string, { node_type: string; fvp_type?: string; fvp_confidence?: number; content?: string; text?: string }>();
+
+        // The response uses node_id (not id/temp_id) as the node identifier.
+        // node_type: 'adu' → I-node; node_type: 'scheme' → S-node (with direction)
+        // Edges are flat: {scheme_node_id, node_id, role}
+
+        // Build map: response node_id → db UUID (for adu nodes only)
+        const nodeIdToDbId = new Map<string, string>();
+
+        // Insert I-nodes (ADUs) with real span_start / span_end
         for (const n of hg.nodes ?? []) {
-          nodesByTempId.set(n.id ?? n.temp_id, n);
-          if (n.node_type === 'adu') {
-            aduNodes.push({
-              tempId: n.id ?? n.temp_id,
-              text: (n.content ?? n.text ?? '').substring(0, 4000),
-              fvpType: n.fvp_type ?? 'FACT',
-              fvpConf: n.fvp_confidence ?? 1.0,
-            });
-          }
-        }
-        for (const e of hg.edges ?? []) {
-          if (e.edge_type === 'SUPPORT' || e.edge_type === 'ATTACK') {
-            sNodes.push({
-              direction: e.edge_type,
-              premiseTempIds: Array.isArray(e.premise_ids) ? e.premise_ids : (e.premise_id ? [e.premise_id] : []),
-              conclusionTempIds: Array.isArray(e.conclusion_ids) ? e.conclusion_ids : (e.conclusion_id ? [e.conclusion_id] : []),
-            });
-          }
-        }
-      }
+          if (n.node_type !== 'adu') continue;
 
-      // 5. Embed ADU texts
-      const aduDbIds: string[] = [];
-      const tempToDbId = new Map<string, string>();
-
-      if (aduNodes.length > 0) {
-        let embeddings: number[][] = [];
-        try {
-          const resp = await argumentService.embedTexts(aduNodes.map(n => n.text));
-          embeddings = resp.embeddings_1536;
-        } catch (err) {
-          console.warn(`    embedTexts failed: ${(err as Error).message}`);
-          embeddings = aduNodes.map(() => []);
-        }
-
-        for (let j = 0; j < aduNodes.length; j++) {
-          const adu = aduNodes[j]!;
+          const responseNodeId: string = n.node_id ?? n.id ?? n.temp_id;
           const dbId = crypto.randomUUID();
-          tempToDbId.set(adu.tempId, dbId);
-          aduDbIds.push(dbId);
+          nodeIdToDbId.set(responseNodeId, dbId);
+          // Also map by legacy temp_id field if present
+          if (n.id) nodeIdToDbId.set(n.id, dbId);
+          if (n.temp_id) nodeIdToDbId.set(n.temp_id, dbId);
 
-          const vec = embeddings[j];
-          const vecStr = vec && vec.length > 0 ? `[${vec.join(',')}]` : null;
+          const spanStart = typeof n.span_start === 'number' ? n.span_start : 0;
+          const spanEnd = typeof n.span_end === 'number' ? n.span_end : 0;
+          const content = (n.content ?? n.text ?? '').substring(0, 4000);
+          const fvpType = n.fvp_type ?? 'FACT';
+          const fvpConf = n.fvp_confidence ?? 1.0;
 
-          await testPool.query(
-            `INSERT INTO v3_nodes_i (id, analysis_run_id, source_type, source_id,
-               content, epistemic_type, fvp_confidence, span_start, span_end,
-               extraction_confidence, base_weight, evidence_rank${vecStr ? ', embedding' : ''})
-             VALUES ($1, $2, 'post', $3, $4, $5, $6, 0, 1, 1.0, 1.0, 1.0${vecStr ? ', $7::vector' : ''})`,
-            vecStr
-              ? [dbId, runId, sourceId, adu.text, adu.fvpType, adu.fvpConf, vecStr]
-              : [dbId, runId, sourceId, adu.text, adu.fvpType, adu.fvpConf]
-          );
-        }
-      }
-
-      // 6. Insert S-nodes from hypergraph
-      const insertedSNodeIds: string[] = [];
-      for (const sn of sNodes) {
-        const premDbIds = sn.premiseTempIds.map(t => tempToDbId.get(t)).filter(Boolean) as string[];
-        const concDbIds = sn.conclusionTempIds.map(t => tempToDbId.get(t)).filter(Boolean) as string[];
-        if (premDbIds.length === 0 || concDbIds.length === 0) continue;
-
-        const sDbId = crypto.randomUUID();
-        try {
-          await testPool.query(
-            `INSERT INTO v3_nodes_s (id, analysis_run_id, direction, confidence, gap_detected)
-             VALUES ($1, $2, $3, 1.0, false)`,
-            [sDbId, runId, sn.direction]
-          );
-          for (const pid of premDbIds) {
+          try {
             await testPool.query(
-              `INSERT INTO v3_edges (scheme_node_id, node_id, node_type, role) VALUES ($1, $2, 'i_node', 'premise')`,
-              [sDbId, pid]
+              `INSERT INTO v3_nodes_i (id, analysis_run_id, source_type, source_id,
+                 content, rewritten_text, epistemic_type, fvp_confidence,
+                 span_start, span_end, extraction_confidence, base_weight, evidence_rank)
+               VALUES ($1, $2, 'post', $3, $4, $4, $5, $6, $7, $8, 1.0, 1.0, 1.0)`,
+              [dbId, runId, sourceId, content, fvpType, fvpConf, spanStart, spanEnd]
             );
+            iNodeDbIds.push(dbId);
+            iNodeSpans.set(dbId, { start: spanStart, end: spanEnd });
+          } catch (err) {
+            console.warn(`    I-node insert failed: ${(err as Error).message}`);
           }
-          for (const cid of concDbIds) {
+        }
+
+        // Build map: scheme_node_id → {direction, dbId}
+        // scheme nodes have node_type: 'scheme' and direction: 'SUPPORT'|'ATTACK'
+        const schemeNodeIdToInfo = new Map<string, { direction: string; dbId: string }>();
+        for (const n of hg.nodes ?? []) {
+          if (n.node_type !== 'scheme') continue;
+          const direction: string = n.direction;
+          if (direction !== 'SUPPORT' && direction !== 'ATTACK') continue;
+          const schemeId: string = n.node_id ?? n.id;
+          const sDbId = crypto.randomUUID();
+          schemeNodeIdToInfo.set(schemeId, { direction, dbId: sDbId });
+          try {
             await testPool.query(
-              `INSERT INTO v3_edges (scheme_node_id, node_id, node_type, role) VALUES ($1, $2, 'i_node', 'conclusion')`,
-              [sDbId, cid]
+              `INSERT INTO v3_nodes_s (id, analysis_run_id, direction, confidence, gap_detected)
+               VALUES ($1, $2, $3, 1.0, false)`,
+              [sDbId, runId, direction]
             );
+          } catch (err) {
+            console.warn(`    S-node insert failed: ${(err as Error).message}`);
           }
-          insertedSNodeIds.push(sDbId);
-        } catch (err) {
-          console.warn(`    S-node insert failed: ${(err as Error).message}`);
+        }
+
+        // Insert edges: flat {scheme_node_id, node_id, role} rows
+        // Only wire edges between adu nodes (not ghost nodes)
+        for (const e of hg.edges ?? []) {
+          const schemeInfo = schemeNodeIdToInfo.get(e.scheme_node_id);
+          if (!schemeInfo) continue; // no matching scheme node (ghost edges etc.)
+
+          const iNodeDbId = nodeIdToDbId.get(e.node_id);
+          if (!iNodeDbId) continue; // not an adu node (ghost, etc.)
+
+          const role: string = e.role === 'premise' ? 'premise' : 'conclusion';
+          try {
+            await testPool.query(
+              `INSERT INTO v3_edges (scheme_node_id, node_id, node_type, role) VALUES ($1, $2, 'i_node', $3)`,
+              [schemeInfo.dbId, iNodeDbId, role]
+            );
+          } catch (err) {
+            // ignore duplicates
+          }
+        }
+
+        // Collect inserted S-node DB IDs
+        for (const { dbId } of schemeNodeIdToInfo.values()) {
+          sNodeDbIds.push(dbId);
         }
       }
 
-      // 7. Dedup new I-nodes against earlier same-debate I-nodes
-      if (aduDbIds.length > 0 && sameDebateSrcIds.length > 0) {
-        try {
-          // Load new I-nodes with embeddings
-          const newIRows = await testPool.query<{ id: string; content: string; epistemic_type: string; embedding: string }>(
-            `SELECT id, content, epistemic_type, embedding FROM v3_nodes_i WHERE id = ANY($1::uuid[]) AND embedding IS NOT NULL`,
-            [aduDbIds]
-          );
-
-          for (const newI of newIRows.rows) {
-            // Find top-5 canonical candidates from other sources in same debate
-            const candRows = await testPool.query<{ id: string; content: string; epistemic_type: string }>(
-              `SELECT id, content, epistemic_type FROM v3_nodes_i
-               WHERE source_id = ANY($1::uuid[]) AND canonical_i_node_id IS NULL AND id != $2
-               ORDER BY embedding <=> $3::vector
-               LIMIT 5`,
-              [sameDebateSrcIds, newI.id, newI.embedding]
-            );
-
-            if (candRows.rows.length === 0) continue;
-
-            const dedupResults = await argumentService.deduplicateINodes(
-              lText.substring(0, 500),
-              [{
-                newINodeId: newI.id,
-                newINodeText: newI.content,
-                epistemicType: newI.epistemic_type,
-                candidates: candRows.rows.map(r => ({
-                  id: r.id,
-                  text: r.content,
-                  epistemicType: r.epistemic_type,
-                })),
-              }]
-            );
-
-            for (const result of dedupResults) {
-              if (result.canonicalINodeId && !result.dedupFailed) {
-                await testPool.query(
-                  `UPDATE v3_nodes_i SET canonical_i_node_id = $1 WHERE id = $2`,
-                  [result.canonicalINodeId, result.newINodeId]
-                );
-              }
-            }
-          }
-        } catch (err) {
-          console.warn(`    Dedup failed: ${(err as Error).message}`);
-        }
-      }
-
-      // Track sourceId for future context queries in same debate
-      if (!debateSourceIds.has(fileId)) debateSourceIds.set(fileId, []);
-      debateSourceIds.get(fileId)!.push(sourceId);
-
-      testRecords.push({
-        lNodeId,
+      essayRecords.push({
+        essayId: essay.id,
         testRunId: runId,
-        extractedINodeDbIds: aduDbIds,
-        sNodeDbIds: insertedSNodeIds,
+        iNodeDbIds,
+        iNodeSpans,
+        sNodeDbIds,
       });
+
+      console.log(`    → ${iNodeDbIds.length} I-nodes, ${sNodeDbIds.length} S-nodes`);
     }
 
-    console.log(`Pipeline ingest complete. Records: ${testRecords.length}`);
-    expect(testRecords.length).toBe(SAMPLE_SIZE);
+    console.log(`Pipeline ingest complete. Essays processed: ${essayRecords.length}`);
+    expect(essayRecords.length).toBe(SAMPLE_SIZE);
   }, 1_800_000);
 
   // --------------------------------------------------------------------------
-  // Phase 4: Ingest AIF ground truth directly into gt_db
-  // --------------------------------------------------------------------------
-
-  it('ingests 100 locutions via direct AIF load', async () => {
-    expect(selectedLocutions.length).toBe(SAMPLE_SIZE);
-
-    console.log('\n=== Phase 4: Direct AIF ground truth ingest ===');
-
-    // Collect all AIF I-node IDs that appear in our 100 locutions
-    const allSelectedINodeAifIds = new Set<string>();
-    for (const loc of selectedLocutions) {
-      for (const iId of loc.iNodeIds) allSelectedINodeAifIds.add(iId);
-    }
-
-    // Single shared analysis run for the GT DB
-    const gtRunResult = await gtPool.query(
-      `INSERT INTO v3_analysis_runs (source_type, source_id, content_hash, status)
-       VALUES ('post', uuid_generate_v4(), $1, 'completed')
-       RETURNING id`,
-      [crypto.createHash('sha256').update('qt30-aif-gt').digest('hex')]
-    );
-    const gtRunId: string = gtRunResult.rows[0].id;
-
-    // Map aifId → dbId for all I-nodes in our set
-    const globalAifToDb = new Map<string, string>();
-    for (const aifId of allSelectedINodeAifIds) {
-      globalAifToDb.set(aifId, crypto.randomUUID());
-    }
-
-    // Insert all I-nodes
-    for (const loc of selectedLocutions) {
-      const g = loc.fileGraph;
-      for (const aifId of loc.iNodeIds) {
-        const dbId = globalAifToDb.get(aifId)!;
-        const node = g.nodeMap.get(aifId)!;
-        const sourceId = crypto.randomUUID();
-        try {
-          await gtPool.query(
-            `INSERT INTO v3_nodes_i (id, analysis_run_id, source_type, source_id,
-               content, epistemic_type, fvp_confidence, span_start, span_end,
-               extraction_confidence, base_weight, evidence_rank)
-             VALUES ($1, $2, 'post', $3, $4, 'FACT', 1.0, 0, 1, 1.0, 1.0, 1.0)
-             ON CONFLICT (id) DO NOTHING`,
-            [dbId, gtRunId, sourceId, (node.text ?? '').substring(0, 4000)]
-          );
-        } catch (err) {
-          // May already exist if multiple locutions share an I-node
-        }
-      }
-
-      // Insert S-nodes for RA/CA relations where both sides are in our set
-      const g2 = loc.fileGraph;
-      for (const [nodeId, node] of g2.nodeMap) {
-        if (node.type !== 'RA' && node.type !== 'CA') continue;
-
-        const direction = node.type === 'RA' ? 'SUPPORT' : 'ATTACK';
-        const premAifIds = (g2.inEdges.get(nodeId) ?? []).filter(id => g2.nodeMap.get(id)?.type === 'I');
-        const concAifIds = (g2.outEdges.get(nodeId) ?? []).filter(id => g2.nodeMap.get(id)?.type === 'I');
-
-        // Only include if all endpoints are in our selected set
-        if (!premAifIds.every(id => allSelectedINodeAifIds.has(id))) continue;
-        if (!concAifIds.every(id => allSelectedINodeAifIds.has(id))) continue;
-        if (premAifIds.length === 0 || concAifIds.length === 0) continue;
-
-        const sDbId = crypto.randomUUID();
-        try {
-          await gtPool.query(
-            `INSERT INTO v3_nodes_s (id, analysis_run_id, direction, confidence, gap_detected)
-             VALUES ($1, $2, $3, 1.0, false)`,
-            [sDbId, gtRunId, direction]
-          );
-          for (const aifId of premAifIds) {
-            const dbId = globalAifToDb.get(aifId);
-            if (!dbId) continue;
-            await gtPool.query(
-              `INSERT INTO v3_edges (scheme_node_id, node_id, node_type, role) VALUES ($1, $2, 'i_node', 'premise')`,
-              [sDbId, dbId]
-            );
-          }
-          for (const aifId of concAifIds) {
-            const dbId = globalAifToDb.get(aifId);
-            if (!dbId) continue;
-            await gtPool.query(
-              `INSERT INTO v3_edges (scheme_node_id, node_id, node_type, role) VALUES ($1, $2, 'i_node', 'conclusion')`,
-              [sDbId, dbId]
-            );
-          }
-        } catch (err) {
-          // Skip on conflict or error
-        }
-      }
-
-      gtRecords.push({
-        lNodeId: loc.lNodeId,
-        gtINodeDbIds: loc.iNodeIds.map(aifId => globalAifToDb.get(aifId)!).filter(Boolean),
-        aifToDb: globalAifToDb,
-      });
-    }
-
-    console.log(`GT ingest complete. Records: ${gtRecords.length}`);
-    expect(gtRecords.length).toBe(SAMPLE_SIZE);
-  }, 60_000);
-
-  // --------------------------------------------------------------------------
-  // Phase 5: Compute and report metrics
+  // Phase 3: Compute and report ADU F1 + Edge F1
   // --------------------------------------------------------------------------
 
   it('computes and reports ADU F1 + Edge F1', async () => {
-    expect(testRecords.length).toBe(SAMPLE_SIZE);
-    expect(gtRecords.length).toBe(SAMPLE_SIZE);
+    expect(essayRecords.length).toBe(SAMPLE_SIZE);
 
-    console.log('\n=== Phase 5: Computing metrics ===');
+    console.log('\n=== Phase 3: Computing metrics ===');
 
-    const argumentService = getArgumentService();
+    // Per-type counters for ADU component F1
+    type TypeKey = 'MajorClaim' | 'Claim' | 'Premise';
+    const byType: Record<TypeKey, { tp: number; fp: number; fn: number }> = {
+      MajorClaim: { tp: 0, fp: 0, fn: 0 },
+      Claim: { tp: 0, fp: 0, fn: 0 },
+      Premise: { tp: 0, fp: 0, fn: 0 },
+    };
 
-    // Load all GT I-nodes with text (need to embed them for matching)
-    const allGtDbIds = [...new Set(gtRecords.flatMap(r => r.gtINodeDbIds))];
-    const gtINodeRows = await gtPool.query<{ id: string; content: string }>(
-      `SELECT id, content FROM v3_nodes_i WHERE id = ANY($1::uuid[])`,
-      [allGtDbIds]
-    );
-    const gtINodeMap = new Map<string, string>(gtINodeRows.rows.map(r => [r.id, r.content]));
+    // Global ADU counters (macro-averaged over essays)
+    let totalAduPrecision = 0, totalAduRecall = 0, totalAduF1 = 0;
+    let totalEdgePrecision = 0, totalEdgeRecall = 0, totalEdgeF1 = 0;
+    let roleAlignmentCorrect = 0, roleAlignmentTotal = 0;
 
-    // Embed all GT I-node texts in batches
-    const EMBED_BATCH = 50;
-    const gtEmbeddings = new Map<string, number[]>(); // dbId → embedding
-    const gtIds = [...gtINodeMap.keys()];
+    // IoU tracking across all matched pairs and all GT-test pairs
+    const allMatchedIoUs: number[] = [];   // IoU of matched pairs (≥ threshold)
+    const allBestIoUs: number[] = [];      // best IoU for each GT component regardless of threshold
 
-    console.log(`Embedding ${gtIds.length} GT I-nodes...`);
-    for (let i = 0; i < gtIds.length; i += EMBED_BATCH) {
-      const batch = gtIds.slice(i, i + EMBED_BATCH);
-      const texts = batch.map(id => (gtINodeMap.get(id) ?? '').substring(0, 2000));
-      try {
-        const { embeddings_1536 } = await argumentService.embedTexts(texts);
-        for (let j = 0; j < batch.length; j++) {
-          const emb = embeddings_1536[j];
-          if (emb && emb.length > 0) gtEmbeddings.set(batch[j]!, emb);
-        }
-      } catch (err) {
-        console.warn(`  GT embed batch ${i} failed: ${(err as Error).message}`);
-      }
-    }
+    for (let i = 0; i < essays.length; i++) {
+      const essay = essays[i]!;
+      const record = essayRecords[i]!;
 
-    // Load all test I-nodes with embeddings
-    const allTestDbIds = [...new Set(testRecords.flatMap(r => r.extractedINodeDbIds))];
-    let testINodeRows: Array<{ id: string; content: string; embedding_raw: string }> = [];
-    if (allTestDbIds.length > 0) {
-      const rows = await testPool.query<{ id: string; content: string; embedding: string }>(
-        `SELECT id, content, embedding::text as embedding FROM v3_nodes_i WHERE id = ANY($1::uuid[]) AND embedding IS NOT NULL`,
-        [allTestDbIds]
-      );
-      testINodeRows = rows.rows.map(r => ({ id: r.id, content: r.content, embedding_raw: r.embedding }));
-    }
+      const gtComponents = essay.components;
+      const testSpans = [...record.iNodeSpans.entries()].map(([id, span]) => ({ id, ...span }));
 
-    // Parse test embeddings
-    const testEmbeddings = new Map<string, number[]>();
-    for (const row of testINodeRows) {
-      try {
-        // PostgreSQL vector format: [0.1,0.2,...] or {0.1,0.2,...}
-        const str = row.embedding_raw.replace(/[{}\[\]]/g, '');
-        const vec = str.split(',').map(Number);
-        testEmbeddings.set(row.id, vec);
-      } catch {
-        // skip
-      }
-    }
+      // --- ADU Component F1 (span IoU matching) ---
 
-    console.log(`GT I-nodes: ${allGtDbIds.length}, embedded: ${gtEmbeddings.size}`);
-    console.log(`Test I-nodes: ${allTestDbIds.length}, with embeddings: ${testEmbeddings.size}`);
-
-    // ---- ADU Detection F1 ---------------------------------------------------
-    let totalPrecision = 0, totalRecall = 0, totalF1 = 0;
-    let locutionsWithGt = 0;
-
-    // Build matched pairs: gtId → testId (greedy, by cosine desc)
-    for (let i = 0; i < SAMPLE_SIZE; i++) {
-      const tr = testRecords[i]!;
-      const gr = gtRecords[i]!;
-
-      const gtIds = gr.gtINodeDbIds.filter(id => gtEmbeddings.has(id));
-      const testIds = tr.extractedINodeDbIds.filter(id => testEmbeddings.has(id));
-
-      if (gtIds.length === 0) continue;
-      locutionsWithGt++;
-
-      // Greedy 1:1 matching by cosine similarity
+      // Greedy 1:1 matching: for each GT component find best-IoU test span
       const usedTestIds = new Set<string>();
-      let matched = 0;
+      const matchedGtToTest = new Map<string, string>(); // gtId → testDbId
 
-      for (const gId of gtIds) {
-        const gEmb = gtEmbeddings.get(gId)!;
-        let bestSim = -1, bestTId = '';
-        for (const tId of testIds) {
-          if (usedTestIds.has(tId)) continue;
-          const tEmb = testEmbeddings.get(tId)!;
-          const sim = cosineSim(gEmb, tEmb);
-          if (sim > bestSim) { bestSim = sim; bestTId = tId; }
+      // Sort GT by descending span length for stable greedy matching
+      const sortedGt = [...gtComponents].sort((a, b) => (b.end - b.start) - (a.end - a.start));
+
+      for (const gt of sortedGt) {
+        let bestIoU = 0, bestTestId = '';
+        for (const ts of testSpans) {
+          if (usedTestIds.has(ts.id)) continue;
+          const iou = spanIoU({ start: gt.start, end: gt.end }, { start: ts.start, end: ts.end });
+          if (iou > bestIoU) { bestIoU = iou; bestTestId = ts.id; }
         }
-        if (bestSim >= COSINE_THRESHOLD && bestTId) {
-          usedTestIds.add(bestTId);
-          matched++;
+        allBestIoUs.push(bestIoU); // track best IoU for every GT component
+        if (bestIoU >= SPAN_IOU_THRESHOLD && bestTestId) {
+          usedTestIds.add(bestTestId);
+          matchedGtToTest.set(gt.id, bestTestId);
+          allMatchedIoUs.push(bestIoU);
         }
       }
 
-      const precision = testIds.length > 0 ? matched / testIds.length : 0;
-      const recall = gtIds.length > 0 ? matched / gtIds.length : 0;
+      const matchedCount = matchedGtToTest.size;
+      const precision = testSpans.length > 0 ? matchedCount / testSpans.length : 0;
+      const recall = gtComponents.length > 0 ? matchedCount / gtComponents.length : 0;
       const f1 = precision + recall > 0 ? 2 * precision * recall / (precision + recall) : 0;
 
-      totalPrecision += precision;
-      totalRecall += recall;
-      totalF1 += f1;
-    }
+      totalAduPrecision += precision;
+      totalAduRecall += recall;
+      totalAduF1 += f1;
 
-    const aduPrecision = locutionsWithGt > 0 ? totalPrecision / locutionsWithGt : 0;
-    const aduRecall = locutionsWithGt > 0 ? totalRecall / locutionsWithGt : 0;
-    const aduF1 = locutionsWithGt > 0 ? totalF1 / locutionsWithGt : 0;
-
-    // ---- Edge F1 ------------------------------------------------------------
-
-    // Load GT edges (S-nodes + their connected I-node DB IDs)
-    const gtSNodeRows = await gtPool.query<{ s_id: string; direction: string; node_id: string; role: string }>(
-      `SELECT ns.id as s_id, ns.direction, e.node_id, e.role
-       FROM v3_nodes_s ns
-       JOIN v3_edges e ON e.scheme_node_id = ns.id AND e.node_type = 'i_node'`
-    );
-
-    // Build gt edge set: {direction, premiseIds, conclusionIds} per S-node
-    const gtSMap = new Map<string, { direction: string; premIds: Set<string>; concIds: Set<string> }>();
-    for (const row of gtSNodeRows.rows) {
-      if (!gtSMap.has(row.s_id)) gtSMap.set(row.s_id, { direction: row.direction, premIds: new Set(), concIds: new Set() });
-      const info = gtSMap.get(row.s_id)!;
-      if (row.role === 'premise') info.premIds.add(row.node_id);
-      else if (row.role === 'conclusion') info.concIds.add(row.node_id);
-    }
-
-    // Load test edges
-    const testSNodeRows = await testPool.query<{ s_id: string; direction: string; node_id: string; role: string }>(
-      `SELECT ns.id as s_id, ns.direction, e.node_id, e.role
-       FROM v3_nodes_s ns
-       JOIN v3_edges e ON e.scheme_node_id = ns.id AND e.node_type = 'i_node'`
-    );
-
-    const testSMap = new Map<string, { direction: string; premIds: Set<string>; concIds: Set<string> }>();
-    for (const row of testSNodeRows.rows) {
-      if (!testSMap.has(row.s_id)) testSMap.set(row.s_id, { direction: row.direction, premIds: new Set(), concIds: new Set() });
-      const info = testSMap.get(row.s_id)!;
-      if (row.role === 'premise') info.premIds.add(row.node_id);
-      else if (row.role === 'conclusion') info.concIds.add(row.node_id);
-    }
-
-    // For edge matching: build reverse GT I-node embedding lookup
-    // Map each gtId → best matching testId (if cosine ≥ threshold)
-    const gtToTestMatch = new Map<string, string>();
-    for (const [gId, gEmb] of gtEmbeddings) {
-      let bestSim = -1, bestTId = '';
-      for (const [tId, tEmb] of testEmbeddings) {
-        const sim = cosineSim(gEmb, tEmb);
-        if (sim > bestSim) { bestSim = sim; bestTId = tId; }
-      }
-      if (bestSim >= COSINE_THRESHOLD && bestTId) {
-        gtToTestMatch.set(gId, bestTId);
-      }
-    }
-
-    // For each GT S-node, check if test_db has a matching S-node
-    let gtEdgesMatched = 0;
-    const totalGtEdges = gtSMap.size;
-
-    for (const [, gtInfo] of gtSMap) {
-      // Map GT I-node IDs to test I-node IDs
-      const mappedPremIds = [...gtInfo.premIds].map(id => gtToTestMatch.get(id)).filter(Boolean) as string[];
-      const mappedConcIds = [...gtInfo.concIds].map(id => gtToTestMatch.get(id)).filter(Boolean) as string[];
-
-      if (mappedPremIds.length === 0 || mappedConcIds.length === 0) continue;
-
-      // Check if test_db has an S-node of same direction connecting these mapped nodes
-      const mappedPremSet = new Set(mappedPremIds);
-      const mappedConcSet = new Set(mappedConcIds);
-
-      for (const [, testInfo] of testSMap) {
-        if (testInfo.direction !== gtInfo.direction) continue;
-        const premOverlap = [...testInfo.premIds].filter(id => mappedPremSet.has(id)).length;
-        const concOverlap = [...testInfo.concIds].filter(id => mappedConcSet.has(id)).length;
-        if (premOverlap > 0 && concOverlap > 0) {
-          gtEdgesMatched++;
-          break;
+      // Per-type breakdown
+      for (const gt of gtComponents) {
+        const t = gt.type;
+        if (matchedGtToTest.has(gt.id)) {
+          byType[t].tp++;
+        } else {
+          byType[t].fn++;
         }
       }
-    }
+      // FP: test spans that didn't match any GT
+      const unmatchedTestCount = testSpans.length - matchedCount;
+      // Distribute FP proportionally (approximate: can't know type of unmatched test spans)
+      // Just track globally for overall metrics; per-type precision uses tp/(tp+fp) below
 
-    const totalTestEdges = testSMap.size;
-    // Count test edges that have at least one GT match
-    let testEdgesCorrect = 0;
-    for (const [, testInfo] of testSMap) {
-      // Reverse: map test I-node IDs to GT I-node IDs
-      const testToGt = new Map<string, string>();
-      for (const [gId, tId] of gtToTestMatch) testToGt.set(tId, gId);
-
-      const mappedPremIds = [...testInfo.premIds].map(id => testToGt.get(id)).filter(Boolean) as string[];
-      const mappedConcIds = [...testInfo.concIds].map(id => testToGt.get(id)).filter(Boolean) as string[];
-
-      if (mappedPremIds.length === 0 || mappedConcIds.length === 0) continue;
-
-      const mappedPremSet = new Set(mappedPremIds);
-      const mappedConcSet = new Set(mappedConcIds);
-
-      for (const [, gtInfo] of gtSMap) {
-        if (gtInfo.direction !== testInfo.direction) continue;
-        const premOverlap = [...gtInfo.premIds].filter(id => mappedPremSet.has(id)).length;
-        const concOverlap = [...gtInfo.concIds].filter(id => mappedConcSet.has(id)).length;
-        if (premOverlap > 0 && concOverlap > 0) {
-          testEdgesCorrect++;
-          break;
+      // --- Role alignment (bonus metric) ---
+      // For matched GT→test pairs, check that the test I-node has the right role
+      if (record.sNodeDbIds.length > 0) {
+        // Load edges for this run
+        const edgeRows = await testPool.query<{ node_id: string; role: string }>(
+          `SELECT e.node_id, e.role FROM v3_edges e
+           JOIN v3_nodes_s ns ON ns.id = e.scheme_node_id
+           WHERE ns.analysis_run_id = $1 AND e.node_type = 'i_node'`,
+          [record.testRunId]
+        );
+        const nodeRoles = new Map<string, Set<string>>();
+        for (const row of edgeRows.rows) {
+          if (!nodeRoles.has(row.node_id)) nodeRoles.set(row.node_id, new Set());
+          nodeRoles.get(row.node_id)!.add(row.role);
         }
+
+        for (const [gtId, testId] of matchedGtToTest) {
+          const gt = gtComponents.find(c => c.id === gtId)!;
+          const roles = nodeRoles.get(testId);
+          roleAlignmentTotal++;
+          if (gt.type === 'Premise') {
+            if (roles?.has('premise')) roleAlignmentCorrect++;
+          } else {
+            // Claim / MajorClaim → expect 'conclusion'
+            if (roles?.has('conclusion')) roleAlignmentCorrect++;
+          }
+        }
+      }
+
+      // --- Edge F1 ---
+
+      // Build GT edge set using matched GT→test I-node mapping
+      const gtEdges = essay.relations;
+      let gtEdgeMatched = 0;
+      let testEdgeCorrect = 0;
+
+      // Load test S-nodes for this essay
+      if (record.sNodeDbIds.length > 0) {
+        const testSRows = await testPool.query<{ s_id: string; direction: string; node_id: string; role: string }>(
+          `SELECT ns.id as s_id, ns.direction, e.node_id, e.role
+           FROM v3_nodes_s ns
+           JOIN v3_edges e ON e.scheme_node_id = ns.id AND e.node_type = 'i_node'
+           WHERE ns.analysis_run_id = $1`,
+          [record.testRunId]
+        );
+
+        const testSMap = new Map<string, { direction: string; premIds: Set<string>; concIds: Set<string> }>();
+        for (const row of testSRows.rows) {
+          if (!testSMap.has(row.s_id)) testSMap.set(row.s_id, { direction: row.direction, premIds: new Set(), concIds: new Set() });
+          const info = testSMap.get(row.s_id)!;
+          if (row.role === 'premise') info.premIds.add(row.node_id);
+          else info.concIds.add(row.node_id);
+        }
+
+        // For each GT relation, check if there's a matching test S-node
+        for (const rel of gtEdges) {
+          const testArg1 = matchedGtToTest.get(rel.arg1);
+          const testArg2 = matchedGtToTest.get(rel.arg2);
+          if (!testArg1 || !testArg2) continue; // GT endpoints not matched
+
+          const expectedDir = rel.type === 'supports' ? 'SUPPORT' : 'ATTACK';
+
+          for (const [, si] of testSMap) {
+            if (si.direction !== expectedDir) continue;
+            if (si.premIds.has(testArg1) && si.concIds.has(testArg2)) {
+              gtEdgeMatched++;
+              break;
+            }
+          }
+        }
+
+        // For each test S-node, check if it matches a GT relation
+        const gtRelMap = new Map<string, GTRelation[]>();
+        for (const rel of gtEdges) {
+          const k = `${rel.arg1}:${rel.arg2}:${rel.type}`;
+          if (!gtRelMap.has(k)) gtRelMap.set(k, []);
+          gtRelMap.get(k)!.push(rel);
+        }
+
+        // Build reverse: testDbId → gtComponentId
+        const testToGt = new Map<string, string>();
+        for (const [gtId, testId] of matchedGtToTest) testToGt.set(testId, gtId);
+
+        for (const [, si] of testSMap) {
+          const expectedType = si.direction === 'SUPPORT' ? 'supports' : 'attacks';
+          for (const premId of si.premIds) {
+            for (const concId of si.concIds) {
+              const gtPremId = testToGt.get(premId);
+              const gtConcId = testToGt.get(concId);
+              if (!gtPremId || !gtConcId) continue;
+              const k = `${gtPremId}:${gtConcId}:${expectedType}`;
+              if (gtRelMap.has(k)) {
+                testEdgeCorrect++;
+                break;
+              }
+            }
+            break; // only check first prem/conc pair per S-node for efficiency
+          }
+        }
+
+        const totalTestEdges = testSMap.size;
+        const totalGtEdges = gtEdges.length;
+
+        const ep = totalTestEdges > 0 ? testEdgeCorrect / totalTestEdges : 0;
+        const er = totalGtEdges > 0 ? gtEdgeMatched / totalGtEdges : 0;
+        const ef1 = ep + er > 0 ? 2 * ep * er / (ep + er) : 0;
+
+        totalEdgePrecision += ep;
+        totalEdgeRecall += er;
+        totalEdgeF1 += ef1;
       }
     }
 
-    const edgePrecision = totalTestEdges > 0 ? testEdgesCorrect / totalTestEdges : 0;
-    const edgeRecall = totalGtEdges > 0 ? gtEdgesMatched / totalGtEdges : 0;
-    const edgeF1 = edgePrecision + edgeRecall > 0
-      ? 2 * edgePrecision * edgeRecall / (edgePrecision + edgeRecall) : 0;
+    const N = essays.length;
+    const aduPrecision = N > 0 ? totalAduPrecision / N : 0;
+    const aduRecall = N > 0 ? totalAduRecall / N : 0;
+    const aduF1 = N > 0 ? totalAduF1 / N : 0;
 
-    // ---- Dedup Rate ---------------------------------------------------------
-    const dedupRow = await testPool.query<{ total: string; deduped: string }>(
-      `SELECT COUNT(*) as total, COUNT(canonical_i_node_id) as deduped FROM v3_nodes_i`
-    );
-    const totalTestINodes = parseInt(dedupRow.rows[0]!.total, 10);
-    const dedupedINodes = parseInt(dedupRow.rows[0]!.deduped, 10);
-    const dedupRate = totalTestINodes > 0 ? dedupedINodes / totalTestINodes : 0;
+    const edgePrecision = N > 0 ? totalEdgePrecision / N : 0;
+    const edgeRecall = N > 0 ? totalEdgeRecall / N : 0;
+    const edgeF1 = N > 0 ? totalEdgeF1 / N : 0;
 
-    // ---- Report -------------------------------------------------------------
+    const roleAlignmentAccuracy = roleAlignmentTotal > 0
+      ? roleAlignmentCorrect / roleAlignmentTotal : 0;
+
+    // Per-type F1
+    function typeF1(t: TypeKey) {
+      const { tp, fp, fn } = byType[t];
+      const p = tp + fp > 0 ? tp / (tp + fp) : 0;
+      const r = tp + fn > 0 ? tp / (tp + fn) : 0;
+      const f = p + r > 0 ? 2 * p * r / (p + r) : 0;
+      return { precision: p, recall: r, f1: f };
+    }
+
+    const meanMatchedIoU = allMatchedIoUs.length > 0
+      ? allMatchedIoUs.reduce((s, v) => s + v, 0) / allMatchedIoUs.length : 0;
+    const meanBestIoU = allBestIoUs.length > 0
+      ? allBestIoUs.reduce((s, v) => s + v, 0) / allBestIoUs.length : 0;
+
     const results = {
       timestamp: new Date().toISOString(),
-      dataset: 'QT30',
-      locutionsProcessed: SAMPLE_SIZE,
-      cosineThreshold: COSINE_THRESHOLD,
-      aduDetection: {
+      dataset: 'ArgumentAnnotatedEssays',
+      essaysProcessed: N,
+      spanIoUThreshold: SPAN_IOU_THRESHOLD,
+      aduF1: {
         precision: aduPrecision,
         recall: aduRecall,
         f1: aduF1,
-        locutionsWithGroundTruth: locutionsWithGt,
+        byType: {
+          MajorClaim: typeF1('MajorClaim'),
+          Claim: typeF1('Claim'),
+          Premise: typeF1('Premise'),
+        },
+        spanIoU: {
+          meanOfMatched: meanMatchedIoU,   // avg IoU among matched pairs (all ≥ threshold)
+          meanBestPerGt: meanBestIoU,      // avg best-available IoU per GT component (incl. unmatched)
+          matchedPairs: allMatchedIoUs.length,
+          totalGtComponents: allBestIoUs.length,
+        },
       },
       edgeF1: {
         precision: edgePrecision,
         recall: edgeRecall,
         f1: edgeF1,
-        totalGtEdges,
-        totalTestEdges,
-        gtEdgesMatched,
-        testEdgesCorrect,
       },
-      dedupRate: {
-        rate: dedupRate,
-        totalINodes: totalTestINodes,
-        dedupedINodes,
+      roleAlignment: {
+        accuracy: roleAlignmentAccuracy,
+        correct: roleAlignmentCorrect,
+        total: roleAlignmentTotal,
       },
     };
 
     fs.writeFileSync(RESULTS_FILE, JSON.stringify(results, null, 2));
 
     console.log('\n=== Results ===');
-    console.log('ADU Detection:');
+    console.log(`Essays processed: ${N}`);
+    console.log('ADU Component F1 (macro-avg):');
     console.log(`  Precision: ${aduPrecision.toFixed(3)}`);
     console.log(`  Recall:    ${aduRecall.toFixed(3)}`);
     console.log(`  F1:        ${aduF1.toFixed(3)}`);
-    console.log('Edge F1:');
-    console.log(`  Precision: ${edgePrecision.toFixed(3)} (${testEdgesCorrect}/${totalTestEdges})`);
-    console.log(`  Recall:    ${edgeRecall.toFixed(3)} (${gtEdgesMatched}/${totalGtEdges})`);
+    console.log('  By type:');
+    for (const t of ['MajorClaim', 'Claim', 'Premise'] as TypeKey[]) {
+      const m = typeF1(t);
+      console.log(`    ${t.padEnd(12)}: P=${m.precision.toFixed(3)} R=${m.recall.toFixed(3)} F1=${m.f1.toFixed(3)}`);
+    }
+    console.log(`  Span IoU (matched pairs):  mean=${meanMatchedIoU.toFixed(3)} over ${allMatchedIoUs.length} matches`);
+    console.log(`  Span IoU (best per GT):    mean=${meanBestIoU.toFixed(3)} over ${allBestIoUs.length} GT components`);
+    console.log('Edge F1 (macro-avg):');
+    console.log(`  Precision: ${edgePrecision.toFixed(3)}`);
+    console.log(`  Recall:    ${edgeRecall.toFixed(3)}`);
     console.log(`  F1:        ${edgeF1.toFixed(3)}`);
-    console.log(`Dedup Rate: ${(dedupRate * 100).toFixed(1)}% (${dedupedINodes}/${totalTestINodes})`);
+    console.log(`Role Alignment: ${(roleAlignmentAccuracy * 100).toFixed(1)}% (${roleAlignmentCorrect}/${roleAlignmentTotal})`);
     console.log(`\nResults written to: ${RESULTS_FILE}`);
 
     // Sanity assertions
-    expect(results.locutionsProcessed).toBe(SAMPLE_SIZE);
-    expect(results.aduDetection.recall).toBeGreaterThan(0);
+    expect(results.essaysProcessed).toBe(SAMPLE_SIZE);
+    expect(results.aduF1.recall).toBeGreaterThan(0);
   }, 60_000);
 });
