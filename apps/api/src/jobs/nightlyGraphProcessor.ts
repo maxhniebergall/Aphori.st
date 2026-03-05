@@ -141,8 +141,8 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
   // Initialize ER values from current state
   const erValues = new Map<string, number>();
   for (const node of allINodes) {
-    // S(v) = vote_score * base_weight
-    const seed = Math.max(0, node.vote_score) * node.base_weight;
+    // S(v) = max(1, vote_score) * base_weight  — default 1 so unvoted nodes still seed IBA
+    const seed = Math.max(1, node.vote_score) * node.base_weight;
     erValues.set(node.id, seed);
   }
 
@@ -182,7 +182,7 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
       const newErValues = new Map<string, number>();
 
       for (const node of allINodes) {
-        const seed = Math.max(0, node.vote_score) * node.base_weight;
+        const seed = Math.max(1, node.vote_score) * node.base_weight;
 
         // Use fixed defeatedSet — do NOT update defeat flags inside this loop
         const supportiveER = (supportersByConclusion.get(node.id) ?? [])
@@ -215,7 +215,7 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
     // Phase 2: Recompute defeat flags from converged ER values.
     const newDefeatedSet = new Set<string>();
     for (const node of allINodes) {
-      const seed = Math.max(0, node.vote_score) * node.base_weight;
+      const seed = Math.max(1, node.vote_score) * node.base_weight;
       const supportiveER = (supportersByConclusion.get(node.id) ?? [])
         .filter(premiseId => !defeatedSet.has(premiseId))
         .reduce((sum, premiseId) => sum + (erValues.get(premiseId) || 0), 0);
@@ -457,6 +457,35 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
   if (iNodeBaseWeightUpdates.length > 0) {
     logger.info(`Base weight recomputed for ${iNodeBaseWeightUpdates.length} I-nodes`);
   }
+
+  // ── Stage 7: WeightedBipolar Score Computation ──
+  logger.info('Nightly graph processor: Stage 7 — WeightedBipolar scores');
+  await job.updateProgress(95);
+
+  const wbINodes = await repo.getAllINodesForWB();
+  const wbEdges = await repo.getAllSchemeEdgesForWB();
+
+  const wbGraphNodes: import('../services/experiments/RankingStrategy.js').GraphNode[] = wbINodes.map(n => ({
+    id: n.id,
+    text: '',
+    basic_strength: 1 / (1 + Math.exp(-n.vote_score)),
+    vote_score: n.vote_score,
+    user_karma: 0,
+  }));
+  const wbGraphEdges: import('../services/experiments/RankingStrategy.js').GraphEdge[] = wbEdges.map(e => ({
+    from_node_id: e.from_i_node,
+    to_node_id: e.to_i_node,
+    direction: e.direction as 'SUPPORT' | 'ATTACK',
+    confidence: 1.0,
+  }));
+
+  const { WeightedBipolarStrategy } = await import('../services/experiments/WeightedBipolarStrategy.js');
+  const wbStrategy = new WeightedBipolarStrategy(20);
+  const wbResults = wbStrategy.rank(wbGraphNodes, wbGraphEdges, '');
+
+  const wbScoreMap = new Map<string, number>(wbResults.map(r => [r.id, r.score]));
+  await repo.batchUpdateWbScores(wbScoreMap);
+  logger.info(`[NightlyProcessor] Stage 7: updated ${wbScoreMap.size} WB scores`);
 
   const duration = Date.now() - startTime;
   logger.info(`Nightly graph processor: batch complete in ${duration}ms`, {

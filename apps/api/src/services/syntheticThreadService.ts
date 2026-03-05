@@ -10,6 +10,7 @@ interface CandidateRow {
   direction: string;
   evidence_rank: number;
   degree_centrality: number;
+  wb_score: number;
 }
 
 interface ScoredCandidate {
@@ -22,7 +23,8 @@ interface ScoredCandidate {
 
 export function scoreAndGroup(
   rows: CandidateRow[],
-  parentScore: number
+  parentScore: number,
+  sortBy: 'evidence' | 'weighted_bipolar' = 'evidence'
 ): { byAdu: Map<string, ScoredCandidate[]>; byReplyId: Map<string, ScoredCandidate> } {
   // Group rows by reply_id
   const replyMap = new Map<string, CandidateRow[]>();
@@ -45,9 +47,14 @@ export function scoreAndGroup(
     // Compute base_score from the best I-node
     let baseScore = 0;
     for (const c of candidates) {
-      const er = c.evidence_rank > 0 ? c.evidence_rank : parentScore;
-      const candidate = er * Math.log(1 + c.degree_centrality);
-      if (candidate > baseScore) baseScore = candidate;
+      let nodeScore: number;
+      if (sortBy === 'weighted_bipolar') {
+        nodeScore = (c.wb_score > 0 ? c.wb_score : 0.5) * Math.log(1 + c.degree_centrality);
+      } else {
+        const er = c.evidence_rank > 0 ? c.evidence_rank : parentScore;
+        nodeScore = er * Math.log(1 + c.degree_centrality);
+      }
+      if (nodeScore > baseScore) baseScore = nodeScore;
     }
 
     const finalScore = baseScore * bridgeMultiplier;
@@ -157,6 +164,7 @@ export async function buildSyntheticThread(
   parentId: string,
   limit: number,
   cursor?: string,
+  sortBy: 'evidence' | 'weighted_bipolar' = 'evidence',
   currentDepth: number = 1,
   parentScore: number = 0
 ): Promise<SyntheticThreadResponse> {
@@ -170,7 +178,7 @@ export async function buildSyntheticThread(
   }
 
   // Score and group
-  const { byAdu, byReplyId: scoredMap } = scoreAndGroup(rows, parentScore);
+  const { byAdu, byReplyId: scoredMap } = scoreAndGroup(rows, parentScore, sortBy);
 
   // Interleave
   const orderedReplyIds = interleave(byAdu);
@@ -204,6 +212,7 @@ export async function buildSyntheticThread(
             replyId,
             5,
             undefined,
+            sortBy,
             currentDepth + 1,
             row.score
           );

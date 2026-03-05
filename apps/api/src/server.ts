@@ -28,6 +28,7 @@ import statsRoutes from './routes/stats.js';
 import v3Routes from './routes/v3.js';
 import v3KarmaRoutes from './routes/v3Karma.js';
 import internalRoutes from './routes/internal.js';
+import benchmarkRoutes from './routes/benchmark.js';
 import { graphProcessorQueue, closeGraphProcessorQueue } from './jobs/graphProcessorQueue.js';
 import { createNightlyGraphWorker } from './jobs/nightlyGraphProcessor.js';
 import type { Worker } from 'bullmq';
@@ -105,6 +106,7 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/stats', statsRoutes);
 app.use('/api/v3', v3Routes);
 app.use('/api/v3', v3KarmaRoutes);
+app.use('/api/benchmark', benchmarkRoutes);
 
 // Internal service-to-service routes (protected by shared secret, not public auth)
 app.use('/internal', internalRoutes);

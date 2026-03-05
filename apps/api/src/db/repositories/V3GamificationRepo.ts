@@ -635,6 +635,58 @@ export const createV3GamificationRepo = (pool: Pool) => ({
       [factSubtype, baseWeight, nodeRole, iNodeId]
     );
   },
+
+  // ── WeightedBipolar Score Batch Updates ──
+
+  async getAllINodesForWB(client?: PoolClient): Promise<Array<{ id: string; vote_score: number }>> {
+    const result = await (client ?? pool).query(`
+      SELECT
+        ni.id,
+        COALESCE(
+          CASE WHEN ni.source_type = 'post' THEN p.score ELSE r.score END,
+          0
+        ) as vote_score
+      FROM v3_nodes_i ni
+      LEFT JOIN posts p ON ni.source_type = 'post' AND p.id = ni.source_id AND p.deleted_at IS NULL
+      LEFT JOIN replies r ON ni.source_type = 'reply' AND r.id = ni.source_id AND r.deleted_at IS NULL
+      WHERE ni.is_defeated = false OR ni.is_defeated IS NULL
+    `);
+    return result.rows.map(r => ({
+      id: r.id as string,
+      vote_score: parseInt(r.vote_score, 10) || 0,
+    }));
+  },
+
+  async getAllSchemeEdgesForWB(client?: PoolClient): Promise<Array<{ from_i_node: string; to_i_node: string; direction: string }>> {
+    const result = await (client ?? pool).query(`
+      SELECT
+        prem_e.node_id AS from_i_node,
+        conc_e.node_id AS to_i_node,
+        s.direction
+      FROM v3_nodes_s s
+      JOIN v3_edges conc_e ON conc_e.scheme_node_id = s.id AND conc_e.role = 'conclusion' AND conc_e.node_type = 'i_node'
+      JOIN v3_edges prem_e ON prem_e.scheme_node_id = s.id AND prem_e.role = 'premise' AND prem_e.node_type = 'i_node'
+      WHERE conc_e.node_id IS NOT NULL AND prem_e.node_id IS NOT NULL
+    `);
+    return result.rows as Array<{ from_i_node: string; to_i_node: string; direction: string }>;
+  },
+
+  async batchUpdateWbScores(scores: Map<string, number>, client?: PoolClient): Promise<void> {
+    if (scores.size === 0) return;
+    const ids = Array.from(scores.keys());
+    const wbScores = ids.map(id => scores.get(id)!);
+
+    await (client ?? pool).query(`
+      UPDATE v3_nodes_i AS ni
+      SET wb_score = data.wb_score
+      FROM (
+        SELECT
+          unnest($1::uuid[]) as id,
+          unnest($2::float[]) as wb_score
+      ) as data
+      WHERE ni.id = data.id
+    `, [ids, wbScores]);
+  },
 });
 
 export type V3GamificationRepo = ReturnType<typeof createV3GamificationRepo>;

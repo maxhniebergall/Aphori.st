@@ -27,6 +27,7 @@ function makeCandidate(overrides: {
   direction?: string;
   evidence_rank?: number;
   degree_centrality?: number;
+  wb_score?: number;
 }) {
   return {
     reply_id: overrides.reply_id,
@@ -35,6 +36,7 @@ function makeCandidate(overrides: {
     direction: overrides.direction ?? 'SUPPORT',
     evidence_rank: overrides.evidence_rank ?? 1,
     degree_centrality: overrides.degree_centrality ?? 1,
+    wb_score: overrides.wb_score ?? 0,
   };
 }
 
@@ -186,7 +188,7 @@ describe('buildSyntheticThread', () => {
 
   it('returns fallback=false at depth >1 when there are no candidates', async () => {
     mockGetCandidates.mockResolvedValue([]);
-    const result = await buildSyntheticThread('reply', 'r1', 10, undefined, 2);
+    const result = await buildSyntheticThread('reply', 'r1', 10, undefined, 'evidence', 2);
     expect(result.fallback).toBe(false);
     expect(result.items).toEqual([]);
   });
@@ -252,7 +254,7 @@ describe('buildSyntheticThread', () => {
       ['r1', makeReplyRow('r1', { reply_count: 5 })],
     ]));
 
-    const result = await buildSyntheticThread('reply', 'parent', 10, undefined, 3);
+    const result = await buildSyntheticThread('reply', 'parent', 10, undefined, 'evidence', 3);
 
     // getCandidates called once for parent, never again for children
     expect(mockGetCandidates).toHaveBeenCalledTimes(1);
@@ -267,7 +269,7 @@ describe('buildSyntheticThread', () => {
       ['r1', makeReplyRow('r1', { reply_count: 3 })],
     ]));
 
-    const result = await buildSyntheticThread('reply', 'parent', 10, undefined, 3);
+    const result = await buildSyntheticThread('reply', 'parent', 10, undefined, 'evidence', 3);
 
     expect(result.items[0]!.continueThreadUrl).toBe('/reply/r1');
     expect(result.items[0]!.hasReplies).toBe(true);
@@ -285,7 +287,7 @@ describe('buildSyntheticThread', () => {
       ['r1', makeReplyRow('r1', { reply_count: 2 })],
     ]));
 
-    const result = await buildSyntheticThread('post', 'post1', 10, undefined, 1);
+    const result = await buildSyntheticThread('post', 'post1', 10, undefined, 'evidence', 1);
 
     expect(result.items[0]!.continueThreadUrl).toBeUndefined();
   });

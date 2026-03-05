@@ -40,7 +40,7 @@ const paginationSchema = z.object({
 });
 
 const replyQuerySchema = paginationSchema.extend({
-  sort: z.enum(['top', 'new', 'controversial', 'evidence']).default('new'),
+  sort: z.enum(['top', 'new', 'controversial', 'evidence', 'weighted_bipolar']).default('new'),
 });
 
 /**
@@ -302,8 +302,8 @@ router.get('/:id/replies', optionalAuth, async (req: Request<{ id: string }>, re
       return;
     }
 
-    if (sort === 'evidence') {
-      const result = await buildSyntheticThread('post', postId, limit, cursor);
+    if (sort === 'evidence' || sort === 'weighted_bipolar') {
+      const result = await buildSyntheticThread('post', postId, limit, cursor, sort);
       res.json({ success: true, data: result });
       return;
     }
