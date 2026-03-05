@@ -120,7 +120,8 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     sourceId: string,
     analysis: V3EngineAnalysis,
     iNodeEmbeddings?: Map<string, number[]>,
-    valueEmbeddings?: Map<string, number[]>
+    valueEmbeddings?: Map<string, number[]>,
+    contextNodes?: Array<{ id: string; text: string }>
   ): Promise<Map<string, string>> {
     const client = await pool.connect();
     try {
@@ -135,6 +136,15 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
 
       const { nodes, edges } = analysis.hypergraph;
       const engineIdToDbId = new Map<string, string>();
+
+      // Pre-seed context node IDs — the engine receives parent i_nodes with their
+      // actual DB UUIDs as node_id, so any scheme edges referencing them already
+      // use the DB UUID directly and don't need re-mapping.
+      if (contextNodes) {
+        for (const cn of contextNodes) {
+          engineIdToDbId.set(cn.id, cn.id);
+        }
+      }
 
       // 1. Batch-insert I-Nodes (adu nodes)
       const aduNodes = nodes.filter((n): n is V3HypergraphNode & { node_type: 'adu' } =>
@@ -902,6 +912,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
     direction: string;
     evidence_rank: number;
     degree_centrality: number;
+    wb_score: number;
   }>> {
     const result = await pool.query(
       `WITH parent_adus AS (
@@ -938,7 +949,8 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
          pa.adu_id AS parent_adu_id,
          s.direction,
          prem_i.evidence_rank,
-         COALESCE(dc.degree_centrality, 1) AS degree_centrality
+         COALESCE(dc.degree_centrality, 1) AS degree_centrality,
+         COALESCE(prem_i.wb_score, 0) AS wb_score
        FROM parent_adus pa
        JOIN v3_edges conc_e
          ON conc_e.node_id = pa.adu_id
@@ -962,6 +974,7 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       direction: row.direction,
       evidence_rank: parseFloat(row.evidence_rank) || 0,
       degree_centrality: parseInt(row.degree_centrality) || 1,
+      wb_score: parseFloat(row.wb_score) || 0,
     }));
   },
 });

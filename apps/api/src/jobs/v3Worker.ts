@@ -232,7 +232,8 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
       sourceId,
       analysis,
       iNodeEmbeddings,
-      valueEmbeddings
+      valueEmbeddings,
+      parentINodes.length > 0 ? parentINodes : undefined
     );
 
     await job.updateProgress(80);
@@ -855,6 +856,7 @@ export function createV3Worker(): Worker {
   const worker = new Worker('v3-analysis', processV3Analysis, {
     connection,
     concurrency: 16,
+    lockDuration: 5 * 60 * 1000, // 5 minutes — discourse engine calls can be slow
     settings: {
       backoffStrategy: async (attemptsMade: number) => {
         return Math.pow(2, Math.min(attemptsMade, 4)) * 1000;
