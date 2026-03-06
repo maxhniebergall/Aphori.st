@@ -163,6 +163,19 @@ class DiscourseEngineService {
    * Disambiguate contested terms against known concept candidates via the realtime Gemini API.
    * Sends 1 HTTP request; discourse engine fans out to N parallel Gemini calls internally.
    */
+  async scoreArgumentStrength(
+    items: Array<{ id: string; text: string }>
+  ): Promise<Map<string, number>> {
+    if (items.length === 0) return new Map();
+    logger.info('Calling discourse-engine /v3/score-argument-strength', { count: items.length });
+    const response = await this.request<Array<{ id: string; strength: number }>>(
+      '/v3/score-argument-strength',
+      'POST',
+      items
+    );
+    return new Map(response.map(r => [r.id, r.strength]));
+  }
+
   async disambiguateConcepts(
     macroContext: string,
     terms: Array<{
