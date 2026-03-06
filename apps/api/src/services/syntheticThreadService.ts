@@ -159,6 +159,52 @@ function rowToSynthetic(
   };
 }
 
+/**
+ * "Top" baseline: ranks all direct replies by vote score DESC, recursively.
+ * Does not use the hypergraph — serves as a simple popularity baseline.
+ */
+export async function buildTopThread(
+  postId: string,
+  limit: number,
+  cursor?: string,
+  currentDepth: number = 1
+): Promise<SyntheticThreadResponse> {
+  const { items: replies, cursor: nextCursor, hasMore } = await ReplyRepo.findByPostId(postId, limit, cursor, 'top');
+
+  if (replies.length === 0) {
+    return { items: [], cursor: null, hasMore: false, fallback: currentDepth === 1 };
+  }
+
+  const childResultMap = new Map<string, SyntheticReplyWithAuthor[]>();
+  if (currentDepth < 3) {
+    const repliesNeedingChildren = replies.filter((r: ReplyWithAuthor) => r.reply_count > 0);
+    if (repliesNeedingChildren.length > 0) {
+      const childResults = await Promise.all(
+        repliesNeedingChildren.map(async (reply: ReplyWithAuthor) => {
+          const childResult = await buildTopThread(reply.id, 5, undefined, currentDepth + 1);
+          return [reply.id, childResult.items] as const;
+        })
+      );
+      for (const [id, children] of childResults) {
+        childResultMap.set(id, children);
+      }
+    }
+  }
+
+  const items: SyntheticReplyWithAuthor[] = replies.map((row: ReplyWithAuthor) => {
+    const fakeScored: ScoredCandidate = {
+      reply_id: row.id,
+      targeted_adu_ids: [],
+      final_score: row.score,
+      bridge_count: 0,
+      direction: 'SUPPORT',
+    };
+    return rowToSynthetic(row, fakeScored, childResultMap.get(row.id) ?? [], currentDepth);
+  });
+
+  return { items, cursor: nextCursor, hasMore, fallback: false };
+}
+
 export async function buildSyntheticThread(
   parentType: 'post' | 'reply',
   parentId: string,
