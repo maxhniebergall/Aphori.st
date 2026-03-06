@@ -265,11 +265,30 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
 
       // 4. Batch-insert Edges (resolve engine node_ids to DB UUIDs)
       if (edges.length > 0) {
+        const droppedEdges: V3HypergraphEdge[] = [];
         const validEdges = edges.filter((e: V3HypergraphEdge) => {
           const schemeId = engineIdToDbId.get(e.scheme_node_id);
           const nodeId = engineIdToDbId.get(e.node_id);
-          return schemeId && nodeId;
+          if (!schemeId || !nodeId) {
+            droppedEdges.push(e);
+            return false;
+          }
+          return true;
         });
+
+        if (droppedEdges.length > 0) {
+          logger.error(`V3: CRITICAL — dropped ${droppedEdges.length} edges with unresolvable IDs`, {
+            runId,
+            sourceId,
+            droppedEdges: droppedEdges.map(e => ({
+              scheme_node_id: e.scheme_node_id,
+              node_id: e.node_id,
+              role: e.role,
+              schemeResolved: !!engineIdToDbId.get(e.scheme_node_id),
+              nodeResolved: !!engineIdToDbId.get(e.node_id),
+            })),
+          });
+        }
 
         if (validEdges.length > 0) {
           const eValues = validEdges.map((_: V3HypergraphEdge, i: number) => {
@@ -976,6 +995,104 @@ export const createV3HypergraphRepo = (pool: Pool) => ({
       degree_centrality: parseInt(row.degree_centrality) || 1,
       wb_score: parseFloat(row.wb_score) || 0,
     }));
+  },
+
+  async getThreadGraph(postId: string): Promise<{
+    nodes: Array<{
+      id: string;
+      text: string;
+      vote_score: number;
+      source_id: string;
+      source_type: 'post' | 'reply';
+    }>;
+    edges: Array<{
+      from_node_id: string;
+      to_node_id: string;
+      direction: 'SUPPORT' | 'ATTACK';
+      confidence: number;
+    }>;
+    nodeTargets: Map<string, string[]>;
+  }> {
+    const [nodesResult, edgesResult] = await Promise.all([
+      pool.query<{
+        id: string;
+        text: string;
+        vote_score: string;
+        source_id: string;
+        source_type: 'post' | 'reply';
+      }>(
+        `SELECT
+           i.id,
+           COALESCE(i.rewritten_text, i.content) AS text,
+           i.source_id,
+           i.source_type,
+           COALESCE(
+             CASE WHEN i.source_type = 'post' THEN p.score ELSE r.score END,
+             0
+           ) AS vote_score
+         FROM v3_nodes_i i
+         LEFT JOIN posts p ON i.source_type = 'post' AND p.id = i.source_id AND p.deleted_at IS NULL
+         LEFT JOIN replies r ON i.source_type = 'reply' AND r.id = i.source_id AND r.deleted_at IS NULL
+         WHERE (i.source_type = 'post' AND i.source_id = $1)
+            OR (i.source_type = 'reply' AND i.source_id IN (
+                  SELECT id FROM replies WHERE post_id = $1 AND deleted_at IS NULL
+                ))`,
+        [postId]
+      ),
+      pool.query<{
+        from_node_id: string;
+        to_node_id: string;
+        direction: string;
+        confidence: string;
+      }>(
+        `SELECT DISTINCT
+           e_p.node_id AS from_node_id,
+           e_c.node_id AS to_node_id,
+           s.direction,
+           s.confidence
+         FROM v3_nodes_s s
+         JOIN v3_edges e_p ON e_p.scheme_node_id = s.id
+           AND e_p.role = 'premise' AND e_p.node_type = 'i_node'
+         JOIN v3_edges e_c ON e_c.scheme_node_id = s.id
+           AND e_c.role = 'conclusion' AND e_c.node_type = 'i_node'
+         WHERE e_p.node_id IN (
+           SELECT id FROM v3_nodes_i
+           WHERE (source_type = 'post' AND source_id = $1)
+              OR (source_type = 'reply' AND source_id IN (
+                    SELECT id FROM replies WHERE post_id = $1 AND deleted_at IS NULL
+                  ))
+         )`,
+        [postId]
+      ),
+    ]);
+
+    const nodes = nodesResult.rows.map(r => ({
+      id: r.id,
+      text: r.text,
+      vote_score: parseFloat(r.vote_score) || 0,
+      source_id: r.source_id,
+      source_type: r.source_type,
+    }));
+
+    const edges = edgesResult.rows.map(r => ({
+      from_node_id: r.from_node_id,
+      to_node_id: r.to_node_id,
+      direction: r.direction as 'SUPPORT' | 'ATTACK',
+      confidence: parseFloat(r.confidence) || 0,
+    }));
+
+    // Build nodeTargets: premise_i_node_id → conclusion_i_node_ids[]
+    const nodeTargets = new Map<string, string[]>();
+    for (const e of edges) {
+      const existing = nodeTargets.get(e.from_node_id);
+      if (existing) {
+        existing.push(e.to_node_id);
+      } else {
+        nodeTargets.set(e.from_node_id, [e.to_node_id]);
+      }
+    }
+
+    return { nodes, edges, nodeTargets };
   },
 });
 
