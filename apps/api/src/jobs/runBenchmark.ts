@@ -18,6 +18,8 @@ import { loadCMVThreads } from './cmvLoader.js';
 import { PostRepo, ReplyRepo } from '../db/repositories/index.js';
 import { enqueueV3Analysis } from './enqueueV3Analysis.js';
 import { getPool, closePool } from '../db/pool.js';
+import { v3Queue } from './v3Queue.js';
+import { graphProcessorQueue } from './graphProcessorQueue.js';
 
 const DEV_USER_ID = 'dev_user';
 
@@ -29,7 +31,9 @@ const { values: args } = parseArgs({
     output:  { type: 'string', default: '/tmp/benchmark-results.json' },
     api:     { type: 'string', default: 'http://localhost:3001' },
     limit:   { type: 'string' },
-    'dry-run': { type: 'boolean', default: false },
+    exclude: { type: 'string' }, // comma-separated CMV thread IDs to skip
+    'dry-run':   { type: 'boolean', default: false },
+    'reanalyze': { type: 'boolean', default: false },
   },
   strict: false,
 });
@@ -38,7 +42,9 @@ const inputPath  = args['input'] as string | undefined;
 const outputFile = args['output'] as string;
 const apiBase    = args['api'] as string;
 const limit      = args['limit'] ? parseInt(args['limit'] as string, 10) : undefined;
+const excludeIds = args['exclude'] ? new Set((args['exclude'] as string).split(',').map(s => s.trim())) : undefined;
 const dryRun     = args['dry-run'] as boolean;
+const reanalyze  = args['reanalyze'] as boolean;
 
 if (!inputPath) {
   console.error('Error: --input <path> is required');
@@ -85,41 +91,38 @@ function reciprocalRank(results: RankedNode[], deltaIds: Set<string>): number {
   return 0;
 }
 
-function ndcg(results: RankedNode[], deltaIds: Set<string>, k: number): number {
-  const dcg = results.slice(0, k).reduce((acc, r, i) => {
-    const rel = deltaIds.has(r.id) ? 1 : 0;
-    return acc + rel / Math.log2(i + 2);
-  }, 0);
-  const numRelevant = Math.min(deltaIds.size, k);
-  const idcg = Array.from({ length: numRelevant }, (_, i) => 1 / Math.log2(i + 2))
-    .reduce((a, b) => a + b, 0);
-  return idcg === 0 ? 0 : dcg / idcg;
+/** Returns the rank of the first relevant result, or null if none found. */
+function firstRelevantRank(results: RankedNode[], deltaIds: Set<string>): number | null {
+  for (const r of results) {
+    if (deltaIds.has(r.id)) return r.rank;
+  }
+  return null;
 }
 
 // ── Output schema ─────────────────────────────────────────────────────────
+
+type AlgMetrics = { rr: number; rank: number | null };
+type AlgSummary = { mrr: number; mean_rank: number | null; median_rank: number | null; win_rate: number };
+
+type AlgKey = 'EvidenceRank' | 'WeightedBipolar' | 'Top'
+  | 'EvidenceRank_Vote' | 'WeightedBipolar_Vote'
+  | 'EvidenceRank_LLM' | 'WeightedBipolar_LLM'
+  | 'EvidenceRank_Vote_NoBridge' | 'WeightedBipolar_Vote_NoBridge'
+  | 'EvidenceRank_LLM_NoBridge' | 'WeightedBipolar_LLM_NoBridge';
 
 interface ThreadResult {
   test_id: string;
   parent_argument: string;
   delta_reply_ids: string[];
-  algorithms: {
-    Alg_A: RankedNode[];
-    Alg_B: RankedNode[];
-  };
-  metrics: {
-    Alg_A: { rr: number; ndcg5: number; ndcg10: number };
-    Alg_B: { rr: number; ndcg5: number; ndcg10: number };
-  };
+  algorithms: Record<AlgKey, RankedNode[]>;
+  metrics: Record<AlgKey, AlgMetrics>;
 }
 
 interface BenchmarkOutput {
   dataset: string;
   generated_at: string;
   thread_count: number;
-  summary: {
-    Alg_A: { mrr: number; ndcg5: number; ndcg10: number; win_rate: number };
-    Alg_B: { mrr: number; ndcg5: number; ndcg10: number; win_rate: number };
-  };
+  summary: Record<AlgKey, AlgSummary>;
   threads: ThreadResult[];
 }
 
@@ -127,6 +130,14 @@ interface BenchmarkOutput {
 
 function contentHash(s: string): string {
   return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
+}
+
+/** Remove a BullMQ job by its derived jobId so it can be re-enqueued. */
+async function removeBullMQJob(sourceType: 'post' | 'reply', sourceId: string, content: string): Promise<void> {
+  const hash = crypto.createHash('sha256').update(content).digest('hex');
+  const jobId = `v3-${sourceType}-${sourceId}-${hash.substring(0, 8)}`;
+  const job = await v3Queue.getJob(jobId);
+  if (job) await job.remove();
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────
@@ -179,7 +190,7 @@ async function main() {
   getPool();
 
   console.log(`Loading CMV threads from: ${inputPath}`);
-  const threads = await loadCMVThreads(inputPath!, limit);
+  const threads = await loadCMVThreads(inputPath!, limit, excludeIds);
   console.log(`Loaded ${threads.length} threads`);
 
   if (threads.length === 0) {
@@ -245,6 +256,38 @@ async function main() {
         if (replyId) cmvToReply.set(node.id, replyId);
       }
       console.log(`  Thread ${thread.threadId}: already ingested (post ${postId}), reconstructed ${cmvToReply.size - 1} reply mappings`);
+
+      if (reanalyze) {
+        // Delete existing analysis runs and BullMQ jobs so the new engine re-processes them
+        await pool.query(
+          `DELETE FROM v3_analysis_runs WHERE source_type = $1 AND source_id = $2`,
+          ['post', postId]
+        );
+        await removeBullMQJob('post', postId, opText);
+        enqueueV3Analysis('post', postId, opText).catch(() => {});
+
+        for (const node of thread.nodes) {
+          if (node.id === thread.focalNodeId) continue;
+          const replyId = cmvToReply.get(node.id);
+          if (!replyId) continue;
+          await pool.query(
+            `DELETE FROM v3_analysis_runs WHERE source_type = $1 AND source_id = $2`,
+            ['reply', replyId]
+          );
+          await removeBullMQJob('reply', replyId, node.text);
+          // Reconstruct parent for enqueue
+          const parentCmvId = thread.edges.find(e => e.from_node_id === node.id)?.to_node_id;
+          const isDirectChild = parentCmvId === thread.focalNodeId;
+          const parentReplyId = parentCmvId ? cmvToReply.get(parentCmvId) : undefined;
+          const replyParent = isDirectChild
+            ? { sourceType: 'post' as const, sourceId: postId }
+            : parentReplyId
+              ? { sourceType: 'reply' as const, sourceId: parentReplyId }
+              : undefined;
+          enqueueV3Analysis('reply', replyId, node.text, replyParent).catch(() => {});
+        }
+        console.log(`    [reanalyze] Deleted runs+jobs and re-enqueued post + ${cmvToReply.size - 1} replies`);
+      }
     } else {
       console.log(`  Thread ${thread.threadId}: ${thread.nodes.length} nodes, ${thread.edges.length} edges, focal=${thread.focalNodeId}`);
       const directChildren = thread.edges.filter(e => e.to_node_id === thread.focalNodeId);
@@ -310,20 +353,49 @@ async function main() {
 
   // ── Step 2: Poll ──
   if (!dryRun) {
-    console.log('\n[2/4] Waiting for V3 analysis to complete...');
+    console.log('\n[2/5] Waiting for V3 analysis to complete...');
     await pollUntilComplete(ingestedPostIds, apiBase);
   } else {
-    console.log('\n[2/4] Dry run: skipping poll');
+    console.log('\n[2/5] Dry run: skipping poll');
   }
 
-  // ── Step 3: Evaluate ──
-  console.log('\n[3/4] Evaluating with benchmark API...');
+  // ── Step 2.5: Run nightly graph processor (EvidenceRank + IBA) ──
+  if (!dryRun) {
+    console.log('\n[3/5] Running nightly graph processor (EvidenceRank + WeightedBipolar)...');
+    const ngpJob = await graphProcessorQueue.add('benchmark-trigger', {}, {
+      jobId: `benchmark-nightly-${Date.now()}`,
+    });
+    const ngpJobId = ngpJob.id!;
+    const ngpStart = Date.now();
+    const ngpTimeoutMs = 30 * 60 * 1000;
+    while (true) {
+      if (Date.now() - ngpStart > ngpTimeoutMs) {
+        throw new Error('Nightly graph processor timed out after 30 minutes');
+      }
+      const j = await graphProcessorQueue.getJob(ngpJobId);
+      const state = await j?.getState();
+      process.stdout.write(`\r  Graph processor: ${state ?? 'unknown'} [${Math.floor((Date.now() - ngpStart) / 1000)}s elapsed]`);
+      if (state === 'completed') { console.log(); break; }
+      if (state === 'failed') throw new Error('Nightly graph processor job failed');
+      await new Promise(r => setTimeout(r, 5000));
+    }
+  } else {
+    console.log('\n[3/5] Dry run: skipping graph processor');
+  }
+
+  // ── Step 4: Evaluate ──
+  console.log('\n[4/5] Evaluating with benchmark API...');
   const results: ThreadResult[] = [];
 
   for (const [threadId, info] of mapping) {
     const resp = await fetch(`${apiBase}/api/benchmark/thread/${info.post_id}`, {
       headers: { Authorization: 'Bearer dev_token' },
     });
+
+    if (info.delta_reply_ids.length === 0) {
+      console.warn(`Skipping thread ${threadId}: no delta replies mapped (ingestion may have failed)`);
+      continue;
+    }
 
     if (!resp.ok) {
       console.warn(`Skipping thread ${threadId}: benchmark API returned ${resp.status}`);
@@ -333,42 +405,74 @@ async function main() {
     const data = await resp.json() as {
       post_id: string;
       parent_argument: string;
-      alg_a: { items: unknown[] };
-      alg_b: { items: unknown[] };
+      evidence_rank: { items: unknown[] };
+      weighted_bipolar: { items: unknown[] };
+      top: { items: unknown[] };
+      EvidenceRank_Vote?: { items: RankedNode[] };
+      WeightedBipolar_Vote?: { items: RankedNode[] };
+      EvidenceRank_LLM?: { items: RankedNode[] };
+      WeightedBipolar_LLM?: { items: RankedNode[] };
+      EvidenceRank_Vote_NoBridge?: { items: RankedNode[] };
+      WeightedBipolar_Vote_NoBridge?: { items: RankedNode[] };
+      EvidenceRank_LLM_NoBridge?: { items: RankedNode[] };
+      WeightedBipolar_LLM_NoBridge?: { items: RankedNode[] };
     };
 
-    if (!data.alg_a?.items?.length && !data.alg_b?.items?.length) {
+    if (!data.evidence_rank?.items?.length && !data.weighted_bipolar?.items?.length && !data.top?.items?.length) {
       console.warn(`Skipping thread ${threadId}: empty results (analysis may not have completed)`);
       continue;
     }
 
-    const rankA = flattenTree(data.alg_a.items ?? []);
-    const rankB = flattenTree(data.alg_b.items ?? []);
+    const rankEvidenceRank    = flattenTree(data.evidence_rank.items ?? []);
+    const rankWeightedBipolar = flattenTree(data.weighted_bipolar.items ?? []);
+    const rankTop             = flattenTree(data.top.items ?? []);
 
-    // Map cmv delta IDs to Aphorist reply IDs
+    const rankErVote      = data.EvidenceRank_Vote?.items ?? [];
+    const rankWbVote      = data.WeightedBipolar_Vote?.items ?? [];
+    const rankErLlm       = data.EvidenceRank_LLM?.items ?? [];
+    const rankWbLlm       = data.WeightedBipolar_LLM?.items ?? [];
+    const rankErVoteNB    = data.EvidenceRank_Vote_NoBridge?.items ?? [];
+    const rankWbVoteNB    = data.WeightedBipolar_Vote_NoBridge?.items ?? [];
+    const rankErLlmNB     = data.EvidenceRank_LLM_NoBridge?.items ?? [];
+    const rankWbLlmNB     = data.WeightedBipolar_LLM_NoBridge?.items ?? [];
+
     const deltaSet = new Set(info.delta_reply_ids);
-
-    const rrA   = reciprocalRank(rankA, deltaSet);
-    const rrB   = reciprocalRank(rankB, deltaSet);
-    const n5A   = ndcg(rankA, deltaSet, 5);
-    const n5B   = ndcg(rankB, deltaSet, 5);
-    const n10A  = ndcg(rankA, deltaSet, 10);
-    const n10B  = ndcg(rankB, deltaSet, 10);
 
     results.push({
       test_id: `cmv_thread_${threadId}`,
       parent_argument: data.parent_argument,
       delta_reply_ids: info.delta_reply_ids,
-      algorithms: { Alg_A: rankA, Alg_B: rankB },
+      algorithms: {
+        EvidenceRank: rankEvidenceRank,
+        WeightedBipolar: rankWeightedBipolar,
+        Top: rankTop,
+        EvidenceRank_Vote: rankErVote,
+        WeightedBipolar_Vote: rankWbVote,
+        EvidenceRank_LLM: rankErLlm,
+        WeightedBipolar_LLM: rankWbLlm,
+        EvidenceRank_Vote_NoBridge: rankErVoteNB,
+        WeightedBipolar_Vote_NoBridge: rankWbVoteNB,
+        EvidenceRank_LLM_NoBridge: rankErLlmNB,
+        WeightedBipolar_LLM_NoBridge: rankWbLlmNB,
+      },
       metrics: {
-        Alg_A: { rr: rrA, ndcg5: n5A, ndcg10: n10A },
-        Alg_B: { rr: rrB, ndcg5: n5B, ndcg10: n10B },
+        EvidenceRank:                   { rr: reciprocalRank(rankEvidenceRank, deltaSet),    rank: firstRelevantRank(rankEvidenceRank, deltaSet) },
+        WeightedBipolar:                { rr: reciprocalRank(rankWeightedBipolar, deltaSet), rank: firstRelevantRank(rankWeightedBipolar, deltaSet) },
+        Top:                            { rr: reciprocalRank(rankTop, deltaSet),             rank: firstRelevantRank(rankTop, deltaSet) },
+        EvidenceRank_Vote:              { rr: reciprocalRank(rankErVote, deltaSet),     rank: firstRelevantRank(rankErVote, deltaSet) },
+        WeightedBipolar_Vote:           { rr: reciprocalRank(rankWbVote, deltaSet),     rank: firstRelevantRank(rankWbVote, deltaSet) },
+        EvidenceRank_LLM:               { rr: reciprocalRank(rankErLlm, deltaSet),      rank: firstRelevantRank(rankErLlm, deltaSet) },
+        WeightedBipolar_LLM:            { rr: reciprocalRank(rankWbLlm, deltaSet),      rank: firstRelevantRank(rankWbLlm, deltaSet) },
+        EvidenceRank_Vote_NoBridge:     { rr: reciprocalRank(rankErVoteNB, deltaSet),   rank: firstRelevantRank(rankErVoteNB, deltaSet) },
+        WeightedBipolar_Vote_NoBridge:  { rr: reciprocalRank(rankWbVoteNB, deltaSet),   rank: firstRelevantRank(rankWbVoteNB, deltaSet) },
+        EvidenceRank_LLM_NoBridge:      { rr: reciprocalRank(rankErLlmNB, deltaSet),    rank: firstRelevantRank(rankErLlmNB, deltaSet) },
+        WeightedBipolar_LLM_NoBridge:   { rr: reciprocalRank(rankWbLlmNB, deltaSet),    rank: firstRelevantRank(rankWbLlmNB, deltaSet) },
       },
     });
   }
 
   // ── Step 4: Aggregate ──
-  console.log(`\n[4/4] Aggregating ${results.length} results...`);
+  console.log(`\n[5/5] Aggregating ${results.length} results...`);
 
   const n = results.length;
   if (n === 0) {
@@ -377,38 +481,55 @@ async function main() {
   }
 
   const mean = (vals: number[]) => vals.reduce((a, b) => a + b, 0) / vals.length;
-  const mrrA   = mean(results.map(r => r.metrics.Alg_A.rr));
-  const mrrB   = mean(results.map(r => r.metrics.Alg_B.rr));
-  const ndcg5A = mean(results.map(r => r.metrics.Alg_A.ndcg5));
-  const ndcg5B = mean(results.map(r => r.metrics.Alg_B.ndcg5));
-  const ndcg10A = mean(results.map(r => r.metrics.Alg_A.ndcg10));
-  const ndcg10B = mean(results.map(r => r.metrics.Alg_B.ndcg10));
-  const winsA = results.filter(r => r.metrics.Alg_A.rr > r.metrics.Alg_B.rr).length;
-  const winsB = results.filter(r => r.metrics.Alg_B.rr > r.metrics.Alg_A.rr).length;
+  const median = (vals: number[]): number | null => {
+    if (vals.length === 0) return null;
+    const sorted = [...vals].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+  };
+  const meanOrNull = (vals: number[]) => vals.length === 0 ? null : mean(vals);
+
+  const summarize = (key: AlgKey, vsKey: AlgKey): AlgSummary => {
+    const mrr = mean(results.map(r => r.metrics[key].rr));
+    const ranks = results.map(r => r.metrics[key].rank).filter((v): v is number => v !== null);
+    const wins = results.filter(r => r.metrics[key].rr > r.metrics[vsKey].rr).length;
+    return { mrr, mean_rank: meanOrNull(ranks), median_rank: median(ranks), win_rate: wins / n };
+  };
+
+  const algKeys: AlgKey[] = [
+    'EvidenceRank', 'WeightedBipolar', 'Top',
+    'EvidenceRank_Vote', 'WeightedBipolar_Vote',
+    'EvidenceRank_LLM', 'WeightedBipolar_LLM',
+    'EvidenceRank_Vote_NoBridge', 'WeightedBipolar_Vote_NoBridge',
+    'EvidenceRank_LLM_NoBridge', 'WeightedBipolar_LLM_NoBridge',
+  ];
+
+  const summaryMap = Object.fromEntries(
+    algKeys.map(k => [k, summarize(k, 'Top')])
+  ) as Record<AlgKey, AlgSummary>;
 
   const output: BenchmarkOutput = {
     dataset: 'webis-cmv-20',
     generated_at: new Date().toISOString(),
     thread_count: n,
-    summary: {
-      Alg_A: { mrr: mrrA, ndcg5: ndcg5A, ndcg10: ndcg10A, win_rate: winsA / n },
-      Alg_B: { mrr: mrrB, ndcg5: ndcg5B, ndcg10: ndcg10B, win_rate: winsB / n },
-    },
+    summary: summaryMap,
     threads: results,
+  };
+
+  const fmtRank = (v: number | null) => v === null ? 'N/A (no hits)' : v.toFixed(1);
+  const printAlg = (label: string, s: AlgSummary) => {
+    console.log(`\n${label}:`);
+    console.log(`  MRR:         ${s.mrr.toFixed(4)}`);
+    console.log(`  Mean rank:   ${fmtRank(s.mean_rank)}`);
+    console.log(`  Median rank: ${fmtRank(s.median_rank)}`);
+    console.log(`  Win rate:    ${(s.win_rate * 100).toFixed(1)}%`);
   };
 
   console.log('\n=== Benchmark Summary ===');
   console.log(`Threads evaluated: ${n}`);
-  console.log(`\nAlgorithm A (EvidenceRank):`);
-  console.log(`  MRR:     ${mrrA.toFixed(4)}`);
-  console.log(`  nDCG@5:  ${ndcg5A.toFixed(4)}`);
-  console.log(`  nDCG@10: ${ndcg10A.toFixed(4)}`);
-  console.log(`  Win rate: ${(winsA / n * 100).toFixed(1)}%`);
-  console.log(`\nAlgorithm B (WeightedBipolar):`);
-  console.log(`  MRR:     ${mrrB.toFixed(4)}`);
-  console.log(`  nDCG@5:  ${ndcg5B.toFixed(4)}`);
-  console.log(`  nDCG@10: ${ndcg10B.toFixed(4)}`);
-  console.log(`  Win rate: ${(winsB / n * 100).toFixed(1)}%`);
+  for (const key of algKeys) {
+    printAlg(key, summaryMap[key]);
+  }
 
   if (!dryRun) {
     const outPath = path.resolve(outputFile);
