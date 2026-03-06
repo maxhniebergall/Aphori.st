@@ -12,13 +12,23 @@
 import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
-import type { GraphNode, GraphEdge } from '../services/experiments/RankingStrategy.js';
+
+export interface CMVEdge {
+  from_node_id: string;
+  to_node_id: string;
+}
+
+export interface CMVNode {
+  id: string;
+  text: string;
+  vote_score: number;
+}
 
 export interface CMVThread {
   threadId: string;
   focalNodeId: string; // OP post ID
-  nodes: GraphNode[];
-  edges: GraphEdge[];
+  nodes: CMVNode[];
+  edges: CMVEdge[];
   deltaCommentIds: string[]; // comments that earned a Δ
 }
 
@@ -39,10 +49,6 @@ interface RawThread {
   score?: number;
   delta?: boolean;
   comments?: RawComment[];
-}
-
-function sigmoid(x: number): number {
-  return 1 / (1 + Math.exp(-x));
 }
 
 /** Strip "t1_" / "t3_" Reddit fullname prefix. */
@@ -107,12 +113,10 @@ function parseThread(raw: RawThread): CMVThread | null {
 
   if (!opText) return null;
 
-  const opNode: GraphNode = {
+  const opNode: CMVNode = {
     id: focalNodeId,
     text: opText,
-    basic_strength: sigmoid(opScore),
     vote_score: opScore,
-    user_karma: 0,
   };
 
   const allComments: RawComment[] = [];
@@ -121,8 +125,8 @@ function parseThread(raw: RawThread): CMVThread | null {
   const deltaIds = findDeltaCommentIds(allComments);
   if (deltaIds.length === 0) return null;
 
-  const nodes: GraphNode[] = [opNode];
-  const edges: GraphEdge[] = [];
+  const nodes: CMVNode[] = [opNode];
+  const edges: CMVEdge[] = [];
 
   // Build a set of valid comment IDs for edge validation
   const validIds = new Set<string>([focalNodeId]);
@@ -131,18 +135,14 @@ function parseThread(raw: RawThread): CMVThread | null {
     if (!c.id || !c.body || c.body === '[deleted]' || c.body === '[removed]') continue;
     if (c.author === 'DeltaBot') continue; // exclude meta-comments
 
-    const score = c.score ?? 0;
     nodes.push({
       id: c.id,
       text: c.body,
-      basic_strength: sigmoid(score),
-      vote_score: score,
-      user_karma: 0,
+      vote_score: c.score ?? 0,
     });
     validIds.add(c.id);
   }
 
-  // Build edges: each comment supports its parent
   for (const c of allComments) {
     if (!c.id || !c.parent_id) continue;
     if (c.author === 'DeltaBot') continue;
@@ -152,8 +152,6 @@ function parseThread(raw: RawThread): CMVThread | null {
       edges.push({
         from_node_id: c.id,
         to_node_id: parentId,
-        direction: 'SUPPORT',
-        confidence: 1.0,
       });
     }
   }
