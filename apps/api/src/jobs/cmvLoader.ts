@@ -64,12 +64,21 @@ function collectComments(comments: RawComment[], acc: RawComment[]): void {
 
 /**
  * Find comment IDs that were awarded a delta.
- * DeltaBot posts a reply whose:
- *   - author === 'DeltaBot'
- *   - body starts with 'Confirmed: 1 delta awarded'
- *   - parent_id === 't1_<winnerCommentId>'
+ *
+ * CMV structure:
+ *   Commenter's persuasive argument        ← we want THIS
+ *     └─ OP's "Δ Thanks, you changed my view!"  ← DeltaBot's parent
+ *          └─ DeltaBot: "Confirmed: 1 delta awarded"
+ *
+ * So we follow two hops: DeltaBot → OP's acknowledgment → persuasive commenter.
  */
 function findDeltaCommentIds(allComments: RawComment[]): string[] {
+  // Build a map from comment id → parent_id for the grandparent hop
+  const parentOf = new Map<string, string>();
+  for (const c of allComments) {
+    if (c.id && c.parent_id) parentOf.set(c.id, stripPrefix(c.parent_id));
+  }
+
   const deltaIds = new Set<string>();
   for (const c of allComments) {
     if (
@@ -77,7 +86,13 @@ function findDeltaCommentIds(allComments: RawComment[]): string[] {
       c.body?.startsWith('Confirmed: 1 delta awarded') &&
       c.parent_id?.startsWith('t1_')
     ) {
-      deltaIds.add(stripPrefix(c.parent_id));
+      // DeltaBot's parent = OP's acknowledgment comment
+      const opAckId = stripPrefix(c.parent_id);
+      // OP's acknowledgment's parent = the persuasive argument that earned the delta
+      const persuasiveId = parentOf.get(opAckId);
+      if (persuasiveId) {
+        deltaIds.add(persuasiveId);
+      }
     }
   }
   return Array.from(deltaIds);
@@ -166,7 +181,8 @@ function parseThread(raw: RawThread): CMVThread | null {
  */
 export async function loadCMVThreads(
   inputPath: string,
-  limit?: number
+  limit?: number,
+  exclude?: Set<string>
 ): Promise<CMVThread[]> {
   const threads: CMVThread[] = [];
 
@@ -198,6 +214,7 @@ export async function loadCMVThreads(
 
         try {
           const raw = JSON.parse(line) as RawThread;
+          if (exclude?.has(raw.id)) continue;
           const thread = parseThread(raw);
           if (thread) threads.push(thread);
         } catch {
@@ -210,6 +227,7 @@ export async function loadCMVThreads(
       const items: RawThread[] = Array.isArray(data) ? data : [data];
       for (const raw of items) {
         if (limit && threads.length >= limit) break;
+        if (exclude?.has(raw.id)) continue;
         const thread = parseThread(raw);
         if (thread) threads.push(thread);
       }
