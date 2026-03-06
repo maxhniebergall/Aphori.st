@@ -43,7 +43,7 @@ export class WeightedBipolarStrategy implements RankingStrategy {
     // Basic strengths
     const beta = new Map<string, number>();
     for (const n of nodes) {
-      beta.set(n.id, clamp(sigmoid(n.vote_score), 0, 1));
+      beta.set(n.id, clamp(n.basic_strength > 0 ? n.basic_strength : sigmoid(n.vote_score), 0, 1));
     }
 
     // Build neighbour maps
