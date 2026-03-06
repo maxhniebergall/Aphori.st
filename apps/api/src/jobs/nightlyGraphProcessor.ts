@@ -138,11 +138,18 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
     }
   }
 
+  // Compute net in-degree: each incoming SUPPORT = +1, each incoming ATTACK = -1
+  const netInDegree = new Map<string, number>();
+  for (const rel of relationships) {
+    const delta = rel.direction === 'SUPPORT' ? 1 : -1;
+    netInDegree.set(rel.conclusionId, (netInDegree.get(rel.conclusionId) ?? 0) + delta);
+  }
+
   // Initialize ER values from current state
   const erValues = new Map<string, number>();
   for (const node of allINodes) {
-    // S(v) = max(1, vote_score) * base_weight  — default 1 so unvoted nodes still seed IBA
-    const seed = Math.max(1, node.vote_score) * node.base_weight;
+    // S(v) = max(1, vote_score + net_in_degree) * base_weight
+    const seed = Math.max(1, node.vote_score + (netInDegree.get(node.id) ?? 0)) * node.base_weight;
     erValues.set(node.id, seed);
   }
 
@@ -182,7 +189,7 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
       const newErValues = new Map<string, number>();
 
       for (const node of allINodes) {
-        const seed = Math.max(1, node.vote_score) * node.base_weight;
+        const seed = Math.max(1, node.vote_score + (netInDegree.get(node.id) ?? 0)) * node.base_weight;
 
         // Use fixed defeatedSet — do NOT update defeat flags inside this loop
         const supportiveER = (supportersByConclusion.get(node.id) ?? [])
@@ -465,13 +472,16 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
   const wbINodes = await repo.getAllINodesForWB();
   const wbEdges = await repo.getAllSchemeEdgesForWB();
 
-  const wbGraphNodes: import('../services/experiments/RankingStrategy.js').GraphNode[] = wbINodes.map(n => ({
-    id: n.id,
-    text: '',
-    basic_strength: 1 / (1 + Math.exp(-n.vote_score)),
-    vote_score: n.vote_score,
-    user_karma: 0,
-  }));
+  const wbGraphNodes: import('../services/experiments/RankingStrategy.js').GraphNode[] = wbINodes.map(n => {
+    const adjustedVoteScore = n.vote_score + (netInDegree.get(n.id) ?? 0);
+    return {
+      id: n.id,
+      text: '',
+      basic_strength: 1 / (1 + Math.exp(-adjustedVoteScore)),
+      vote_score: adjustedVoteScore,
+      user_karma: 0,
+    };
+  });
   const wbGraphEdges: import('../services/experiments/RankingStrategy.js').GraphEdge[] = wbEdges.map(e => ({
     from_node_id: e.from_i_node,
     to_node_id: e.to_i_node,

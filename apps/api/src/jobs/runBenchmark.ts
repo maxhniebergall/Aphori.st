@@ -332,6 +332,15 @@ async function main() {
       }
     }
 
+    // Store CMV vote scores in DB so Top/ER_Vote have meaningful signals
+    for (const node of thread.nodes) {
+      if (node.id === thread.focalNodeId) continue; // skip OP (it's a post, not reply)
+      const replyId = cmvToReply.get(node.id);
+      if (replyId && node.vote_score !== 0) {
+        pool.query('UPDATE replies SET score=$1 WHERE id=$2 AND score=0', [node.vote_score, replyId]).catch(() => {});
+      }
+    }
+
     const deltaReplyIds = thread.deltaCommentIds
       .map(cmvId => cmvToReply.get(cmvId))
       .filter((id): id is string => id !== undefined);
@@ -504,8 +513,23 @@ async function main() {
     'EvidenceRank_LLM_NoBridge', 'WeightedBipolar_LLM_NoBridge',
   ];
 
+  // Compare each algorithm against its closest related baseline
+  const vsKeyMap: Record<AlgKey, AlgKey> = {
+    EvidenceRank:                   'WeightedBipolar',
+    WeightedBipolar:                'EvidenceRank',
+    Top:                            'EvidenceRank',
+    EvidenceRank_Vote:              'EvidenceRank',
+    WeightedBipolar_Vote:           'WeightedBipolar',
+    EvidenceRank_LLM:               'EvidenceRank',
+    WeightedBipolar_LLM:            'WeightedBipolar',
+    EvidenceRank_Vote_NoBridge:     'EvidenceRank_Vote',
+    WeightedBipolar_Vote_NoBridge:  'WeightedBipolar_Vote',
+    EvidenceRank_LLM_NoBridge:      'EvidenceRank_LLM',
+    WeightedBipolar_LLM_NoBridge:   'WeightedBipolar_LLM',
+  };
+
   const summaryMap = Object.fromEntries(
-    algKeys.map(k => [k, summarize(k, 'Top')])
+    algKeys.map(k => [k, summarize(k, vsKeyMap[k])])
   ) as Record<AlgKey, AlgSummary>;
 
   const output: BenchmarkOutput = {

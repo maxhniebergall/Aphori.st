@@ -63,8 +63,9 @@ function aggregateToReplyLevel(
     if (!node || node.source_type !== 'reply') continue;
     const dc = degreeCentrality.get(r.id) ?? 1;
     const nodeScore = r.score * Math.log(1 + dc);
-    const current = replyScores.get(node.source_id) ?? 0;
-    if (nodeScore > current) replyScores.set(node.source_id, nodeScore);
+    if (!replyScores.has(node.source_id) || nodeScore > replyScores.get(node.source_id)!) {
+      replyScores.set(node.source_id, nodeScore);
+    }
   }
 
   if (withBridge) {
@@ -124,7 +125,7 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     const [algA, algB, algTop, threadGraph] = await Promise.all([
       buildSyntheticThread('post', postId, 100, undefined, 'evidence'),
       buildSyntheticThread('post', postId, 100, undefined, 'weighted_bipolar'),
-      buildTopThread(postId, 100),
+      buildTopThread(postId, 10000),
       repo.getThreadGraph(postId),
     ]);
 
@@ -178,9 +179,9 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       }));
     }
 
-    const nodesER_Vote = makeNodesER(n => n.vote_score);
+    const nodesER_Vote = makeNodesER(n => Math.max(1, n.vote_score));
     const nodesER_LLM  = makeNodesER(n => llmScores.get(n.id) ?? 0.5);
-    const nodesWB_Vote = makeNodesWB(n => sigmoid(n.vote_score));
+    const nodesWB_Vote = makeNodesWB(n => sigmoid(Math.max(1, n.vote_score)));
     const nodesWB_LLM  = makeNodesWB(n => llmScores.get(n.id) ?? 0.5);
 
     // Run 4 strategy variants (sync, wrap in Promise.resolve)
