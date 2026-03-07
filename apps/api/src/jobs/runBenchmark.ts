@@ -14,7 +14,11 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { parseArgs } from 'util';
+import { fetch as undiciFetch, Agent } from 'undici';
 import { loadCMVThreads } from './cmvLoader.js';
+
+// Disable timeouts for the benchmark API call — LLM scoring + HC can take > 5 min per thread
+const benchmarkAgent = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
 import { PostRepo, ReplyRepo } from '../db/repositories/index.js';
 import { enqueueV3Analysis } from './enqueueV3Analysis.js';
 import { getPool, closePool } from '../db/pool.js';
@@ -102,21 +106,19 @@ function firstRelevantRank(results: RankedNode[], deltaIds: Set<string>): number
 // ── Output schema ─────────────────────────────────────────────────────────
 
 type AlgMetrics = { rr: number; rank: number | null };
-type AlgSummary = { mrr: number; mean_rank: number | null; median_rank: number | null; win_rate: number };
+type AlgSummary = { mrr: number; mean_rank: number | null; median_rank: number | null; rank_std: number | null; win_rate: number };
 
 type AlgKey = 'EvidenceRank' | 'QuadraticEnergy' | 'DampedModular' | 'Top'
-  | 'EvidenceRank_Vote'                   | 'EvidenceRank_Vote_NoBridge'
-  | 'EvidenceRank_LLM'                    | 'EvidenceRank_LLM_NoBridge'
-  | 'QuadraticEnergy_Vote'                | 'QuadraticEnergy_Vote_NoBridge'
-  | 'QuadraticEnergy_Vote_HC'             | 'QuadraticEnergy_Vote_HC_NoBridge'
-  | 'QuadraticEnergy_LLM'                | 'QuadraticEnergy_LLM_NoBridge'
-  | 'QuadraticEnergy_LLM_HC'             | 'QuadraticEnergy_LLM_HC_NoBridge'
-  | 'DampedModular_Vote'                  | 'DampedModular_Vote_NoBridge'
-  | 'DampedModular_Vote_HC'              | 'DampedModular_Vote_HC_NoBridge'
-  | 'DampedModular_LLM'                   | 'DampedModular_LLM_NoBridge'
-  | 'DampedModular_LLM_HC'               | 'DampedModular_LLM_HC_NoBridge'
-  | 'DampedModular_ReferenceBias'         | 'DampedModular_ReferenceBias_NoBridge'
-  | 'DampedModular_ReferenceBias_HC'     | 'DampedModular_ReferenceBias_HC_NoBridge';
+  | 'EvidenceRank_Vote'                    | 'EvidenceRank_Vote_NoBridge'
+  | 'EvidenceRank_LLM'                     | 'EvidenceRank_LLM_NoBridge'
+  | 'QuadraticEnergy_Vote'                 | 'QuadraticEnergy_Vote_NoBridge'
+  | 'QuadraticEnergy_LLM'                  | 'QuadraticEnergy_LLM_NoBridge'
+  | 'DampedModular_Vote'                   | 'DampedModular_Vote_NoBridge'
+  | 'DampedModular_Vote_HC'                | 'DampedModular_Vote_HC_NoBridge'
+  | 'DampedModular_LLM'                    | 'DampedModular_LLM_NoBridge'
+  | 'DampedModular_LLM_HC'                 | 'DampedModular_LLM_HC_NoBridge'
+  | 'DampedModular_ReferenceBias'          | 'DampedModular_ReferenceBias_NoBridge'
+  | 'DampedModular_ReferenceBias_HC'       | 'DampedModular_ReferenceBias_HC_NoBridge';
 
 interface ThreadResult {
   test_id: string;
@@ -405,8 +407,9 @@ async function main() {
   const results: ThreadResult[] = [];
 
   for (const [threadId, info] of mapping) {
-    const resp = await fetch(`${apiBase}/api/benchmark/thread/${info.post_id}`, {
+    const resp = await undiciFetch(`${apiBase}/api/benchmark/thread/${info.post_id}`, {
       headers: { Authorization: 'Bearer dev_token' },
+      dispatcher: benchmarkAgent,
     });
 
     if (info.delta_reply_ids.length === 0) {
@@ -431,12 +434,8 @@ async function main() {
       EvidenceRank_LLM_NoBridge?:            { items: RankedNode[] };
       QuadraticEnergy_Vote?:                      { items: RankedNode[] };
       QuadraticEnergy_Vote_NoBridge?:             { items: RankedNode[] };
-      QuadraticEnergy_Vote_HC?:                   { items: RankedNode[] };
-      QuadraticEnergy_Vote_HC_NoBridge?:          { items: RankedNode[] };
       QuadraticEnergy_LLM?:                       { items: RankedNode[] };
       QuadraticEnergy_LLM_NoBridge?:              { items: RankedNode[] };
-      QuadraticEnergy_LLM_HC?:                    { items: RankedNode[] };
-      QuadraticEnergy_LLM_HC_NoBridge?:           { items: RankedNode[] };
       DampedModular_Vote?:                        { items: RankedNode[] };
       DampedModular_Vote_NoBridge?:               { items: RankedNode[] };
       DampedModular_Vote_HC?:                     { items: RankedNode[] };
@@ -466,12 +465,8 @@ async function main() {
     const rankErLlmNB         = data.EvidenceRank_LLM_NoBridge?.items ?? [];
     const rankQeVote          = data.QuadraticEnergy_Vote?.items ?? [];
     const rankQeVoteNB        = data.QuadraticEnergy_Vote_NoBridge?.items ?? [];
-    const rankQeVoteHC        = data.QuadraticEnergy_Vote_HC?.items ?? [];
-    const rankQeVoteHCNB      = data.QuadraticEnergy_Vote_HC_NoBridge?.items ?? [];
     const rankQeLlm           = data.QuadraticEnergy_LLM?.items ?? [];
     const rankQeLlmNB         = data.QuadraticEnergy_LLM_NoBridge?.items ?? [];
-    const rankQeLlmHC         = data.QuadraticEnergy_LLM_HC?.items ?? [];
-    const rankQeLlmHCNB       = data.QuadraticEnergy_LLM_HC_NoBridge?.items ?? [];
     const rankDmVote          = data.DampedModular_Vote?.items ?? [];
     const rankDmVoteNB        = data.DampedModular_Vote_NoBridge?.items ?? [];
     const rankDmVoteHC        = data.DampedModular_Vote_HC?.items ?? [];
@@ -505,12 +500,8 @@ async function main() {
         EvidenceRank_LLM_NoBridge:           rankErLlmNB,
         QuadraticEnergy_Vote:                rankQeVote,
         QuadraticEnergy_Vote_NoBridge:       rankQeVoteNB,
-        QuadraticEnergy_Vote_HC:             rankQeVoteHC,
-        QuadraticEnergy_Vote_HC_NoBridge:    rankQeVoteHCNB,
         QuadraticEnergy_LLM:                 rankQeLlm,
         QuadraticEnergy_LLM_NoBridge:        rankQeLlmNB,
-        QuadraticEnergy_LLM_HC:              rankQeLlmHC,
-        QuadraticEnergy_LLM_HC_NoBridge:     rankQeLlmHCNB,
         DampedModular_Vote:                  rankDmVote,
         DampedModular_Vote_NoBridge:         rankDmVoteNB,
         DampedModular_Vote_HC:               rankDmVoteHC,
@@ -535,12 +526,8 @@ async function main() {
         EvidenceRank_LLM_NoBridge:           { rr: reciprocalRank(rankErLlmNB, deltaSet),         rank: firstRelevantRank(rankErLlmNB, deltaSet) },
         QuadraticEnergy_Vote:                    { rr: reciprocalRank(rankQeVote, deltaSet),         rank: firstRelevantRank(rankQeVote, deltaSet) },
         QuadraticEnergy_Vote_NoBridge:           { rr: reciprocalRank(rankQeVoteNB, deltaSet),       rank: firstRelevantRank(rankQeVoteNB, deltaSet) },
-        QuadraticEnergy_Vote_HC:                 { rr: reciprocalRank(rankQeVoteHC, deltaSet),       rank: firstRelevantRank(rankQeVoteHC, deltaSet) },
-        QuadraticEnergy_Vote_HC_NoBridge:        { rr: reciprocalRank(rankQeVoteHCNB, deltaSet),     rank: firstRelevantRank(rankQeVoteHCNB, deltaSet) },
         QuadraticEnergy_LLM:                     { rr: reciprocalRank(rankQeLlm, deltaSet),          rank: firstRelevantRank(rankQeLlm, deltaSet) },
         QuadraticEnergy_LLM_NoBridge:            { rr: reciprocalRank(rankQeLlmNB, deltaSet),        rank: firstRelevantRank(rankQeLlmNB, deltaSet) },
-        QuadraticEnergy_LLM_HC:                  { rr: reciprocalRank(rankQeLlmHC, deltaSet),        rank: firstRelevantRank(rankQeLlmHC, deltaSet) },
-        QuadraticEnergy_LLM_HC_NoBridge:         { rr: reciprocalRank(rankQeLlmHCNB, deltaSet),      rank: firstRelevantRank(rankQeLlmHCNB, deltaSet) },
         DampedModular_Vote:                      { rr: reciprocalRank(rankDmVote, deltaSet),         rank: firstRelevantRank(rankDmVote, deltaSet) },
         DampedModular_Vote_NoBridge:             { rr: reciprocalRank(rankDmVoteNB, deltaSet),       rank: firstRelevantRank(rankDmVoteNB, deltaSet) },
         DampedModular_Vote_HC:                   { rr: reciprocalRank(rankDmVoteHC, deltaSet),       rank: firstRelevantRank(rankDmVoteHC, deltaSet) },
@@ -573,13 +560,18 @@ async function main() {
     const mid = Math.floor(sorted.length / 2);
     return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
   };
+  const stdDev = (vals: number[]): number | null => {
+    if (vals.length < 2) return null;
+    const m = mean(vals);
+    return Math.sqrt(mean(vals.map(v => (v - m) ** 2)));
+  };
   const meanOrNull = (vals: number[]) => vals.length === 0 ? null : mean(vals);
 
   const summarize = (key: AlgKey, vsKey: AlgKey): AlgSummary => {
     const mrr = mean(results.map(r => r.metrics[key].rr));
     const ranks = results.map(r => r.metrics[key].rank).filter((v): v is number => v !== null);
     const wins = results.filter(r => r.metrics[key].rr > r.metrics[vsKey].rr).length;
-    return { mrr, mean_rank: meanOrNull(ranks), median_rank: median(ranks), win_rate: wins / n };
+    return { mrr, mean_rank: meanOrNull(ranks), median_rank: median(ranks), rank_std: stdDev(ranks), win_rate: wins / n };
   };
 
   const algKeys: AlgKey[] = [
@@ -587,9 +579,7 @@ async function main() {
     'EvidenceRank_Vote',                   'EvidenceRank_Vote_NoBridge',
     'EvidenceRank_LLM',                    'EvidenceRank_LLM_NoBridge',
     'QuadraticEnergy_Vote',                'QuadraticEnergy_Vote_NoBridge',
-    'QuadraticEnergy_Vote_HC',             'QuadraticEnergy_Vote_HC_NoBridge',
     'QuadraticEnergy_LLM',                 'QuadraticEnergy_LLM_NoBridge',
-    'QuadraticEnergy_LLM_HC',             'QuadraticEnergy_LLM_HC_NoBridge',
     'DampedModular_Vote',                  'DampedModular_Vote_NoBridge',
     'DampedModular_Vote_HC',              'DampedModular_Vote_HC_NoBridge',
     'DampedModular_LLM',                   'DampedModular_LLM_NoBridge',
@@ -610,12 +600,8 @@ async function main() {
     EvidenceRank_LLM_NoBridge:               'EvidenceRank_LLM',
     QuadraticEnergy_Vote:                    'QuadraticEnergy',
     QuadraticEnergy_Vote_NoBridge:           'QuadraticEnergy_Vote',
-    QuadraticEnergy_Vote_HC:                 'QuadraticEnergy_Vote',
-    QuadraticEnergy_Vote_HC_NoBridge:        'QuadraticEnergy_Vote_HC',
     QuadraticEnergy_LLM:                     'QuadraticEnergy',
     QuadraticEnergy_LLM_NoBridge:            'QuadraticEnergy_LLM',
-    QuadraticEnergy_LLM_HC:                  'QuadraticEnergy_LLM',
-    QuadraticEnergy_LLM_HC_NoBridge:         'QuadraticEnergy_LLM_HC',
     DampedModular_Vote:                      'DampedModular',
     DampedModular_Vote_NoBridge:             'DampedModular_Vote',
     DampedModular_Vote_HC:                   'DampedModular_Vote',
@@ -642,11 +628,11 @@ async function main() {
     threads: results,
   };
 
-  const fmtRank = (v: number | null) => v === null ? 'N/A (no hits)' : v.toFixed(1);
+  const fmtRank = (v: number | null) => v === null ? 'N/A' : v.toFixed(1);
   const printAlg = (label: string, s: AlgSummary) => {
     console.log(`\n${label}:`);
     console.log(`  MRR:         ${s.mrr.toFixed(4)}`);
-    console.log(`  Mean rank:   ${fmtRank(s.mean_rank)}`);
+    console.log(`  Mean rank:   ${fmtRank(s.mean_rank)}  ±${fmtRank(s.rank_std)}`);
     console.log(`  Median rank: ${fmtRank(s.median_rank)}`);
     console.log(`  Win rate:    ${(s.win_rate * 100).toFixed(1)}%`);
   };
