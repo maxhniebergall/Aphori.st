@@ -5,7 +5,7 @@ import { PostRepo } from '../db/repositories/index.js';
 import { createV3HypergraphRepo } from '../db/repositories/V3HypergraphRepo.js';
 import { getPool } from '../db/pool.js';
 import { getArgumentService } from '../services/argumentService.js';
-import { EvidenceRankStrategy } from '../services/experiments/EvidenceRankStrategy.js';
+import { EvidenceRankStrategy, applyHingeCentrality } from '../services/experiments/EvidenceRankStrategy.js';
 import { QuadraticEnergyStrategy } from '../services/experiments/QuadraticEnergyStrategy.js';
 import { DampedModularStrategy } from '../services/experiments/DampedModularStrategy.js';
 import type { GraphNode, GraphEdge, RankedResult } from '../services/experiments/RankingStrategy.js';
@@ -209,21 +209,39 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       Promise.resolve(dmStrategy.rank(nodesDM_RefBias, graphEdges, focalNodeId)),
     ]);
 
-    // Aggregate to reply level with and without bridge (7 variants × 2 = 14)
-    const erVote         = aggregateToReplyLevel(ranked_er_vote,    threadGraph, true);
-    const erLlm          = aggregateToReplyLevel(ranked_er_llm,     threadGraph, true);
-    const qeVote         = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, true);
-    const qeLlm          = aggregateToReplyLevel(ranked_qe_llm,     threadGraph, true);
-    const dmVote         = aggregateToReplyLevel(ranked_dm_vote,    threadGraph, true);
-    const dmLlm          = aggregateToReplyLevel(ranked_dm_llm,     threadGraph, true);
-    const dmRefBias      = aggregateToReplyLevel(ranked_dm_refbias, threadGraph, true);
-    const erVoteNB       = aggregateToReplyLevel(ranked_er_vote,    threadGraph, false);
-    const erLlmNB        = aggregateToReplyLevel(ranked_er_llm,     threadGraph, false);
-    const qeVoteNB       = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, false);
-    const qeLlmNB        = aggregateToReplyLevel(ranked_qe_llm,     threadGraph, false);
-    const dmVoteNB       = aggregateToReplyLevel(ranked_dm_vote,    threadGraph, false);
-    const dmLlmNB        = aggregateToReplyLevel(ranked_dm_llm,     threadGraph, false);
-    const dmRefBiasNB    = aggregateToReplyLevel(ranked_dm_refbias, threadGraph, false);
+    // Apply hinge centrality boost to QE and DM ranked results
+    const allNodeIds = [focalNodeId, ...threadGraph.nodes.map(n => n.id)];
+    const ranked_qe_vote_hc    = applyHingeCentrality(ranked_qe_vote,    allNodeIds, graphEdges);
+    const ranked_qe_llm_hc     = applyHingeCentrality(ranked_qe_llm,     allNodeIds, graphEdges);
+    const ranked_dm_vote_hc    = applyHingeCentrality(ranked_dm_vote,    allNodeIds, graphEdges);
+    const ranked_dm_llm_hc     = applyHingeCentrality(ranked_dm_llm,     allNodeIds, graphEdges);
+    const ranked_dm_refbias_hc = applyHingeCentrality(ranked_dm_refbias, allNodeIds, graphEdges);
+
+    // Aggregate to reply level with and without bridge (12 variants × 2 = 24)
+    const erVote             = aggregateToReplyLevel(ranked_er_vote,       threadGraph, true);
+    const erLlm              = aggregateToReplyLevel(ranked_er_llm,        threadGraph, true);
+    const qeVote             = aggregateToReplyLevel(ranked_qe_vote,       threadGraph, true);
+    const qeLlm              = aggregateToReplyLevel(ranked_qe_llm,        threadGraph, true);
+    const qeVoteHC           = aggregateToReplyLevel(ranked_qe_vote_hc,    threadGraph, true);
+    const qeLlmHC            = aggregateToReplyLevel(ranked_qe_llm_hc,     threadGraph, true);
+    const dmVote             = aggregateToReplyLevel(ranked_dm_vote,       threadGraph, true);
+    const dmLlm              = aggregateToReplyLevel(ranked_dm_llm,        threadGraph, true);
+    const dmRefBias          = aggregateToReplyLevel(ranked_dm_refbias,    threadGraph, true);
+    const dmVoteHC           = aggregateToReplyLevel(ranked_dm_vote_hc,    threadGraph, true);
+    const dmLlmHC            = aggregateToReplyLevel(ranked_dm_llm_hc,     threadGraph, true);
+    const dmRefBiasHC        = aggregateToReplyLevel(ranked_dm_refbias_hc, threadGraph, true);
+    const erVoteNB           = aggregateToReplyLevel(ranked_er_vote,       threadGraph, false);
+    const erLlmNB            = aggregateToReplyLevel(ranked_er_llm,        threadGraph, false);
+    const qeVoteNB           = aggregateToReplyLevel(ranked_qe_vote,       threadGraph, false);
+    const qeLlmNB            = aggregateToReplyLevel(ranked_qe_llm,        threadGraph, false);
+    const qeVoteHCNB         = aggregateToReplyLevel(ranked_qe_vote_hc,    threadGraph, false);
+    const qeLlmHCNB          = aggregateToReplyLevel(ranked_qe_llm_hc,     threadGraph, false);
+    const dmVoteNB           = aggregateToReplyLevel(ranked_dm_vote,       threadGraph, false);
+    const dmLlmNB            = aggregateToReplyLevel(ranked_dm_llm,        threadGraph, false);
+    const dmRefBiasNB        = aggregateToReplyLevel(ranked_dm_refbias,    threadGraph, false);
+    const dmVoteHCNB         = aggregateToReplyLevel(ranked_dm_vote_hc,    threadGraph, false);
+    const dmLlmHCNB          = aggregateToReplyLevel(ranked_dm_llm_hc,     threadGraph, false);
+    const dmRefBiasHCNB      = aggregateToReplyLevel(ranked_dm_refbias_hc, threadGraph, false);
 
     res.json({
       post_id: postId,
@@ -231,20 +249,30 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       evidence_rank: algA,
       quadratic_energy: algB,
       top: algTop,
-      EvidenceRank_Vote:                    { items: erVote },
-      EvidenceRank_Vote_NoBridge:           { items: erVoteNB },
-      EvidenceRank_LLM:                     { items: erLlm },
-      EvidenceRank_LLM_NoBridge:            { items: erLlmNB },
-      QuadraticEnergy_Vote:                 { items: qeVote },
-      QuadraticEnergy_Vote_NoBridge:        { items: qeVoteNB },
-      QuadraticEnergy_LLM:                  { items: qeLlm },
-      QuadraticEnergy_LLM_NoBridge:         { items: qeLlmNB },
-      DampedModular_Vote:                   { items: dmVote },
-      DampedModular_Vote_NoBridge:          { items: dmVoteNB },
-      DampedModular_LLM:                    { items: dmLlm },
-      DampedModular_LLM_NoBridge:           { items: dmLlmNB },
-      DampedModular_ReferenceBias:          { items: dmRefBias },
-      DampedModular_ReferenceBias_NoBridge: { items: dmRefBiasNB },
+      EvidenceRank_Vote:                         { items: erVote },
+      EvidenceRank_Vote_NoBridge:                { items: erVoteNB },
+      EvidenceRank_LLM:                          { items: erLlm },
+      EvidenceRank_LLM_NoBridge:                 { items: erLlmNB },
+      QuadraticEnergy_Vote:                      { items: qeVote },
+      QuadraticEnergy_Vote_NoBridge:             { items: qeVoteNB },
+      QuadraticEnergy_Vote_HC:                   { items: qeVoteHC },
+      QuadraticEnergy_Vote_HC_NoBridge:          { items: qeVoteHCNB },
+      QuadraticEnergy_LLM:                       { items: qeLlm },
+      QuadraticEnergy_LLM_NoBridge:              { items: qeLlmNB },
+      QuadraticEnergy_LLM_HC:                    { items: qeLlmHC },
+      QuadraticEnergy_LLM_HC_NoBridge:           { items: qeLlmHCNB },
+      DampedModular_Vote:                        { items: dmVote },
+      DampedModular_Vote_NoBridge:               { items: dmVoteNB },
+      DampedModular_Vote_HC:                     { items: dmVoteHC },
+      DampedModular_Vote_HC_NoBridge:            { items: dmVoteHCNB },
+      DampedModular_LLM:                         { items: dmLlm },
+      DampedModular_LLM_NoBridge:                { items: dmLlmNB },
+      DampedModular_LLM_HC:                      { items: dmLlmHC },
+      DampedModular_LLM_HC_NoBridge:             { items: dmLlmHCNB },
+      DampedModular_ReferenceBias:               { items: dmRefBias },
+      DampedModular_ReferenceBias_NoBridge:      { items: dmRefBiasNB },
+      DampedModular_ReferenceBias_HC:            { items: dmRefBiasHC },
+      DampedModular_ReferenceBias_HC_NoBridge:   { items: dmRefBiasHCNB },
     });
   } catch (error) {
     logger.error('Benchmark thread endpoint failed', {
