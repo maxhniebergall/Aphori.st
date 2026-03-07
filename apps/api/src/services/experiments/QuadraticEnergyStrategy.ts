@@ -31,7 +31,7 @@ export class QuadraticEnergyStrategy implements RankingStrategy {
   private readonly epsilon: number;
   private readonly phase1Coeff: number;
 
-  constructor(maxIterations = 50, alpha = 0.2, epsilon = 0.001, phase1Coeff = 0.49) {
+  constructor(maxIterations = 50, alpha = 0.1, epsilon = 0.001, phase1Coeff = 0.3) {
     this.maxIterations = maxIterations;
     this.alpha = alpha;
     this.epsilon = epsilon;

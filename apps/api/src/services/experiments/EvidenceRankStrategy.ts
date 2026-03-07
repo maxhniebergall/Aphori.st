@@ -195,7 +195,7 @@ export class EvidenceRankStrategy implements RankingStrategy {
   name = 'Alg_A (EvidenceRank)';
   private readonly damping: number;
 
-  constructor(damping = 0.85) {
+  constructor(damping = 0.9) {
     this.damping = damping;
   }
 
