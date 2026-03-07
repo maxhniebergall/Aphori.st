@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { EvidenceRankStrategy } from '../../services/experiments/EvidenceRankStrategy.js';
-import { WeightedBipolarStrategy } from '../../services/experiments/WeightedBipolarStrategy.js';
+import { QuadraticEnergyStrategy } from '../../services/experiments/QuadraticEnergyStrategy.js';
+import { DampedModularStrategy } from '../../services/experiments/DampedModularStrategy.js';
 import type { GraphNode, GraphEdge } from '../../services/experiments/RankingStrategy.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -9,99 +10,174 @@ function makeNode(id: string, voteScore = 0, karma = 0): GraphNode {
   return { id, text: `text-${id}`, basic_strength: 0.5, vote_score: voteScore, user_karma: karma };
 }
 
-// ── WeightedBipolar tests ─────────────────────────────────────────────────
+// ── QuadraticEnergy tests ─────────────────────────────────────────────────
 
-describe('WeightedBipolarStrategy', () => {
-  const alg = new WeightedBipolarStrategy();
+describe('QuadraticEnergyStrategy', () => {
+  const alg = new QuadraticEnergyStrategy();
 
-  it('Inertia: no edges → v(a) = β(a)', () => {
+  it('Inertia: no edges → v(a) ≈ basic_strength', () => {
     const nodes: GraphNode[] = [
-      makeNode('a', 2),
-      makeNode('b', -1),
-      makeNode('c', 0),
+      { id: 'a', text: '', basic_strength: 0.8, vote_score: 0, user_karma: 0 },
+      { id: 'b', text: '', basic_strength: 0.3, vote_score: 0, user_karma: 0 },
+      { id: 'c', text: '', basic_strength: 0.5, vote_score: 0, user_karma: 0 },
     ];
-    const edges: GraphEdge[] = [];
-    const results = alg.rank(nodes, edges, 'focal');
-
-    // β(a) = sigmoid(vote_score)
-    const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
-
+    const results = alg.rank(nodes, [], 'focal');
     for (const r of results) {
       const node = nodes.find(n => n.id === r.id)!;
-      const expected = sigmoid(node.vote_score);
-      expect(r.score).toBeCloseTo(expected, 6);
+      expect(r.score).toBeCloseTo(node.basic_strength, 2);
     }
   });
 
-  it('Counter-balancing: equal support and attack with β=0.5 → v(a) = β(a)', () => {
-    // The Amgoud-Ben-Naim formula simplifies to v(a) = β(a) + h(S)*(1 - 2β(a))
-    // which cancels exactly when β(a) = 0.5 (i.e. vote_score = 0 → sigmoid(0) = 0.5)
+  it('Converges on cyclic graph (A attacks B, B attacks A)', () => {
     const nodes: GraphNode[] = [
-      makeNode('supporter', 3),
-      makeNode('attacker', 3),
-      makeNode('target', 0), // vote_score=0 → β=0.5
+      { id: 'A', text: '', basic_strength: 0.7, vote_score: 0, user_karma: 0 },
+      { id: 'B', text: '', basic_strength: 0.6, vote_score: 0, user_karma: 0 },
     ];
     const edges: GraphEdge[] = [
-      { from_node_id: 'supporter', to_node_id: 'target', direction: 'SUPPORT', confidence: 1 },
-      { from_node_id: 'attacker',  to_node_id: 'target', direction: 'ATTACK',  confidence: 1 },
+      { from_node_id: 'A', to_node_id: 'B', direction: 'ATTACK', confidence: 1 },
+      { from_node_id: 'B', to_node_id: 'A', direction: 'ATTACK', confidence: 1 },
     ];
-    const results = alg.rank(nodes, edges, 'focal');
-    const targetResult = results.find(r => r.id === 'target')!;
-
-    // β(target) = sigmoid(0) = 0.5; with equal support/attack sum, v(target) = 0.5
-    expect(targetResult.score).toBeCloseTo(0.5, 6);
+    // Should not throw; scores must be finite and in (0, 1)
+    const results = alg.rank(nodes, edges, '');
+    expect(results).toHaveLength(2);
+    for (const r of results) {
+      expect(isFinite(r.score)).toBe(true);
+      expect(r.score).toBeGreaterThan(0);
+      expect(r.score).toBeLessThan(1);
+    }
   });
 
-  it('Supported node ranks higher than unsupported peer', () => {
+  it('Support edge boosts target above unsupported peer', () => {
     const nodes: GraphNode[] = [
-      makeNode('helper', 5),
-      makeNode('supported', 0),
-      makeNode('unsupported', 0),
+      { id: 'helper',      text: '', basic_strength: 0.9, vote_score: 0, user_karma: 0 },
+      { id: 'supported',   text: '', basic_strength: 0.5, vote_score: 0, user_karma: 0 },
+      { id: 'unsupported', text: '', basic_strength: 0.5, vote_score: 0, user_karma: 0 },
     ];
     const edges: GraphEdge[] = [
       { from_node_id: 'helper', to_node_id: 'supported', direction: 'SUPPORT', confidence: 1 },
     ];
-    const results = alg.rank(nodes, edges, 'focal');
+    const results = alg.rank(nodes, edges, '');
     const supported   = results.find(r => r.id === 'supported')!;
     const unsupported = results.find(r => r.id === 'unsupported')!;
-
     expect(supported.score).toBeGreaterThan(unsupported.score);
     expect(supported.rank).toBeLessThan(unsupported.rank);
   });
 
-  it('Attacked node ranks lower than peer with no attack', () => {
+  it('Attack edge reduces target below safe peer', () => {
     const nodes: GraphNode[] = [
-      makeNode('attacker', 5),
-      makeNode('attacked', 2),
-      makeNode('safe', 2),
+      { id: 'attacker', text: '', basic_strength: 0.9, vote_score: 0, user_karma: 0 },
+      { id: 'attacked', text: '', basic_strength: 0.6, vote_score: 0, user_karma: 0 },
+      { id: 'safe',     text: '', basic_strength: 0.6, vote_score: 0, user_karma: 0 },
     ];
     const edges: GraphEdge[] = [
       { from_node_id: 'attacker', to_node_id: 'attacked', direction: 'ATTACK', confidence: 1 },
     ];
-    const results = alg.rank(nodes, edges, 'focal');
+    const results = alg.rank(nodes, edges, '');
     const attacked = results.find(r => r.id === 'attacked')!;
     const safe     = results.find(r => r.id === 'safe')!;
-
     expect(attacked.score).toBeLessThan(safe.score);
   });
 
-  it('Returns correct rank ordering (1-indexed, ascending)', () => {
-    const nodes: GraphNode[] = [makeNode('a', 10), makeNode('b', 0), makeNode('c', -5)];
-    const results = alg.rank(nodes, [], 'f');
-
+  it('Returns correct 1-indexed ranking', () => {
+    const nodes: GraphNode[] = [
+      { id: 'a', text: '', basic_strength: 0.9, vote_score: 0, user_karma: 0 },
+      { id: 'b', text: '', basic_strength: 0.5, vote_score: 0, user_karma: 0 },
+      { id: 'c', text: '', basic_strength: 0.2, vote_score: 0, user_karma: 0 },
+    ];
+    const results = alg.rank(nodes, [], '');
     const ranks = results.map(r => r.rank).sort((a, b) => a - b);
     expect(ranks).toEqual([1, 2, 3]);
   });
 
   it('Handles single node', () => {
-    const results = alg.rank([makeNode('x', 1)], [], 'f');
+    const nodes: GraphNode[] = [{ id: 'x', text: '', basic_strength: 0.7, vote_score: 0, user_karma: 0 }];
+    const results = alg.rank(nodes, [], '');
     expect(results).toHaveLength(1);
     expect(results[0]!.rank).toBe(1);
   });
 
   it('Handles empty node list', () => {
-    const results = alg.rank([], [], 'f');
-    expect(results).toHaveLength(0);
+    expect(alg.rank([], [], '')).toHaveLength(0);
+  });
+});
+
+// ── DampedModular tests ───────────────────────────────────────────────────
+
+describe('DampedModularStrategy', () => {
+  const alg = new DampedModularStrategy();
+
+  it('Inertia: no edges → v(a) = basic_strength exactly', () => {
+    // When agg=0, inf_i = w_i algebraically, so no update occurs
+    const nodes: GraphNode[] = [
+      { id: 'a', text: '', basic_strength: 0.8, vote_score: 0, user_karma: 0 },
+      { id: 'b', text: '', basic_strength: 0.3, vote_score: 0, user_karma: 0 },
+      { id: 'c', text: '', basic_strength: 0.5, vote_score: 0, user_karma: 0 },
+    ];
+    const results = alg.rank(nodes, [], 'focal');
+    for (const r of results) {
+      const node = nodes.find(n => n.id === r.id)!;
+      expect(r.score).toBeCloseTo(node.basic_strength, 6);
+    }
+  });
+
+  it('Converges on cyclic graph (A attacks B, B attacks A)', () => {
+    const nodes: GraphNode[] = [
+      { id: 'A', text: '', basic_strength: 0.7, vote_score: 0, user_karma: 0 },
+      { id: 'B', text: '', basic_strength: 0.6, vote_score: 0, user_karma: 0 },
+    ];
+    const edges: GraphEdge[] = [
+      { from_node_id: 'A', to_node_id: 'B', direction: 'ATTACK', confidence: 1 },
+      { from_node_id: 'B', to_node_id: 'A', direction: 'ATTACK', confidence: 1 },
+    ];
+    const results = alg.rank(nodes, edges, '');
+    expect(results).toHaveLength(2);
+    for (const r of results) {
+      expect(isFinite(r.score)).toBe(true);
+      expect(r.score).toBeGreaterThanOrEqual(0);
+      expect(r.score).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('Support edge boosts target above unsupported peer', () => {
+    const nodes: GraphNode[] = [
+      { id: 'helper',      text: '', basic_strength: 0.9, vote_score: 0, user_karma: 0 },
+      { id: 'supported',   text: '', basic_strength: 0.5, vote_score: 0, user_karma: 0 },
+      { id: 'unsupported', text: '', basic_strength: 0.5, vote_score: 0, user_karma: 0 },
+    ];
+    const edges: GraphEdge[] = [
+      { from_node_id: 'helper', to_node_id: 'supported', direction: 'SUPPORT', confidence: 1 },
+    ];
+    const results = alg.rank(nodes, edges, '');
+    const supported   = results.find(r => r.id === 'supported')!;
+    const unsupported = results.find(r => r.id === 'unsupported')!;
+    expect(supported.score).toBeGreaterThan(unsupported.score);
+    expect(supported.rank).toBeLessThan(unsupported.rank);
+  });
+
+  it('Attack edge reduces target below safe peer', () => {
+    const nodes: GraphNode[] = [
+      { id: 'attacker', text: '', basic_strength: 0.9, vote_score: 0, user_karma: 0 },
+      { id: 'attacked', text: '', basic_strength: 0.6, vote_score: 0, user_karma: 0 },
+      { id: 'safe',     text: '', basic_strength: 0.6, vote_score: 0, user_karma: 0 },
+    ];
+    const edges: GraphEdge[] = [
+      { from_node_id: 'attacker', to_node_id: 'attacked', direction: 'ATTACK', confidence: 1 },
+    ];
+    const results = alg.rank(nodes, edges, '');
+    const attacked = results.find(r => r.id === 'attacked')!;
+    const safe     = results.find(r => r.id === 'safe')!;
+    expect(attacked.score).toBeLessThan(safe.score);
+  });
+
+  it('Returns correct 1-indexed ranking', () => {
+    const nodes: GraphNode[] = [
+      { id: 'a', text: '', basic_strength: 0.9, vote_score: 0, user_karma: 0 },
+      { id: 'b', text: '', basic_strength: 0.5, vote_score: 0, user_karma: 0 },
+      { id: 'c', text: '', basic_strength: 0.2, vote_score: 0, user_karma: 0 },
+    ];
+    const results = alg.rank(nodes, [], '');
+    const ranks = results.map(r => r.rank).sort((a, b) => a - b);
+    expect(ranks).toEqual([1, 2, 3]);
   });
 });
 
