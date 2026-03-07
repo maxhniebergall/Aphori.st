@@ -465,8 +465,8 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
     logger.info(`Base weight recomputed for ${iNodeBaseWeightUpdates.length} I-nodes`);
   }
 
-  // ── Stage 7: WeightedBipolar Score Computation ──
-  logger.info('Nightly graph processor: Stage 7 — WeightedBipolar scores');
+  // ── Stage 7: QuadraticEnergy Score Computation ──
+  logger.info('Nightly graph processor: Stage 7 — QuadraticEnergy scores');
   await job.updateProgress(95);
 
   const wbINodes = await repo.getAllINodesForWB();
@@ -489,8 +489,8 @@ export async function processNightlyGraphBatch(job: Job): Promise<void> {
     confidence: 1.0,
   }));
 
-  const { WeightedBipolarStrategy } = await import('../services/experiments/WeightedBipolarStrategy.js');
-  const wbStrategy = new WeightedBipolarStrategy(20);
+  const { QuadraticEnergyStrategy } = await import('../services/experiments/QuadraticEnergyStrategy.js');
+  const wbStrategy = new QuadraticEnergyStrategy();
   const wbResults = wbStrategy.rank(wbGraphNodes, wbGraphEdges, '');
 
   const wbScoreMap = new Map<string, number>(wbResults.map(r => [r.id, r.score]));
