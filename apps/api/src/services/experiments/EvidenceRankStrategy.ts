@@ -172,6 +172,25 @@ function toSchemeEdges(edges: GraphEdge[]): SchemeEdge[] {
   }));
 }
 
+/**
+ * Applies hinge centrality (betweenness) boost to any pre-ranked result set.
+ * score' = score * (1 + log(1 + hc))
+ * Results are re-sorted and re-ranked after boosting.
+ */
+export function applyHingeCentrality(
+  results: RankedResult[],
+  nodeIds: string[],
+  edges: GraphEdge[]
+): RankedResult[] {
+  const hcScores = calculateHingeCentrality(nodeIds, toSchemeEdges(edges));
+  const rescored = results.map(r => ({
+    ...r,
+    score: r.score * (1 + Math.log(1 + (hcScores.get(r.id) ?? 0))),
+  }));
+  rescored.sort((a, b) => b.score - a.score);
+  return rescored.map((item, i) => ({ ...item, rank: i + 1 }));
+}
+
 export class EvidenceRankStrategy implements RankingStrategy {
   name = 'Alg_A (EvidenceRank)';
 
