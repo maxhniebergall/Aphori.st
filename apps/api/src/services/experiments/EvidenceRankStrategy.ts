@@ -193,13 +193,18 @@ export function applyHingeCentrality(
 
 export class EvidenceRankStrategy implements RankingStrategy {
   name = 'Alg_A (EvidenceRank)';
+  private readonly damping: number;
+
+  constructor(damping = 0.85) {
+    this.damping = damping;
+  }
 
   rank(nodes: GraphNode[], edges: GraphEdge[], focalNodeId: string): RankedResult[] {
     const subNodes = toSubgraphNodes(nodes);
     const schemeEdges = toSchemeEdges(edges);
     const allNodeIds = [focalNodeId, ...nodes.map(n => n.id)];
 
-    const erScores = calculateEvidenceRank(subNodes, schemeEdges, focalNodeId);
+    const erScores = calculateEvidenceRank(subNodes, schemeEdges, focalNodeId, this.damping);
     const hcScores = calculateHingeCentrality(allNodeIds, schemeEdges);
 
     const scored = nodes.map(n => {

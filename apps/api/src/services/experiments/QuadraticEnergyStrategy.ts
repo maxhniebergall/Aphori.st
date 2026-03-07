@@ -29,11 +29,13 @@ export class QuadraticEnergyStrategy implements RankingStrategy {
   private readonly maxIterations: number;
   private readonly alpha: number;
   private readonly epsilon: number;
+  private readonly phase1Coeff: number;
 
-  constructor(maxIterations = 50, alpha = 0.2, epsilon = 0.001) {
+  constructor(maxIterations = 50, alpha = 0.2, epsilon = 0.001, phase1Coeff = 0.49) {
     this.maxIterations = maxIterations;
     this.alpha = alpha;
     this.epsilon = epsilon;
+    this.phase1Coeff = phase1Coeff;
   }
 
   rank(nodes: GraphNode[], edges: GraphEdge[], focalNodeId: string): RankedResult[] {
@@ -47,7 +49,7 @@ export class QuadraticEnergyStrategy implements RankingStrategy {
     const w = new Map<string, number>();
     for (const n of nodes) {
       const logVotes = Math.log(1 + Math.max(0, n.vote_score));
-      w.set(n.id, logMax > 0 ? 0.5 + 0.49 * (logVotes / logMax) : 0.5);
+      w.set(n.id, logMax > 0 ? 0.5 + this.phase1Coeff * (logVotes / logMax) : 0.5);
     }
 
     // ── Phase 2: Logical Convergence ──────────────────────────────────────
