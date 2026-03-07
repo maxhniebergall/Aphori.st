@@ -104,11 +104,14 @@ function firstRelevantRank(results: RankedNode[], deltaIds: Set<string>): number
 type AlgMetrics = { rr: number; rank: number | null };
 type AlgSummary = { mrr: number; mean_rank: number | null; median_rank: number | null; win_rate: number };
 
-type AlgKey = 'EvidenceRank' | 'WeightedBipolar' | 'Top'
-  | 'EvidenceRank_Vote' | 'WeightedBipolar_Vote'
-  | 'EvidenceRank_LLM' | 'WeightedBipolar_LLM'
-  | 'EvidenceRank_Vote_NoBridge' | 'WeightedBipolar_Vote_NoBridge'
-  | 'EvidenceRank_LLM_NoBridge' | 'WeightedBipolar_LLM_NoBridge';
+type AlgKey = 'EvidenceRank' | 'QuadraticEnergy' | 'DampedModular' | 'Top'
+  | 'EvidenceRank_Vote'              | 'EvidenceRank_Vote_NoBridge'
+  | 'EvidenceRank_LLM'               | 'EvidenceRank_LLM_NoBridge'
+  | 'QuadraticEnergy_Vote'           | 'QuadraticEnergy_Vote_NoBridge'
+  | 'QuadraticEnergy_LLM'            | 'QuadraticEnergy_LLM_NoBridge'
+  | 'DampedModular_Vote'             | 'DampedModular_Vote_NoBridge'
+  | 'DampedModular_LLM'              | 'DampedModular_LLM_NoBridge'
+  | 'DampedModular_ReferenceBias'    | 'DampedModular_ReferenceBias_NoBridge';
 
 interface ThreadResult {
   test_id: string;
@@ -370,7 +373,7 @@ async function main() {
 
   // ── Step 2.5: Run nightly graph processor (EvidenceRank + IBA) ──
   if (!dryRun) {
-    console.log('\n[3/5] Running nightly graph processor (EvidenceRank + WeightedBipolar)...');
+    console.log('\n[3/5] Running nightly graph processor (EvidenceRank + QuadraticEnergy)...');
     const ngpJob = await graphProcessorQueue.add('benchmark-trigger', {}, {
       jobId: `benchmark-nightly-${Date.now()}`,
     });
@@ -415,35 +418,50 @@ async function main() {
       post_id: string;
       parent_argument: string;
       evidence_rank: { items: unknown[] };
-      weighted_bipolar: { items: unknown[] };
+      quadratic_energy: { items: unknown[] };
       top: { items: unknown[] };
-      EvidenceRank_Vote?: { items: RankedNode[] };
-      WeightedBipolar_Vote?: { items: RankedNode[] };
-      EvidenceRank_LLM?: { items: RankedNode[] };
-      WeightedBipolar_LLM?: { items: RankedNode[] };
-      EvidenceRank_Vote_NoBridge?: { items: RankedNode[] };
-      WeightedBipolar_Vote_NoBridge?: { items: RankedNode[] };
-      EvidenceRank_LLM_NoBridge?: { items: RankedNode[] };
-      WeightedBipolar_LLM_NoBridge?: { items: RankedNode[] };
+      EvidenceRank_Vote?:                    { items: RankedNode[] };
+      EvidenceRank_Vote_NoBridge?:           { items: RankedNode[] };
+      EvidenceRank_LLM?:                     { items: RankedNode[] };
+      EvidenceRank_LLM_NoBridge?:            { items: RankedNode[] };
+      QuadraticEnergy_Vote?:                 { items: RankedNode[] };
+      QuadraticEnergy_Vote_NoBridge?:        { items: RankedNode[] };
+      QuadraticEnergy_LLM?:                  { items: RankedNode[] };
+      QuadraticEnergy_LLM_NoBridge?:         { items: RankedNode[] };
+      DampedModular_Vote?:                   { items: RankedNode[] };
+      DampedModular_Vote_NoBridge?:          { items: RankedNode[] };
+      DampedModular_LLM?:                    { items: RankedNode[] };
+      DampedModular_LLM_NoBridge?:           { items: RankedNode[] };
+      DampedModular_ReferenceBias?:          { items: RankedNode[] };
+      DampedModular_ReferenceBias_NoBridge?: { items: RankedNode[] };
     };
 
-    if (!data.evidence_rank?.items?.length && !data.weighted_bipolar?.items?.length && !data.top?.items?.length) {
+    if (!data.evidence_rank?.items?.length && !data.quadratic_energy?.items?.length && !data.top?.items?.length) {
       console.warn(`Skipping thread ${threadId}: empty results (analysis may not have completed)`);
       continue;
     }
 
     const rankEvidenceRank    = flattenTree(data.evidence_rank.items ?? []);
-    const rankWeightedBipolar = flattenTree(data.weighted_bipolar.items ?? []);
+    const rankQuadraticEnergy = flattenTree(data.quadratic_energy.items ?? []);
     const rankTop             = flattenTree(data.top.items ?? []);
 
-    const rankErVote      = data.EvidenceRank_Vote?.items ?? [];
-    const rankWbVote      = data.WeightedBipolar_Vote?.items ?? [];
-    const rankErLlm       = data.EvidenceRank_LLM?.items ?? [];
-    const rankWbLlm       = data.WeightedBipolar_LLM?.items ?? [];
-    const rankErVoteNB    = data.EvidenceRank_Vote_NoBridge?.items ?? [];
-    const rankWbVoteNB    = data.WeightedBipolar_Vote_NoBridge?.items ?? [];
-    const rankErLlmNB     = data.EvidenceRank_LLM_NoBridge?.items ?? [];
-    const rankWbLlmNB     = data.WeightedBipolar_LLM_NoBridge?.items ?? [];
+    const rankErVote          = data.EvidenceRank_Vote?.items ?? [];
+    const rankErVoteNB        = data.EvidenceRank_Vote_NoBridge?.items ?? [];
+    const rankErLlm           = data.EvidenceRank_LLM?.items ?? [];
+    const rankErLlmNB         = data.EvidenceRank_LLM_NoBridge?.items ?? [];
+    const rankQeVote          = data.QuadraticEnergy_Vote?.items ?? [];
+    const rankQeVoteNB        = data.QuadraticEnergy_Vote_NoBridge?.items ?? [];
+    const rankQeLlm           = data.QuadraticEnergy_LLM?.items ?? [];
+    const rankQeLlmNB         = data.QuadraticEnergy_LLM_NoBridge?.items ?? [];
+    const rankDmVote          = data.DampedModular_Vote?.items ?? [];
+    const rankDmVoteNB        = data.DampedModular_Vote_NoBridge?.items ?? [];
+    const rankDmLlm           = data.DampedModular_LLM?.items ?? [];
+    const rankDmLlmNB         = data.DampedModular_LLM_NoBridge?.items ?? [];
+    const rankDmRefBias       = data.DampedModular_ReferenceBias?.items ?? [];
+    const rankDmRefBiasNB     = data.DampedModular_ReferenceBias_NoBridge?.items ?? [];
+
+    // DampedModular production baseline: use Vote variant (no nightly precomputed column)
+    const rankDampedModular   = rankDmVote;
 
     const deltaSet = new Set(info.delta_reply_ids);
 
@@ -452,30 +470,44 @@ async function main() {
       parent_argument: data.parent_argument,
       delta_reply_ids: info.delta_reply_ids,
       algorithms: {
-        EvidenceRank: rankEvidenceRank,
-        WeightedBipolar: rankWeightedBipolar,
-        Top: rankTop,
-        EvidenceRank_Vote: rankErVote,
-        WeightedBipolar_Vote: rankWbVote,
-        EvidenceRank_LLM: rankErLlm,
-        WeightedBipolar_LLM: rankWbLlm,
-        EvidenceRank_Vote_NoBridge: rankErVoteNB,
-        WeightedBipolar_Vote_NoBridge: rankWbVoteNB,
-        EvidenceRank_LLM_NoBridge: rankErLlmNB,
-        WeightedBipolar_LLM_NoBridge: rankWbLlmNB,
+        EvidenceRank:                        rankEvidenceRank,
+        QuadraticEnergy:                     rankQuadraticEnergy,
+        DampedModular:                       rankDampedModular,
+        Top:                                 rankTop,
+        EvidenceRank_Vote:                   rankErVote,
+        EvidenceRank_Vote_NoBridge:          rankErVoteNB,
+        EvidenceRank_LLM:                    rankErLlm,
+        EvidenceRank_LLM_NoBridge:           rankErLlmNB,
+        QuadraticEnergy_Vote:                rankQeVote,
+        QuadraticEnergy_Vote_NoBridge:       rankQeVoteNB,
+        QuadraticEnergy_LLM:                 rankQeLlm,
+        QuadraticEnergy_LLM_NoBridge:        rankQeLlmNB,
+        DampedModular_Vote:                  rankDmVote,
+        DampedModular_Vote_NoBridge:         rankDmVoteNB,
+        DampedModular_LLM:                   rankDmLlm,
+        DampedModular_LLM_NoBridge:          rankDmLlmNB,
+        DampedModular_ReferenceBias:         rankDmRefBias,
+        DampedModular_ReferenceBias_NoBridge: rankDmRefBiasNB,
       },
       metrics: {
-        EvidenceRank:                   { rr: reciprocalRank(rankEvidenceRank, deltaSet),    rank: firstRelevantRank(rankEvidenceRank, deltaSet) },
-        WeightedBipolar:                { rr: reciprocalRank(rankWeightedBipolar, deltaSet), rank: firstRelevantRank(rankWeightedBipolar, deltaSet) },
-        Top:                            { rr: reciprocalRank(rankTop, deltaSet),             rank: firstRelevantRank(rankTop, deltaSet) },
-        EvidenceRank_Vote:              { rr: reciprocalRank(rankErVote, deltaSet),     rank: firstRelevantRank(rankErVote, deltaSet) },
-        WeightedBipolar_Vote:           { rr: reciprocalRank(rankWbVote, deltaSet),     rank: firstRelevantRank(rankWbVote, deltaSet) },
-        EvidenceRank_LLM:               { rr: reciprocalRank(rankErLlm, deltaSet),      rank: firstRelevantRank(rankErLlm, deltaSet) },
-        WeightedBipolar_LLM:            { rr: reciprocalRank(rankWbLlm, deltaSet),      rank: firstRelevantRank(rankWbLlm, deltaSet) },
-        EvidenceRank_Vote_NoBridge:     { rr: reciprocalRank(rankErVoteNB, deltaSet),   rank: firstRelevantRank(rankErVoteNB, deltaSet) },
-        WeightedBipolar_Vote_NoBridge:  { rr: reciprocalRank(rankWbVoteNB, deltaSet),   rank: firstRelevantRank(rankWbVoteNB, deltaSet) },
-        EvidenceRank_LLM_NoBridge:      { rr: reciprocalRank(rankErLlmNB, deltaSet),    rank: firstRelevantRank(rankErLlmNB, deltaSet) },
-        WeightedBipolar_LLM_NoBridge:   { rr: reciprocalRank(rankWbLlmNB, deltaSet),    rank: firstRelevantRank(rankWbLlmNB, deltaSet) },
+        EvidenceRank:                        { rr: reciprocalRank(rankEvidenceRank, deltaSet),    rank: firstRelevantRank(rankEvidenceRank, deltaSet) },
+        QuadraticEnergy:                     { rr: reciprocalRank(rankQuadraticEnergy, deltaSet), rank: firstRelevantRank(rankQuadraticEnergy, deltaSet) },
+        DampedModular:                       { rr: reciprocalRank(rankDampedModular, deltaSet),   rank: firstRelevantRank(rankDampedModular, deltaSet) },
+        Top:                                 { rr: reciprocalRank(rankTop, deltaSet),             rank: firstRelevantRank(rankTop, deltaSet) },
+        EvidenceRank_Vote:                   { rr: reciprocalRank(rankErVote, deltaSet),          rank: firstRelevantRank(rankErVote, deltaSet) },
+        EvidenceRank_Vote_NoBridge:          { rr: reciprocalRank(rankErVoteNB, deltaSet),        rank: firstRelevantRank(rankErVoteNB, deltaSet) },
+        EvidenceRank_LLM:                    { rr: reciprocalRank(rankErLlm, deltaSet),           rank: firstRelevantRank(rankErLlm, deltaSet) },
+        EvidenceRank_LLM_NoBridge:           { rr: reciprocalRank(rankErLlmNB, deltaSet),         rank: firstRelevantRank(rankErLlmNB, deltaSet) },
+        QuadraticEnergy_Vote:                { rr: reciprocalRank(rankQeVote, deltaSet),          rank: firstRelevantRank(rankQeVote, deltaSet) },
+        QuadraticEnergy_Vote_NoBridge:       { rr: reciprocalRank(rankQeVoteNB, deltaSet),        rank: firstRelevantRank(rankQeVoteNB, deltaSet) },
+        QuadraticEnergy_LLM:                 { rr: reciprocalRank(rankQeLlm, deltaSet),           rank: firstRelevantRank(rankQeLlm, deltaSet) },
+        QuadraticEnergy_LLM_NoBridge:        { rr: reciprocalRank(rankQeLlmNB, deltaSet),         rank: firstRelevantRank(rankQeLlmNB, deltaSet) },
+        DampedModular_Vote:                  { rr: reciprocalRank(rankDmVote, deltaSet),          rank: firstRelevantRank(rankDmVote, deltaSet) },
+        DampedModular_Vote_NoBridge:         { rr: reciprocalRank(rankDmVoteNB, deltaSet),        rank: firstRelevantRank(rankDmVoteNB, deltaSet) },
+        DampedModular_LLM:                   { rr: reciprocalRank(rankDmLlm, deltaSet),           rank: firstRelevantRank(rankDmLlm, deltaSet) },
+        DampedModular_LLM_NoBridge:          { rr: reciprocalRank(rankDmLlmNB, deltaSet),         rank: firstRelevantRank(rankDmLlmNB, deltaSet) },
+        DampedModular_ReferenceBias:         { rr: reciprocalRank(rankDmRefBias, deltaSet),       rank: firstRelevantRank(rankDmRefBias, deltaSet) },
+        DampedModular_ReferenceBias_NoBridge: { rr: reciprocalRank(rankDmRefBiasNB, deltaSet),    rank: firstRelevantRank(rankDmRefBiasNB, deltaSet) },
       },
     });
   }
@@ -506,26 +538,36 @@ async function main() {
   };
 
   const algKeys: AlgKey[] = [
-    'EvidenceRank', 'WeightedBipolar', 'Top',
-    'EvidenceRank_Vote', 'WeightedBipolar_Vote',
-    'EvidenceRank_LLM', 'WeightedBipolar_LLM',
-    'EvidenceRank_Vote_NoBridge', 'WeightedBipolar_Vote_NoBridge',
-    'EvidenceRank_LLM_NoBridge', 'WeightedBipolar_LLM_NoBridge',
+    'EvidenceRank', 'QuadraticEnergy', 'DampedModular', 'Top',
+    'EvidenceRank_Vote',              'EvidenceRank_Vote_NoBridge',
+    'EvidenceRank_LLM',               'EvidenceRank_LLM_NoBridge',
+    'QuadraticEnergy_Vote',           'QuadraticEnergy_Vote_NoBridge',
+    'QuadraticEnergy_LLM',            'QuadraticEnergy_LLM_NoBridge',
+    'DampedModular_Vote',             'DampedModular_Vote_NoBridge',
+    'DampedModular_LLM',              'DampedModular_LLM_NoBridge',
+    'DampedModular_ReferenceBias',    'DampedModular_ReferenceBias_NoBridge',
   ];
 
   // Compare each algorithm against its closest related baseline
   const vsKeyMap: Record<AlgKey, AlgKey> = {
-    EvidenceRank:                   'WeightedBipolar',
-    WeightedBipolar:                'EvidenceRank',
-    Top:                            'EvidenceRank',
-    EvidenceRank_Vote:              'EvidenceRank',
-    WeightedBipolar_Vote:           'WeightedBipolar',
-    EvidenceRank_LLM:               'EvidenceRank',
-    WeightedBipolar_LLM:            'WeightedBipolar',
-    EvidenceRank_Vote_NoBridge:     'EvidenceRank_Vote',
-    WeightedBipolar_Vote_NoBridge:  'WeightedBipolar_Vote',
-    EvidenceRank_LLM_NoBridge:      'EvidenceRank_LLM',
-    WeightedBipolar_LLM_NoBridge:   'WeightedBipolar_LLM',
+    EvidenceRank:                        'QuadraticEnergy',
+    QuadraticEnergy:                     'EvidenceRank',
+    DampedModular:                       'EvidenceRank',
+    Top:                                 'EvidenceRank',
+    EvidenceRank_Vote:                   'EvidenceRank',
+    EvidenceRank_Vote_NoBridge:          'EvidenceRank_Vote',
+    EvidenceRank_LLM:                    'EvidenceRank',
+    EvidenceRank_LLM_NoBridge:           'EvidenceRank_LLM',
+    QuadraticEnergy_Vote:                'QuadraticEnergy',
+    QuadraticEnergy_Vote_NoBridge:       'QuadraticEnergy_Vote',
+    QuadraticEnergy_LLM:                 'QuadraticEnergy',
+    QuadraticEnergy_LLM_NoBridge:        'QuadraticEnergy_LLM',
+    DampedModular_Vote:                  'DampedModular',
+    DampedModular_Vote_NoBridge:         'DampedModular_Vote',
+    DampedModular_LLM:                   'DampedModular',
+    DampedModular_LLM_NoBridge:          'DampedModular_LLM',
+    DampedModular_ReferenceBias:         'DampedModular',
+    DampedModular_ReferenceBias_NoBridge: 'DampedModular_ReferenceBias',
   };
 
   const summaryMap = Object.fromEntries(
@@ -568,6 +610,8 @@ async function main() {
   }
 
   await closePool();
+  await v3Queue.close();
+  await graphProcessorQueue.close();
 }
 
 main().catch(err => {

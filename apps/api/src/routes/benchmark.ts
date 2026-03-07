@@ -6,7 +6,8 @@ import { createV3HypergraphRepo } from '../db/repositories/V3HypergraphRepo.js';
 import { getPool } from '../db/pool.js';
 import { getArgumentService } from '../services/argumentService.js';
 import { EvidenceRankStrategy } from '../services/experiments/EvidenceRankStrategy.js';
-import { WeightedBipolarStrategy } from '../services/experiments/WeightedBipolarStrategy.js';
+import { QuadraticEnergyStrategy } from '../services/experiments/QuadraticEnergyStrategy.js';
+import { DampedModularStrategy } from '../services/experiments/DampedModularStrategy.js';
 import type { GraphNode, GraphEdge, RankedResult } from '../services/experiments/RankingStrategy.js';
 import logger from '../logger.js';
 import type { ApiError } from '@chitin/shared';
@@ -124,7 +125,7 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     // Fetch existing 3 algorithms + thread graph in parallel
     const [algA, algB, algTop, threadGraph] = await Promise.all([
       buildSyntheticThread('post', postId, 100, undefined, 'evidence'),
-      buildSyntheticThread('post', postId, 100, undefined, 'weighted_bipolar'),
+      buildSyntheticThread('post', postId, 100, undefined, 'quadratic_energy'),
       buildTopThread(postId, 10000),
       repo.getThreadGraph(postId),
     ]);
@@ -153,7 +154,8 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     }));
 
     const erStrategy = new EvidenceRankStrategy();
-    const wbStrategy = new WeightedBipolarStrategy();
+    const qeStrategy = new QuadraticEnergyStrategy();
+    const dmStrategy = new DampedModularStrategy();
 
     // Focal node = first post-sourced i_node (or empty string if none)
     const focalNodeId = threadGraph.nodes.find(n => n.source_type === 'post')?.id ?? '';
@@ -169,7 +171,7 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       }));
     }
 
-    function makeNodesWB(getBasicStrength: (n: ThreadGraphNode) => number): GraphNode[] {
+    function makeNodesQE(getBasicStrength: (n: ThreadGraphNode) => number): GraphNode[] {
       return threadGraph.nodes.map(n => ({
         id: n.id,
         text: n.text,
@@ -179,45 +181,70 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       }));
     }
 
-    const nodesER_Vote = makeNodesER(n => Math.max(1, n.vote_score));
-    const nodesER_LLM  = makeNodesER(n => llmScores.get(n.id) ?? 0.5);
-    const nodesWB_Vote = makeNodesWB(n => sigmoid(Math.max(1, n.vote_score)));
-    const nodesWB_LLM  = makeNodesWB(n => llmScores.get(n.id) ?? 0.5);
+    // Reference bias weight: nightly-adjusted basic_strength already in the DB (sigmoid of adjusted vote)
+    function refBiasStrength(n: ThreadGraphNode): number {
+      return sigmoid(n.vote_score);
+    }
 
-    // Run 4 strategy variants (sync, wrap in Promise.resolve)
+    const nodesER_Vote  = makeNodesER(n => Math.max(1, n.vote_score));
+    const nodesER_LLM   = makeNodesER(n => llmScores.get(n.id) ?? 0.5);
+    const nodesQE_Vote  = makeNodesQE(n => sigmoid(Math.max(1, n.vote_score)));
+    const nodesQE_LLM   = makeNodesQE(n => llmScores.get(n.id) ?? 0.5);
+    const nodesDM_Vote  = makeNodesQE(n => sigmoid(Math.max(1, n.vote_score)));
+    const nodesDM_LLM   = makeNodesQE(n => llmScores.get(n.id) ?? 0.5);
+    const nodesDM_RefBias = makeNodesQE(refBiasStrength);
+
+    // Run 7 strategy variants
     const [
-      ranked_er_vote, ranked_er_llm, ranked_wb_vote, ranked_wb_llm,
+      ranked_er_vote, ranked_er_llm,
+      ranked_qe_vote, ranked_qe_llm,
+      ranked_dm_vote, ranked_dm_llm, ranked_dm_refbias,
     ] = await Promise.all([
-      Promise.resolve(erStrategy.rank(nodesER_Vote, graphEdges, focalNodeId)),
-      Promise.resolve(erStrategy.rank(nodesER_LLM,  graphEdges, focalNodeId)),
-      Promise.resolve(wbStrategy.rank(nodesWB_Vote, graphEdges, focalNodeId)),
-      Promise.resolve(wbStrategy.rank(nodesWB_LLM,  graphEdges, focalNodeId)),
+      Promise.resolve(erStrategy.rank(nodesER_Vote,    graphEdges, focalNodeId)),
+      Promise.resolve(erStrategy.rank(nodesER_LLM,     graphEdges, focalNodeId)),
+      Promise.resolve(qeStrategy.rank(nodesQE_Vote,    graphEdges, focalNodeId)),
+      Promise.resolve(qeStrategy.rank(nodesQE_LLM,     graphEdges, focalNodeId)),
+      Promise.resolve(dmStrategy.rank(nodesDM_Vote,    graphEdges, focalNodeId)),
+      Promise.resolve(dmStrategy.rank(nodesDM_LLM,     graphEdges, focalNodeId)),
+      Promise.resolve(dmStrategy.rank(nodesDM_RefBias, graphEdges, focalNodeId)),
     ]);
 
-    // Aggregate to reply level with and without bridge
-    const erVote       = aggregateToReplyLevel(ranked_er_vote, threadGraph, true);
-    const erLlm        = aggregateToReplyLevel(ranked_er_llm,  threadGraph, true);
-    const wbVote       = aggregateToReplyLevel(ranked_wb_vote, threadGraph, true);
-    const wbLlm        = aggregateToReplyLevel(ranked_wb_llm,  threadGraph, true);
-    const erVoteNB     = aggregateToReplyLevel(ranked_er_vote, threadGraph, false);
-    const erLlmNB      = aggregateToReplyLevel(ranked_er_llm,  threadGraph, false);
-    const wbVoteNB     = aggregateToReplyLevel(ranked_wb_vote, threadGraph, false);
-    const wbLlmNB      = aggregateToReplyLevel(ranked_wb_llm,  threadGraph, false);
+    // Aggregate to reply level with and without bridge (7 variants × 2 = 14)
+    const erVote         = aggregateToReplyLevel(ranked_er_vote,    threadGraph, true);
+    const erLlm          = aggregateToReplyLevel(ranked_er_llm,     threadGraph, true);
+    const qeVote         = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, true);
+    const qeLlm          = aggregateToReplyLevel(ranked_qe_llm,     threadGraph, true);
+    const dmVote         = aggregateToReplyLevel(ranked_dm_vote,    threadGraph, true);
+    const dmLlm          = aggregateToReplyLevel(ranked_dm_llm,     threadGraph, true);
+    const dmRefBias      = aggregateToReplyLevel(ranked_dm_refbias, threadGraph, true);
+    const erVoteNB       = aggregateToReplyLevel(ranked_er_vote,    threadGraph, false);
+    const erLlmNB        = aggregateToReplyLevel(ranked_er_llm,     threadGraph, false);
+    const qeVoteNB       = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, false);
+    const qeLlmNB        = aggregateToReplyLevel(ranked_qe_llm,     threadGraph, false);
+    const dmVoteNB       = aggregateToReplyLevel(ranked_dm_vote,    threadGraph, false);
+    const dmLlmNB        = aggregateToReplyLevel(ranked_dm_llm,     threadGraph, false);
+    const dmRefBiasNB    = aggregateToReplyLevel(ranked_dm_refbias, threadGraph, false);
 
     res.json({
       post_id: postId,
       parent_argument: post.content,
       evidence_rank: algA,
-      weighted_bipolar: algB,
+      quadratic_energy: algB,
       top: algTop,
-      EvidenceRank_Vote:              { items: erVote },
-      WeightedBipolar_Vote:           { items: wbVote },
-      EvidenceRank_LLM:               { items: erLlm },
-      WeightedBipolar_LLM:            { items: wbLlm },
-      EvidenceRank_Vote_NoBridge:     { items: erVoteNB },
-      WeightedBipolar_Vote_NoBridge:  { items: wbVoteNB },
-      EvidenceRank_LLM_NoBridge:      { items: erLlmNB },
-      WeightedBipolar_LLM_NoBridge:   { items: wbLlmNB },
+      EvidenceRank_Vote:                    { items: erVote },
+      EvidenceRank_Vote_NoBridge:           { items: erVoteNB },
+      EvidenceRank_LLM:                     { items: erLlm },
+      EvidenceRank_LLM_NoBridge:            { items: erLlmNB },
+      QuadraticEnergy_Vote:                 { items: qeVote },
+      QuadraticEnergy_Vote_NoBridge:        { items: qeVoteNB },
+      QuadraticEnergy_LLM:                  { items: qeLlm },
+      QuadraticEnergy_LLM_NoBridge:         { items: qeLlmNB },
+      DampedModular_Vote:                   { items: dmVote },
+      DampedModular_Vote_NoBridge:          { items: dmVoteNB },
+      DampedModular_LLM:                    { items: dmLlm },
+      DampedModular_LLM_NoBridge:           { items: dmLlmNB },
+      DampedModular_ReferenceBias:          { items: dmRefBias },
+      DampedModular_ReferenceBias_NoBridge: { items: dmRefBiasNB },
     });
   } catch (error) {
     logger.error('Benchmark thread endpoint failed', {

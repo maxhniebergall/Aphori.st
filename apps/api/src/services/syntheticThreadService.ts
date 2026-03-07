@@ -24,7 +24,7 @@ interface ScoredCandidate {
 export function scoreAndGroup(
   rows: CandidateRow[],
   parentScore: number,
-  sortBy: 'evidence' | 'weighted_bipolar' = 'evidence'
+  sortBy: 'evidence' | 'weighted_bipolar' | 'quadratic_energy' = 'evidence'
 ): { byAdu: Map<string, ScoredCandidate[]>; byReplyId: Map<string, ScoredCandidate> } {
   // Group rows by reply_id
   const replyMap = new Map<string, CandidateRow[]>();
@@ -48,7 +48,7 @@ export function scoreAndGroup(
     let baseScore = 0;
     for (const c of candidates) {
       let nodeScore: number;
-      if (sortBy === 'weighted_bipolar') {
+      if (sortBy === 'weighted_bipolar' || sortBy === 'quadratic_energy') {
         nodeScore = (c.wb_score > 0 ? c.wb_score : 0.5) * Math.log(1 + c.degree_centrality);
       } else {
         const er = c.evidence_rank > 0 ? c.evidence_rank : parentScore;
@@ -210,7 +210,7 @@ export async function buildSyntheticThread(
   parentId: string,
   limit: number,
   cursor?: string,
-  sortBy: 'evidence' | 'weighted_bipolar' = 'evidence',
+  sortBy: 'evidence' | 'weighted_bipolar' | 'quadratic_energy' = 'evidence',
   currentDepth: number = 1,
   parentScore: number = 0
 ): Promise<SyntheticThreadResponse> {
