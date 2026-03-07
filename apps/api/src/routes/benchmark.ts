@@ -45,7 +45,7 @@ interface FlatRankedNode {
 function aggregateToReplyLevel(
   rankResults: RankedResult[],
   threadGraph: ThreadGraph,
-  withBridge: boolean
+  bridgeCoeff: number
 ): FlatRankedNode[] {
   // Build degree_centrality in-memory: count unique scheme edges per i_node as premise
   const degreeCentrality = new Map<string, number>();
@@ -69,7 +69,7 @@ function aggregateToReplyLevel(
     }
   }
 
-  if (withBridge) {
+  if (bridgeCoeff > 0) {
     // Count unique conclusion targets per reply for bridge multiplier
     const replyTargets = new Map<string, Set<string>>();
     for (const [iNodeId, conclusionIds] of threadGraph.nodeTargets) {
@@ -81,7 +81,7 @@ function aggregateToReplyLevel(
     }
     for (const [replyId, baseScore] of replyScores) {
       const uniqueTargets = replyTargets.get(replyId)?.size ?? 1;
-      const bridgeMultiplier = 1.0 + 0.5 * (uniqueTargets - 1);
+      const bridgeMultiplier = 1.0 + bridgeCoeff * (uniqueTargets - 1);
       replyScores.set(replyId, baseScore * bridgeMultiplier);
     }
   }
@@ -96,6 +96,30 @@ function aggregateToReplyLevel(
     parent_id: null,
     parent_text: null,
   }));
+}
+
+/**
+ * Combine two ranked result sets by normalizing each to [0,1] and multiplying.
+ * ER and QE operate in very different score ranges (ER scales with vote magnitudes,
+ * QE is sigmoid-bounded), so normalization is required before combining.
+ * The product acts as an AND: both strategies must agree for a node to rank highly.
+ */
+function combineRankings(a: RankedResult[], b: RankedResult[]): RankedResult[] {
+  if (a.length === 0 || b.length === 0) return [];
+  const aScores = a.map(r => r.score);
+  const bScores = b.map(r => r.score);
+  const aMin = Math.min(...aScores), aMax = Math.max(...aScores);
+  const bMin = Math.min(...bScores), bMax = Math.max(...bScores);
+  const aRange = aMax - aMin || 1;
+  const bRange = bMax - bMin || 1;
+
+  const bNorm = new Map(b.map(r => [r.id, (r.score - bMin) / bRange]));
+  const combined = a.map(r => ({
+    ...r,
+    score: ((r.score - aMin) / aRange) * (bNorm.get(r.id) ?? 0),
+  }));
+  combined.sort((x, y) => y.score - x.score);
+  return combined.map((item, i) => ({ ...item, rank: i + 1 }));
 }
 
 /**
@@ -245,18 +269,23 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     const allNodeIds = [focalNodeId, ...threadGraph.nodes.map(n => n.id)];
     const ranked_dm_vote_hc = applyHingeCentrality(ranked_dm_vote, allNodeIds, graphEdges);
 
-    // Aggregate to reply level (kept variants only)
-    const erVote        = aggregateToReplyLevel(ranked_er_vote,    threadGraph, true);
-    const erVoteNB      = aggregateToReplyLevel(ranked_er_vote,    threadGraph, false);
-    const erLlm         = aggregateToReplyLevel(ranked_er_llm,     threadGraph, true);
-    const erLlmNB       = aggregateToReplyLevel(ranked_er_llm,     threadGraph, false);
-    const qeVote        = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, true);
-    const qeVoteNB      = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, false);
-    const qeLlm         = aggregateToReplyLevel(ranked_qe_llm,     threadGraph, true);
-    const qeLlmNB       = aggregateToReplyLevel(ranked_qe_llm,     threadGraph, false);
-    const dmLlm         = aggregateToReplyLevel(ranked_dm_llm,     threadGraph, true);
-    const dmRefBiasNB   = aggregateToReplyLevel(ranked_dm_refbias, threadGraph, false);
-    const dmVoteHCNB    = aggregateToReplyLevel(ranked_dm_vote_hc, threadGraph, false);
+    // Aggregate to reply level — tuned bridge coefficients per variant
+    // (0.0 = no bridge, tuned values from offline grid search)
+    const erVote        = aggregateToReplyLevel(ranked_er_vote,    threadGraph, 1.0);
+    const erVoteNB      = aggregateToReplyLevel(ranked_er_vote,    threadGraph, 0.0);
+    const erLlm         = aggregateToReplyLevel(ranked_er_llm,     threadGraph, 0.0);
+    const erLlmNB       = aggregateToReplyLevel(ranked_er_llm,     threadGraph, 0.0);
+    const qeVote        = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, 0.25);
+    const qeVoteNB      = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, 0.0);
+    const qeLlm         = aggregateToReplyLevel(ranked_qe_llm,     threadGraph, 0.25);
+    const qeLlmNB       = aggregateToReplyLevel(ranked_qe_llm,     threadGraph, 0.0);
+    const dmLlm         = aggregateToReplyLevel(ranked_dm_llm,     threadGraph, 2.0);
+    const dmRefBiasNB   = aggregateToReplyLevel(ranked_dm_refbias, threadGraph, 0.0);
+    const dmVoteHCNB    = aggregateToReplyLevel(ranked_dm_vote_hc, threadGraph, 0.0);
+
+    // Combined ER×QE: normalize each to [0,1] then multiply (AND combination)
+    const combinedVote  = aggregateToReplyLevel(combineRankings(ranked_er_vote, ranked_qe_vote), threadGraph, 1.0);
+    const combinedLlm   = aggregateToReplyLevel(combineRankings(ranked_er_llm,  ranked_qe_llm),  threadGraph, 0.0);
 
     const includeRaw = req.query['raw'] === '1';
     const rawData = includeRaw ? {
@@ -288,6 +317,8 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       DampedModular_LLM:                    { items: dmLlm },
       DampedModular_ReferenceBias_NoBridge: { items: dmRefBiasNB },
       DampedModular_Vote_HC_NoBridge:       { items: dmVoteHCNB },
+      Combined_ER_QE_Vote:                  { items: combinedVote },
+      Combined_ER_QE_LLM:                   { items: combinedLlm },
     });
   } catch (error) {
     logger.error('Benchmark thread endpoint failed', {
