@@ -1,27 +1,28 @@
 import type { GraphNode, GraphEdge, RankedResult, RankingStrategy } from './RankingStrategy.js';
+import { applyHingeCentrality } from './EvidenceRankStrategy.js';
 
 /**
- * Continuous Dynamical Systems for Weighted Bipolar Argumentation (Potyka 2018).
+ * Bipartite Argumentation Ranking Strategy (Potyka 2018 + Burt network brokerage).
  *
- * Converges provably on cyclic graphs via Euler-based continuous approximation.
+ * Three strictly separated phases:
  *
- * Algorithm:
- *   w_i = clamp(basic_strength, 0.01, 0.99)
- *   B_i = ln(w_i / (1 - w_i))   [logit / inverse sigmoid]
- *   v_i initialised to w_i
- *   Each step:
- *     E_i      = B_i + Σ_supporters(v_s) - Σ_attackers(v_a)
- *     target_i = 1 / (1 + exp(-E_i))   [sigmoid]
- *     v_i_next = v_i + alpha * (target_i - v_i)
- *   Halt when max |v_i_next - v_i| < epsilon
+ * Phase 1 — Epistemic Prior (Log-Scaled Votes):
+ *   w_i = 0.5 + 0.49 * ln(1 + votes_i) / ln(1 + max_votes_in_graph)
+ *   Guarantees w_i ∈ [0.5, 0.99], satisfying logit domain requirements.
+ *   Log-scaling decompresses the bimodal Reddit vote distribution.
  *
- * Inertia: no edges → E_i = B_i → target = sigmoid(logit(w_i)) = w_i → v_i = w_i
+ * Phase 2 — Logical Convergence (Quadratic Energy):
+ *   B_i = logit(w_i)
+ *   E_i = B_i + Σ_supporters(v_s) - Σ_attackers(v_a)
+ *   v_i += α * (sigmoid(E_i) - v_i)   [α = 0.2, halt when max Δv < ε]
+ *   Converges on cyclic graphs — no oscillation.
+ *   Output: Dialectical Acceptability score v_i.
+ *
+ * Phase 3 — Bipartite Utility Scoring (Hinge Centrality):
+ *   Final_Rank_i = v_i × (1 + ln(1 + HC_i))
+ *   Applied post-convergence; does not alter the inner loop.
+ *   HC_i is Brandes' betweenness centrality over the argument graph.
  */
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}
-
 export class QuadraticEnergyStrategy implements RankingStrategy {
   name = 'Alg_C (QuadraticEnergy)';
 
@@ -35,22 +36,26 @@ export class QuadraticEnergyStrategy implements RankingStrategy {
     this.epsilon = epsilon;
   }
 
-  rank(nodes: GraphNode[], edges: GraphEdge[], _focalNodeId: string): RankedResult[] {
+  rank(nodes: GraphNode[], edges: GraphEdge[], focalNodeId: string): RankedResult[] {
     if (nodes.length === 0) return [];
 
-    // Clamp basic_strength to open interval for logit
+    // ── Phase 1: Epistemic Prior Initialization ───────────────────────────
+    // w_i = 0.5 + 0.49 * ln(1 + votes_i) / ln(1 + max_votes)
+    const maxVotes = nodes.reduce((m, n) => Math.max(m, Math.max(0, n.vote_score)), 0);
+    const logMax = Math.log(1 + maxVotes);
+
     const w = new Map<string, number>();
     for (const n of nodes) {
-      w.set(n.id, clamp(n.basic_strength, 0.01, 0.99));
+      const logVotes = Math.log(1 + Math.max(0, n.vote_score));
+      w.set(n.id, logMax > 0 ? 0.5 + 0.49 * (logVotes / logMax) : 0.5);
     }
 
-    // Base energy B_i = logit(w_i)
+    // ── Phase 2: Logical Convergence ──────────────────────────────────────
     const B = new Map<string, number>();
     for (const [id, wi] of w) {
       B.set(id, Math.log(wi / (1 - wi)));
     }
 
-    // Build supporter/attacker maps
     const supporters = new Map<string, string[]>();
     const attackers  = new Map<string, string[]>();
     for (const n of nodes) {
@@ -65,7 +70,6 @@ export class QuadraticEnergyStrategy implements RankingStrategy {
       }
     }
 
-    // Initialise
     const v = new Map<string, number>(w);
 
     for (let t = 0; t < this.maxIterations; t++) {
@@ -77,9 +81,9 @@ export class QuadraticEnergyStrategy implements RankingStrategy {
         const supportSum = (supporters.get(n.id) ?? []).reduce((acc, sid) => acc + (v.get(sid) ?? 0), 0);
         const attackSum  = (attackers.get(n.id)  ?? []).reduce((acc, aid) => acc + (v.get(aid) ?? 0), 0);
 
-        const E_i      = bi + supportSum - attackSum;
-        const target_i = 1 / (1 + Math.exp(-E_i));
-        const vi_next  = (v.get(n.id) ?? 0) + this.alpha * (target_i - (v.get(n.id) ?? 0));
+        const E_i     = bi + supportSum - attackSum;
+        const target  = 1 / (1 + Math.exp(-E_i));
+        const vi_next = (v.get(n.id) ?? 0) + this.alpha * (target - (v.get(n.id) ?? 0));
 
         next.set(n.id, vi_next);
         maxDelta = Math.max(maxDelta, Math.abs(vi_next - (v.get(n.id) ?? 0)));
@@ -89,14 +93,19 @@ export class QuadraticEnergyStrategy implements RankingStrategy {
       if (maxDelta < this.epsilon) break;
     }
 
-    const scored = nodes.map(n => ({ node: n, score: v.get(n.id)! }));
-    scored.sort((a, b) => b.score - a.score);
-
-    return scored.map((item, i) => ({
-      id: item.node.id,
-      text: item.node.text,
+    // ── Phase 3: Bipartite Utility Scoring ───────────────────────────────
+    // Final_Rank_i = v_i × (1 + ln(1 + HC_i))
+    const preHC: RankedResult[] = nodes.map((n, i) => ({
+      id: n.id,
+      text: n.text,
       rank: i + 1,
-      score: item.score,
+      score: v.get(n.id)!,
     }));
+
+    const allNodeIds = focalNodeId
+      ? [focalNodeId, ...nodes.map(n => n.id)]
+      : nodes.map(n => n.id);
+
+    return applyHingeCentrality(preHC, allNodeIds, edges);
   }
 }
