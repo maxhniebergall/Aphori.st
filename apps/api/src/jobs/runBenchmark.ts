@@ -115,7 +115,9 @@ type AlgKey = 'Top'
   | 'QuadraticEnergy_LLM'            | 'QuadraticEnergy_LLM_NoBridge'
   | 'DampedModular_LLM'
   | 'DampedModular_ReferenceBias_NoBridge'
-  | 'DampedModular_Vote_HC_NoBridge';
+  | 'DampedModular_Vote_HC_NoBridge'
+  | 'Combined_ER_QE_Vote'
+  | 'Combined_ER_QE_LLM';
 
 interface RawThreadData {
   focalNodeId: string;
@@ -442,6 +444,8 @@ async function main() {
         DampedModular_LLM?:                    { items: RankedNode[] };
         DampedModular_ReferenceBias_NoBridge?: { items: RankedNode[] };
         DampedModular_Vote_HC_NoBridge?:       { items: RankedNode[] };
+        Combined_ER_QE_Vote?:                  { items: RankedNode[] };
+        Combined_ER_QE_LLM?:                   { items: RankedNode[] };
       }};
     })
   );
@@ -467,7 +471,9 @@ async function main() {
     const rankQeLlmNB    = data.QuadraticEnergy_LLM_NoBridge?.items ?? [];
     const rankDmLlm      = data.DampedModular_LLM?.items ?? [];
     const rankDmRefBiasNB = data.DampedModular_ReferenceBias_NoBridge?.items ?? [];
-    const rankDmVoteHCNB = data.DampedModular_Vote_HC_NoBridge?.items ?? [];
+    const rankDmVoteHCNB     = data.DampedModular_Vote_HC_NoBridge?.items ?? [];
+    const rankCombinedVote   = data.Combined_ER_QE_Vote?.items ?? [];
+    const rankCombinedLlm    = data.Combined_ER_QE_LLM?.items ?? [];
 
     const deltaSet = new Set(info.delta_reply_ids);
 
@@ -489,6 +495,8 @@ async function main() {
         DampedModular_LLM:                   rankDmLlm,
         DampedModular_ReferenceBias_NoBridge: rankDmRefBiasNB,
         DampedModular_Vote_HC_NoBridge:      rankDmVoteHCNB,
+        Combined_ER_QE_Vote:                 rankCombinedVote,
+        Combined_ER_QE_LLM:                  rankCombinedLlm,
       },
       metrics: {
         Top:                                 { rr: reciprocalRank(rankTop, deltaSet),             rank: firstRelevantRank(rankTop, deltaSet) },
@@ -503,6 +511,8 @@ async function main() {
         DampedModular_LLM:                   { rr: reciprocalRank(rankDmLlm, deltaSet),           rank: firstRelevantRank(rankDmLlm, deltaSet) },
         DampedModular_ReferenceBias_NoBridge: { rr: reciprocalRank(rankDmRefBiasNB, deltaSet),   rank: firstRelevantRank(rankDmRefBiasNB, deltaSet) },
         DampedModular_Vote_HC_NoBridge:      { rr: reciprocalRank(rankDmVoteHCNB, deltaSet),      rank: firstRelevantRank(rankDmVoteHCNB, deltaSet) },
+        Combined_ER_QE_Vote:                 { rr: reciprocalRank(rankCombinedVote, deltaSet),    rank: firstRelevantRank(rankCombinedVote, deltaSet) },
+        Combined_ER_QE_LLM:                  { rr: reciprocalRank(rankCombinedLlm, deltaSet),     rank: firstRelevantRank(rankCombinedLlm, deltaSet) },
       },
     });
   }
@@ -546,6 +556,8 @@ async function main() {
     'DampedModular_LLM',
     'DampedModular_ReferenceBias_NoBridge',
     'DampedModular_Vote_HC_NoBridge',
+    'Combined_ER_QE_Vote',
+    'Combined_ER_QE_LLM',
   ];
 
   // Compare each algorithm against its closest related baseline
@@ -562,6 +574,8 @@ async function main() {
     DampedModular_LLM:                       'EvidenceRank_Vote',
     DampedModular_ReferenceBias_NoBridge:    'EvidenceRank_Vote',
     DampedModular_Vote_HC_NoBridge:          'EvidenceRank_Vote',
+    Combined_ER_QE_Vote:                     'EvidenceRank_Vote',
+    Combined_ER_QE_LLM:                      'EvidenceRank_Vote',
   };
 
   const summaryMap = Object.fromEntries(
