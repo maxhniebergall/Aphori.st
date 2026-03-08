@@ -59,11 +59,64 @@ async function main() {
   const pool = getPool();
 
   // ── Step 1: Delete contaminated analysis runs ──────────────────────────────
-  console.log('[1/2] Deleting contaminated v3_analysis_runs...');
+  // Step 1a: Clear intra-contaminated canonical references to unblock ON DELETE RESTRICT.
+  //
+  // v3_nodes_i.canonical_i_node_id has ON DELETE RESTRICT (036_i_node_canonical.sql).
+  // Within the 23-minute contaminated window, early contaminated i-nodes could have
+  // become canonical for later contaminated i-nodes. The bulk DELETE would deadlock on
+  // the RESTRICT if those intra-contaminated references aren't cleared first.
+  // Nulling them out here is safe: both the canonical and the duplicate will be deleted
+  // moments later, so the temporary promotion to canonical status is harmless.
+  console.log('[1/3] Clearing intra-contaminated canonical references (ON DELETE RESTRICT guard)...');
+  const CHUNK = 200;
+  let canonicalCleared = 0;
+
+  for (let i = 0; i < replyIds.length; i += CHUNK) {
+    const chunk = replyIds.slice(i, i + CHUNK);
+    const placeholders = chunk.map((_, j) => `$${j + 1}`).join(', ');
+
+    if (!opts.dryRun) {
+      // NULL out canonical_i_node_id on any contaminated i-node that points to
+      // another contaminated i-node as its canonical.
+      const result = await pool.query(
+        `UPDATE v3_nodes_i
+         SET canonical_i_node_id = NULL
+         WHERE canonical_i_node_id IN (
+           SELECT ni.id FROM v3_nodes_i ni
+           JOIN v3_analysis_runs ar ON ni.analysis_run_id = ar.id
+           WHERE ar.source_type = 'reply' AND ar.source_id IN (${placeholders})
+         )
+         AND analysis_run_id IN (
+           SELECT id FROM v3_analysis_runs
+           WHERE source_type = 'reply' AND source_id IN (${placeholders})
+         )`,
+        [...chunk, ...chunk]
+      );
+      canonicalCleared += result.rowCount ?? 0;
+    } else {
+      const { rows } = await pool.query(
+        `SELECT COUNT(*) FROM v3_nodes_i
+         WHERE canonical_i_node_id IN (
+           SELECT ni.id FROM v3_nodes_i ni
+           JOIN v3_analysis_runs ar ON ni.analysis_run_id = ar.id
+           WHERE ar.source_type = 'reply' AND ar.source_id IN (${placeholders})
+         )
+         AND analysis_run_id IN (
+           SELECT id FROM v3_analysis_runs
+           WHERE source_type = 'reply' AND source_id IN (${placeholders})
+         )`,
+        [...chunk, ...chunk]
+      );
+      canonicalCleared += parseInt(rows[0].count);
+    }
+  }
+  console.log(`  ${opts.dryRun ? 'Would clear' : 'Cleared'} ${canonicalCleared} intra-contaminated canonical references\n`);
+
+  // Step 1b: Delete the analysis runs (cascades to all v3_nodes_i, v3_nodes_s, and their
+  // downstream tables via ON DELETE CASCADE).
+  console.log('[2/3] Deleting contaminated v3_analysis_runs...');
   let deleted = 0;
 
-  // Process deletes in large chunks (no rate concern, just DB)
-  const CHUNK = 200;
   for (let i = 0; i < replyIds.length; i += CHUNK) {
     const chunk = replyIds.slice(i, i + CHUNK);
     const placeholders = chunk.map((_, j) => `$${j + 1}`).join(', ');
@@ -87,8 +140,8 @@ async function main() {
 
   console.log(`  ${opts.dryRun ? 'Would delete' : 'Deleted'} ${deleted} analysis runs\n`);
 
-  // ── Step 2: Re-enqueue in throttled batches ────────────────────────────────
-  console.log('[2/2] Re-enqueueing for fresh analysis...');
+  // ── Step 3: Re-enqueue in throttled batches ────────────────────────────────
+  console.log('[3/3] Re-enqueueing for fresh analysis...');
 
   let enqueued = 0;
   let skipped = 0;
