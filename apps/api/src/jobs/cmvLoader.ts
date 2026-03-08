@@ -125,23 +125,40 @@ function parseThread(raw: RawThread): CMVThread | null {
   const deltaIds = findDeltaCommentIds(allComments);
   if (deltaIds.length === 0) return null;
 
-  const nodes: CMVNode[] = [opNode];
-  const edges: CMVEdge[] = [];
-
-  // Build a set of valid comment IDs for edge validation
-  const validIds = new Set<string>([focalNodeId]);
+  // Collect all valid comment nodes
+  const commentNodes: CMVNode[] = [];
 
   for (const c of allComments) {
     if (!c.id || !c.body || c.body === '[deleted]' || c.body === '[removed]') continue;
     if (c.author === 'DeltaBot') continue; // exclude meta-comments
 
-    nodes.push({
+    commentNodes.push({
       id: c.id,
       text: c.body,
       vote_score: c.score ?? 0,
     });
-    validIds.add(c.id);
   }
+
+  // Limit to top 200 comments by vote score, always keeping delta winners
+  const MAX_REPLIES = 200;
+  let keptComments: CMVNode[];
+  if (commentNodes.length <= MAX_REPLIES) {
+    keptComments = commentNodes;
+  } else {
+    const deltaIdSet = new Set(deltaIds);
+    const deltaComments = commentNodes.filter(n => deltaIdSet.has(n.id));
+    const nonDelta = commentNodes.filter(n => !deltaIdSet.has(n.id));
+    nonDelta.sort((a, b) => b.vote_score - a.vote_score);
+    const slotsForNonDelta = Math.max(0, MAX_REPLIES - deltaComments.length);
+    keptComments = [...deltaComments, ...nonDelta.slice(0, slotsForNonDelta)];
+  }
+
+  const nodes: CMVNode[] = [opNode, ...keptComments];
+  const edges: CMVEdge[] = [];
+
+  // Build a set of valid comment IDs for edge validation
+  const validIds = new Set<string>([focalNodeId]);
+  for (const n of keptComments) validIds.add(n.id);
 
   for (const c of allComments) {
     if (!c.id || !c.parent_id) continue;
