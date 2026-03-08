@@ -17,8 +17,10 @@
  * at ~20/min, giving the worker a comfortable margin.
  */
 import fs from 'fs';
+import crypto from 'crypto';
 import { getPool, closePool } from '../db/pool.js';
 import { enqueueV3Analysis } from './enqueueV3Analysis.js';
+import { v3Queue } from './v3Queue.js';
 import { logger } from '../logger.js';
 
 function parseArgs() {
@@ -94,14 +96,15 @@ async function main() {
   for (let i = 0; i < replyIds.length; i += opts.batchSize) {
     const batch = replyIds.slice(i, i + opts.batchSize);
 
-    // Fetch reply content + parent post id for each reply in batch
+    // Fetch reply content + parent context for each reply in batch
     const placeholders = batch.map((_, j) => `$${j + 1}`).join(', ');
     const { rows } = await pool.query<{
       id: string;
       content: string;
       post_id: string;
+      parent_reply_id: string | null;
     }>(
-      `SELECT id, content, post_id FROM replies
+      `SELECT id, content, post_id, parent_reply_id FROM replies
        WHERE id IN (${placeholders}) AND deleted_at IS NULL`,
       batch
     );
@@ -112,11 +115,21 @@ async function main() {
       const row = rowMap.get(replyId);
       if (!row) { skipped++; continue; }
 
+      // Correct parent: reply-to-reply uses parent_reply_id, direct replies use post_id
+      const parent = row.parent_reply_id
+        ? { sourceType: 'reply' as const, sourceId: row.parent_reply_id }
+        : { sourceType: 'post' as const, sourceId: row.post_id };
+
       if (!opts.dryRun) {
-        await enqueueV3Analysis('reply', row.id, row.content, {
-          sourceType: 'post',
-          sourceId: row.post_id,
-        });
+        // BullMQ deduplication: completed jobs with the same jobId are silently
+        // no-op'd by queue.add(). Remove the old completed job first so the
+        // worker actually re-processes with the correct Gemini model.
+        const contentHash = crypto.createHash('sha256').update(row.content).digest('hex');
+        const jobId = `v3-reply-${row.id}-${contentHash.substring(0, 8)}`;
+        const existingJob = await v3Queue.getJob(jobId);
+        if (existingJob) await existingJob.remove();
+
+        await enqueueV3Analysis('reply', row.id, row.content, parent);
       }
       enqueued++;
     }
