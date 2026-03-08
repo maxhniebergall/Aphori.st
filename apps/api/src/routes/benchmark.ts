@@ -201,6 +201,7 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     }));
 
     const erStrategy = new EvidenceRankStrategy();
+    const erStrategy95 = new EvidenceRankStrategy(0.95);
     const qeStrategy = new QuadraticEnergyStrategy();
     const dmStrategy = new DampedModularStrategy();
 
@@ -250,14 +251,17 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     const nodesDM_LLM   = makeNodesDM(n => llmScores.get(n.id) ?? 0.5);
     const nodesDM_RefBias = makeNodesDM(n => sigmoid(n.vote_score));
 
-    // Run 7 strategy variants. QE includes HC internally (Phase 3); DM does not.
+    // Run 9 strategy variants. QE includes HC internally (Phase 3); DM does not.
     const [
       ranked_er_vote, ranked_er_llm,
+      ranked_er_vote95, ranked_er_llm95,
       ranked_qe_vote, ranked_qe_llm,
       ranked_dm_vote, ranked_dm_llm, ranked_dm_refbias,
     ] = await Promise.all([
       Promise.resolve(erStrategy.rank(nodesER_Vote,    graphEdges, focalNodeId)),
       Promise.resolve(erStrategy.rank(nodesER_LLM,     graphEdges, focalNodeId)),
+      Promise.resolve(erStrategy95.rank(nodesER_Vote,  graphEdges, focalNodeId)),
+      Promise.resolve(erStrategy95.rank(nodesER_LLM,   graphEdges, focalNodeId)),
       Promise.resolve(qeStrategy.rank(nodesQE_Vote,    graphEdges, focalNodeId)),
       Promise.resolve(qeStrategy.rank(nodesQE_LLM,     graphEdges, focalNodeId)),
       Promise.resolve(dmStrategy.rank(nodesDM_Vote,    graphEdges, focalNodeId)),
@@ -273,8 +277,9 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     // (0.0 = no bridge, tuned values from offline grid search)
     const erVote        = aggregateToReplyLevel(ranked_er_vote,    threadGraph, 1.0);
     const erVoteNB      = aggregateToReplyLevel(ranked_er_vote,    threadGraph, 0.0);
-    const erLlm         = aggregateToReplyLevel(ranked_er_llm,     threadGraph, 0.0);
     const erLlmNB       = aggregateToReplyLevel(ranked_er_llm,     threadGraph, 0.0);
+    const erVote95      = aggregateToReplyLevel(ranked_er_vote95,  threadGraph, 1.0);
+    const erLlm95       = aggregateToReplyLevel(ranked_er_llm95,   threadGraph, 0.0);
     const qeVote        = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, 0.25);
     const qeVoteNB      = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, 0.0);
     const qeLlm         = aggregateToReplyLevel(ranked_qe_llm,     threadGraph, 0.25);
@@ -308,7 +313,6 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       ...(rawData !== undefined ? { raw_data: rawData } : {}),
       EvidenceRank_Vote:                    { items: erVote },
       EvidenceRank_Vote_NoBridge:           { items: erVoteNB },
-      EvidenceRank_LLM:                     { items: erLlm },
       EvidenceRank_LLM_NoBridge:            { items: erLlmNB },
       QuadraticEnergy_Vote:                 { items: qeVote },
       QuadraticEnergy_Vote_NoBridge:        { items: qeVoteNB },
@@ -317,6 +321,8 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       DampedModular_LLM:                    { items: dmLlm },
       DampedModular_ReferenceBias_NoBridge: { items: dmRefBiasNB },
       DampedModular_Vote_HC_NoBridge:       { items: dmVoteHCNB },
+      EvidenceRank_Vote_D95:                { items: erVote95 },
+      EvidenceRank_LLM_D95:                 { items: erLlm95 },
       Combined_ER_QE_Vote:                  { items: combinedVote },
       Combined_ER_QE_LLM:                   { items: combinedLlm },
     });

@@ -512,6 +512,7 @@ export function createNightlyGraphWorker(): Worker {
   const worker = new Worker('nightly-graph-processor', processNightlyGraphBatch, {
     connection,
     concurrency: 1, // Only one nightly run at a time
+    lockDuration: 600_000, // 10 min lock — graph processor is CPU-intensive and can miss renewals
   });
 
   worker.on('completed', job => {

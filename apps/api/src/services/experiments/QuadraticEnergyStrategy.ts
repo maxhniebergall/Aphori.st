@@ -7,14 +7,14 @@ import { applyHingeCentrality } from './EvidenceRankStrategy.js';
  * Three strictly separated phases:
  *
  * Phase 1 — Epistemic Prior (Log-Scaled Votes):
- *   w_i = 0.5 + 0.49 * ln(1 + votes_i) / ln(1 + max_votes_in_graph)
+ *   w_i = 0.5 + 0.3 * ln(1 + votes_i) / ln(1 + max_votes_in_graph)
  *   Guarantees w_i ∈ [0.5, 0.99], satisfying logit domain requirements.
  *   Log-scaling decompresses the bimodal Reddit vote distribution.
  *
  * Phase 2 — Logical Convergence (Quadratic Energy):
  *   B_i = logit(w_i)
  *   E_i = B_i + Σ_supporters(v_s) - Σ_attackers(v_a)
- *   v_i += α * (sigmoid(E_i) - v_i)   [α = 0.2, halt when max Δv < ε]
+ *   v_i += α * (sigmoid(E_i) - v_i)   [α = 0.1, halt when max Δv < ε]
  *   Converges on cyclic graphs — no oscillation.
  *   Output: Dialectical Acceptability score v_i.
  *
