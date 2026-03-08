@@ -75,37 +75,32 @@ async function main() {
     const chunk = replyIds.slice(i, i + CHUNK);
     const placeholders = chunk.map((_, j) => `$${j + 1}`).join(', ');
 
+    // Use a CTE so the parameter list ($1..$N) appears only once.
+    const cteQuery = (action: string) => `
+      WITH contaminated_runs AS (
+        SELECT id FROM v3_analysis_runs
+        WHERE source_type = 'reply' AND source_id IN (${placeholders})
+      ),
+      contaminated_inodes AS (
+        SELECT id FROM v3_nodes_i
+        WHERE analysis_run_id IN (SELECT id FROM contaminated_runs)
+      )
+      ${action}`;
+
     if (!opts.dryRun) {
-      // NULL out canonical_i_node_id on any contaminated i-node that points to
-      // another contaminated i-node as its canonical.
       const result = await pool.query(
-        `UPDATE v3_nodes_i
-         SET canonical_i_node_id = NULL
-         WHERE canonical_i_node_id IN (
-           SELECT ni.id FROM v3_nodes_i ni
-           JOIN v3_analysis_runs ar ON ni.analysis_run_id = ar.id
-           WHERE ar.source_type = 'reply' AND ar.source_id IN (${placeholders})
-         )
-         AND analysis_run_id IN (
-           SELECT id FROM v3_analysis_runs
-           WHERE source_type = 'reply' AND source_id IN (${placeholders})
-         )`,
-        [...chunk, ...chunk]
+        cteQuery(`UPDATE v3_nodes_i SET canonical_i_node_id = NULL
+                  WHERE canonical_i_node_id IN (SELECT id FROM contaminated_inodes)
+                  AND   analysis_run_id      IN (SELECT id FROM contaminated_runs)`),
+        chunk
       );
       canonicalCleared += result.rowCount ?? 0;
     } else {
       const { rows } = await pool.query(
-        `SELECT COUNT(*) FROM v3_nodes_i
-         WHERE canonical_i_node_id IN (
-           SELECT ni.id FROM v3_nodes_i ni
-           JOIN v3_analysis_runs ar ON ni.analysis_run_id = ar.id
-           WHERE ar.source_type = 'reply' AND ar.source_id IN (${placeholders})
-         )
-         AND analysis_run_id IN (
-           SELECT id FROM v3_analysis_runs
-           WHERE source_type = 'reply' AND source_id IN (${placeholders})
-         )`,
-        [...chunk, ...chunk]
+        cteQuery(`SELECT COUNT(*) FROM v3_nodes_i
+                  WHERE canonical_i_node_id IN (SELECT id FROM contaminated_inodes)
+                  AND   analysis_run_id      IN (SELECT id FROM contaminated_runs)`),
+        chunk
       );
       canonicalCleared += parseInt(rows[0].count);
     }
