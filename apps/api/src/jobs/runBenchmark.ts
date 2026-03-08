@@ -213,7 +213,11 @@ async function main() {
   }
 
   // ── Step 1: Ingest ──
-  console.log('\n[1/4] Ingesting threads into Aphorist...');
+  // Ingest in batches of INGEST_BATCH_SIZE threads, polling for V3 completion
+  // between batches. This prevents dumping tens of thousands of Gemini jobs
+  // into the queue at once, which triggers rate-limit model degradation.
+  const INGEST_BATCH_SIZE = 30;
+  console.log(`\n[1/4] Ingesting threads into Aphorist (batches of ${INGEST_BATCH_SIZE})...`);
 
   // In-memory mapping: threadId → { post_id, cmv_id→reply_id, delta_reply_ids }
   const mapping = new Map<string, {
@@ -222,7 +226,13 @@ async function main() {
     delta_reply_ids: string[];
   }>();
 
-  for (const thread of threads) {
+  for (let batchStart = 0; batchStart < threads.length; batchStart += INGEST_BATCH_SIZE) {
+    const batchThreads = threads.slice(batchStart, batchStart + INGEST_BATCH_SIZE);
+    const batchLabel = `${batchStart + 1}–${Math.min(batchStart + INGEST_BATCH_SIZE, threads.length)}/${threads.length}`;
+    console.log(`\n  Batch ${batchLabel}`);
+    const newPostIds: string[] = [];
+
+  for (const thread of batchThreads) {
     const opText = thread.nodes.find(n => n.id === thread.focalNodeId)?.text ?? '';
     const opHash = contentHash(opText);
 
@@ -244,6 +254,7 @@ async function main() {
       try {
         const post = await PostRepo.create(DEV_USER_ID, { title, content: opText });
         postId = post.id;
+        newPostIds.push(postId);
         enqueueV3Analysis('post', postId, opText).catch(() => {});
       } catch (err: unknown) {
         console.warn(`\nSkipping duplicate thread ${thread.threadId}`);
@@ -364,7 +375,16 @@ async function main() {
       cmv_to_reply: cmvToReply,
       delta_reply_ids: deltaReplyIds,
     });
-  }
+  } // end thread loop
+
+    // Poll V3 completion for any newly-ingested threads in this batch before
+    // proceeding to the next batch (keeps Gemini queue bounded).
+    if (!dryRun && newPostIds.length > 0) {
+      console.log(`  Waiting for V3 analysis on ${newPostIds.length} new threads...`);
+      await pollUntilComplete(newPostIds, apiBase);
+      console.log(`  Batch ${batchLabel} done.\n`);
+    }
+  } // end batch loop
 
   const ingestedPostIds = [...mapping.values()].map(m => m.post_id);
   console.log(`Ingested ${ingestedPostIds.length} threads`);
@@ -374,9 +394,9 @@ async function main() {
     process.exit(1);
   }
 
-  // ── Step 2: Poll ──
+  // ── Step 2: Poll (catch-up for already-ingested threads) ──
   if (!dryRun) {
-    console.log('\n[2/5] Waiting for V3 analysis to complete...');
+    console.log('\n[2/5] Waiting for V3 analysis to complete (already-ingested threads)...');
     await pollUntilComplete(ingestedPostIds, apiBase);
   } else {
     console.log('\n[2/5] Dry run: skipping poll');
