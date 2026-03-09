@@ -92,6 +92,10 @@ export const config = {
   },
 
   // Rate limiting
+  // Human rate limiting is intentionally disabled in non-production environments
+  // to allow benchmark evaluation and local tooling to run without 429s.
+  // WARNING: NEVER disable in production — server.ts enforces this at startup.
+  disableHumanRateLimit: process.env.NODE_ENV !== 'production',
   rateLimits: {
     // Global rate limits per user type
     global: {

@@ -161,6 +161,17 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
 // Initialize database connection
 async function init(): Promise<void> {
+  // Safety check: human rate limiting must never be disabled in production.
+  if (config.env === 'production' && config.disableHumanRateLimit) {
+    throw new Error(
+      'FATAL: disableHumanRateLimit is true in production — human rate limiting must be enforced. ' +
+      'Ensure NODE_ENV=production is set correctly.'
+    );
+  }
+  if (config.disableHumanRateLimit) {
+    logger.warn('Human rate limiting is DISABLED (non-production environment). Do not deploy this configuration.');
+  }
+
   try {
     // Test database connection
     const pool = getPool();

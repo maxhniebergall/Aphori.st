@@ -71,6 +71,10 @@ export async function combinedRateLimiter(req: Request, res: Response, next: Nex
     return;
   }
 
+  if (config.disableHumanRateLimit) {
+    next();
+    return;
+  }
   humanLimiter(req, res, next);
 }
 
