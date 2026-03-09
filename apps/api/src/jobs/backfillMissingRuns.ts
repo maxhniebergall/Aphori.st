@@ -16,6 +16,7 @@ import { enqueueV3Analysis } from './enqueueV3Analysis.js';
 
 const BATCH_SIZE = 50;
 const BATCH_DELAY_MS = 1000;
+const MAX_REPLIES_PER_THREAD = 200;
 
 interface MissingReply {
   id: string;
@@ -41,28 +42,38 @@ async function main() {
 
   // Get per-thread stats: total replies and missing count, ordered by fewest missing first
   // (threads closest to completion get priority)
-  console.log('Querying thread coverage...');
+  console.log(`Querying thread coverage (top ${MAX_REPLIES_PER_THREAD} replies per thread by votes)...`);
   const { rows: threads } = await pool.query<ThreadInfo>(`
+    WITH top_replies AS (
+      SELECT r.id, r.post_id,
+        ROW_NUMBER() OVER (PARTITION BY r.post_id ORDER BY r.score DESC, r.created_at ASC) as rn
+      FROM replies r
+      JOIN posts p ON p.id = r.post_id
+      WHERE p.title LIKE '[cmv:%' AND p.deleted_at IS NULL AND r.deleted_at IS NULL
+    ),
+    eligible AS (
+      SELECT id, post_id FROM top_replies WHERE rn <= $1
+    )
     SELECT p.id as post_id, p.title,
-      COUNT(r.id)::int as total_replies,
-      COUNT(r.id) FILTER (
+      COUNT(e.id)::int as total_replies,
+      COUNT(e.id) FILTER (
         WHERE NOT EXISTS (
           SELECT 1 FROM v3_analysis_runs ar
-          WHERE ar.source_id = r.id AND ar.source_type = 'reply'
+          WHERE ar.source_id = e.id AND ar.source_type = 'reply'
         )
       )::int as missing_replies
     FROM posts p
-    JOIN replies r ON r.post_id = p.id AND r.deleted_at IS NULL
+    JOIN eligible e ON e.post_id = p.id
     WHERE p.title LIKE '[cmv:%' AND p.deleted_at IS NULL
     GROUP BY p.id, p.title
-    HAVING COUNT(r.id) FILTER (
+    HAVING COUNT(e.id) FILTER (
       WHERE NOT EXISTS (
         SELECT 1 FROM v3_analysis_runs ar
-        WHERE ar.source_id = r.id AND ar.source_type = 'reply'
+        WHERE ar.source_id = e.id AND ar.source_type = 'reply'
       )
     ) > 0
     ORDER BY missing_replies ASC
-  `);
+  `, [MAX_REPLIES_PER_THREAD]);
 
   const totalMissing = threads.reduce((sum, t) => sum + t.missing_replies, 0);
   console.log(`Found ${threads.length} threads with missing replies (${totalMissing} total).\n`);
@@ -78,17 +89,23 @@ async function main() {
   let threadsCompleted = 0;
 
   for (const thread of threads) {
-    // Fetch missing replies for this thread
+    // Fetch missing replies among the top N by vote score for this thread
     const { rows: missing } = await pool.query<MissingReply>(`
-      SELECT r.id, r.content, r.post_id, r.parent_reply_id
-      FROM replies r
-      WHERE r.post_id = $1 AND r.deleted_at IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM v3_analysis_runs ar
-          WHERE ar.source_id = r.id AND ar.source_type = 'reply'
-        )
-      ORDER BY r.created_at
-    `, [thread.post_id]);
+      WITH top_replies AS (
+        SELECT r.id, r.content, r.post_id, r.parent_reply_id
+        FROM replies r
+        WHERE r.post_id = $1 AND r.deleted_at IS NULL
+        ORDER BY r.score DESC, r.created_at ASC
+        LIMIT $2
+      )
+      SELECT tr.id, tr.content, tr.post_id, tr.parent_reply_id
+      FROM top_replies tr
+      WHERE NOT EXISTS (
+        SELECT 1 FROM v3_analysis_runs ar
+        WHERE ar.source_id = tr.id AND ar.source_type = 'reply'
+      )
+      ORDER BY tr.post_id
+    `, [thread.post_id, MAX_REPLIES_PER_THREAD]);
 
     const threadLabel = thread.title.slice(0, 40);
     console.log(`\n  Thread ${threadsCompleted + 1}/${threads.length} ${threadLabel}... (${missing.length}/${thread.total_replies} missing)`);
