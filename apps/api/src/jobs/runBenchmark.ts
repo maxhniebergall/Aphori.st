@@ -476,7 +476,9 @@ async function main() {
   }
 
   // ── Step 2.5: Run nightly graph processor (EvidenceRank + IBA) ──
-  if (!dryRun) {
+  // Skipped in eval-only mode: benchmark route computes its own rankings
+  // from getThreadGraph(), independent of the nightly processor's ER/karma values.
+  if (!dryRun && !evalOnly) {
     console.log('\n[3/5] Running nightly graph processor (EvidenceRank + QuadraticEnergy)...');
     const ngpJob = await graphProcessorQueue.add('benchmark-trigger', {}, {
       jobId: `benchmark-nightly-${Date.now()}`,
@@ -495,6 +497,8 @@ async function main() {
       if (state === 'failed') throw new Error('Nightly graph processor job failed');
       await new Promise(r => setTimeout(r, 5000));
     }
+  } else if (evalOnly) {
+    console.log('\n[3/5] Skipping graph processor (eval-only: benchmark computes rankings independently)');
   } else {
     console.log('\n[3/5] Dry run: skipping graph processor');
   }
