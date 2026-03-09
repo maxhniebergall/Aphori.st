@@ -158,12 +158,36 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       return;
     }
 
-    const repo = createV3HypergraphRepo(getPool());
+    const pool = getPool();
+    const repo = createV3HypergraphRepo(pool);
 
-    // Fetch vote-sorted thread tree and argument graph in parallel
-    const [algTopTree, threadGraph] = await Promise.all([
+    // Fetch vote-sorted thread tree, argument graph, and enthymemes in parallel
+    const [algTopTree, threadGraph, enthymemeResult] = await Promise.all([
       buildTopThread(postId, 10000),
       repo.getThreadGraph(postId),
+      pool.query<{
+        id: string;
+        content: string;
+        probability: number;
+        scheme_direction: 'SUPPORT' | 'ATTACK';
+        source_type: 'post' | 'reply';
+        source_id: string;
+        conclusion_node_id: string | null;
+      }>(`
+        SELECT e.id, e.content, e.probability,
+          s.direction as scheme_direction,
+          ar.source_type, ar.source_id,
+          ce.node_id as conclusion_node_id
+        FROM v3_enthymemes e
+        JOIN v3_nodes_s s ON s.id = e.scheme_id
+        JOIN v3_analysis_runs ar ON ar.id = s.analysis_run_id
+        LEFT JOIN v3_edges ce ON ce.scheme_node_id = s.id
+          AND ce.role = 'conclusion' AND ce.node_type = 'i_node'
+        WHERE (ar.source_type = 'post' AND ar.source_id = $1)
+           OR (ar.source_type = 'reply' AND ar.source_id IN (
+             SELECT id FROM replies WHERE post_id = $1 AND deleted_at IS NULL
+           ))
+      `, [postId]),
     ]);
 
     const graphEdges: GraphEdge[] = threadGraph.edges.map(e => ({
@@ -237,6 +261,72 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     const allNodeIds = [focalNodeId, ...threadGraph.nodes.map(n => n.id)];
     const ranked_dm_vote_hc = applyHingeCentrality(ranked_dm_vote, allNodeIds, graphEdges);
 
+    // ── Enthymeme-augmented EvidenceRank variants ──
+    // Filter enthymemes to those with a valid conclusion target in the graph
+    const graphNodeIds = new Set(threadGraph.nodes.map(n => n.id));
+    const validEnthymemes = enthymemeResult.rows.filter(
+      e => e.conclusion_node_id != null && graphNodeIds.has(e.conclusion_node_id)
+    );
+
+    const buildEnthymemeGraph = (
+      directionMode: 'inherit' | 'attack' | 'support'
+    ): { nodes: GraphNode[]; edges: GraphEdge[]; augGraph: ThreadGraph } => {
+      const extraNodes: ThreadGraphNode[] = validEnthymemes.map(e => ({
+        id: e.id,
+        text: e.content,
+        vote_score: 1,
+        source_id: e.source_id,
+        source_type: e.source_type as 'post' | 'reply',
+      }));
+
+      const extraEdges = validEnthymemes.map(e => ({
+        from_node_id: e.id,
+        to_node_id: e.conclusion_node_id!,
+        direction: (directionMode === 'inherit' ? e.scheme_direction
+          : directionMode === 'attack' ? 'ATTACK'
+          : 'SUPPORT') as 'SUPPORT' | 'ATTACK',
+        confidence: e.probability,
+      }));
+
+      const augNodeTargets = new Map<string, string[]>();
+      threadGraph.nodeTargets.forEach((v, k) => augNodeTargets.set(k, v));
+      for (const edge of extraEdges) {
+        const existing = augNodeTargets.get(edge.from_node_id) ?? [];
+        augNodeTargets.set(edge.from_node_id, [...existing, edge.to_node_id]);
+      }
+
+      const augGraph: ThreadGraph = {
+        nodes: [...threadGraph.nodes, ...extraNodes],
+        edges: [...threadGraph.edges, ...extraEdges],
+        nodeTargets: augNodeTargets,
+      };
+
+      const nodes: GraphNode[] = augGraph.nodes.map(n => ({
+        id: n.id,
+        text: n.text,
+        basic_strength: sigmoid(n.vote_score),
+        vote_score: Math.max(1, n.vote_score),
+        user_karma: 0,
+      }));
+
+      const edges: GraphEdge[] = augGraph.edges.map(e => ({
+        from_node_id: e.from_node_id,
+        to_node_id: e.to_node_id,
+        direction: e.direction,
+        confidence: e.confidence,
+      }));
+
+      return { nodes, edges, augGraph };
+    };
+
+    const enthInherit = buildEnthymemeGraph('inherit');
+    const enthAttack  = buildEnthymemeGraph('attack');
+    const enthSupport = buildEnthymemeGraph('support');
+
+    const ranked_er_enth_inherit = erStrategy.rank(enthInherit.nodes, enthInherit.edges, focalNodeId);
+    const ranked_er_enth_attack  = erStrategy.rank(enthAttack.nodes,  enthAttack.edges,  focalNodeId);
+    const ranked_er_enth_support = erStrategy.rank(enthSupport.nodes, enthSupport.edges, focalNodeId);
+
     // Aggregate to reply level — tuned bridge coefficients per variant
     // (0.0 = no bridge, tuned values from offline grid search)
     const erVote        = aggregateToReplyLevel(ranked_er_vote,    threadGraph, 1.0);
@@ -246,6 +336,11 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     const qeVoteNB      = aggregateToReplyLevel(ranked_qe_vote,    threadGraph, 0.0);
     const dmRefBiasNB   = aggregateToReplyLevel(ranked_dm_refbias, threadGraph, 0.0);
     const dmVoteHCNB    = aggregateToReplyLevel(ranked_dm_vote_hc, threadGraph, 0.0);
+
+    // Enthymeme variants: NoBridge for clean comparison with EvidenceRank_Vote_NoBridge
+    const erEnthInherit = aggregateToReplyLevel(ranked_er_enth_inherit, enthInherit.augGraph, 0.0);
+    const erEnthAttack  = aggregateToReplyLevel(ranked_er_enth_attack,  enthAttack.augGraph,  0.0);
+    const erEnthSupport = aggregateToReplyLevel(ranked_er_enth_support, enthSupport.augGraph, 0.0);
 
     // Combined ER×QE: normalize each to [0,1] then multiply (AND combination)
     const combinedVote  = aggregateToReplyLevel(combineRankings(ranked_er_vote, ranked_qe_vote), threadGraph, 1.0);
@@ -303,6 +398,10 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       DampedModular_Vote_HC_NoBridge_Tree:       { items: reorderTree(treeItems, scoreMapDmVoteHCNB) },
       Combined_ER_QE_Vote:                 { items: combinedVote },
       Combined_ER_QE_Vote_Tree:            { items: reorderTree(treeItems, scoreMapCombined) },
+      EvidenceRank_Enthymeme_Inherit:      { items: erEnthInherit },
+      EvidenceRank_Enthymeme_Attack:       { items: erEnthAttack },
+      EvidenceRank_Enthymeme_Support:      { items: erEnthSupport },
+      enthymeme_count: validEnthymemes.length,
       ...(rawData !== undefined ? { raw_data: rawData } : {}),
     });
   } catch (error) {
