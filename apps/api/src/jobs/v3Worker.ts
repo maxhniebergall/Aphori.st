@@ -170,34 +170,24 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     }
     const uniqueTerms = Array.from(termToINodeEngineId.keys());
 
-    // Build a merged list: [aduTexts..., termTexts...]
+    // Build embedding list: ADU texts only (concept/term embeddings skipped for benchmark speed)
     const aduTexts = aduNodes.map(n => n.rewritten_text || n.text || '');
-    const termTexts = uniqueTerms; // embed the raw term strings for concept lookup
-    const allTextsToEmbed = [...aduTexts, ...termTexts];
 
     const iNodeEmbeddings = new Map<string, number[]>();
-    const termEmbeddings = new Map<string, number[]>();
 
-    if (allTextsToEmbed.length > 0) {
-      logger.info(`V3 worker: embedding ${allTextsToEmbed.length} texts (${aduTexts.length} ADUs + ${termTexts.length} terms)`, { sourceId });
-      const delayedAduTermEmbedResponse = await argumentService.embedTexts(allTextsToEmbed);
+    if (aduTexts.length > 0) {
+      logger.info(`V3 worker: embedding ${aduTexts.length} ADU texts`, { sourceId });
+      const delayedAduTermEmbedResponse = await argumentService.embedTexts(aduTexts);
 
-      if (delayedAduTermEmbedResponse.embeddings_1536.length !== allTextsToEmbed.length) {
+      if (delayedAduTermEmbedResponse.embeddings_1536.length !== aduTexts.length) {
         throw new Error(
-          `embedTexts returned ${delayedAduTermEmbedResponse.embeddings_1536.length} vectors for ${allTextsToEmbed.length} inputs`
+          `embedTexts returned ${delayedAduTermEmbedResponse.embeddings_1536.length} vectors for ${aduTexts.length} inputs`
         );
       }
 
-      // Split results back
       for (let i = 0; i < aduNodes.length; i++) {
         if (delayedAduTermEmbedResponse.embeddings_1536[i]) {
           iNodeEmbeddings.set(aduNodes[i]!.node_id, delayedAduTermEmbedResponse.embeddings_1536[i]!);
-        }
-      }
-      for (let i = 0; i < uniqueTerms.length; i++) {
-        const idx = aduNodes.length + i;
-        if (delayedAduTermEmbedResponse.embeddings_1536[idx]) {
-          termEmbeddings.set(uniqueTerms[i]!, delayedAduTermEmbedResponse.embeddings_1536[idx]!);
         }
       }
     }
@@ -629,9 +619,10 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
     }
 
     // ── Concept Disambiguation Phase ──
-    // Only runs if there are high-variance terms to process.
+    // TEMPORARILY DISABLED for benchmark backfill speed (saves ~2 Gemini calls per reply).
+    // Re-enable after benchmark is complete.
 
-    if (uniqueTerms.length > 0) {
+    if (false && uniqueTerms.length > 0) {
       logger.info(`V3: Concept phase — ${uniqueTerms.length} unique terms`, { sourceId });
 
       // STEP B: Parallel DB candidate retrieval (local DB, no HTTP)
@@ -855,7 +846,7 @@ export async function processV3Analysis(job: Job<V3AnalysisJobData>): Promise<vo
 export function createV3Worker(): Worker {
   const worker = new Worker('v3-analysis', processV3Analysis, {
     connection,
-    concurrency: 16,
+    concurrency: 2, // Temporarily reduced for sequential thread-priority backfill
     lockDuration: 5 * 60 * 1000, // 5 minutes — discourse engine calls can be slow
     settings: {
       backoffStrategy: async (attemptsMade: number) => {
