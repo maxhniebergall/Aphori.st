@@ -38,6 +38,7 @@ const { values: args } = parseArgs({
     exclude: { type: 'string' }, // comma-separated CMV thread IDs to skip
     'dry-run':   { type: 'boolean', default: false },
     'reanalyze': { type: 'boolean', default: false },
+    'eval-only': { type: 'boolean', default: false },
   },
   strict: false,
 });
@@ -49,6 +50,7 @@ const limit      = args['limit'] ? parseInt(args['limit'] as string, 10) : undef
 const excludeIds = args['exclude'] ? new Set((args['exclude'] as string).split(',').map(s => s.trim())) : undefined;
 const dryRun     = args['dry-run'] as boolean;
 const reanalyze  = args['reanalyze'] as boolean;
+const evalOnly   = args['eval-only'] as boolean;
 
 if (!inputPath) {
   console.error('Error: --input <path> is required');
@@ -118,7 +120,8 @@ type AlgKey =
   | 'QuadraticEnergy_Vote_NoBridge'| 'QuadraticEnergy_Vote_NoBridge_Tree'
   | 'DampedModular_ReferenceBias_NoBridge'     | 'DampedModular_ReferenceBias_NoBridge_Tree'
   | 'DampedModular_Vote_HC_NoBridge'           | 'DampedModular_Vote_HC_NoBridge_Tree'
-  | 'Combined_ER_QE_Vote'       | 'Combined_ER_QE_Vote_Tree';
+  | 'Combined_ER_QE_Vote'       | 'Combined_ER_QE_Vote_Tree'
+  | 'EvidenceRank_Enthymeme_Inherit' | 'EvidenceRank_Enthymeme_Attack' | 'EvidenceRank_Enthymeme_Support';
 
 interface RawThreadData {
   focalNodeId: string;
@@ -208,7 +211,9 @@ async function main() {
   getPool();
 
   // Ensure Redis is connected before any enqueue calls
-  await v3Queue.waitUntilReady();
+  if (!evalOnly) {
+    await v3Queue.waitUntilReady();
+  }
 
   let enqueueFailures = 0;
 
@@ -259,6 +264,9 @@ async function main() {
     const existingPost = existingRows[0] ?? null;
     if (existingPost) {
       postId = existingPost.id;
+    } else if (evalOnly) {
+      console.warn(`Skipping thread ${thread.threadId}: not yet ingested (eval-only mode)`);
+      continue;
     } else {
       try {
         const post = await PostRepo.create(DEV_USER_ID, { title, content: opText });
@@ -296,7 +304,7 @@ async function main() {
       }
       console.log(`  Thread ${thread.threadId}: already ingested (post ${postId}), reconstructed ${cmvToReply.size - 1} reply mappings`);
 
-      if (reanalyze) {
+      if (reanalyze && !evalOnly) {
         // Delete existing analysis runs and BullMQ jobs so the new engine re-processes them
         await pool.query(
           `DELETE FROM v3_analysis_runs WHERE source_type = $1 AND source_id = $2`,
@@ -337,7 +345,7 @@ async function main() {
         }
         console.log(`    [reanalyze] Deleted runs+jobs and re-enqueued post + ${cmvToReply.size - 1} replies`);
       }
-    } else {
+    } else if (!evalOnly) {
       console.log(`  Thread ${thread.threadId}: ${thread.nodes.length} nodes, ${thread.edges.length} edges, focal=${thread.focalNodeId}`);
       const directChildren = thread.edges.filter(e => e.to_node_id === thread.focalNodeId);
       console.log(`  Direct children of focal: ${directChildren.length}`);
@@ -408,7 +416,7 @@ async function main() {
 
     // Poll V3 completion for any newly-ingested threads in this batch before
     // proceeding to the next batch (keeps Gemini queue bounded).
-    if (!dryRun && newPostIds.length > 0) {
+    if (!dryRun && !evalOnly && newPostIds.length > 0) {
       console.log(`  Waiting for V3 analysis on ${newPostIds.length} new threads...`);
       await pollUntilComplete(newPostIds, apiBase);
       console.log(`  Batch ${batchLabel} done.\n`);
@@ -427,7 +435,40 @@ async function main() {
   }
 
   // ── Step 2: Poll (catch-up for already-ingested threads) ──
-  if (!dryRun) {
+  if (evalOnly) {
+    // Filter to only fully-covered threads (all top-200 eligible replies have analysis runs)
+    console.log('\n[2/5] Filtering to fully-covered threads...');
+    const pool = getPool();
+    const { rows: coveredRows } = await pool.query<{ post_id: string }>(`
+      WITH top_replies AS (
+        SELECT r.id, r.post_id,
+          ROW_NUMBER() OVER (PARTITION BY r.post_id ORDER BY r.score DESC, r.created_at ASC) as rn
+        FROM replies r
+        JOIN posts p ON p.id = r.post_id
+        WHERE p.title LIKE '[cmv:%' AND p.deleted_at IS NULL AND r.deleted_at IS NULL
+      ),
+      eligible AS (
+        SELECT id, post_id FROM top_replies WHERE rn <= 200
+      ),
+      thread_stats AS (
+        SELECT post_id,
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE EXISTS (
+            SELECT 1 FROM v3_analysis_runs ar WHERE ar.source_id = eligible.id AND ar.source_type = 'reply'
+          )) as done
+        FROM eligible GROUP BY post_id
+      )
+      SELECT post_id FROM thread_stats WHERE done = total
+    `);
+    const coveredPostIds = new Set(coveredRows.map(r => r.post_id));
+    const beforeCount = mapping.size;
+    for (const [threadId, info] of mapping) {
+      if (!coveredPostIds.has(info.post_id)) {
+        mapping.delete(threadId);
+      }
+    }
+    console.log(`  ${coveredPostIds.size} threads fully covered, ${beforeCount - mapping.size} filtered out, ${mapping.size} remaining`);
+  } else if (!dryRun) {
     console.log('\n[2/5] Waiting for V3 analysis to complete (already-ingested threads)...');
     await pollUntilComplete(ingestedPostIds, apiBase);
   } else {
@@ -490,6 +531,10 @@ async function main() {
       DampedModular_Vote_HC_NoBridge_Tree?:        { items: unknown[] };
       Combined_ER_QE_Vote?:                        { items: RankedNode[] };
       Combined_ER_QE_Vote_Tree?:                   { items: unknown[] };
+      EvidenceRank_Enthymeme_Inherit?:             { items: RankedNode[] };
+      EvidenceRank_Enthymeme_Attack?:              { items: RankedNode[] };
+      EvidenceRank_Enthymeme_Support?:             { items: RankedNode[] };
+      enthymeme_count?: number;
     };
   };
 
@@ -549,6 +594,9 @@ async function main() {
     const rankDmVoteHCNBTree = flattenTree(data.DampedModular_Vote_HC_NoBridge_Tree?.items ?? []);
     const rankCombinedVote   = data.Combined_ER_QE_Vote?.items ?? [];
     const rankCombinedVoteTree = flattenTree(data.Combined_ER_QE_Vote_Tree?.items ?? []);
+    const rankErEnthInherit  = data.EvidenceRank_Enthymeme_Inherit?.items ?? [];
+    const rankErEnthAttack   = data.EvidenceRank_Enthymeme_Attack?.items ?? [];
+    const rankErEnthSupport  = data.EvidenceRank_Enthymeme_Support?.items ?? [];
 
     const deltaSet = new Set(info.delta_reply_ids);
 
@@ -576,6 +624,9 @@ async function main() {
         DampedModular_Vote_HC_NoBridge_Tree:       rankDmVoteHCNBTree,
         Combined_ER_QE_Vote:                 rankCombinedVote,
         Combined_ER_QE_Vote_Tree:            rankCombinedVoteTree,
+        EvidenceRank_Enthymeme_Inherit:      rankErEnthInherit,
+        EvidenceRank_Enthymeme_Attack:       rankErEnthAttack,
+        EvidenceRank_Enthymeme_Support:      rankErEnthSupport,
       },
       metrics: {
         Top_Tree:                            { rr: reciprocalRank(rankTopTree, deltaSet),          rank: firstRelevantRank(rankTopTree, deltaSet) },
@@ -596,6 +647,9 @@ async function main() {
         DampedModular_Vote_HC_NoBridge_Tree:       { rr: reciprocalRank(rankDmVoteHCNBTree, deltaSet),  rank: firstRelevantRank(rankDmVoteHCNBTree, deltaSet) },
         Combined_ER_QE_Vote:                 { rr: reciprocalRank(rankCombinedVote, deltaSet),     rank: firstRelevantRank(rankCombinedVote, deltaSet) },
         Combined_ER_QE_Vote_Tree:            { rr: reciprocalRank(rankCombinedVoteTree, deltaSet), rank: firstRelevantRank(rankCombinedVoteTree, deltaSet) },
+        EvidenceRank_Enthymeme_Inherit:      { rr: reciprocalRank(rankErEnthInherit, deltaSet),    rank: firstRelevantRank(rankErEnthInherit, deltaSet) },
+        EvidenceRank_Enthymeme_Attack:       { rr: reciprocalRank(rankErEnthAttack, deltaSet),     rank: firstRelevantRank(rankErEnthAttack, deltaSet) },
+        EvidenceRank_Enthymeme_Support:      { rr: reciprocalRank(rankErEnthSupport, deltaSet),    rank: firstRelevantRank(rankErEnthSupport, deltaSet) },
       },
     });
   }
@@ -642,6 +696,7 @@ async function main() {
     'DampedModular_ReferenceBias_NoBridge',      'DampedModular_ReferenceBias_NoBridge_Tree',
     'DampedModular_Vote_HC_NoBridge',            'DampedModular_Vote_HC_NoBridge_Tree',
     'Combined_ER_QE_Vote',                'Combined_ER_QE_Vote_Tree',
+    'EvidenceRank_Enthymeme_Inherit', 'EvidenceRank_Enthymeme_Attack', 'EvidenceRank_Enthymeme_Support',
   ];
 
   const summaryMap = Object.fromEntries(
@@ -684,7 +739,7 @@ async function main() {
   }
 
   await closePool();
-  await v3Queue.close();
+  if (!evalOnly) await v3Queue.close();
   await graphProcessorQueue.close();
 }
 
