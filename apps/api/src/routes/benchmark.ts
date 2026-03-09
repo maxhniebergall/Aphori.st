@@ -122,6 +122,21 @@ function combineRankings(a: RankedResult[], b: RankedResult[]): RankedResult[] {
 }
 
 /**
+ * Re-sort a nested thread tree at every level using a reply-ID → score map,
+ * then DFS traversal gives the "tree rank" for that algorithm.
+ */
+function reorderTree(items: unknown[], scoreMap: Map<string, number>): unknown[] {
+  return [...(items as Array<Record<string, unknown>>)]
+    .sort((a, b) => (scoreMap.get(b['id'] as string) ?? 0) - (scoreMap.get(a['id'] as string) ?? 0))
+    .map(item => ({
+      ...item,
+      children: Array.isArray(item['children'])
+        ? reorderTree(item['children'] as unknown[], scoreMap)
+        : [],
+    }));
+}
+
+/**
  * GET /api/benchmark/thread/:postId
  * Returns all 10 algorithm results for a post.
  * Used by runBenchmark.ts for evaluation.
@@ -145,8 +160,8 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
 
     const repo = createV3HypergraphRepo(getPool());
 
-    // Fetch top-sorted thread + argument graph in parallel
-    const [algTop, threadGraph] = await Promise.all([
+    // Fetch vote-sorted thread tree and argument graph in parallel
+    const [algTopTree, threadGraph] = await Promise.all([
       buildTopThread(postId, 10000),
       repo.getThreadGraph(postId),
     ]);
@@ -235,6 +250,25 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     // Combined ER×QE: normalize each to [0,1] then multiply (AND combination)
     const combinedVote  = aggregateToReplyLevel(combineRankings(ranked_er_vote, ranked_qe_vote), threadGraph, 1.0);
 
+    // Top baseline: sort the same hypergraph nodes by vote score — identical
+    // candidate set and aggregation pipeline as ER/QE/DM for a fair comparison.
+    const topRanked: RankedResult[] = [...threadGraph.nodes]
+      .sort((a, b) => Math.max(1, b.vote_score) - Math.max(1, a.vote_score))
+      .map((n, i) => ({ id: n.id, text: n.text, rank: i + 1, score: Math.max(1, n.vote_score) }));
+    const algTop = { items: aggregateToReplyLevel(topRanked, threadGraph, 0.0) };
+
+    // Build score maps (reply ID → algorithm score) for tree re-ordering
+    const scoreMapErVote     = new Map(erVote.map(r => [r.id, r.score]));
+    const scoreMapErVoteNB   = new Map(erVoteNB.map(r => [r.id, r.score]));
+    const scoreMapErVote95   = new Map(erVote95.map(r => [r.id, r.score]));
+    const scoreMapQeVote     = new Map(qeVote.map(r => [r.id, r.score]));
+    const scoreMapQeVoteNB   = new Map(qeVoteNB.map(r => [r.id, r.score]));
+    const scoreMapDmRefBiasNB = new Map(dmRefBiasNB.map(r => [r.id, r.score]));
+    const scoreMapDmVoteHCNB = new Map(dmVoteHCNB.map(r => [r.id, r.score]));
+    const scoreMapCombined   = new Map(combinedVote.map(r => [r.id, r.score]));
+
+    const treeItems = algTopTree.items as unknown[];
+
     const includeRaw = req.query['raw'] === '1';
     const rawData = includeRaw ? {
       focalNodeId,
@@ -251,16 +285,25 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     res.json({
       post_id: postId,
       parent_argument: post.content,
-      top: algTop,
+      top_tree:                             algTopTree,
+      Top_Flat:                            { items: algTop.items },
+      EvidenceRank_Vote:                   { items: erVote },
+      EvidenceRank_Vote_Tree:              { items: reorderTree(treeItems, scoreMapErVote) },
+      EvidenceRank_Vote_NoBridge:          { items: erVoteNB },
+      EvidenceRank_Vote_NoBridge_Tree:     { items: reorderTree(treeItems, scoreMapErVoteNB) },
+      EvidenceRank_Vote_D95:               { items: erVote95 },
+      EvidenceRank_Vote_D95_Tree:          { items: reorderTree(treeItems, scoreMapErVote95) },
+      QuadraticEnergy_Vote:                { items: qeVote },
+      QuadraticEnergy_Vote_Tree:           { items: reorderTree(treeItems, scoreMapQeVote) },
+      QuadraticEnergy_Vote_NoBridge:       { items: qeVoteNB },
+      QuadraticEnergy_Vote_NoBridge_Tree:  { items: reorderTree(treeItems, scoreMapQeVoteNB) },
+      DampedModular_ReferenceBias_NoBridge:      { items: dmRefBiasNB },
+      DampedModular_ReferenceBias_NoBridge_Tree: { items: reorderTree(treeItems, scoreMapDmRefBiasNB) },
+      DampedModular_Vote_HC_NoBridge:            { items: dmVoteHCNB },
+      DampedModular_Vote_HC_NoBridge_Tree:       { items: reorderTree(treeItems, scoreMapDmVoteHCNB) },
+      Combined_ER_QE_Vote:                 { items: combinedVote },
+      Combined_ER_QE_Vote_Tree:            { items: reorderTree(treeItems, scoreMapCombined) },
       ...(rawData !== undefined ? { raw_data: rawData } : {}),
-      EvidenceRank_Vote:                    { items: erVote },
-      EvidenceRank_Vote_NoBridge:           { items: erVoteNB },
-      QuadraticEnergy_Vote:                 { items: qeVote },
-      QuadraticEnergy_Vote_NoBridge:        { items: qeVoteNB },
-      DampedModular_ReferenceBias_NoBridge: { items: dmRefBiasNB },
-      DampedModular_Vote_HC_NoBridge:       { items: dmVoteHCNB },
-      EvidenceRank_Vote_D95:                { items: erVote95 },
-      Combined_ER_QE_Vote:                  { items: combinedVote },
     });
   } catch (error) {
     logger.error('Benchmark thread endpoint failed', {
