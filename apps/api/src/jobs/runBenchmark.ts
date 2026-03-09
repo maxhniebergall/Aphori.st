@@ -67,6 +67,7 @@ interface RankedNode {
   parent_text: string | null;
 }
 
+
 function flattenTree(items: unknown[], rank = { value: 0 }, parentId: string | null = null): RankedNode[] {
   const result: RankedNode[] = [];
   for (const item of items as Array<Record<string, unknown>>) {
@@ -78,7 +79,7 @@ function flattenTree(items: unknown[], rank = { value: 0 }, parentId: string | n
       score: (item['final_score'] as number) ?? 0,
       depth: (item['depth'] as number) ?? 0,
       parent_id: parentId,
-      parent_text: null, // filled below
+      parent_text: null,
     });
     const children = item['children'] as unknown[] | undefined;
     if (children && children.length > 0) {
@@ -108,13 +109,16 @@ function firstRelevantRank(results: RankedNode[], deltaIds: Set<string>): number
 type AlgMetrics = { rr: number; rank: number | null };
 type AlgSummary = { mrr: number; mean_rank: number | null; median_rank: number | null; rank_std: number | null; win_rate: number };
 
-type AlgKey = 'Top'
-  | 'EvidenceRank_Vote'              | 'EvidenceRank_Vote_NoBridge'
-  | 'EvidenceRank_Vote_D95'
-  | 'QuadraticEnergy_Vote'           | 'QuadraticEnergy_Vote_NoBridge'
-  | 'DampedModular_ReferenceBias_NoBridge'
-  | 'DampedModular_Vote_HC_NoBridge'
-  | 'Combined_ER_QE_Vote';
+type AlgKey =
+  | 'Top_Tree' | 'Top_Flat'
+  | 'EvidenceRank_Vote'         | 'EvidenceRank_Vote_Tree'
+  | 'EvidenceRank_Vote_NoBridge'| 'EvidenceRank_Vote_NoBridge_Tree'
+  | 'EvidenceRank_Vote_D95'     | 'EvidenceRank_Vote_D95_Tree'
+  | 'QuadraticEnergy_Vote'      | 'QuadraticEnergy_Vote_Tree'
+  | 'QuadraticEnergy_Vote_NoBridge'| 'QuadraticEnergy_Vote_NoBridge_Tree'
+  | 'DampedModular_ReferenceBias_NoBridge'     | 'DampedModular_ReferenceBias_NoBridge_Tree'
+  | 'DampedModular_Vote_HC_NoBridge'           | 'DampedModular_Vote_HC_NoBridge_Tree'
+  | 'Combined_ER_QE_Vote'       | 'Combined_ER_QE_Vote_Tree';
 
 interface RawThreadData {
   focalNodeId: string;
@@ -203,6 +207,11 @@ async function main() {
   // Initialize DB pool
   getPool();
 
+  // Ensure Redis is connected before any enqueue calls
+  await v3Queue.waitUntilReady();
+
+  let enqueueFailures = 0;
+
   console.log(`Loading CMV threads from: ${inputPath}`);
   const threads = await loadCMVThreads(inputPath!, limit, excludeIds);
   console.log(`Loaded ${threads.length} threads`);
@@ -255,7 +264,12 @@ async function main() {
         const post = await PostRepo.create(DEV_USER_ID, { title, content: opText });
         postId = post.id;
         newPostIds.push(postId);
-        enqueueV3Analysis('post', postId, opText).catch(() => {});
+        try {
+          await enqueueV3Analysis('post', postId, opText);
+        } catch (err) {
+          enqueueFailures++;
+          console.error(`  Enqueue failed for post ${postId}: ${err instanceof Error ? err.message : String(err)}`);
+        }
       } catch (err: unknown) {
         console.warn(`\nSkipping duplicate thread ${thread.threadId}`);
         continue;
@@ -289,7 +303,12 @@ async function main() {
           ['post', postId]
         );
         await removeBullMQJob('post', postId, opText);
-        enqueueV3Analysis('post', postId, opText).catch(() => {});
+        try {
+          await enqueueV3Analysis('post', postId, opText);
+        } catch (err) {
+          enqueueFailures++;
+          console.error(`  Enqueue failed for post ${postId} (reanalyze): ${err instanceof Error ? err.message : String(err)}`);
+        }
 
         for (const node of thread.nodes) {
           if (node.id === thread.focalNodeId) continue;
@@ -309,7 +328,12 @@ async function main() {
             : parentReplyId
               ? { sourceType: 'reply' as const, sourceId: parentReplyId }
               : undefined;
-          enqueueV3Analysis('reply', replyId, node.text, replyParent).catch(() => {});
+          try {
+            await enqueueV3Analysis('reply', replyId, node.text, replyParent);
+          } catch (err) {
+            enqueueFailures++;
+            console.error(`  Enqueue failed for reply ${replyId} (reanalyze): ${err instanceof Error ? err.message : String(err)}`);
+          }
         }
         console.log(`    [reanalyze] Deleted runs+jobs and re-enqueued post + ${cmvToReply.size - 1} replies`);
       }
@@ -348,7 +372,12 @@ async function main() {
             const replyParent = isDirectReplyToPost
               ? { sourceType: 'post' as const, sourceId: postId }
               : { sourceType: 'reply' as const, sourceId: parentReplyId! };
-            enqueueV3Analysis('reply', reply.id, node.text, replyParent).catch(() => {});
+            try {
+              await enqueueV3Analysis('reply', reply.id, node.text, replyParent);
+            } catch (err) {
+              enqueueFailures++;
+              console.error(`  Enqueue failed for reply ${reply.id}: ${err instanceof Error ? err.message : String(err)}`);
+            }
           } catch (err) {
             console.warn(`  Reply create failed for ${childId}: ${err instanceof Error ? err.message : String(err)}`);
           }
@@ -388,6 +417,9 @@ async function main() {
 
   const ingestedPostIds = [...mapping.values()].map(m => m.post_id);
   console.log(`Ingested ${ingestedPostIds.length} threads`);
+  if (enqueueFailures > 0) {
+    console.warn(`\n⚠ ${enqueueFailures} enqueue failures occurred during ingestion. Some replies may not be analyzed.`);
+  }
 
   if (ingestedPostIds.length === 0) {
     console.error('Nothing to evaluate.');
@@ -439,16 +471,25 @@ async function main() {
     data: {
       post_id: string;
       parent_argument: string;
-      top: { items: unknown[] };
+      top_tree?: { items: unknown[] };
+      Top_Flat?: { items: RankedNode[] };
       raw_data?: RawThreadData;
-      EvidenceRank_Vote?:                    { items: RankedNode[] };
-      EvidenceRank_Vote_NoBridge?:           { items: RankedNode[] };
-      EvidenceRank_Vote_D95?:                { items: RankedNode[] };
-      QuadraticEnergy_Vote?:                 { items: RankedNode[] };
-      QuadraticEnergy_Vote_NoBridge?:        { items: RankedNode[] };
-      DampedModular_ReferenceBias_NoBridge?: { items: RankedNode[] };
-      DampedModular_Vote_HC_NoBridge?:       { items: RankedNode[] };
-      Combined_ER_QE_Vote?:                  { items: RankedNode[] };
+      EvidenceRank_Vote?:                          { items: RankedNode[] };
+      EvidenceRank_Vote_Tree?:                     { items: unknown[] };
+      EvidenceRank_Vote_NoBridge?:                 { items: RankedNode[] };
+      EvidenceRank_Vote_NoBridge_Tree?:            { items: unknown[] };
+      EvidenceRank_Vote_D95?:                      { items: RankedNode[] };
+      EvidenceRank_Vote_D95_Tree?:                 { items: unknown[] };
+      QuadraticEnergy_Vote?:                       { items: RankedNode[] };
+      QuadraticEnergy_Vote_Tree?:                  { items: unknown[] };
+      QuadraticEnergy_Vote_NoBridge?:              { items: RankedNode[] };
+      QuadraticEnergy_Vote_NoBridge_Tree?:         { items: unknown[] };
+      DampedModular_ReferenceBias_NoBridge?:       { items: RankedNode[] };
+      DampedModular_ReferenceBias_NoBridge_Tree?:  { items: unknown[] };
+      DampedModular_Vote_HC_NoBridge?:             { items: RankedNode[] };
+      DampedModular_Vote_HC_NoBridge_Tree?:        { items: unknown[] };
+      Combined_ER_QE_Vote?:                        { items: RankedNode[] };
+      Combined_ER_QE_Vote_Tree?:                   { items: unknown[] };
     };
   };
 
@@ -482,20 +523,32 @@ async function main() {
     const { threadId, info } = result;
     const data = result.data;
 
-    if (!data.top?.items?.length) {
+    if (!data.Top_Flat?.items?.length) {
       console.warn(`Skipping thread ${threadId}: empty results (analysis may not have completed)`);
       continue;
     }
 
-    const rankTop        = flattenTree(data.top.items ?? []);
+    // Top_Tree: DFS traversal of vote-sorted thread tree, re-sorted flat by score
+    const rankTopTree    = flattenTree(data.top_tree?.items ?? [])
+      .sort((a, b) => b.score - a.score)
+      .map((n, i) => ({ ...n, rank: i + 1 }));
+    const rankTop        = data.Top_Flat?.items ?? [];
     const rankErVote     = data.EvidenceRank_Vote?.items ?? [];
+    const rankErVoteTree = flattenTree(data.EvidenceRank_Vote_Tree?.items ?? []);
     const rankErVoteNB   = data.EvidenceRank_Vote_NoBridge?.items ?? [];
+    const rankErVoteNBTree = flattenTree(data.EvidenceRank_Vote_NoBridge_Tree?.items ?? []);
     const rankErVote95   = data.EvidenceRank_Vote_D95?.items ?? [];
+    const rankErVote95Tree = flattenTree(data.EvidenceRank_Vote_D95_Tree?.items ?? []);
     const rankQeVote     = data.QuadraticEnergy_Vote?.items ?? [];
+    const rankQeVoteTree = flattenTree(data.QuadraticEnergy_Vote_Tree?.items ?? []);
     const rankQeVoteNB   = data.QuadraticEnergy_Vote_NoBridge?.items ?? [];
+    const rankQeVoteNBTree = flattenTree(data.QuadraticEnergy_Vote_NoBridge_Tree?.items ?? []);
     const rankDmRefBiasNB = data.DampedModular_ReferenceBias_NoBridge?.items ?? [];
+    const rankDmRefBiasNBTree = flattenTree(data.DampedModular_ReferenceBias_NoBridge_Tree?.items ?? []);
     const rankDmVoteHCNB     = data.DampedModular_Vote_HC_NoBridge?.items ?? [];
+    const rankDmVoteHCNBTree = flattenTree(data.DampedModular_Vote_HC_NoBridge_Tree?.items ?? []);
     const rankCombinedVote   = data.Combined_ER_QE_Vote?.items ?? [];
+    const rankCombinedVoteTree = flattenTree(data.Combined_ER_QE_Vote_Tree?.items ?? []);
 
     const deltaSet = new Set(info.delta_reply_ids);
 
@@ -505,26 +558,44 @@ async function main() {
       delta_reply_ids: info.delta_reply_ids,
       raw_data: data.raw_data,
       algorithms: {
-        Top:                                 rankTop,
+        Top_Tree:                            rankTopTree,
+        Top_Flat:                            rankTop,
         EvidenceRank_Vote:                   rankErVote,
+        EvidenceRank_Vote_Tree:              rankErVoteTree,
         EvidenceRank_Vote_NoBridge:          rankErVoteNB,
+        EvidenceRank_Vote_NoBridge_Tree:     rankErVoteNBTree,
         EvidenceRank_Vote_D95:               rankErVote95,
+        EvidenceRank_Vote_D95_Tree:          rankErVote95Tree,
         QuadraticEnergy_Vote:                rankQeVote,
+        QuadraticEnergy_Vote_Tree:           rankQeVoteTree,
         QuadraticEnergy_Vote_NoBridge:       rankQeVoteNB,
-        DampedModular_ReferenceBias_NoBridge: rankDmRefBiasNB,
-        DampedModular_Vote_HC_NoBridge:      rankDmVoteHCNB,
+        QuadraticEnergy_Vote_NoBridge_Tree:  rankQeVoteNBTree,
+        DampedModular_ReferenceBias_NoBridge:      rankDmRefBiasNB,
+        DampedModular_ReferenceBias_NoBridge_Tree: rankDmRefBiasNBTree,
+        DampedModular_Vote_HC_NoBridge:            rankDmVoteHCNB,
+        DampedModular_Vote_HC_NoBridge_Tree:       rankDmVoteHCNBTree,
         Combined_ER_QE_Vote:                 rankCombinedVote,
+        Combined_ER_QE_Vote_Tree:            rankCombinedVoteTree,
       },
       metrics: {
-        Top:                                 { rr: reciprocalRank(rankTop, deltaSet),             rank: firstRelevantRank(rankTop, deltaSet) },
-        EvidenceRank_Vote:                   { rr: reciprocalRank(rankErVote, deltaSet),          rank: firstRelevantRank(rankErVote, deltaSet) },
-        EvidenceRank_Vote_NoBridge:          { rr: reciprocalRank(rankErVoteNB, deltaSet),        rank: firstRelevantRank(rankErVoteNB, deltaSet) },
-        EvidenceRank_Vote_D95:               { rr: reciprocalRank(rankErVote95, deltaSet),        rank: firstRelevantRank(rankErVote95, deltaSet) },
-        QuadraticEnergy_Vote:                { rr: reciprocalRank(rankQeVote, deltaSet),          rank: firstRelevantRank(rankQeVote, deltaSet) },
-        QuadraticEnergy_Vote_NoBridge:       { rr: reciprocalRank(rankQeVoteNB, deltaSet),        rank: firstRelevantRank(rankQeVoteNB, deltaSet) },
-        DampedModular_ReferenceBias_NoBridge: { rr: reciprocalRank(rankDmRefBiasNB, deltaSet),   rank: firstRelevantRank(rankDmRefBiasNB, deltaSet) },
-        DampedModular_Vote_HC_NoBridge:      { rr: reciprocalRank(rankDmVoteHCNB, deltaSet),      rank: firstRelevantRank(rankDmVoteHCNB, deltaSet) },
-        Combined_ER_QE_Vote:                 { rr: reciprocalRank(rankCombinedVote, deltaSet),    rank: firstRelevantRank(rankCombinedVote, deltaSet) },
+        Top_Tree:                            { rr: reciprocalRank(rankTopTree, deltaSet),          rank: firstRelevantRank(rankTopTree, deltaSet) },
+        Top_Flat:                            { rr: reciprocalRank(rankTop, deltaSet),              rank: firstRelevantRank(rankTop, deltaSet) },
+        EvidenceRank_Vote:                   { rr: reciprocalRank(rankErVote, deltaSet),           rank: firstRelevantRank(rankErVote, deltaSet) },
+        EvidenceRank_Vote_Tree:              { rr: reciprocalRank(rankErVoteTree, deltaSet),       rank: firstRelevantRank(rankErVoteTree, deltaSet) },
+        EvidenceRank_Vote_NoBridge:          { rr: reciprocalRank(rankErVoteNB, deltaSet),         rank: firstRelevantRank(rankErVoteNB, deltaSet) },
+        EvidenceRank_Vote_NoBridge_Tree:     { rr: reciprocalRank(rankErVoteNBTree, deltaSet),     rank: firstRelevantRank(rankErVoteNBTree, deltaSet) },
+        EvidenceRank_Vote_D95:               { rr: reciprocalRank(rankErVote95, deltaSet),         rank: firstRelevantRank(rankErVote95, deltaSet) },
+        EvidenceRank_Vote_D95_Tree:          { rr: reciprocalRank(rankErVote95Tree, deltaSet),     rank: firstRelevantRank(rankErVote95Tree, deltaSet) },
+        QuadraticEnergy_Vote:                { rr: reciprocalRank(rankQeVote, deltaSet),           rank: firstRelevantRank(rankQeVote, deltaSet) },
+        QuadraticEnergy_Vote_Tree:           { rr: reciprocalRank(rankQeVoteTree, deltaSet),       rank: firstRelevantRank(rankQeVoteTree, deltaSet) },
+        QuadraticEnergy_Vote_NoBridge:       { rr: reciprocalRank(rankQeVoteNB, deltaSet),         rank: firstRelevantRank(rankQeVoteNB, deltaSet) },
+        QuadraticEnergy_Vote_NoBridge_Tree:  { rr: reciprocalRank(rankQeVoteNBTree, deltaSet),     rank: firstRelevantRank(rankQeVoteNBTree, deltaSet) },
+        DampedModular_ReferenceBias_NoBridge:      { rr: reciprocalRank(rankDmRefBiasNB, deltaSet),     rank: firstRelevantRank(rankDmRefBiasNB, deltaSet) },
+        DampedModular_ReferenceBias_NoBridge_Tree: { rr: reciprocalRank(rankDmRefBiasNBTree, deltaSet), rank: firstRelevantRank(rankDmRefBiasNBTree, deltaSet) },
+        DampedModular_Vote_HC_NoBridge:            { rr: reciprocalRank(rankDmVoteHCNB, deltaSet),      rank: firstRelevantRank(rankDmVoteHCNB, deltaSet) },
+        DampedModular_Vote_HC_NoBridge_Tree:       { rr: reciprocalRank(rankDmVoteHCNBTree, deltaSet),  rank: firstRelevantRank(rankDmVoteHCNBTree, deltaSet) },
+        Combined_ER_QE_Vote:                 { rr: reciprocalRank(rankCombinedVote, deltaSet),     rank: firstRelevantRank(rankCombinedVote, deltaSet) },
+        Combined_ER_QE_Vote_Tree:            { rr: reciprocalRank(rankCombinedVoteTree, deltaSet), rank: firstRelevantRank(rankCombinedVoteTree, deltaSet) },
       },
     });
   }
@@ -552,38 +623,29 @@ async function main() {
   };
   const meanOrNull = (vals: number[]) => vals.length === 0 ? null : mean(vals);
 
-  const summarize = (key: AlgKey, vsKey: AlgKey): AlgSummary => {
+  // win_rate = fraction of threads where this algorithm beats the Top baseline.
+  // Using a consistent baseline makes win_rates comparable across algorithms.
+  const summarize = (key: AlgKey): AlgSummary => {
     const mrr = mean(results.map(r => r.metrics[key].rr));
     const ranks = results.map(r => r.metrics[key].rank).filter((v): v is number => v !== null);
-    const wins = results.filter(r => r.metrics[key].rr > r.metrics[vsKey].rr).length;
+    const wins = results.filter(r => r.metrics[key].rr > r.metrics['Top_Flat'].rr).length;
     return { mrr, mean_rank: meanOrNull(ranks), median_rank: median(ranks), rank_std: stdDev(ranks), win_rate: wins / n };
   };
 
   const algKeys: AlgKey[] = [
-    'Top',
-    'EvidenceRank_Vote',              'EvidenceRank_Vote_NoBridge',
-    'EvidenceRank_Vote_D95',
-    'QuadraticEnergy_Vote',           'QuadraticEnergy_Vote_NoBridge',
-    'DampedModular_ReferenceBias_NoBridge',
-    'DampedModular_Vote_HC_NoBridge',
-    'Combined_ER_QE_Vote',
+    'Top_Tree',                           'Top_Flat',
+    'EvidenceRank_Vote',                  'EvidenceRank_Vote_Tree',
+    'EvidenceRank_Vote_NoBridge',         'EvidenceRank_Vote_NoBridge_Tree',
+    'EvidenceRank_Vote_D95',              'EvidenceRank_Vote_D95_Tree',
+    'QuadraticEnergy_Vote',               'QuadraticEnergy_Vote_Tree',
+    'QuadraticEnergy_Vote_NoBridge',      'QuadraticEnergy_Vote_NoBridge_Tree',
+    'DampedModular_ReferenceBias_NoBridge',      'DampedModular_ReferenceBias_NoBridge_Tree',
+    'DampedModular_Vote_HC_NoBridge',            'DampedModular_Vote_HC_NoBridge_Tree',
+    'Combined_ER_QE_Vote',                'Combined_ER_QE_Vote_Tree',
   ];
 
-  // Compare each algorithm against its closest related baseline
-  const vsKeyMap: Record<AlgKey, AlgKey> = {
-    Top:                                     'EvidenceRank_Vote',
-    EvidenceRank_Vote:                       'Top',
-    EvidenceRank_Vote_NoBridge:              'EvidenceRank_Vote',
-    EvidenceRank_Vote_D95:                   'EvidenceRank_Vote',
-    QuadraticEnergy_Vote:                    'EvidenceRank_Vote',
-    QuadraticEnergy_Vote_NoBridge:           'QuadraticEnergy_Vote',
-    DampedModular_ReferenceBias_NoBridge:    'EvidenceRank_Vote',
-    DampedModular_Vote_HC_NoBridge:          'EvidenceRank_Vote',
-    Combined_ER_QE_Vote:                     'EvidenceRank_Vote',
-  };
-
   const summaryMap = Object.fromEntries(
-    algKeys.map(k => [k, summarize(k, vsKeyMap[k])])
+    algKeys.map(k => [k, summarize(k)])
   ) as Record<AlgKey, AlgSummary>;
 
   const output: BenchmarkOutput = {
