@@ -71,26 +71,6 @@ interface RankedNode {
 }
 
 
-function flattenTree(items: unknown[], rank = { value: 0 }, parentId: string | null = null): RankedNode[] {
-  const result: RankedNode[] = [];
-  for (const item of items as Array<Record<string, unknown>>) {
-    rank.value += 1;
-    result.push({
-      id: item['id'] as string,
-      text: item['content'] as string,
-      rank: rank.value,
-      score: (item['final_score'] as number) ?? 0,
-      depth: (item['depth'] as number) ?? 0,
-      parent_id: parentId,
-      parent_text: null,
-    });
-    const children = item['children'] as unknown[] | undefined;
-    if (children && children.length > 0) {
-      result.push(...flattenTree(children, rank, item['id'] as string));
-    }
-  }
-  return result;
-}
 
 function reciprocalRank(results: RankedNode[], deltaIds: Set<string>): number {
   for (const r of results) {
@@ -129,15 +109,15 @@ type AlgSummary = {
 };
 
 type AlgKey =
-  | 'Top_Tree' | 'Top_Flat'
-  | 'EvidenceRank_Vote'         | 'EvidenceRank_Vote_Tree'
-  | 'EvidenceRank_Vote_NoBridge'| 'EvidenceRank_Vote_NoBridge_Tree'
-  | 'EvidenceRank_Vote_D95'     | 'EvidenceRank_Vote_D95_Tree'
-  | 'QuadraticEnergy_Vote'      | 'QuadraticEnergy_Vote_Tree'
-  | 'QuadraticEnergy_Vote_NoBridge'| 'QuadraticEnergy_Vote_NoBridge_Tree'
-  | 'DampedModular_ReferenceBias_NoBridge'     | 'DampedModular_ReferenceBias_NoBridge_Tree'
-  | 'DampedModular_Vote_HC_NoBridge'           | 'DampedModular_Vote_HC_NoBridge_Tree'
-  | 'Combined_ER_QE_Vote'       | 'Combined_ER_QE_Vote_Tree'
+  | 'Top_Flat'
+  | 'EvidenceRank_Vote'
+  | 'EvidenceRank_Vote_NoBridge'
+  | 'EvidenceRank_Vote_D95'
+  | 'QuadraticEnergy_Vote'
+  | 'QuadraticEnergy_Vote_NoBridge'
+  | 'DampedModular_ReferenceBias_NoBridge'
+  | 'DampedModular_Vote_HC_NoBridge'
+  | 'Combined_ER_QE_Vote'
   | 'EvidenceRank_Enthymeme_Inherit' | 'EvidenceRank_Enthymeme_Attack' | 'EvidenceRank_Enthymeme_Support'
   | 'EvidenceRank_Enthymeme_Inherit_Bridge' | 'EvidenceRank_Enthymeme_Attack_Bridge' | 'EvidenceRank_Enthymeme_Support_Bridge'
   | 'ER_Enth_Inherit_W10' | 'ER_Enth_Attack_W10' | 'ER_Enth_Support_W10'
@@ -169,18 +149,6 @@ interface BenchmarkOutput {
   thread_count: number;
   summary: Record<AlgKey, AlgSummary>;
   threads: ThreadResult[];
-}
-
-/** Recursively filter a nested tree to only keep items whose id is in the valid set. */
-function filterTreeByIds(items: Array<Record<string, unknown>>, validIds: Set<string>): Array<Record<string, unknown>> {
-  return items
-    .filter(item => validIds.has(item['id'] as string))
-    .map(item => ({
-      ...item,
-      children: Array.isArray(item['children'])
-        ? filterTreeByIds(item['children'] as Array<Record<string, unknown>>, validIds)
-        : [],
-    }));
 }
 
 // ── Ingest helpers ────────────────────────────────────────────────────────
@@ -633,13 +601,6 @@ async function main() {
         e => validSourceIds.has(e.source_id)
       );
     }
-    // Filter tree items to only pre-delta replies
-    if (gd.data.top_tree?.items) {
-      gd.data.top_tree.items = filterTreeByIds(
-        gd.data.top_tree.items as Array<Record<string, unknown>>,
-        validSourceIds
-      );
-    }
     const filtered = origNodeCount - gd.data.graph!.nodes.length;
     if (filtered > 0) {
       console.log(`    ${gd.threadId}: filtered ${filtered} post-delta i-nodes`);
@@ -664,34 +625,21 @@ async function main() {
             const computeResult = await computeInWorker({
               threadGraph: data.graph!,
               validEnthymemes: data.enthymemes ?? [],
-              treeItems: data.top_tree?.items ?? [],
+              treeItems: [],
             });
-
-            const rankTopTree = flattenTree(data.top_tree?.items ?? [])
-              .sort((a, b) => b.score - a.score)
-              .map((n, idx) => ({ ...n, rank: idx + 1 }));
 
             const deltaSet = new Set(info.delta_reply_ids);
 
             const algs = {
-              Top_Tree:                            rankTopTree,
               Top_Flat:                            computeResult.algTop,
               EvidenceRank_Vote:                   computeResult.erVote,
-              EvidenceRank_Vote_Tree:              flattenTree(computeResult.erVoteTree),
               EvidenceRank_Vote_NoBridge:          computeResult.erVoteNB,
-              EvidenceRank_Vote_NoBridge_Tree:     flattenTree(computeResult.erVoteNBTree),
               EvidenceRank_Vote_D95:               computeResult.erVote95,
-              EvidenceRank_Vote_D95_Tree:          flattenTree(computeResult.erVote95Tree),
               QuadraticEnergy_Vote:                computeResult.qeVote,
-              QuadraticEnergy_Vote_Tree:           flattenTree(computeResult.qeVoteTree),
               QuadraticEnergy_Vote_NoBridge:       computeResult.qeVoteNB,
-              QuadraticEnergy_Vote_NoBridge_Tree:  flattenTree(computeResult.qeVoteNBTree),
               DampedModular_ReferenceBias_NoBridge:      computeResult.dmRefBiasNB,
-              DampedModular_ReferenceBias_NoBridge_Tree: flattenTree(computeResult.dmRefBiasNBTree),
               DampedModular_Vote_HC_NoBridge:            computeResult.dmVoteHCNB,
-              DampedModular_Vote_HC_NoBridge_Tree:       flattenTree(computeResult.dmVoteHCNBTree),
               Combined_ER_QE_Vote:                 computeResult.combinedVote,
-              Combined_ER_QE_Vote_Tree:            flattenTree(computeResult.combinedVoteTree),
               EvidenceRank_Enthymeme_Inherit:      computeResult.erEnthInherit,
               EvidenceRank_Enthymeme_Attack:       computeResult.erEnthAttack,
               EvidenceRank_Enthymeme_Support:      computeResult.erEnthSupport,
@@ -913,15 +861,15 @@ async function main() {
   };
 
   const algKeys: AlgKey[] = [
-    'Top_Tree',                           'Top_Flat',
-    'EvidenceRank_Vote',                  'EvidenceRank_Vote_Tree',
-    'EvidenceRank_Vote_NoBridge',         'EvidenceRank_Vote_NoBridge_Tree',
-    'EvidenceRank_Vote_D95',              'EvidenceRank_Vote_D95_Tree',
-    'QuadraticEnergy_Vote',               'QuadraticEnergy_Vote_Tree',
-    'QuadraticEnergy_Vote_NoBridge',      'QuadraticEnergy_Vote_NoBridge_Tree',
-    'DampedModular_ReferenceBias_NoBridge',      'DampedModular_ReferenceBias_NoBridge_Tree',
-    'DampedModular_Vote_HC_NoBridge',            'DampedModular_Vote_HC_NoBridge_Tree',
-    'Combined_ER_QE_Vote',                'Combined_ER_QE_Vote_Tree',
+    'Top_Flat',
+    'EvidenceRank_Vote',
+    'EvidenceRank_Vote_NoBridge',
+    'EvidenceRank_Vote_D95',
+    'QuadraticEnergy_Vote',
+    'QuadraticEnergy_Vote_NoBridge',
+    'DampedModular_ReferenceBias_NoBridge',
+    'DampedModular_Vote_HC_NoBridge',
+    'Combined_ER_QE_Vote',
     'EvidenceRank_Enthymeme_Inherit', 'EvidenceRank_Enthymeme_Attack', 'EvidenceRank_Enthymeme_Support',
     'EvidenceRank_Enthymeme_Inherit_Bridge', 'EvidenceRank_Enthymeme_Attack_Bridge', 'EvidenceRank_Enthymeme_Support_Bridge',
     'ER_Enth_Inherit_W10', 'ER_Enth_Attack_W10', 'ER_Enth_Support_W10',

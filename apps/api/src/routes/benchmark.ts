@@ -39,9 +39,12 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     const pool = getPool();
     const repo = createV3HypergraphRepo(pool);
 
-    // Fetch vote-sorted thread tree, argument graph, and enthymemes in parallel
+    const graphOnly = req.query['graph_only'] === '1';
+
+    // Fetch argument graph and enthymemes in parallel.
+    // Skip expensive recursive buildTopThread in graph_only mode.
     const [algTopTree, threadGraph, enthymemeResult] = await Promise.all([
-      buildTopThread(postId, 10000),
+      graphOnly ? Promise.resolve(null) : buildTopThread(postId, 10000),
       repo.getThreadGraph(postId),
       pool.query<{
         id: string;
@@ -95,7 +98,7 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
     }
 
     // ── Full computation mode (backward-compatible) ──
-    const treeItems = algTopTree.items as unknown[];
+    const treeItems = algTopTree!.items as unknown[];
     const result = computeAllRankings({
       threadGraph: serializedGraph,
       validEnthymemes,
