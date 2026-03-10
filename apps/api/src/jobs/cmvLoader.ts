@@ -40,6 +40,7 @@ interface RawComment {
   parent_id?: string;
   level?: number;
   children?: RawComment[];
+  created_utc?: string | number;
 }
 
 interface RawThread {
@@ -68,8 +69,15 @@ function collectComments(comments: RawComment[], acc: RawComment[]): void {
   }
 }
 
+interface DeltaInfo {
+  deltaIds: string[];
+  /** Unix timestamp of the last DeltaBot "Confirmed" comment (null if none found). */
+  lastDeltaTime: number | null;
+}
+
 /**
- * Find comment IDs that were awarded a delta.
+ * Find comment IDs that were awarded a delta, plus the timestamp of the last
+ * delta award (DeltaBot confirmation).
  *
  * CMV structure:
  *   Commenter's persuasive argument        ← we want THIS
@@ -78,7 +86,7 @@ function collectComments(comments: RawComment[], acc: RawComment[]): void {
  *
  * So we follow two hops: DeltaBot → OP's acknowledgment → persuasive commenter.
  */
-function findDeltaCommentIds(allComments: RawComment[]): string[] {
+function findDeltaInfo(allComments: RawComment[]): DeltaInfo {
   // Build a map from comment id → parent_id for the grandparent hop
   const parentOf = new Map<string, string>();
   for (const c of allComments) {
@@ -86,6 +94,8 @@ function findDeltaCommentIds(allComments: RawComment[]): string[] {
   }
 
   const deltaIds = new Set<string>();
+  let lastDeltaTime: number | null = null;
+
   for (const c of allComments) {
     if (
       c.author === 'DeltaBot' &&
@@ -98,10 +108,14 @@ function findDeltaCommentIds(allComments: RawComment[]): string[] {
       const persuasiveId = parentOf.get(opAckId);
       if (persuasiveId) {
         deltaIds.add(persuasiveId);
+        if (c.created_utc != null) {
+          const t = typeof c.created_utc === 'string' ? parseFloat(c.created_utc) : c.created_utc;
+          if (lastDeltaTime === null || t > lastDeltaTime) lastDeltaTime = t;
+        }
       }
     }
   }
-  return Array.from(deltaIds);
+  return { deltaIds: Array.from(deltaIds), lastDeltaTime };
 }
 
 function parseThread(raw: RawThread): CMVThread | null {
@@ -122,15 +136,21 @@ function parseThread(raw: RawThread): CMVThread | null {
   const allComments: RawComment[] = [];
   collectComments(raw.comments ?? [], allComments);
 
-  const deltaIds = findDeltaCommentIds(allComments);
+  const { deltaIds, lastDeltaTime } = findDeltaInfo(allComments);
   if (deltaIds.length === 0) return null;
 
-  // Collect all valid comment nodes
+  // Collect all valid comment nodes, excluding comments posted after the last delta
   const commentNodes: CMVNode[] = [];
 
   for (const c of allComments) {
     if (!c.id || !c.body || c.body === '[deleted]' || c.body === '[removed]') continue;
     if (c.author === 'DeltaBot') continue; // exclude meta-comments
+
+    // Filter out comments posted after the last delta was awarded
+    if (lastDeltaTime !== null && c.created_utc != null) {
+      const ct = typeof c.created_utc === 'string' ? parseFloat(c.created_utc) : c.created_utc;
+      if (ct > lastDeltaTime) continue;
+    }
 
     commentNodes.push({
       id: c.id,
