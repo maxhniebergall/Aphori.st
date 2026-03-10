@@ -125,7 +125,8 @@ type AlgKey =
   | 'ER_Enth_Inherit_WPctConf' | 'ER_Enth_Attack_WPctConf' | 'ER_Enth_Support_WPctConf'
   | 'ER_Vote_Sum' | 'ER_Vote_Sum_NoDC' | 'ER_Vote_NoDC' | 'ER_Vote_Dim_NoDC'
   | 'ER_Vote_Sum_NoDC_Bridge' | 'ER_Vote_Geo_NoDC' | 'ER_Vote_D95_Sum_NoDC'
-  | 'RRF_ER_QE_Vote' | 'RRF_ER_QE_Reply';
+  | 'RRF_ER_QE_Vote' | 'RRF_ER_QE_Reply'
+  | 'Top_ReplyCount' | 'RRF_Top_Vote_ReplyCount';
 
 interface RawThreadData {
   focalNodeId: string;
@@ -534,6 +535,7 @@ async function main() {
         conclusion_node_id: string | null;
       }>;
       enthymeme_count?: number;
+      replyChildCounts?: Array<[string, number]>;
     };
   };
 
@@ -626,6 +628,7 @@ async function main() {
               threadGraph: data.graph!,
               validEnthymemes: data.enthymemes ?? [],
               treeItems: [],
+              replyChildCounts: data.replyChildCounts ?? [],
             });
 
             const deltaSet = new Set(info.delta_reply_ids);
@@ -664,6 +667,8 @@ async function main() {
               ER_Vote_D95_Sum_NoDC:     computeResult.erVoteD95SumNoDC,
               RRF_ER_QE_Vote:           computeResult.rrfErQeVote,
               RRF_ER_QE_Reply:          computeResult.rrfErQeReply,
+              Top_ReplyCount:           computeResult.topReplyCount,
+              RRF_Top_Vote_ReplyCount:  computeResult.rrfTopVoteReplyCount,
             };
 
             const metrics: Record<string, AlgMetrics> = {};
@@ -878,6 +883,7 @@ async function main() {
     'ER_Vote_Sum', 'ER_Vote_Sum_NoDC', 'ER_Vote_NoDC', 'ER_Vote_Dim_NoDC',
     'ER_Vote_Sum_NoDC_Bridge', 'ER_Vote_Geo_NoDC', 'ER_Vote_D95_Sum_NoDC',
     'RRF_ER_QE_Vote', 'RRF_ER_QE_Reply',
+    'Top_ReplyCount', 'RRF_Top_Vote_ReplyCount',
   ];
 
   const summaryMap = Object.fromEntries(

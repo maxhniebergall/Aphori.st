@@ -84,6 +84,17 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       nodeTargets: [...threadGraph.nodeTargets.entries()],
     };
 
+    // Reply child counts (for reply-count baseline)
+    const { rows: childCountRows } = await pool.query<{ parent_reply_id: string; child_count: string }>(`
+      SELECT parent_reply_id, COUNT(*)::text as child_count
+      FROM replies
+      WHERE post_id = $1 AND deleted_at IS NULL AND parent_reply_id IS NOT NULL
+      GROUP BY parent_reply_id
+    `, [postId]);
+    const replyChildCounts: Array<[string, number]> = childCountRows.map(
+      r => [r.parent_reply_id, parseInt(r.child_count, 10)]
+    );
+
     // ── graph_only mode: return raw data, skip computation ──
     if (req.query['graph_only'] === '1') {
       res.json({
@@ -93,6 +104,7 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
         graph: serializedGraph,
         enthymemes: validEnthymemes,
         enthymeme_count: validEnthymemes.length,
+        replyChildCounts,
       });
       return;
     }
@@ -103,6 +115,7 @@ router.get('/thread/:postId', authenticateToken, async (req: Request<{ postId: s
       threadGraph: serializedGraph,
       validEnthymemes,
       treeItems,
+      replyChildCounts,
     });
 
     const includeRaw = req.query['raw'] === '1';

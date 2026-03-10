@@ -56,6 +56,8 @@ export interface BenchmarkComputeInput {
   threadGraph: SerializableThreadGraph;
   validEnthymemes: EnthymemeRow[];
   treeItems: unknown[];
+  /** reply_id → number of direct child replies */
+  replyChildCounts: Array<[string, number]>;
 }
 
 export interface BenchmarkComputeOutput {
@@ -94,6 +96,9 @@ export interface BenchmarkComputeOutput {
   // RRF combination variants
   rrfErQeVote: FlatRankedNode[];
   rrfErQeReply: FlatRankedNode[];
+  // Reply count baselines
+  topReplyCount: FlatRankedNode[];
+  rrfTopVoteReplyCount: FlatRankedNode[];
   // Tree-reordered variants
   erVoteTree: unknown[];
   erVoteNBTree: unknown[];
@@ -531,6 +536,26 @@ export function computeAllRankings(input: BenchmarkComputeInput): BenchmarkCompu
     .map((n, i) => ({ id: n.id, text: n.text, rank: i + 1, score: Math.max(1, n.vote_score) }));
   const algTop = aggregateToReplyLevel(topRanked, threadGraph, 0.0);
 
+  // Reply count baseline + RRF(Top_Vote, Top_ReplyCount)
+  const childCounts = new Map(input.replyChildCounts);
+  const replyIds = [...new Set(
+    threadGraph.nodes.filter(n => n.source_type === 'reply').map(n => n.source_id)
+  )];
+  const topReplyCount: FlatRankedNode[] = [...replyIds]
+    .map(id => ({ id, count: childCounts.get(id) ?? 0 }))
+    .sort((a, b) => b.count - a.count)
+    .map((r, idx) => ({
+      id: r.id, text: '', rank: idx + 1, score: r.count,
+      depth: 0, parent_id: null, parent_text: null,
+    }));
+  const topAsRanked: RankedResult[] = algTop.map(r => ({ id: r.id, text: '', rank: r.rank, score: r.score }));
+  const rcAsRanked: RankedResult[] = topReplyCount.map(r => ({ id: r.id, text: '', rank: r.rank, score: r.score }));
+  const rrfTopVoteReplyCount: FlatRankedNode[] = rrfCombine([topAsRanked, rcAsRanked])
+    .map((r, idx) => ({
+      id: r.id, text: '', rank: idx + 1, score: r.score,
+      depth: 0, parent_id: null, parent_text: null,
+    }));
+
   // ── Build tree variants ──
   const scoreMapErVote      = new Map(erVote.map(r => [r.id, r.score]));
   const scoreMapErVoteNB    = new Map(erVoteNB.map(r => [r.id, r.score]));
@@ -555,6 +580,7 @@ export function computeAllRankings(input: BenchmarkComputeInput): BenchmarkCompu
     erVoteSum, erVoteSumNoDC, erVoteNoDC, erVoteDimNoDC,
     erVoteSumNoDCBridge, erVoteGeoNoDC, erVoteD95SumNoDC,
     rrfErQeVote, rrfErQeReply,
+    topReplyCount, rrfTopVoteReplyCount,
     erVoteTree:      reorderTree(treeItems, scoreMapErVote),
     erVoteNBTree:    reorderTree(treeItems, scoreMapErVoteNB),
     erVote95Tree:    reorderTree(treeItems, scoreMapErVote95),
