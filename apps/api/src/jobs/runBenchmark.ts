@@ -142,7 +142,10 @@ type AlgKey =
   | 'EvidenceRank_Enthymeme_Inherit_Bridge' | 'EvidenceRank_Enthymeme_Attack_Bridge' | 'EvidenceRank_Enthymeme_Support_Bridge'
   | 'ER_Enth_Inherit_W10' | 'ER_Enth_Attack_W10' | 'ER_Enth_Support_W10'
   | 'ER_Enth_Inherit_WPct' | 'ER_Enth_Attack_WPct' | 'ER_Enth_Support_WPct'
-  | 'ER_Enth_Inherit_WPctConf' | 'ER_Enth_Attack_WPctConf' | 'ER_Enth_Support_WPctConf';
+  | 'ER_Enth_Inherit_WPctConf' | 'ER_Enth_Attack_WPctConf' | 'ER_Enth_Support_WPctConf'
+  | 'ER_Vote_Sum' | 'ER_Vote_Sum_NoDC' | 'ER_Vote_NoDC' | 'ER_Vote_Dim_NoDC'
+  | 'ER_Vote_Sum_NoDC_Bridge' | 'ER_Vote_Geo_NoDC' | 'ER_Vote_D95_Sum_NoDC'
+  | 'RRF_ER_QE_Vote' | 'RRF_ER_QE_Reply';
 
 interface RawThreadData {
   focalNodeId: string;
@@ -704,6 +707,15 @@ async function main() {
               ER_Enth_Inherit_WPctConf: computeResult.erEnthInheritWPctConf,
               ER_Enth_Attack_WPctConf:  computeResult.erEnthAttackWPctConf,
               ER_Enth_Support_WPctConf: computeResult.erEnthSupportWPctConf,
+              ER_Vote_Sum:              computeResult.erVoteSum,
+              ER_Vote_Sum_NoDC:         computeResult.erVoteSumNoDC,
+              ER_Vote_NoDC:             computeResult.erVoteNoDC,
+              ER_Vote_Dim_NoDC:         computeResult.erVoteDimNoDC,
+              ER_Vote_Sum_NoDC_Bridge:  computeResult.erVoteSumNoDCBridge,
+              ER_Vote_Geo_NoDC:         computeResult.erVoteGeoNoDC,
+              ER_Vote_D95_Sum_NoDC:     computeResult.erVoteD95SumNoDC,
+              RRF_ER_QE_Vote:           computeResult.rrfErQeVote,
+              RRF_ER_QE_Reply:          computeResult.rrfErQeReply,
             };
 
             const metrics: Record<string, AlgMetrics> = {};
@@ -915,6 +927,9 @@ async function main() {
     'ER_Enth_Inherit_W10', 'ER_Enth_Attack_W10', 'ER_Enth_Support_W10',
     'ER_Enth_Inherit_WPct', 'ER_Enth_Attack_WPct', 'ER_Enth_Support_WPct',
     'ER_Enth_Inherit_WPctConf', 'ER_Enth_Attack_WPctConf', 'ER_Enth_Support_WPctConf',
+    'ER_Vote_Sum', 'ER_Vote_Sum_NoDC', 'ER_Vote_NoDC', 'ER_Vote_Dim_NoDC',
+    'ER_Vote_Sum_NoDC_Bridge', 'ER_Vote_Geo_NoDC', 'ER_Vote_D95_Sum_NoDC',
+    'RRF_ER_QE_Vote', 'RRF_ER_QE_Reply',
   ];
 
   const summaryMap = Object.fromEntries(

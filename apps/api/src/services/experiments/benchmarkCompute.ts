@@ -83,6 +83,17 @@ export interface BenchmarkComputeOutput {
   erEnthInheritWPctConf: FlatRankedNode[];
   erEnthAttackWPctConf: FlatRankedNode[];
   erEnthSupportWPctConf: FlatRankedNode[];
+  // Aggregation quick-win variants
+  erVoteSum: FlatRankedNode[];
+  erVoteSumNoDC: FlatRankedNode[];
+  erVoteNoDC: FlatRankedNode[];
+  erVoteDimNoDC: FlatRankedNode[];
+  erVoteSumNoDCBridge: FlatRankedNode[];
+  erVoteGeoNoDC: FlatRankedNode[];
+  erVoteD95SumNoDC: FlatRankedNode[];
+  // RRF combination variants
+  rrfErQeVote: FlatRankedNode[];
+  rrfErQeReply: FlatRankedNode[];
   // Tree-reordered variants
   erVoteTree: unknown[];
   erVoteNBTree: unknown[];
@@ -156,6 +167,122 @@ export function aggregateToReplyLevel(
     depth: 0,
     parent_id: null,
     parent_text: null,
+  }));
+}
+
+type AggMode = 'max' | 'sum' | 'diminishing' | 'geometric';
+type DCMode = 'full' | 'none' | 'soft';
+
+export function aggregateToReplyLevelV2(
+  rankResults: RankedResult[],
+  graph: InternalThreadGraph,
+  bridgeCoeff: number,
+  aggMode: AggMode = 'max',
+  dcMode: DCMode = 'full'
+): FlatRankedNode[] {
+  const degreeCentrality = new Map<string, number>();
+  for (const e of graph.edges) {
+    degreeCentrality.set(e.from_node_id, (degreeCentrality.get(e.from_node_id) ?? 0) + 1);
+  }
+
+  const nodeById = new Map<string, ThreadGraphNode>();
+  for (const n of graph.nodes) nodeById.set(n.id, n);
+
+  // Collect all i-node scores per reply, applying DC mode
+  const replyNodeScores = new Map<string, number[]>();
+  for (const r of rankResults) {
+    const node = nodeById.get(r.id);
+    if (!node || node.source_type !== 'reply') continue;
+
+    const dc = degreeCentrality.get(r.id) ?? 1;
+    let nodeScore: number;
+    switch (dcMode) {
+      case 'full':
+        nodeScore = r.score * Math.log(1 + dc);
+        break;
+      case 'none':
+        nodeScore = r.score;
+        break;
+      case 'soft':
+        nodeScore = r.score * (1 + 0.1 * Math.log(1 + dc));
+        break;
+    }
+
+    const scores = replyNodeScores.get(node.source_id) ?? [];
+    scores.push(nodeScore);
+    replyNodeScores.set(node.source_id, scores);
+  }
+
+  // Aggregate scores per reply using aggMode
+  const replyScores = new Map<string, number>();
+  for (const [replyId, scores] of replyNodeScores) {
+    let aggregated: number;
+    switch (aggMode) {
+      case 'max':
+        aggregated = Math.max(...scores);
+        break;
+      case 'sum':
+        aggregated = scores.reduce((a, b) => a + b, 0);
+        break;
+      case 'diminishing': {
+        const maxVal = Math.max(...scores);
+        const sumVal = scores.reduce((a, b) => a + b, 0);
+        aggregated = maxVal + 0.3 * (sumVal - maxVal);
+        break;
+      }
+      case 'geometric': {
+        const product = scores.reduce((a, b) => a * b, 1);
+        aggregated = Math.pow(product, 1 / scores.length);
+        break;
+      }
+    }
+    replyScores.set(replyId, aggregated);
+  }
+
+  // Apply bridge coefficient
+  if (bridgeCoeff > 0) {
+    const replyTargets = new Map<string, Set<string>>();
+    for (const [iNodeId, conclusionIds] of graph.nodeTargets) {
+      const node = nodeById.get(iNodeId);
+      if (!node || node.source_type !== 'reply') continue;
+      const targets = replyTargets.get(node.source_id) ?? new Set<string>();
+      for (const cId of conclusionIds) targets.add(cId);
+      replyTargets.set(node.source_id, targets);
+    }
+    for (const [replyId, baseScore] of replyScores) {
+      const uniqueTargets = replyTargets.get(replyId)?.size ?? 1;
+      const bridgeMultiplier = 1.0 + bridgeCoeff * (uniqueTargets - 1);
+      replyScores.set(replyId, baseScore * bridgeMultiplier);
+    }
+  }
+
+  const sorted = [...replyScores.entries()].sort((a, b) => b[1] - a[1]);
+  return sorted.map(([replyId, score], idx) => ({
+    id: replyId,
+    text: '',
+    rank: idx + 1,
+    score,
+    depth: 0,
+    parent_id: null,
+    parent_text: null,
+  }));
+}
+
+export function rrfCombine(rankings: RankedResult[][], k = 60): RankedResult[] {
+  const scores = new Map<string, number>();
+  const textById = new Map<string, string>();
+  for (const ranking of rankings) {
+    for (const r of ranking) {
+      scores.set(r.id, (scores.get(r.id) ?? 0) + 1 / (k + r.rank));
+      if (!textById.has(r.id)) textById.set(r.id, r.text);
+    }
+  }
+  const sorted = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+  return sorted.map(([id, score], idx) => ({
+    id,
+    text: textById.get(id) ?? '',
+    rank: idx + 1,
+    score,
   }));
 }
 
@@ -374,6 +501,30 @@ export function computeAllRankings(input: BenchmarkComputeInput): BenchmarkCompu
   const erEnthSupportWPctConf = aggregateToReplyLevel(ranked_er_enth_support_wpctconf, enthSupportWPctConf.augGraph, 0.0);
   const combinedVote  = aggregateToReplyLevel(combineRankings(ranked_er_vote, ranked_qe_vote), threadGraph, 1.0);
 
+  // ── Aggregation quick-win variants (V2) ──
+  const erVoteSum          = aggregateToReplyLevelV2(ranked_er_vote, threadGraph, 0.0, 'sum', 'full');
+  const erVoteSumNoDC      = aggregateToReplyLevelV2(ranked_er_vote, threadGraph, 0.0, 'sum', 'none');
+  const erVoteNoDC         = aggregateToReplyLevelV2(ranked_er_vote, threadGraph, 0.0, 'max', 'none');
+  const erVoteDimNoDC      = aggregateToReplyLevelV2(ranked_er_vote, threadGraph, 0.0, 'diminishing', 'none');
+  const erVoteSumNoDCBridge = aggregateToReplyLevelV2(ranked_er_vote, threadGraph, 1.0, 'sum', 'none');
+  const erVoteGeoNoDC      = aggregateToReplyLevelV2(ranked_er_vote, threadGraph, 0.0, 'geometric', 'none');
+  const erVoteD95SumNoDC   = aggregateToReplyLevelV2(ranked_er_vote95, threadGraph, 0.0, 'sum', 'none');
+
+  // ── RRF combination variants ──
+  const rrfErQeINode = rrfCombine([ranked_er_vote, ranked_qe_vote]);
+  const rrfErQeVote  = aggregateToReplyLevelV2(rrfErQeINode, threadGraph, 0.0, 'sum', 'none');
+  const rrfErQeReply = (() => {
+    const erReply = aggregateToReplyLevelV2(ranked_er_vote, threadGraph, 0.0, 'sum', 'none');
+    const qeReply = aggregateToReplyLevelV2(ranked_qe_vote, threadGraph, 0.0, 'sum', 'none');
+    const erAsRanked: RankedResult[] = erReply.map(r => ({ id: r.id, text: r.text, rank: r.rank, score: r.score }));
+    const qeAsRanked: RankedResult[] = qeReply.map(r => ({ id: r.id, text: r.text, rank: r.rank, score: r.score }));
+    const rrfResult = rrfCombine([erAsRanked, qeAsRanked]);
+    return rrfResult.map((r, idx) => ({
+      id: r.id, text: r.text, rank: idx + 1, score: r.score,
+      depth: 0, parent_id: null, parent_text: null,
+    }));
+  })();
+
   // Top baseline
   const topRanked: RankedResult[] = [...threadGraph.nodes]
     .sort((a, b) => Math.max(1, b.vote_score) - Math.max(1, a.vote_score))
@@ -401,6 +552,9 @@ export function computeAllRankings(input: BenchmarkComputeInput): BenchmarkCompu
     erEnthInheritW10, erEnthAttackW10, erEnthSupportW10,
     erEnthInheritWPct, erEnthAttackWPct, erEnthSupportWPct,
     erEnthInheritWPctConf, erEnthAttackWPctConf, erEnthSupportWPctConf,
+    erVoteSum, erVoteSumNoDC, erVoteNoDC, erVoteDimNoDC,
+    erVoteSumNoDCBridge, erVoteGeoNoDC, erVoteD95SumNoDC,
+    rrfErQeVote, rrfErQeReply,
     erVoteTree:      reorderTree(treeItems, scoreMapErVote),
     erVoteNBTree:    reorderTree(treeItems, scoreMapErVoteNB),
     erVote95Tree:    reorderTree(treeItems, scoreMapErVote95),
