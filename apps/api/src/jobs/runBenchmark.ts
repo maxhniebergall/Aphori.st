@@ -24,6 +24,7 @@ import { enqueueV3Analysis } from './enqueueV3Analysis.js';
 import { getPool, closePool } from '../db/pool.js';
 import { v3Queue } from './v3Queue.js';
 import { graphProcessorQueue } from './graphProcessorQueue.js';
+import { initPool, computeInWorker, destroyPool } from './benchmarkWorkerPool.js';
 
 const DEV_USER_ID = 'dev_user';
 
@@ -106,10 +107,26 @@ function firstRelevantRank(results: RankedNode[], deltaIds: Set<string>): number
   return null;
 }
 
+/** Mean rank across ALL delta replies (not just the best one). */
+function meanDeltaRank(results: RankedNode[], deltaIds: Set<string>): number | null {
+  const ranks: number[] = [];
+  for (const r of results) {
+    if (deltaIds.has(r.id)) ranks.push(r.rank);
+  }
+  return ranks.length === 0 ? null : ranks.reduce((a, b) => a + b, 0) / ranks.length;
+}
+
 // ── Output schema ─────────────────────────────────────────────────────────
 
-type AlgMetrics = { rr: number; rank: number | null };
-type AlgSummary = { mrr: number; mean_rank: number | null; median_rank: number | null; rank_std: number | null; win_rate: number };
+type AlgMetrics = { rr: number; rank: number | null; mean_delta_rank: number | null };
+type AlgSummary = {
+  mrr: number; mrr_std: number | null;
+  mean_rank: number | null; median_rank: number | null; rank_std: number | null;
+  mean_delta_rank: number | null; mean_delta_rank_std: number | null;
+  win_rate: number;
+  wilcoxon_w: number | null; wilcoxon_p: number | null; wilcoxon_n: number | null;
+  bootstrap_p: number | null; bootstrap_ci_lo: number | null; bootstrap_ci_hi: number | null;
+};
 
 type AlgKey =
   | 'Top_Tree' | 'Top_Flat'
@@ -121,7 +138,11 @@ type AlgKey =
   | 'DampedModular_ReferenceBias_NoBridge'     | 'DampedModular_ReferenceBias_NoBridge_Tree'
   | 'DampedModular_Vote_HC_NoBridge'           | 'DampedModular_Vote_HC_NoBridge_Tree'
   | 'Combined_ER_QE_Vote'       | 'Combined_ER_QE_Vote_Tree'
-  | 'EvidenceRank_Enthymeme_Inherit' | 'EvidenceRank_Enthymeme_Attack' | 'EvidenceRank_Enthymeme_Support';
+  | 'EvidenceRank_Enthymeme_Inherit' | 'EvidenceRank_Enthymeme_Attack' | 'EvidenceRank_Enthymeme_Support'
+  | 'EvidenceRank_Enthymeme_Inherit_Bridge' | 'EvidenceRank_Enthymeme_Attack_Bridge' | 'EvidenceRank_Enthymeme_Support_Bridge'
+  | 'ER_Enth_Inherit_W10' | 'ER_Enth_Attack_W10' | 'ER_Enth_Support_W10'
+  | 'ER_Enth_Inherit_WPct' | 'ER_Enth_Attack_WPct' | 'ER_Enth_Support_WPct'
+  | 'ER_Enth_Inherit_WPctConf' | 'ER_Enth_Attack_WPctConf' | 'ER_Enth_Support_WPctConf';
 
 interface RawThreadData {
   focalNodeId: string;
@@ -145,6 +166,18 @@ interface BenchmarkOutput {
   thread_count: number;
   summary: Record<AlgKey, AlgSummary>;
   threads: ThreadResult[];
+}
+
+/** Recursively filter a nested tree to only keep items whose id is in the valid set. */
+function filterTreeByIds(items: Array<Record<string, unknown>>, validIds: Set<string>): Array<Record<string, unknown>> {
+  return items
+    .filter(item => validIds.has(item['id'] as string))
+    .map(item => ({
+      ...item,
+      children: Array.isArray(item['children'])
+        ? filterTreeByIds(item['children'] as Array<Record<string, unknown>>, validIds)
+        : [],
+    }));
 }
 
 // ── Ingest helpers ────────────────────────────────────────────────────────
@@ -504,158 +537,199 @@ async function main() {
   }
 
   // ── Step 4: Evaluate ──
-  console.log('\n[4/5] Evaluating with benchmark API (parallel)...');
+  // Phase A: Fetch graph data from API (lightweight DB queries only, no computation)
+  // Phase B: Compute rankings in worker thread pool (4 threads, true parallelism)
+  console.log('\n[4/5] Fetching graph data + computing rankings (4 worker threads)...');
   const results: ThreadResult[] = [];
 
   const evalEntries = [...mapping.entries()];
 
-  // Evaluate in batches of 20 to stay within the 60 req/min rate limit.
-  type EvalResult = {
+  type GraphOnlyResult = {
     threadId: string;
     info: (typeof evalEntries)[0][1];
     data: {
       post_id: string;
       parent_argument: string;
       top_tree?: { items: unknown[] };
-      Top_Flat?: { items: RankedNode[] };
-      raw_data?: RawThreadData;
-      EvidenceRank_Vote?:                          { items: RankedNode[] };
-      EvidenceRank_Vote_Tree?:                     { items: unknown[] };
-      EvidenceRank_Vote_NoBridge?:                 { items: RankedNode[] };
-      EvidenceRank_Vote_NoBridge_Tree?:            { items: unknown[] };
-      EvidenceRank_Vote_D95?:                      { items: RankedNode[] };
-      EvidenceRank_Vote_D95_Tree?:                 { items: unknown[] };
-      QuadraticEnergy_Vote?:                       { items: RankedNode[] };
-      QuadraticEnergy_Vote_Tree?:                  { items: unknown[] };
-      QuadraticEnergy_Vote_NoBridge?:              { items: RankedNode[] };
-      QuadraticEnergy_Vote_NoBridge_Tree?:         { items: unknown[] };
-      DampedModular_ReferenceBias_NoBridge?:       { items: RankedNode[] };
-      DampedModular_ReferenceBias_NoBridge_Tree?:  { items: unknown[] };
-      DampedModular_Vote_HC_NoBridge?:             { items: RankedNode[] };
-      DampedModular_Vote_HC_NoBridge_Tree?:        { items: unknown[] };
-      Combined_ER_QE_Vote?:                        { items: RankedNode[] };
-      Combined_ER_QE_Vote_Tree?:                   { items: unknown[] };
-      EvidenceRank_Enthymeme_Inherit?:             { items: RankedNode[] };
-      EvidenceRank_Enthymeme_Attack?:              { items: RankedNode[] };
-      EvidenceRank_Enthymeme_Support?:             { items: RankedNode[] };
+      graph?: {
+        nodes: Array<{ id: string; text: string; vote_score: number; source_id: string; source_type: 'post' | 'reply' }>;
+        edges: Array<{ from_node_id: string; to_node_id: string; direction: 'SUPPORT' | 'ATTACK'; confidence: number }>;
+        nodeTargets: Array<[string, string[]]>;
+      };
+      enthymemes?: Array<{
+        id: string; content: string; probability: number;
+        scheme_direction: 'SUPPORT' | 'ATTACK';
+        source_type: 'post' | 'reply'; source_id: string;
+        conclusion_node_id: string | null;
+      }>;
       enthymeme_count?: number;
     };
   };
 
-  const evalResults: (EvalResult | null)[] = [];
-  const BATCH_SIZE = 20;
-  for (let i = 0; i < evalEntries.length; i += BATCH_SIZE) {
-    const batch = evalEntries.slice(i, i + BATCH_SIZE);
+  // Phase A: Fetch graph data in batches of 20 (lightweight I/O)
+  console.log('  Phase A: Fetching graph data from API...');
+  const graphDataResults: (GraphOnlyResult | null)[] = [];
+  const FETCH_BATCH = 4;
+  for (let i = 0; i < evalEntries.length; i += FETCH_BATCH) {
+    const batch = evalEntries.slice(i, i + FETCH_BATCH);
     const batchResults = await Promise.all(
       batch.map(async ([threadId, info]) => {
         if (info.delta_reply_ids.length === 0) {
-          console.warn(`Skipping thread ${threadId}: no delta replies mapped (ingestion may have failed)`);
+          console.warn(`  Skipping thread ${threadId}: no delta replies mapped`);
           return null;
         }
-        const resp = await undiciFetch(`${apiBase}/api/benchmark/thread/${info.post_id}?raw=1`, {
-          headers: { Authorization: 'Bearer dev_token' },
-          dispatcher: benchmarkAgent,
-        });
-        if (!resp.ok) {
-          console.warn(`Skipping thread ${threadId}: benchmark API returned ${resp.status}`);
+        try {
+          const resp = await undiciFetch(`${apiBase}/api/benchmark/thread/${info.post_id}?graph_only=1`, {
+            headers: { Authorization: 'Bearer dev_token' },
+            dispatcher: benchmarkAgent,
+          });
+          if (!resp.ok) {
+            console.warn(`  Skipping thread ${threadId}: API returned ${resp.status}`);
+            return null;
+          }
+          return { threadId, info, data: await resp.json() as GraphOnlyResult['data'] };
+        } catch (err) {
+          console.warn(`  Skipping thread ${threadId}: fetch failed (${err instanceof Error ? err.message : String(err)})`);
           return null;
         }
-        return { threadId, info, data: await resp.json() as EvalResult['data'] };
       })
     );
-    evalResults.push(...batchResults);
-    if (i + BATCH_SIZE < evalEntries.length) await new Promise(r => setTimeout(r, 2000));
+    graphDataResults.push(...batchResults);
+    if (i + FETCH_BATCH < evalEntries.length) await new Promise(r => setTimeout(r, 200));
   }
 
-  for (const result of evalResults) {
-    if (!result) continue;
-    const { threadId, info } = result;
-    const data = result.data;
+  const validGraphData = graphDataResults.filter((r): r is GraphOnlyResult =>
+    r !== null && r.data.graph != null && r.data.graph.nodes.length > 0
+  );
+  console.log(`  Fetched ${validGraphData.length}/${evalEntries.length} thread graphs`);
 
-    if (!data.Top_Flat?.items?.length) {
-      console.warn(`Skipping thread ${threadId}: empty results (analysis may not have completed)`);
-      continue;
+  // Filter graph data to only include pre-delta replies.
+  // The CMV loader already filters post-delta comments from thread.nodes, so
+  // cmvToReply only contains pre-delta reply mappings. For eval-only (where
+  // post-delta replies exist in DB), we need to strip them from the API response.
+  for (const gd of validGraphData) {
+    const validSourceIds = new Set<string>();
+    validSourceIds.add(gd.info.post_id);
+    for (const dbId of gd.info.cmv_to_reply.values()) {
+      validSourceIds.add(dbId);
     }
 
-    // Top_Tree: DFS traversal of vote-sorted thread tree, re-sorted flat by score
-    const rankTopTree    = flattenTree(data.top_tree?.items ?? [])
-      .sort((a, b) => b.score - a.score)
-      .map((n, i) => ({ ...n, rank: i + 1 }));
-    const rankTop        = data.Top_Flat?.items ?? [];
-    const rankErVote     = data.EvidenceRank_Vote?.items ?? [];
-    const rankErVoteTree = flattenTree(data.EvidenceRank_Vote_Tree?.items ?? []);
-    const rankErVoteNB   = data.EvidenceRank_Vote_NoBridge?.items ?? [];
-    const rankErVoteNBTree = flattenTree(data.EvidenceRank_Vote_NoBridge_Tree?.items ?? []);
-    const rankErVote95   = data.EvidenceRank_Vote_D95?.items ?? [];
-    const rankErVote95Tree = flattenTree(data.EvidenceRank_Vote_D95_Tree?.items ?? []);
-    const rankQeVote     = data.QuadraticEnergy_Vote?.items ?? [];
-    const rankQeVoteTree = flattenTree(data.QuadraticEnergy_Vote_Tree?.items ?? []);
-    const rankQeVoteNB   = data.QuadraticEnergy_Vote_NoBridge?.items ?? [];
-    const rankQeVoteNBTree = flattenTree(data.QuadraticEnergy_Vote_NoBridge_Tree?.items ?? []);
-    const rankDmRefBiasNB = data.DampedModular_ReferenceBias_NoBridge?.items ?? [];
-    const rankDmRefBiasNBTree = flattenTree(data.DampedModular_ReferenceBias_NoBridge_Tree?.items ?? []);
-    const rankDmVoteHCNB     = data.DampedModular_Vote_HC_NoBridge?.items ?? [];
-    const rankDmVoteHCNBTree = flattenTree(data.DampedModular_Vote_HC_NoBridge_Tree?.items ?? []);
-    const rankCombinedVote   = data.Combined_ER_QE_Vote?.items ?? [];
-    const rankCombinedVoteTree = flattenTree(data.Combined_ER_QE_Vote_Tree?.items ?? []);
-    const rankErEnthInherit  = data.EvidenceRank_Enthymeme_Inherit?.items ?? [];
-    const rankErEnthAttack   = data.EvidenceRank_Enthymeme_Attack?.items ?? [];
-    const rankErEnthSupport  = data.EvidenceRank_Enthymeme_Support?.items ?? [];
+    const origNodeCount = gd.data.graph!.nodes.length;
+    gd.data.graph!.nodes = gd.data.graph!.nodes.filter(
+      n => validSourceIds.has(n.source_id)
+    );
+    const keptNodeIds = new Set(gd.data.graph!.nodes.map(n => n.id));
+    gd.data.graph!.edges = gd.data.graph!.edges.filter(
+      e => keptNodeIds.has(e.from_node_id) && keptNodeIds.has(e.to_node_id)
+    );
+    gd.data.graph!.nodeTargets = gd.data.graph!.nodeTargets.filter(
+      ([nodeId]) => keptNodeIds.has(nodeId)
+    );
+    if (gd.data.enthymemes) {
+      gd.data.enthymemes = gd.data.enthymemes.filter(
+        e => validSourceIds.has(e.source_id)
+      );
+    }
+    // Filter tree items to only pre-delta replies
+    if (gd.data.top_tree?.items) {
+      gd.data.top_tree.items = filterTreeByIds(
+        gd.data.top_tree.items as Array<Record<string, unknown>>,
+        validSourceIds
+      );
+    }
+    const filtered = origNodeCount - gd.data.graph!.nodes.length;
+    if (filtered > 0) {
+      console.log(`    ${gd.threadId}: filtered ${filtered} post-delta i-nodes`);
+    }
+  }
 
-    const deltaSet = new Set(info.delta_reply_ids);
+  // Phase B: Compute rankings in worker pool (4 threads)
+  console.log('  Phase B: Computing rankings in 4 worker threads...');
+  initPool(4);
 
-    results.push({
-      test_id: `cmv_thread_${threadId}`,
-      parent_argument: data.parent_argument,
-      delta_reply_ids: info.delta_reply_ids,
-      raw_data: data.raw_data,
-      algorithms: {
-        Top_Tree:                            rankTopTree,
-        Top_Flat:                            rankTop,
-        EvidenceRank_Vote:                   rankErVote,
-        EvidenceRank_Vote_Tree:              rankErVoteTree,
-        EvidenceRank_Vote_NoBridge:          rankErVoteNB,
-        EvidenceRank_Vote_NoBridge_Tree:     rankErVoteNBTree,
-        EvidenceRank_Vote_D95:               rankErVote95,
-        EvidenceRank_Vote_D95_Tree:          rankErVote95Tree,
-        QuadraticEnergy_Vote:                rankQeVote,
-        QuadraticEnergy_Vote_Tree:           rankQeVoteTree,
-        QuadraticEnergy_Vote_NoBridge:       rankQeVoteNB,
-        QuadraticEnergy_Vote_NoBridge_Tree:  rankQeVoteNBTree,
-        DampedModular_ReferenceBias_NoBridge:      rankDmRefBiasNB,
-        DampedModular_ReferenceBias_NoBridge_Tree: rankDmRefBiasNBTree,
-        DampedModular_Vote_HC_NoBridge:            rankDmVoteHCNB,
-        DampedModular_Vote_HC_NoBridge_Tree:       rankDmVoteHCNBTree,
-        Combined_ER_QE_Vote:                 rankCombinedVote,
-        Combined_ER_QE_Vote_Tree:            rankCombinedVoteTree,
-        EvidenceRank_Enthymeme_Inherit:      rankErEnthInherit,
-        EvidenceRank_Enthymeme_Attack:       rankErEnthAttack,
-        EvidenceRank_Enthymeme_Support:      rankErEnthSupport,
-      },
-      metrics: {
-        Top_Tree:                            { rr: reciprocalRank(rankTopTree, deltaSet),          rank: firstRelevantRank(rankTopTree, deltaSet) },
-        Top_Flat:                            { rr: reciprocalRank(rankTop, deltaSet),              rank: firstRelevantRank(rankTop, deltaSet) },
-        EvidenceRank_Vote:                   { rr: reciprocalRank(rankErVote, deltaSet),           rank: firstRelevantRank(rankErVote, deltaSet) },
-        EvidenceRank_Vote_Tree:              { rr: reciprocalRank(rankErVoteTree, deltaSet),       rank: firstRelevantRank(rankErVoteTree, deltaSet) },
-        EvidenceRank_Vote_NoBridge:          { rr: reciprocalRank(rankErVoteNB, deltaSet),         rank: firstRelevantRank(rankErVoteNB, deltaSet) },
-        EvidenceRank_Vote_NoBridge_Tree:     { rr: reciprocalRank(rankErVoteNBTree, deltaSet),     rank: firstRelevantRank(rankErVoteNBTree, deltaSet) },
-        EvidenceRank_Vote_D95:               { rr: reciprocalRank(rankErVote95, deltaSet),         rank: firstRelevantRank(rankErVote95, deltaSet) },
-        EvidenceRank_Vote_D95_Tree:          { rr: reciprocalRank(rankErVote95Tree, deltaSet),     rank: firstRelevantRank(rankErVote95Tree, deltaSet) },
-        QuadraticEnergy_Vote:                { rr: reciprocalRank(rankQeVote, deltaSet),           rank: firstRelevantRank(rankQeVote, deltaSet) },
-        QuadraticEnergy_Vote_Tree:           { rr: reciprocalRank(rankQeVoteTree, deltaSet),       rank: firstRelevantRank(rankQeVoteTree, deltaSet) },
-        QuadraticEnergy_Vote_NoBridge:       { rr: reciprocalRank(rankQeVoteNB, deltaSet),         rank: firstRelevantRank(rankQeVoteNB, deltaSet) },
-        QuadraticEnergy_Vote_NoBridge_Tree:  { rr: reciprocalRank(rankQeVoteNBTree, deltaSet),     rank: firstRelevantRank(rankQeVoteNBTree, deltaSet) },
-        DampedModular_ReferenceBias_NoBridge:      { rr: reciprocalRank(rankDmRefBiasNB, deltaSet),     rank: firstRelevantRank(rankDmRefBiasNB, deltaSet) },
-        DampedModular_ReferenceBias_NoBridge_Tree: { rr: reciprocalRank(rankDmRefBiasNBTree, deltaSet), rank: firstRelevantRank(rankDmRefBiasNBTree, deltaSet) },
-        DampedModular_Vote_HC_NoBridge:            { rr: reciprocalRank(rankDmVoteHCNB, deltaSet),      rank: firstRelevantRank(rankDmVoteHCNB, deltaSet) },
-        DampedModular_Vote_HC_NoBridge_Tree:       { rr: reciprocalRank(rankDmVoteHCNBTree, deltaSet),  rank: firstRelevantRank(rankDmVoteHCNBTree, deltaSet) },
-        Combined_ER_QE_Vote:                 { rr: reciprocalRank(rankCombinedVote, deltaSet),     rank: firstRelevantRank(rankCombinedVote, deltaSet) },
-        Combined_ER_QE_Vote_Tree:            { rr: reciprocalRank(rankCombinedVoteTree, deltaSet), rank: firstRelevantRank(rankCombinedVoteTree, deltaSet) },
-        EvidenceRank_Enthymeme_Inherit:      { rr: reciprocalRank(rankErEnthInherit, deltaSet),    rank: firstRelevantRank(rankErEnthInherit, deltaSet) },
-        EvidenceRank_Enthymeme_Attack:       { rr: reciprocalRank(rankErEnthAttack, deltaSet),     rank: firstRelevantRank(rankErEnthAttack, deltaSet) },
-        EvidenceRank_Enthymeme_Support:      { rr: reciprocalRank(rankErEnthSupport, deltaSet),    rank: firstRelevantRank(rankErEnthSupport, deltaSet) },
-      },
-    });
+  try {
+    const COMPUTE_BATCH = 4;
+    const totalBatches = Math.ceil(validGraphData.length / COMPUTE_BATCH);
+    for (let i = 0; i < validGraphData.length; i += COMPUTE_BATCH) {
+      const batch = validGraphData.slice(i, i + COMPUTE_BATCH);
+      const batchNum = Math.floor(i / COMPUTE_BATCH) + 1;
+      console.log(`  Compute batch ${batchNum}/${totalBatches} (threads ${i + 1}–${Math.min(i + COMPUTE_BATCH, validGraphData.length)})...`);
+
+      await Promise.all(
+        batch.map(async ({ threadId, info, data }) => {
+          try {
+            const computeResult = await computeInWorker({
+              threadGraph: data.graph!,
+              validEnthymemes: data.enthymemes ?? [],
+              treeItems: data.top_tree?.items ?? [],
+            });
+
+            const rankTopTree = flattenTree(data.top_tree?.items ?? [])
+              .sort((a, b) => b.score - a.score)
+              .map((n, idx) => ({ ...n, rank: idx + 1 }));
+
+            const deltaSet = new Set(info.delta_reply_ids);
+
+            const algs = {
+              Top_Tree:                            rankTopTree,
+              Top_Flat:                            computeResult.algTop,
+              EvidenceRank_Vote:                   computeResult.erVote,
+              EvidenceRank_Vote_Tree:              flattenTree(computeResult.erVoteTree),
+              EvidenceRank_Vote_NoBridge:          computeResult.erVoteNB,
+              EvidenceRank_Vote_NoBridge_Tree:     flattenTree(computeResult.erVoteNBTree),
+              EvidenceRank_Vote_D95:               computeResult.erVote95,
+              EvidenceRank_Vote_D95_Tree:          flattenTree(computeResult.erVote95Tree),
+              QuadraticEnergy_Vote:                computeResult.qeVote,
+              QuadraticEnergy_Vote_Tree:           flattenTree(computeResult.qeVoteTree),
+              QuadraticEnergy_Vote_NoBridge:       computeResult.qeVoteNB,
+              QuadraticEnergy_Vote_NoBridge_Tree:  flattenTree(computeResult.qeVoteNBTree),
+              DampedModular_ReferenceBias_NoBridge:      computeResult.dmRefBiasNB,
+              DampedModular_ReferenceBias_NoBridge_Tree: flattenTree(computeResult.dmRefBiasNBTree),
+              DampedModular_Vote_HC_NoBridge:            computeResult.dmVoteHCNB,
+              DampedModular_Vote_HC_NoBridge_Tree:       flattenTree(computeResult.dmVoteHCNBTree),
+              Combined_ER_QE_Vote:                 computeResult.combinedVote,
+              Combined_ER_QE_Vote_Tree:            flattenTree(computeResult.combinedVoteTree),
+              EvidenceRank_Enthymeme_Inherit:      computeResult.erEnthInherit,
+              EvidenceRank_Enthymeme_Attack:       computeResult.erEnthAttack,
+              EvidenceRank_Enthymeme_Support:      computeResult.erEnthSupport,
+              EvidenceRank_Enthymeme_Inherit_Bridge: computeResult.erEnthInheritBridge,
+              EvidenceRank_Enthymeme_Attack_Bridge:   computeResult.erEnthAttackBridge,
+              EvidenceRank_Enthymeme_Support_Bridge:  computeResult.erEnthSupportBridge,
+              ER_Enth_Inherit_W10:      computeResult.erEnthInheritW10,
+              ER_Enth_Attack_W10:       computeResult.erEnthAttackW10,
+              ER_Enth_Support_W10:      computeResult.erEnthSupportW10,
+              ER_Enth_Inherit_WPct:     computeResult.erEnthInheritWPct,
+              ER_Enth_Attack_WPct:      computeResult.erEnthAttackWPct,
+              ER_Enth_Support_WPct:     computeResult.erEnthSupportWPct,
+              ER_Enth_Inherit_WPctConf: computeResult.erEnthInheritWPctConf,
+              ER_Enth_Attack_WPctConf:  computeResult.erEnthAttackWPctConf,
+              ER_Enth_Support_WPctConf: computeResult.erEnthSupportWPctConf,
+            };
+
+            const metrics: Record<string, AlgMetrics> = {};
+            for (const [key, ranked] of Object.entries(algs)) {
+              metrics[key] = {
+                rr: reciprocalRank(ranked, deltaSet),
+                rank: firstRelevantRank(ranked, deltaSet),
+                mean_delta_rank: meanDeltaRank(ranked, deltaSet),
+              };
+            }
+
+            results.push({
+              test_id: `cmv_thread_${threadId}`,
+              parent_argument: data.parent_argument,
+              delta_reply_ids: info.delta_reply_ids,
+              algorithms: algs,
+              metrics: metrics as ThreadResult['metrics'],
+            });
+          } catch (err) {
+            console.warn(`  Worker failed for thread ${threadId}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        })
+      );
+    }
+  } finally {
+    await destroyPool();
   }
 
   // ── Step 4: Aggregate ──
@@ -681,13 +755,149 @@ async function main() {
   };
   const meanOrNull = (vals: number[]) => vals.length === 0 ? null : mean(vals);
 
+  // ── Wilcoxon signed-rank test (two-sided, normal approximation) ──
+  // Standard normal CDF via Abramowitz & Stegun rational approximation
+  function normalCDF(x: number): number {
+    if (x < -8) return 0;
+    if (x > 8) return 1;
+    const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+    const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+    const sign = x < 0 ? -1 : 1;
+    const t = 1 / (1 + p * Math.abs(x) / Math.SQRT2);
+    const erf = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-x * x / 2);
+    return 0.5 * (1 + sign * erf);
+  }
+
+  function wilcoxonSignedRank(
+    algRRs: number[],
+    baseRRs: number[]
+  ): { w: number; p: number; n: number } | null {
+    // Compute paired differences, drop zeros
+    const diffs: number[] = [];
+    for (let i = 0; i < algRRs.length; i++) {
+      const d = algRRs[i]! - baseRRs[i]!;
+      if (d !== 0) diffs.push(d);
+    }
+    const nNonZero = diffs.length;
+    if (nNonZero < 10) return null; // too few non-ties for meaningful test
+
+    // Rank absolute values (average ranks for ties)
+    const indexed = diffs.map((d, i) => ({ abs: Math.abs(d), sign: Math.sign(d), idx: i }));
+    indexed.sort((a, b) => a.abs - b.abs);
+
+    const ranks = new Array<number>(nNonZero);
+    let i = 0;
+    while (i < nNonZero) {
+      let j = i;
+      while (j < nNonZero && indexed[j]!.abs === indexed[i]!.abs) j++;
+      const avgRank = (i + 1 + j) / 2; // 1-based average rank
+      for (let k = i; k < j; k++) ranks[indexed[k]!.idx] = avgRank;
+      i = j;
+    }
+
+    // Sum positive and negative ranks
+    let wPlus = 0, wMinus = 0;
+    for (let k = 0; k < nNonZero; k++) {
+      if (diffs[k]! > 0) wPlus += ranks[k]!;
+      else wMinus += ranks[k]!;
+    }
+    const w = Math.min(wPlus, wMinus);
+
+    // Normal approximation with continuity correction
+    // Tie correction for variance: subtract sum_t (t^3 - t) / 48 for each group of t ties
+    const mu = nNonZero * (nNonZero + 1) / 4;
+    let variance = nNonZero * (nNonZero + 1) * (2 * nNonZero + 1) / 24;
+    // Tie correction
+    i = 0;
+    const sortedAbs = indexed.map(x => x.abs);
+    let ti = 0;
+    while (ti < nNonZero) {
+      let tj = ti;
+      while (tj < nNonZero && sortedAbs[tj] === sortedAbs[ti]) tj++;
+      const tieSize = tj - ti;
+      if (tieSize > 1) variance -= (tieSize ** 3 - tieSize) / 48;
+      ti = tj;
+    }
+
+    const sigma = Math.sqrt(variance);
+    const z = (Math.abs(w - mu) - 0.5) / sigma; // continuity correction
+    const p = 2 * normalCDF(-z); // two-sided
+
+    return { w, p, n: nNonZero };
+  }
+
+  // ── Paired bootstrap test (two-sided, 10k resamples) ──
+  // Returns p-value and 95% CI for the mean RR difference (alg - base).
+  function pairedBootstrap(
+    algRRs: number[],
+    baseRRs: number[],
+    nBoot = 10_000
+  ): { p: number; ciLo: number; ciHi: number } | null {
+    const n = algRRs.length;
+    if (n < 10) return null;
+
+    const diffs = algRRs.map((v, i) => v - (baseRRs[i] ?? 0));
+    const observed = diffs.reduce((a, b) => a + b, 0) / n;
+
+    // Center differences under H0 (mean diff = 0) for p-value computation
+    const centered = diffs.map(d => d - observed);
+
+    // Seeded pseudo-random for reproducibility (simple xorshift32)
+    let seed = 42;
+    const rand = () => {
+      seed ^= seed << 13;
+      seed ^= seed >> 17;
+      seed ^= seed << 5;
+      return (seed >>> 0) / 0x100000000;
+    };
+
+    // Bootstrap from centered diffs (for p-value) and raw diffs (for CI)
+    const bootMeansH0: number[] = [];
+    const bootMeansCI: number[] = [];
+    for (let b = 0; b < nBoot; b++) {
+      let sumH0 = 0, sumCI = 0;
+      for (let i = 0; i < n; i++) {
+        const idx = Math.floor(rand() * n);
+        sumH0 += centered[idx] ?? 0;
+        sumCI += diffs[idx] ?? 0;
+      }
+      bootMeansH0.push(sumH0 / n);
+      bootMeansCI.push(sumCI / n);
+    }
+
+    // Two-sided p-value: proportion of H0 bootstrap samples as extreme as observed
+    const countExtreme = bootMeansH0.filter(m => Math.abs(m) >= Math.abs(observed)).length;
+    const p = Math.max(countExtreme / nBoot, 1 / nBoot); // floor at 1/nBoot
+
+    // 95% CI (percentile method from raw diffs)
+    bootMeansCI.sort((a, b) => a - b);
+    const lo = bootMeansCI[Math.floor(0.025 * nBoot)] ?? 0;
+    const hi = bootMeansCI[Math.floor(0.975 * nBoot)] ?? 0;
+
+    return { p, ciLo: lo, ciHi: hi };
+  }
+
   // win_rate = fraction of threads where this algorithm beats the Top baseline.
   // Using a consistent baseline makes win_rates comparable across algorithms.
+  const baselineRRs = results.map(r => r.metrics['Top_Flat'].rr);
+
   const summarize = (key: AlgKey): AlgSummary => {
-    const mrr = mean(results.map(r => r.metrics[key].rr));
+    const rrs = results.map(r => r.metrics[key].rr);
+    const mrr = mean(rrs);
     const ranks = results.map(r => r.metrics[key].rank).filter((v): v is number => v !== null);
+    const mdr = results.map(r => r.metrics[key].mean_delta_rank).filter((v): v is number => v !== null);
     const wins = results.filter(r => r.metrics[key].rr > r.metrics['Top_Flat'].rr).length;
-    return { mrr, mean_rank: meanOrNull(ranks), median_rank: median(ranks), rank_std: stdDev(ranks), win_rate: wins / n };
+    const wilcoxon = key === 'Top_Flat' ? null : wilcoxonSignedRank(rrs, baselineRRs);
+    const bootstrap = key === 'Top_Flat' ? null : pairedBootstrap(rrs, baselineRRs);
+    return {
+      mrr, mrr_std: stdDev(rrs), mean_rank: meanOrNull(ranks), median_rank: median(ranks), rank_std: stdDev(ranks),
+      mean_delta_rank: meanOrNull(mdr), mean_delta_rank_std: stdDev(mdr),
+      win_rate: wins / n,
+      wilcoxon_w: wilcoxon?.w ?? null, wilcoxon_p: wilcoxon?.p ?? null, wilcoxon_n: wilcoxon?.n ?? null,
+      bootstrap_p: bootstrap?.p ?? null,
+      bootstrap_ci_lo: bootstrap?.ciLo ?? null,
+      bootstrap_ci_hi: bootstrap?.ciHi ?? null,
+    };
   };
 
   const algKeys: AlgKey[] = [
@@ -701,6 +911,10 @@ async function main() {
     'DampedModular_Vote_HC_NoBridge',            'DampedModular_Vote_HC_NoBridge_Tree',
     'Combined_ER_QE_Vote',                'Combined_ER_QE_Vote_Tree',
     'EvidenceRank_Enthymeme_Inherit', 'EvidenceRank_Enthymeme_Attack', 'EvidenceRank_Enthymeme_Support',
+    'EvidenceRank_Enthymeme_Inherit_Bridge', 'EvidenceRank_Enthymeme_Attack_Bridge', 'EvidenceRank_Enthymeme_Support_Bridge',
+    'ER_Enth_Inherit_W10', 'ER_Enth_Attack_W10', 'ER_Enth_Support_W10',
+    'ER_Enth_Inherit_WPct', 'ER_Enth_Attack_WPct', 'ER_Enth_Support_WPct',
+    'ER_Enth_Inherit_WPctConf', 'ER_Enth_Attack_WPctConf', 'ER_Enth_Support_WPctConf',
   ];
 
   const summaryMap = Object.fromEntries(
@@ -716,12 +930,31 @@ async function main() {
   };
 
   const fmtRank = (v: number | null) => v === null ? 'N/A' : v.toFixed(1);
+  const fmtP = (p: number | null) => {
+    if (p === null) return 'N/A';
+    if (p < 0.001) return p.toExponential(2);
+    return p.toFixed(4);
+  };
+  const sigLabel = (p: number | null) => {
+    if (p === null) return '';
+    if (p < 0.001) return ' ***';
+    if (p < 0.01) return ' **';
+    if (p < 0.05) return ' *';
+    return ' (ns)';
+  };
   const printAlg = (label: string, s: AlgSummary) => {
     console.log(`\n${label}:`);
-    console.log(`  MRR:         ${s.mrr.toFixed(4)}`);
+    console.log(`  MRR:         ${s.mrr.toFixed(4)}  ±${s.mrr_std !== null ? s.mrr_std.toFixed(4) : 'N/A'}`);
     console.log(`  Mean rank:   ${fmtRank(s.mean_rank)}  ±${fmtRank(s.rank_std)}`);
     console.log(`  Median rank: ${fmtRank(s.median_rank)}`);
+    console.log(`  MR (all Δ):  ${fmtRank(s.mean_delta_rank)}  ±${fmtRank(s.mean_delta_rank_std)}`);
     console.log(`  Win rate:    ${(s.win_rate * 100).toFixed(1)}%`);
+    if (s.wilcoxon_p !== null) {
+      console.log(`  Wilcoxon:    W=${s.wilcoxon_w}, p=${fmtP(s.wilcoxon_p)}${sigLabel(s.wilcoxon_p)} (n=${s.wilcoxon_n} non-ties vs Top_Flat)`);
+    }
+    if (s.bootstrap_p !== null) {
+      console.log(`  Bootstrap:   p=${fmtP(s.bootstrap_p)}${sigLabel(s.bootstrap_p)}, ΔMRR 95% CI [${s.bootstrap_ci_lo!.toFixed(4)}, ${s.bootstrap_ci_hi!.toFixed(4)}] vs Top_Flat`);
+    }
   };
 
   console.log('\n=== Benchmark Summary ===');
