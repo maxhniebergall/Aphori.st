@@ -5,6 +5,13 @@ services:
     restart: unless-stopped
     ports:
       - "5432:5432"
+    shm_size: '2560m'
+    command: >
+      postgres
+      -c shared_buffers=1GB
+      -c work_mem=64MB
+      -c effective_cache_size=2GB
+      -c maintenance_work_mem=256MB
     environment:
       POSTGRES_USER: chitin
       POSTGRES_PASSWORD: chitin_dev
