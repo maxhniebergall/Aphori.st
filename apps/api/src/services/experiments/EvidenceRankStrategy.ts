@@ -9,7 +9,8 @@ function calculateEvidenceRank(
   schemeEdges: SchemeEdge[],
   focalNodeId: string,
   damping: number = 0.85,
-  iterations: number = 20
+  iterations: number = 20,
+  reanchor: boolean = true
 ): Map<string, number> {
   const ranks = new Map<string, number>();
 
@@ -40,7 +41,9 @@ function calculateEvidenceRank(
     const newRanks = new Map<string, number>();
 
     for (const node of nodes) {
-      const baseSocial = node.vote_score * (1 + Math.log(1 + Math.max(0, node.user_karma)) / 10);
+      const anchor = reanchor
+        ? node.vote_score * (1 + Math.log(1 + Math.max(0, node.user_karma)) / 10)
+        : 0;
 
       let supportSum = 0;
       for (const { from, conf } of (supporters.get(node.id) ?? [])) {
@@ -52,7 +55,7 @@ function calculateEvidenceRank(
         attackSum += (ranks.get(from) ?? 0) * conf;
       }
 
-      const newRank = baseSocial + damping * (supportSum - attackSum);
+      const newRank = anchor + damping * (supportSum - attackSum);
       newRanks.set(node.id, Math.max(0, newRank));
     }
 
@@ -194,9 +197,11 @@ export function applyHingeCentrality(
 export class EvidenceRankStrategy implements RankingStrategy {
   name = 'Alg_A (EvidenceRank)';
   private readonly damping: number;
+  private readonly reanchor: boolean;
 
-  constructor(damping = 0.9) {
+  constructor(damping = 0.9, reanchor = true) {
     this.damping = damping;
+    this.reanchor = reanchor;
   }
 
   rank(nodes: GraphNode[], edges: GraphEdge[], focalNodeId: string): RankedResult[] {
@@ -204,7 +209,7 @@ export class EvidenceRankStrategy implements RankingStrategy {
     const schemeEdges = toSchemeEdges(edges);
     const allNodeIds = [focalNodeId, ...nodes.map(n => n.id)];
 
-    const erScores = calculateEvidenceRank(subNodes, schemeEdges, focalNodeId, this.damping);
+    const erScores = calculateEvidenceRank(subNodes, schemeEdges, focalNodeId, this.damping, 20, this.reanchor);
     const hcScores = calculateHingeCentrality(allNodeIds, schemeEdges);
 
     const scored = nodes.map(n => {

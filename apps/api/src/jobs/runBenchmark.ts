@@ -125,6 +125,7 @@ type AlgKey =
   | 'ER_Enth_Inherit_WPctConf' | 'ER_Enth_Attack_WPctConf' | 'ER_Enth_Support_WPctConf'
   | 'ER_Vote_Sum' | 'ER_Vote_Sum_NoDC' | 'ER_Vote_NoDC' | 'ER_Vote_Dim_NoDC'
   | 'ER_Vote_Sum_NoDC_Bridge' | 'ER_Vote_Geo_NoDC' | 'ER_Vote_D95_Sum_NoDC'
+  | 'ER_Vote_NoReanchor_Sum_NoDC_Bridge'
   | 'RRF_ER_QE_Vote' | 'RRF_ER_QE_Reply'
   | 'Top_ReplyCount' | 'RRF_Top_Vote_ReplyCount';
 
@@ -665,6 +666,7 @@ async function main() {
               ER_Vote_Sum_NoDC_Bridge:  computeResult.erVoteSumNoDCBridge,
               ER_Vote_Geo_NoDC:         computeResult.erVoteGeoNoDC,
               ER_Vote_D95_Sum_NoDC:     computeResult.erVoteD95SumNoDC,
+              ER_Vote_NoReanchor_Sum_NoDC_Bridge: computeResult.erVoteNoReanchorSumNoDCBridge,
               RRF_ER_QE_Vote:           computeResult.rrfErQeVote,
               RRF_ER_QE_Reply:          computeResult.rrfErQeReply,
               Top_ReplyCount:           computeResult.topReplyCount,
@@ -882,6 +884,7 @@ async function main() {
     'ER_Enth_Inherit_WPctConf', 'ER_Enth_Attack_WPctConf', 'ER_Enth_Support_WPctConf',
     'ER_Vote_Sum', 'ER_Vote_Sum_NoDC', 'ER_Vote_NoDC', 'ER_Vote_Dim_NoDC',
     'ER_Vote_Sum_NoDC_Bridge', 'ER_Vote_Geo_NoDC', 'ER_Vote_D95_Sum_NoDC',
+    'ER_Vote_NoReanchor_Sum_NoDC_Bridge',
     'RRF_ER_QE_Vote', 'RRF_ER_QE_Reply',
     'Top_ReplyCount', 'RRF_Top_Vote_ReplyCount',
   ];

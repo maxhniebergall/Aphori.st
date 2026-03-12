@@ -93,6 +93,7 @@ export interface BenchmarkComputeOutput {
   erVoteSumNoDCBridge: FlatRankedNode[];
   erVoteGeoNoDC: FlatRankedNode[];
   erVoteD95SumNoDC: FlatRankedNode[];
+  erVoteNoReanchorSumNoDCBridge: FlatRankedNode[];
   // RRF combination variants
   rrfErQeVote: FlatRankedNode[];
   rrfErQeReply: FlatRankedNode[];
@@ -344,6 +345,7 @@ export function computeAllRankings(input: BenchmarkComputeInput): BenchmarkCompu
 
   const erStrategy = new EvidenceRankStrategy();
   const erStrategy95 = new EvidenceRankStrategy(0.95);
+  const erStrategyNoReanchor = new EvidenceRankStrategy(0.9, false);
   const qeStrategy = new QuadraticEnergyStrategy();
   const dmStrategy = new DampedModularStrategy();
 
@@ -383,6 +385,7 @@ export function computeAllRankings(input: BenchmarkComputeInput): BenchmarkCompu
 
   const ranked_er_vote    = erStrategy.rank(nodesER_Vote, graphEdges, focalNodeId);
   const ranked_er_vote95  = erStrategy95.rank(nodesER_Vote, graphEdges, focalNodeId);
+  const ranked_er_vote_noreanchor = erStrategyNoReanchor.rank(nodesER_Vote, graphEdges, focalNodeId);
   const ranked_qe_vote    = qeStrategy.rank(nodesQE_Vote, graphEdges, focalNodeId);
   const ranked_dm_vote    = dmStrategy.rank(nodesDM_Vote, graphEdges, focalNodeId);
   const ranked_dm_refbias = dmStrategy.rank(nodesDM_RefBias, graphEdges, focalNodeId);
@@ -514,6 +517,7 @@ export function computeAllRankings(input: BenchmarkComputeInput): BenchmarkCompu
   const erVoteSumNoDCBridge = aggregateToReplyLevelV2(ranked_er_vote, threadGraph, 1.0, 'sum', 'none');
   const erVoteGeoNoDC      = aggregateToReplyLevelV2(ranked_er_vote, threadGraph, 0.0, 'geometric', 'none');
   const erVoteD95SumNoDC   = aggregateToReplyLevelV2(ranked_er_vote95, threadGraph, 0.0, 'sum', 'none');
+  const erVoteNoReanchorSumNoDCBridge = aggregateToReplyLevelV2(ranked_er_vote_noreanchor, threadGraph, 1.0, 'sum', 'none');
 
   // ── RRF combination variants ──
   const rrfErQeINode = rrfCombine([ranked_er_vote, ranked_qe_vote]);
@@ -578,7 +582,7 @@ export function computeAllRankings(input: BenchmarkComputeInput): BenchmarkCompu
     erEnthInheritWPct, erEnthAttackWPct, erEnthSupportWPct,
     erEnthInheritWPctConf, erEnthAttackWPctConf, erEnthSupportWPctConf,
     erVoteSum, erVoteSumNoDC, erVoteNoDC, erVoteDimNoDC,
-    erVoteSumNoDCBridge, erVoteGeoNoDC, erVoteD95SumNoDC,
+    erVoteSumNoDCBridge, erVoteGeoNoDC, erVoteD95SumNoDC, erVoteNoReanchorSumNoDCBridge,
     rrfErQeVote, rrfErQeReply,
     topReplyCount, rrfTopVoteReplyCount,
     erVoteTree:      reorderTree(treeItems, scoreMapErVote),
