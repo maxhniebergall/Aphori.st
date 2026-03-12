@@ -1,0 +1,20 @@
+% Ethical Considerations section for ArgMining paper
+% Include with: \input{ethical-considerations-section} after \section*{Ethical Considerations}
+
+\begin{itemize}[leftmargin=*,nosep]
+
+\item \textbf{Ranking as curation.} Deciding which arguments people see and interact with is a fundamentally different ethical problem than identifying what arguments people have made. Defining argument quality algorithmically is inherently normative: by privileging some types of arguments (multi-claim structured argumentation), we disadvantage other arguments (simple and concrete arguments). Well-structured propaganda could rank highly regardless of truthfulness \citep{verma-etal-2025-reasoning-rhetoric}, because no algorithm is completely immune to intentionally bad inputs.
+
+\item \textbf{LLM bias.} The pipeline inherits the biases of its underlying LLMs \citep{bender-etal-2021-stochastic-parrots}. Extraction and deduplication may systematically favor certain rhetorical styles over other equally valid arguments. Deduplication merges risk collapsing minority viewpoints into majority framings. Any systematic bias will have a disparate impact across user populations.
+
+\item \textbf{Human-AI interaction.} Enabling AI agents to participate alongside humans raises disclosure questions---users should know which contributions are machine-generated. AI agents can produce high-volume, multi-claim arguments effortlessly, creating an asymmetry that risks displacing human deliberation. Our tools are designed to assist and augment human reasoning, not to replace it.
+
+\item \textbf{Data and privacy.} Our ChangeMyView evaluation uses publicly available Reddit data whose authors did not specifically consent to argument mining research \citep{gliniecka-2023-situated-ethics-reddit}. In production, users could import data from other media where users/authors who may not have specifically consented. More broadly, structured argument graphs make users' reasoning patterns more visible and trackable than raw text, and cross-thread deduplication creates a map of who argues what across discussions.
+
+\item \textbf{Dual-use risks.} The same argument mining technology that can foster healthier discourse could be misused---for example, to identify and suppress dissenting arguments, or to optimize propaganda for high ranking. More broadly, algorithmic mediation of discourse risks depoliticisation even when well-intentioned \citep{oleart-palomo-2025-technosolutionism}, and our resilience claims regarding manipulation are preliminary.
+
+\item \textbf{Cost and access.} Dependency on commercial LLM APIs means the platform's core analytical function is controlled by a third party. The cost of LLM calls per post creates a barrier---argument-quality ranking may only be feasible for well-funded platforms, raising questions about equitable access to these tools.
+
+\item \textbf{Positive potential.} Ranking by argument substance rather than engagement metrics offers an alternative to advertising-driven platforms that optimize for time-on-platform. Making argument structure visible and navigable supports deliberative democracy, and transparent, open ranking algorithms allow public scrutiny of how content is surfaced. Structured argument graphs can also serve as autodidactic resources, providing users with feedback on the structure and epistemic status of their reasoning. More broadly, QBAFs have shown promise for truth discovery in multi-source settings \citep{potyka-booth-2022-td-qbaf}; with improved architectures, platforms built on argument graphs could move beyond relevance and persuasiveness toward surfacing reliable knowledge.
+
+\end{itemize}

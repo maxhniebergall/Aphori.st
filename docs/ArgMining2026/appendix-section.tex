@@ -1,0 +1,73 @@
+% Appendix section for ArgMining paper
+% Include with: \appendix \input{appendix-section}
+
+\section{Complexity Analysis}
+\label{app:architecture}
+
+Let $N$ denote the number of I-nodes, $E$ the number of edges, $K$ the number of propagation iterations (fixed at 20), and $R$ the number of replies. EvidenceRank propagation runs in $O(K(N + E))$, which simplifies to $O(N + E)$ for fixed $K$---analogous to PageRank on a sparse graph. Reply aggregation and bridge multiplier computation are $O(N + E)$, and the final sort is $O(R \log R)$. The full ranking pipeline is $O(N + E + R \log R)$; since typically $E > N \geq R$ in argumentation graphs, the practical complexity is $O(E)$. For deduplication, each new I-node requires one embedding, one HNSW search ($O(\log |\mathcal{N}|)$), and one LLM verification call, giving $O(|\mathcal{N}|)$ total calls for $|\mathcal{N}|$ I-nodes processed incrementally---versus $O(|\mathcal{N}|^2)$ for pairwise comparison.
+
+\section{Benchmark Details}
+\label{app:benchmarks}
+
+Table~\ref{tab:extraction} reports extraction performance by component type on 90 essays from \citet{stab-gurevych-2014-annotating}. A span is considered matched if the IoU with a ground-truth span exceeds 0.5.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{Component Type} & \textbf{P} & \textbf{R} & \textbf{F1} \\
+\midrule
+Major Claim & 1.000 & 0.733 & 0.846 \\
+Claim       & 1.000 & 0.534 & 0.696 \\
+Premise     & 1.000 & 0.265 & 0.419 \\
+\midrule
+All I-nodes & 0.886 & 0.403 & 0.542 \\
+S-nodes     & 0.303 & 0.101 & 0.146 \\
+\bottomrule
+\end{tabular}
+\caption{Extraction performance by component type on the Persuasive Essays corpus. Span IoU threshold = 0.5; matched-span IoU = 0.932; role alignment = 67.0\%.}
+\label{tab:extraction}
+\end{table}
+
+Table~\ref{tab:dedup} reports deduplication performance on MultiPIT Expert \citep{dou-etal-2022-improving} (557 sentence pairs: 254 positive, 303 negative).
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{lr}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Precision & 0.663 \\
+Recall    & 0.842 \\
+F1        & 0.742 \\
+Accuracy  & 0.732 \\
+\midrule
+TP / FP / FN / TN & 214 / 109 / 40 / 194 \\
+\bottomrule
+\end{tabular}
+\caption{Deduplication performance on MultiPIT Expert.}
+\label{tab:dedup}
+\end{table}
+
+\section{Ablation Study}
+\label{app:ablation}
+
+Table~\ref{tab:ablation} traces the contribution of each pipeline component. Sum aggregation with graph propagation provides the primary improvement over vote sorting ($\Delta$MRR +0.055, $p < 0.001$). The bridge multiplier contributes a further +0.015, though this increment is not individually significant ($p = 0.56$ vs.\ the no-bridge variant).
+
+\begin{table}[ht]
+\centering
+\footnotesize
+\begin{tabular}{lccc}
+\toprule
+\textbf{Configuration} & \textbf{MRR} & \textbf{$\Delta$MRR} & \textbf{Sig.} \\
+\midrule
+Vote sort              & 0.520 & ---            & ---  \\
++ Prop.\ + Sum agg.   & 0.575 & +0.055         & $p{<}0.001$   \\
++ Bridge mult.         & \textbf{0.590} & \textbf{+0.070} & $p{<}0.01$   \\
+\bottomrule
+\end{tabular}
+\caption{Ablation study. Each row adds one component to the pipeline. $\Delta$MRR is measured against the vote sort baseline. Significance is assessed via paired Wilcoxon signed-rank test vs.\ the vote sort baseline.}
+\label{tab:ablation}
+\end{table}

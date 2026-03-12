@@ -1,0 +1,11 @@
+% Limitations section for ArgMining paper
+% Include with: \input{limitations-section}
+% Does not count towards page limit.
+
+\section*{Limitations}
+
+Our extraction pipeline has low recall, particularly on premises (R\,=\,0.265), meaning the LLM misses the majority of argumentative units---bounded by what few-shot prompting can achieve without fine-tuning. S-node detection is weak end-to-end (F1\,=\,0.146), though this metric conflates missed I-nodes (which make their incident edges unmatchable) with missed relations between correctly detected I-nodes; the conditional accuracy of relation detection given correctly extracted endpoints is not measured. Extraction was evaluated only on formal text (Persuasive Essays), so performance on informal social media text is unknown. Deduplication precision of 0.663 means roughly one in three merges is incorrect, potentially conflating distinct arguments, and was evaluated on Twitter paraphrases (MultiPIT) rather than argumentative text specifically.
+
+The end-to-end evaluation has several constraints. The effect size is small (Cohen's $d$\,=\,0.187), and EvidenceRank produces the same ranking as vote sorting in approximately 40\% of threads. We evaluate on a single corpus of 206 CMV threads, which has explicit argumentation norms and a built-in persuasion signal that may not generalise to other settings. Delta awards are noisy and discretionary; threads may contain persuasive replies that never received a delta. Each thread is processed independently, yielding small, isolated argument graphs; a deployed platform with accumulated cross-thread deduplication would have much denser graphs, and EvidenceRank's propagation could behave differently at that density.
+
+Finally, the pipeline requires multiple LLM API calls per post (extraction plus deduplication candidates), which is expensive at scale and may not suit real-time ranking. Our claim that argument-quality ranking is resilient to manipulation is architectural and has not been verified through adversarial experiments.

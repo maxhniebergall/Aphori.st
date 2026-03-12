@@ -1,0 +1,10 @@
+% Conclusion section for ArgMining paper
+% Include with: \input{conclusion-section}
+
+\section{Conclusion}
+
+We presented an end-to-end LLM-powered pipeline that transforms social media discussions into structured argument graphs using only few-shot prompting. Despite extraction recall limitations (particularly on premises) and weak relation detection, the pipeline produces structure that is precise enough to significantly improve reply ranking over vote sorting on ChangeMyView (MRR 0.590 vs.\ 0.520, $p<0.01$).
+
+The key finding is that LLM-extracted argument counts---a signal unavailable without automated mining---are more predictive of persuasion than engagement metrics. By combining this structural signal with social votes, EvidenceRank rewards substantive, multi-claim argumentation in a way that is difficult to game without arguing well. This property is essential for platforms that aim to integrate machine participants alongside humans.
+
+Future work should address the pipeline's main bottleneck---low premise recall---through domain-specific fine-tuning or hybrid architectures, and test whether these findings generalise beyond the explicit argumentation norms of ChangeMyView to less structured deliberative settings.

@@ -1,0 +1,43 @@
+% Results and Analysis section for ArgMining paper
+% Include with: \input{results-section}
+
+\section{Evaluation}
+
+We evaluate each pipeline stage independently before testing end-to-end on a reply ranking task. Full details and additional tables for the extraction and deduplication evaluations appear in Appendix~\ref{app:benchmarks}.
+
+\subsection{Extraction and Deduplication}
+
+\paragraph{Argument extraction.} On 90 essays from the Persuasive Essays corpus \citep{stab-gurevych-2014-annotating}, few-shot extraction achieves 0.542 F1 on I-nodes (P\,=\,0.886, R\,=\,0.403) and 0.146 F1 on S-nodes. These scores remain below supervised baselines. The LLM is conservative: when it identifies an argument, it is usually correct and well-bounded (matched-span IoU\,=\,0.932), but it misses the majority of components---particularly premises (R\,=\,0.265). Despite this, the high precision means the arguments it does extract are reliable inputs to downstream deduplication and ranking.
+
+\paragraph{Deduplication.} On MultiPIT Expert \citep{dou-etal-2022-improving}, our retrieve-then-verify pipeline achieves F1\,=\,0.742 (P\,=\,0.663, R\,=\,0.842). Rather than the pairwise classification task proposed in the original benchmark, we evaluate a one-to-many setting where each new text is compared against all previous texts via vector retrieval followed by LLM verification---matching our deployed pipeline's operation and offering $O(n \log n)$ complexity versus $O(n^2)$ for pairwise comparison (see Appendix~\ref{app:architecture} for complexity analysis).
+
+\subsection{End-to-End: Reply Ranking on ChangeMyView}
+
+We evaluate on 206 threads from the Webis-CMV-20 corpus \citep{Kolyada2020}\footnote{The 206-thread count reflects the number of threads fully processed through the LLM pipeline at the time of submission; the corpus contains 3{,}051 threads with delta awards.}, where delta ($\Delta$) awards serve as explicit persuasion labels \citep{tan-etal-2016-winning}. For each thread, we exclude replies posted after the last delta award, so that only replies that could have influenced the OP are ranked. We further retain only the top 200 remaining replies by vote score; all delta-awarded replies are retained regardless of rank. This yields 6{,}096 replies of which 360 (5.9\%) received a delta award indicating successful persuasion. For each thread, we rank all replies and measure where the first delta reply appears using Mean Reciprocal Rank (MRR). Statistical significance is assessed via paired Wilcoxon signed-rank tests and paired bootstrap resampling ($n=10{,}000$), reporting the more conservative $p$-value.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{Algorithm} & \textbf{MRR} & \textbf{Hit@1} & \textbf{Sig.} \\
+\midrule
+Top (vote sort)          & 0.520 & 33.5\% & ---  \\
+Top (reply count)        & 0.445 & ---    & **   \\
+RRF(Vote+ReplyCount)     & 0.548 & ---    & ns   \\
+\textbf{EvidenceRank}    & \textbf{0.590} & \textbf{42.7\%} & **   \\
+\bottomrule
+\end{tabular}
+\caption{Reply ranking performance (206 threads). Significance vs.\ vote sort baseline: ** $p<0.01$.}
+\label{tab:results}
+\end{table}
+
+EvidenceRank achieves MRR\,=\,0.590 ($p < 0.01$), placing a delta reply at rank~1 in 42.7\% of threads versus 33.5\% for vote sorting---a 27\% relative improvement (Table~\ref{tab:results}).
+
+\subsection{Why Argument Structure Helps}
+
+The ranking improvement is driven primarily by a simple structural signal: persuasive replies contain more arguments, consistent with prior work showing argumentation features outperform surface text features on CMV \citep{wei-etal-2016-post}. Among the 6{,}096 replies, delta replies average $5.04 \pm 2.02$ I-nodes versus $3.37 \pm 1.83$ for non-delta replies (Cohen's $d = 0.905$). I-node count alone achieves ROC~AUC\,=\,0.736 for discriminating persuasive replies, and in a logistic regression with both I-node count and child reply count as standardised predictors, I-node count has 2.5$\times$ the coefficient. EvidenceRank captures this signal through sum aggregation: replies with more extracted claims score higher, regardless of engagement. However, the large pooled effect size does not translate directly into ranking gains: within any given thread, the overlap between delta and non-delta I-node counts is substantial, limiting the per-thread discriminative power (MRR improvement +0.070, Cohen's $d = 0.187$).
+
+This finding has a practical implication for the platform's resilience: a ranking that rewards substantive, multi-claim argumentation cannot be inflated by producing many low-quality posts. Because argument extraction is automated rather than user-labelled, gaming the ranking requires producing text that an independent LLM decomposes into multiple distinct arguments connecting to existing claims---effectively requiring the adversary to argue well. The bridge multiplier further rewards replies that engage multiple distinct points in the debate (ablation: $\Delta$MRR\,=\,+0.015 over propagation alone; see Table~\ref{tab:ablation} in Appendix~\ref{app:ablation}).
+
+Engagement metrics, by contrast, are unreliable: sorting by child reply count performs significantly \emph{worse} than vote sorting (MRR\,=\,0.445 vs.\ 0.520, $p<0.01$), because heavily-discussed replies are often controversial rather than persuasive---consistent with \citet{tan-etal-2016-winning}'s finding that excessive back-and-forth engagement reduces persuasion success. Even combining reply count with votes via reciprocal rank fusion \citep{cormack2009reciprocal} yields no significant improvement ($p>0.05$).
