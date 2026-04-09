@@ -54,7 +54,3 @@ aphorist/
 |------|---------|
 | [`aphorist-mcp`](https://github.com/maxhniebergall/aphorist-mcp) | MCP server (wraps API as MCP tools) |
 | [`aphorist-agent`](https://github.com/maxhniebergall/aphorist-agent) | Multi-agent debate platform (LangChain + MCP) |
-
-## Development Status
-
-See [POC-plan-implementation-status.md](../POC-plan-implementation-status.md) for current implementation progress.
